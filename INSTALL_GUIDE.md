@@ -242,16 +242,21 @@ Open the in-OBS Dock or visit `http://127.0.0.1:8765/dashboard`:
 
 If you want a pure compiled in-process C++ `.dll` filter plugin for OBS Studio:
 
-1. Ensure **CMake** and **Visual Studio (C++ Desktop Development)** are installed on your Windows PC.
-2. Double-click [**`build_plugin_windows.bat`**](file:///Users/techguyowen/Documents/antigravity/delightful-bohr/build_plugin_windows.bat).
-3. The script compiles `obs_native_plugin/` into `build\Release\obs-live-captions.dll`.
-4. Copy `obs-live-captions.dll` into:
-   ```
-   C:\Program Files\obs-studio\obs-plugins\64bit\
-   ```
-5. Launch OBS Studio:
-   - Go to **Tools ➔ Live Speech Captions Settings...** for the native Qt dialog.
-   - Right-click any audio source ➔ **Filters ➔ Add "Live Speech Captions (AI)"**.
+### 1. Install Build Tools via `winget` (One-Line Setup):
+Open PowerShell or Command Prompt as Administrator and run:
+```cmd
+:: Install CMake
+winget install Kitware.CMake
+
+:: Install Visual Studio C++ Build Tools
+winget install Microsoft.VisualStudio.2022.BuildTools --override "--passive --add Microsoft.VisualStudio.Workload.VCTools"
+```
+
+### 2. Compile with 1-Click:
+1. Double-click [**`build_plugin_windows.bat`**](file:///Users/techguyowen/Documents/antigravity/delightful-bohr/build_plugin_windows.bat).
+2. The script compiles `obs_native_plugin/` using the bundled OBS SDK into `build\Release\obs-live-captions.dll` and installs it into OBS automatically.
+3. Launch OBS Studio:
+   - Right-click any audio source (or your ASIO board input) ➔ **Filters ➔ Add "Live Speech Captions (AI)"**.
 
 ---
 

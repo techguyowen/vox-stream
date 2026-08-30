@@ -8,12 +8,24 @@ echo   🔨 Building VoxStream Native OBS C++ Plugin (.dll)
 echo =======================================================
 echo.
 
-:: 1. Check for CMake
+:: 1. Check for CMake, auto-install via winget if missing
 cmake --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [ERROR] CMake is not installed or not found in PATH!
-    echo Please download and install CMake from: https://cmake.org/download/
-    echo (Make sure to check "Add CMake to system PATH" during install)
+    echo [INFO] CMake is not found in PATH. Checking winget...
+    winget --version >nul 2>&1
+    if %errorlevel% equ 0 (
+        echo [INFO] Installing CMake via winget...
+        winget install Kitware.CMake -e --accept-package-agreements --accept-source-agreements
+        set "PATH=C:\Program Files\CMake\bin;%PATH%"
+    )
+)
+
+cmake --version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ERROR] CMake is not installed!
+    echo Please install CMake using:
+    echo   winget install Kitware.CMake
+    echo or download from: https://cmake.org/download/
     pause
     exit /b 1
 )
@@ -31,13 +43,20 @@ cmake -B build -S obs_native_plugin -A x64 -DCMAKE_BUILD_TYPE=Release
 if %errorlevel% neq 0 (
     echo.
     echo =======================================================
-    echo   ❌ CMake Configuration Error
+    echo   ⚠️ C++ Compiler (MSVC) Missing or Failed
     echo =======================================================
-    echo If CMake says 'No CMAKE_CXX_COMPILER could be found':
-    echo You need Visual Studio with C++ Desktop Development tools.
+    echo CMake requires Visual Studio C++ Build Tools to compile .dll files.
     echo.
-    echo To install C++ tools automatically, run in PowerShell/CMD:
-    echo   winget install Microsoft.VisualStudio.2022.BuildTools --override "--passive --add Microsoft.VisualStudio.Workload.VCTools"
+    echo [INFO] Attempting to install Visual Studio C++ Build Tools via winget...
+    winget --version >nul 2>&1
+    if %errorlevel% equ 0 (
+        winget install Microsoft.VisualStudio.2022.BuildTools --override "--passive --add Microsoft.VisualStudio.Workload.VCTools" --accept-package-agreements --accept-source-agreements
+        echo.
+        echo [INFO] If installation just completed, please restart this script or PC.
+    ) else (
+        echo [MANUAL FIX] Run this command in Windows Terminal / PowerShell:
+        echo   winget install Microsoft.VisualStudio.2022.BuildTools --override "--passive --add Microsoft.VisualStudio.Workload.VCTools"
+    )
     echo.
     echo 💡 REMINDER: You do NOT need to compile this C++ plugin!
     echo You can run the Python app right now by double-clicking 'run_captioner.bat'.
