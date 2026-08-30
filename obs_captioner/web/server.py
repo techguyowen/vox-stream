@@ -40,6 +40,7 @@ class WebOverlayServer:
         on_stop_requested: Optional[Callable[[], None]] = None,
         get_app_status: Optional[Callable[[], dict]] = None,
         obs_client: Optional[any] = None,
+        audio_capture: Optional[any] = None,
     ):
         self.config = config
         self.history = history or TranscriptHistory()
@@ -48,6 +49,7 @@ class WebOverlayServer:
         self.on_stop_requested = on_stop_requested
         self.get_app_status = get_app_status
         self.obs_client = obs_client
+        self.audio_capture = audio_capture
         self.rate_limiter = SimpleRateLimiter(max_requests=120, window_seconds=60.0)
 
         self.app = web.Application()
@@ -75,6 +77,8 @@ class WebOverlayServer:
         # WebSockets
         self.app.router.add_get("/ws", self._handle_caption_ws)
         self.app.router.add_get("/api/control/ws", self._handle_control_ws)
+        self.app.router.add_get("/api/audio/stream", self._handle_audio_stream_ws)
+        self.app.router.add_post("/api/audio/chunk", self._handle_audio_chunk_post)
 
         # REST API Routes
         self.app.router.add_get("/api/status", self._handle_get_status)
@@ -458,6 +462,30 @@ class WebOverlayServer:
         finally:
             self.control_sockets.discard(ws)
         return ws
+
+    async def _handle_audio_stream_ws(self, request: web.Request) -> web.WebSocketResponse:
+        """WebSocket intake for raw 16kHz linear PCM audio bytes (e.g. streamed directly from OBS)."""
+        ws = web.WebSocketResponse(max_msg_size=1024 * 1024)
+        await ws.prepare(request)
+        logger.info("Direct OBS Audio stream connected via WebSocket.")
+
+        try:
+            async for msg in ws:
+                if msg.type == web.WSMsgType.BINARY:
+                    if self.audio_capture:
+                        self.audio_capture.inject_audio_chunk(msg.data)
+                elif msg.type == web.WSMsgType.ERROR:
+                    logger.debug(f"Audio stream ws closed with exception {ws.exception()}")
+        finally:
+            logger.info("Direct OBS Audio stream disconnected.")
+        return ws
+
+    async def _handle_audio_chunk_post(self, request: web.Request) -> web.Response:
+        """HTTP POST intake for raw PCM audio chunks."""
+        data = await request.read()
+        if self.audio_capture and data:
+            self.audio_capture.inject_audio_chunk(data)
+        return web.Response(text="OK")
 
     async def broadcast_caption(self, payload: dict):
         """Broadcast live captions to overlay and dashboard."""

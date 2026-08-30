@@ -104,6 +104,7 @@ async def main_async(args):
             on_stop_requested=on_stop_requested,
             get_app_status=get_app_status,
             obs_client=obs_client,
+            audio_capture=audio_capture,
         )
         await web_server.start()
 

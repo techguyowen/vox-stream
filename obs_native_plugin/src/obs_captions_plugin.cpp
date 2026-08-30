@@ -78,7 +78,7 @@ static obs_properties_t *captions_filter_properties(void *data)
 
     obs_properties_add_bool(props, "enabled", "Enable Live Captioning");
     obs_properties_add_text(props, "text_source_name", "Target Text Source Name", OBS_TEXT_DEFAULT);
-    obs_properties_add_text(props, "server_url", "Captioner Backend URL (e.g. http://127.0.0.1:8080)", OBS_TEXT_DEFAULT);
+    obs_properties_add_text(props, "server_url", "Captioner Backend URL (e.g. http://127.0.0.1:8765)", OBS_TEXT_DEFAULT);
 
     return props;
 }
@@ -87,7 +87,7 @@ static void captions_filter_defaults(obs_data_t *settings)
 {
     obs_data_set_default_bool(settings, "enabled", true);
     obs_data_set_default_string(settings, "text_source_name", "Live Captions");
-    obs_data_set_default_string(settings, "server_url", "http://127.0.0.1:8080");
+    obs_data_set_default_string(settings, "server_url", "http://127.0.0.1:8765");
 }
 
 static void captions_filter_update(void *data, obs_data_t *settings)

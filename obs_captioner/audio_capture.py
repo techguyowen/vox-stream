@@ -187,6 +187,32 @@ class AudioCapture:
                 logger.error(f"Failed to open audio stream at native rate: {e2}")
                 return False
 
+    def inject_audio_chunk(self, pcm_bytes: bytes):
+        """Directly inject 16kHz 16-bit linear PCM audio chunk (e.g. from OBS native filter or network stream)."""
+        if not pcm_bytes:
+            return
+
+        # Calculate VU meter level from PCM bytes
+        try:
+            if np is not None:
+                audio_np = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+                rms = np.sqrt(np.mean(audio_np ** 2)) if len(audio_np) > 0 else 0.0
+                db = 20 * math.log10(rms) if rms > 1e-5 else -100.0
+                self.current_rms_db = max(-100.0, min(0.0, float(db)))
+                if self.on_level_meter:
+                    self.on_level_meter(self.current_rms_db)
+        except Exception:
+            pass
+
+        try:
+            self._queue.put_nowait(pcm_bytes)
+        except queue.Full:
+            try:
+                self._queue.get_nowait()
+                self._queue.put_nowait(pcm_bytes)
+            except Exception:
+                pass
+
     def stop(self):
         """Stop the audio capture stream."""
         self._running = False

@@ -22,7 +22,7 @@ struct SttClientConfig {
     std::string api_key;
     std::string credentials_path;
     std::string language_code = "en-US";
-    std::string backend_url = "http://127.0.0.1:8080";
+    std::string backend_url = "http://127.0.0.1:8765";
     float noise_gate_db = -45.0f;
     float vad_sensitivity = 0.5f;
 };
