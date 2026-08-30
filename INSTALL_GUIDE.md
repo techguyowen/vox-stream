@@ -226,10 +226,10 @@ Open the in-OBS Dock or visit `http://127.0.0.1:8080/dashboard`:
 
 ### 2. Church & Family-Safe Filter
 - **Action Modes**:
-  - **Wholesome Word Replacement**: Swaps swear words with clean words (*"damn"* ➔ *"darn"*, *"fuck"* ➔ *"fudge"*, *"goddammit"* ➔ *"gosh darn it"*).
-  - **Asterisk Masking**: Masks letters (*"f***"*, *"s***"*).
-  - **`[CENSORED]` Tag**: Replaces with bracketed label.
-  - **Drop Sentence**: Drops the entire subtitle line if bad language is detected.
+  - **Wholesome Word Replacement**: Swaps profanities with family-friendly substitutions.
+  - **Asterisk Masking**: Replaces sensitive characters with asterisks (`****`).
+  - **`[CENSORED]` Tag**: Replaces filtered words with a bracketed label.
+  - **Drop Sentence**: Drops the entire subtitle line if inappropriate language is detected.
 - **Sacred Names Whitelist**: Religious and sacred names (*"Jesus Christ"*, *"Jesus"*, *"Christ"*, *"God"*, *"Lord"*, *"worship"*, *"pastor"*) are protected and will never be censored.
 - **Custom Blacklist / Whitelist**: Add any custom words or phrases you want to filter or protect.
 

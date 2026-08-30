@@ -23,11 +23,11 @@ A high-performance, low-latency, real-time speech-to-text captioning and automat
   - Google Fonts (*Montserrat, Inter, Roboto, Poppins, Oswald, Bebas Neue, Bangers*) + System fonts.
   - Sliders for Font Size (16px–72px), Max Box Width (% slider), Max Lines (1–4), Text Alignment, and Box Background Opacity.
 - ⛪ **Church-Appropriate & Family-Safe Content Filter**:
-  - **Tier 1 (Standard Profanities)**: Curse words, vulgarities, slurs.
-  - **Tier 2 (Harsh Curses & Vulgarities)**: Harsh blasphemy and swearing (*"God damn"*, *"holy shit"*, etc. Sacred terms like *"Jesus Christ"*, *"Jesus"*, *"Lord"* are protected and preserved).
-  - **Tier 3 (Crude Terms)**: Inappropriate slang, crude talk.
-  - **Interactive In-Browser CRUD Editor**: Add/remove blacklist words, whitelists, and wholesome word replacements (*"damn"* ➔ *"darn"*, *"fuck"* ➔ *"fudge"*) in clean visual tables.
-  - **4 Action Modes**: Wholesome Replacement, Asterisk Masking (`f***`), `[CENSORED]` Tag, or Drop Sentence.
+  - **Tier 1 (Standard Profanities)**: Filters vulgarities, slurs, and offensive words.
+  - **Tier 2 (Harsh Profanities & Vulgarities)**: Filters harsh language while safely protecting and preserving religious and sacred terms (*"Jesus Christ"*, *"Jesus"*, *"Lord"*, *"Christ"*).
+  - **Tier 3 (Crude Terms)**: Filters crude slang and inappropriate terminology.
+  - **Interactive In-Browser CRUD Editor**: Add/remove custom blacklist words, custom whitelists, and wholesome word replacements in clean visual tables.
+  - **4 Action Modes**: Wholesome Word Replacement, Asterisk Masking (`****`), `[CENSORED]` Tag, or Drop Sentence.
 - 👾 **Twitch Chat Caption Broadcaster**:
   - Automatically broadcasts live finalized captions into your Twitch chat for mobile and hearing-impaired viewers.
 - 📜 **Transcript History & Subtitle Export**:
