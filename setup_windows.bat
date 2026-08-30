@@ -32,28 +32,45 @@ if exist "%LocalAppData%\Programs\Python\Python312\python.exe" (
     goto :python_found
 )
 
-:: 2. Python missing -> Attempt automatic winget installation
+:: 2. Python missing -> Attempt automatic installation
 echo [INFO] Python was not detected on your system.
-echo [INFO] Checking for Windows Package Manager (winget)...
+echo [INFO] Attempting automatic installation of Python 3.11...
+echo.
 
+:: Try winget first if available
 winget --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [ERROR] winget is not available on this Windows version.
-    echo Please manually download and install Python 3.11 from:
-    echo https://www.python.org/downloads/
-    echo (Make sure to check "Add Python to PATH" during installation)
+if %errorlevel% equ 0 (
+    echo [INFO] Found winget. Attempting installation via Windows Package Manager...
+    winget install --id Python.Python.3.11 -e --silent --accept-package-agreements --accept-source-agreements
+)
+
+:: Check if winget succeeded
+if exist "%LocalAppData%\Programs\Python\Python311\python.exe" (
+    set "PY_CMD=%LocalAppData%\Programs\Python\Python311\python.exe"
+    set "PATH=%LocalAppData%\Programs\Python\Python311;%LocalAppData%\Programs\Python\Python311\Scripts;%PATH%"
+    goto :python_found
+)
+
+:: If winget is missing or failed -> Fallback to direct PowerShell download from python.org
+echo [INFO] winget was unavailable or failed. Downloading official Python 3.11 from python.org...
+set "INSTALLER_PATH=%TEMP%\python-3.11.9-amd64.exe"
+
+powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object Net.WebClient).DownloadFile('https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe', '%INSTALLER_PATH%')"
+
+if exist "%INSTALLER_PATH%" (
+    echo [INFO] Installing Python 3.11.9 (please wait 30-60 seconds)...
+    start /wait "" "%INSTALLER_PATH%" /passive InstallAllUsers=0 PrependPath=1 Include_pip=1 Include_test=0 Shortcuts=0 TargetDir="%LocalAppData%\Programs\Python\Python311"
+    del "%INSTALLER_PATH%" 2>nul
+) else (
+    echo [ERROR] Failed to download Python installer automatically.
+    echo Please manually download and install Python 3.11 from: https://www.python.org/downloads/
+    echo (Make sure to check the box "Add Python to PATH")
+    start https://www.python.org/downloads/
     pause
     exit /b 1
 )
 
-echo [INFO] Installing Python 3.11 automatically via winget (please wait)...
-winget install --id Python.Python.3.11 -e --silent --accept-package-agreements --accept-source-agreements
-
-if %errorlevel% neq 0 (
-    echo [WARNING] winget returned an exit code: %errorlevel%. Checking if Python was installed...
-)
-
-:: Refresh PATH for current session
+:: Refresh and check standard installation directories
 if exist "%LocalAppData%\Programs\Python\Python311\python.exe" (
     set "PY_CMD=%LocalAppData%\Programs\Python\Python311\python.exe"
     set "PATH=%LocalAppData%\Programs\Python\Python311;%LocalAppData%\Programs\Python\Python311\Scripts;%PATH%"
@@ -66,10 +83,11 @@ if exist "%LocalAppData%\Programs\Python\Python311\python.exe" (
 
 %PY_CMD% --version >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [ERROR] Python installation completed, but a shell restart is required.
+    echo.
+    echo [NOTE] Python was installed, but Windows needs to refresh its path.
     echo Please close this window and double-click setup_windows.bat again.
     pause
-    exit /b 1
+    exit /b 0
 )
 
 :python_found
