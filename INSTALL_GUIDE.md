@@ -30,7 +30,7 @@ This step-by-step guide walks you through setting up the **OBS Real-Time Live Ca
 
 1. Open the project folder:
    ```
-   delightful-bohr/
+   vox-stream/
    ```
 2. Double-click the file:
    ```cmd
