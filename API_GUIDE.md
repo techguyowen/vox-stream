@@ -1,6 +1,6 @@
 # ⚡ OBS Live Captioner PRO — Complete REST & WebSocket API Guide
 
-The **OBS Live Captioner PRO Suite** includes a built-in REST API and real-time WebSocket server on port `8080` (`http://127.0.0.1:8080`).
+The **OBS Live Captioner PRO Suite** includes a built-in REST API and real-time WebSocket server on port `8765` (`http://127.0.0.1:8765`).
 
 You can use this API to control the captioner, automate projectors, manage transcripts, and trigger emergency display restorations from **Elgato Stream Deck**, **Bitfocus Companion**, **Touch Portal**, **Home Assistant**, or custom scripts.
 
@@ -20,7 +20,7 @@ You can use this API to control the captioner, automate projectors, manage trans
 
 ## 1. Base URL & Authentication
 
-* **Default Base URL**: `http://127.0.0.1:8080`
+* **Default Base URL**: `http://127.0.0.1:8765`
 * **Content-Type**: `application/json`
 * **Authentication** *(Optional)*:
   If an `api_key` is set in `config.json` under `"api": { "api_key": "YOUR_KEY" }`, send it via:
@@ -42,7 +42,7 @@ Forcefully connects to OBS, launches the video preview on the conference room sc
   * `mix_type` (`string`): `"preview"` (default), `"program"`, or `"source"`.
 * **Example cURL**:
   ```bash
-  curl -X POST http://127.0.0.1:8080/api/control/reopen-screen
+  curl -X POST http://127.0.0.1:8765/api/control/reopen-screen
   ```
 * **Response**:
   ```json
@@ -181,7 +181,7 @@ Downloads formatted subtitle files from the current stream session.
 
 ### Real-Time Subtitles Stream (`/ws`)
 Connect your frontend or external display widgets to receive instant live subtitle events:
-* **URL**: `ws://127.0.0.1:8080/ws`
+* **URL**: `ws://127.0.0.1:8765/ws`
 * **Message Payload (JSON)**:
   ```json
   {
@@ -195,7 +195,7 @@ Connect your frontend or external display widgets to receive instant live subtit
   ```
 
 ### Control & VU Meter Stream (`/api/control/ws`)
-* **URL**: `ws://127.0.0.1:8080/api/control/ws`
+* **URL**: `ws://127.0.0.1:8765/api/control/ws`
 * Streams real-time VU audio levels (`{"type": "vu_level", "db": -18.2}`) and engine state updates.
 
 ---
@@ -205,17 +205,17 @@ Connect your frontend or external display widgets to receive instant live subtit
 ### A. Elgato Stream Deck
 To create an emergency restore button on your Stream Deck:
 1. In the Stream Deck software, drag a **System ➔ Website** (or **API Ninja / HTTP Request**) action to a key.
-2. Set **URL**: `http://127.0.0.1:8080/api/control/reopen-screen`
+2. Set **URL**: `http://127.0.0.1:8765/api/control/reopen-screen`
 3. Set **Method**: `POST`
 4. Label: `REOPEN SCREEN` / `LONTIUM`
 5. Pressing this key will immediately wake up the conference room screen and start captions!
 
 ### B. Bitfocus Companion
-1. Add a **generic-http** connection with base URL: `http://127.0.0.1:8080`
+1. Add a **generic-http** connection with base URL: `http://127.0.0.1:8765`
 2. Create a button with action: `POST /api/control/reopen-screen`
 
 ### C. Windows PowerShell Shortcut
 Run this in PowerShell to trigger the screen:
 ```powershell
-Invoke-RestMethod -Uri "http://127.0.0.1:8080/api/control/reopen-screen" -Method Post
+Invoke-RestMethod -Uri "http://127.0.0.1:8765/api/control/reopen-screen" -Method Post
 ```

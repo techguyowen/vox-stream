@@ -80,7 +80,7 @@
   "overlay": {
     "enabled": true,
     "host": "127.0.0.1",
-    "port": 8080,
+    "port": 8765,
     "max_width": "90%",
     "max_lines": 2,
     "text_align": "center",

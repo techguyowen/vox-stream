@@ -178,7 +178,7 @@ class TestConfigAndEngines(unittest.TestCase):
         self.assertIsInstance(cfg, AppConfig)
         self.assertEqual(cfg.audio.sample_rate, 16000)
         self.assertEqual(cfg.obs.port, 4455)
-        self.assertEqual(cfg.overlay.port, 8080)
+        self.assertEqual(cfg.overlay.port, 8765)
         self.assertTrue(cfg.censor.enabled)
         self.assertFalse(cfg.obs.auto_open_projector)
         self.assertEqual(cfg.obs.projector_monitor_index, 1)

@@ -133,6 +133,6 @@ echo.
 echo =======================================================
 echo   🎉 Setup Complete!
 echo   1. Double-click 'run_captioner.bat' to start.
-echo   2. Open In-OBS Dock at: http://127.0.0.1:8080/dashboard
+echo   2. Open In-OBS Dock at: http://127.0.0.1:8765/dashboard
 echo =======================================================
 pause

@@ -77,7 +77,7 @@ Gemini 3.5 Transcribe Live is Google's dedicated streaming speech-to-text AI mod
 
 #### 2. Configure via the Web Dashboard / OBS Dock (Easiest & Recommended):
 1. Launch the captioner by double-clicking **`run_captioner.bat`**.
-2. Open the **Web Dashboard** at `http://127.0.0.1:8080/dashboard` (or open your **Live Captions** Dock inside OBS).
+2. Open the **Web Dashboard** at `http://127.0.0.1:8765/dashboard` (or open your **Live Captions** Dock inside OBS).
 3. Click on the **🎙️ Audio & Engine** tab.
 4. Under **Speech-to-Text Engine**, select:
    - **✨ Gemini 3.5 Transcribe Live (Google AI Studio / Live API)**
@@ -118,7 +118,7 @@ Open `config.json` in Notepad or VS Code and edit the `gemini_live` section:
 
 ### Option C: Google Speech Recognition (100% Free / Zero-Setup — No API Keys Needed!)
 This is the same zero-setup free Google endpoint used by the classic OBS Cloud Closed Captions plugin. It requires **no accounts, no credit cards, and no API keys**:
-1. In the Web Dashboard (`http://127.0.0.1:8080/dashboard`), select:
+1. In the Web Dashboard (`http://127.0.0.1:8765/dashboard`), select:
    - **🆓 Google Speech Recognition (100% Free / Zero-Setup - No API Key!)**
 2. Or in `config.json`:
    ```json
@@ -131,7 +131,7 @@ This is the same zero-setup free Google endpoint used by the classic OBS Cloud C
 
 ### Option D: Local Faster-Whisper (100% Offline, No API Keys Needed)
 Runs directly on your computer's NVIDIA GPU (CUDA) or CPU with zero internet required:
-1. In the Web Dashboard (`http://127.0.0.1:8080/dashboard`), select:
+1. In the Web Dashboard (`http://127.0.0.1:8765/dashboard`), select:
    - **Local Faster-Whisper (100% Offline GPU/CPU)**
 2. **NVIDIA GTX 1660 (6GB VRAM) Recommended Settings**:
    - Click the **🎮 GTX 1660 (Recommended)** 1-click preset button:
@@ -171,7 +171,7 @@ This gives you a visual settings panel, live microphone VU meter, and transcript
 1. In OBS Studio, go to the top menu: **Docks ➔ Custom Browser Docks...**
 2. In the table:
    - **Dock Name**: `Live Captions`
-   - **URL**: `http://127.0.0.1:8080/dashboard`
+   - **URL**: `http://127.0.0.1:8765/dashboard`
 3. Click **Apply**.
 4. Drag and dock the panel anywhere in your OBS workspace (next to Audio Mixer, Scenes, or Chat).
 
@@ -183,7 +183,7 @@ This displays the smooth animated captions on your stream canvas.
 1. In your active OBS Scene, under **Sources**, click **+ ➔ Browser**.
 2. Name the source: `Captions Overlay`.
 3. Set the properties:
-   - **URL**: `http://127.0.0.1:8080/`
+   - **URL**: `http://127.0.0.1:8765/`
    - **Width**: `1920` (or match your canvas width)
    - **Height**: `1080` (or match your canvas height)
    - ✅ Check: **"Shutdown source when not visible"**
@@ -216,7 +216,7 @@ If you want viewers to be able to click the **`[CC]`** button on Twitch or YouTu
 
 ## 🎨 Step 4: Customizing Filters & Typography
 
-Open the in-OBS Dock or visit `http://127.0.0.1:8080/dashboard`:
+Open the in-OBS Dock or visit `http://127.0.0.1:8765/dashboard`:
 
 ### 1. Visual Customizer
 - **Fonts**: Pick from Google Fonts (*Montserrat, Inter, Poppins, Bebas Neue, Oswald, Roboto, Bangers*) or system fonts.
@@ -261,12 +261,13 @@ If you want a pure compiled in-process C++ `.dll` filter plugin for OBS Studio:
 - **Fix**: Re-run the Python Windows installer, select **Modify**, and make sure **"Add Python to PATH"** is checked. Restart your terminal or PC after installing.
 
 ### Q: How do I select a specific microphone (e.g. Elgato Wave Link, Voicemeeter, USB Mic)?
-- **Fix**: Open the Web Dashboard (`http://127.0.0.1:8080/dashboard`), go to the **Audio & Engine** tab, and pick your microphone from the **Audio Input Device** dropdown.
+- **Fix**: Open the Web Dashboard (`http://127.0.0.1:8765/dashboard`), go to the **Audio & Engine** tab, and pick your microphone from the **Audio Input Device** dropdown.
 
 ### Q: The Browser Source overlay is black instead of transparent.
 - **Fix**: In OBS Browser Source properties, make sure the **Custom CSS** field is empty or `body { background-color: rgba(0, 0, 0, 0); margin: 0px auto; overflow: hidden; }`. The overlay stylesheet handles transparency automatically.
 
 ### Q: How do I control it from an Elgato Stream Deck?
 - **Fix**: Add a **System ➔ Website / HTTP Request** action to your Stream Deck:
-  - Start Captions: `POST http://127.0.0.1:8080/api/control/start`
-  - Stop Captions: `POST http://127.0.0.1:8080/api/control/stop`
+  - Start Captions: `POST http://127.0.0.1:8765/api/control/start`
+  - Stop Captions: `POST http://127.0.0.1:8765/api/control/stop`
+  - Reopen Conference Screen: `POST http://127.0.0.1:8765/api/control/reopen-screen`

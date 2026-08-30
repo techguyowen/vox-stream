@@ -12,7 +12,7 @@ A high-performance, low-latency, real-time speech-to-text captioning and automat
   - **☁️ Google Cloud Speech-to-Text**: High-accuracy enterprise streaming with automatic punctuation.
   - **💻 Local Faster-Whisper**: 100% offline speech recognition running locally on your GPU (CUDA) or CPU.
 - 🎛️ **In-OBS Web Control Dashboard & Custom Browser Dock**:
-  - Full graphical control panel embedded directly inside OBS Studio (`Docks -> Custom Browser Docks`) or accessible at `http://127.0.0.1:8080/dashboard`.
+  - Full graphical control panel embedded directly inside OBS Studio (`Docks -> Custom Browser Docks`) or accessible at `http://127.0.0.1:8765/dashboard`.
   - **Live Audio VU Meter**: Real-time microphone level monitoring bar.
   - **Interactive Preview Canvas**: Instant visual feedback for fonts, colors, and word-pop animations.
 - 🌐 **Real-Time Live Translation**:
@@ -59,8 +59,8 @@ A high-performance, low-latency, real-time speech-to-text captioning and automat
 Double-click **`run_captioner.bat`** (or run `python -m obs_captioner.main`).
 
 Once running:
-- **Web Settings Dashboard & OBS Dock**: `http://127.0.0.1:8080/dashboard`
-- **Transparent Browser Source Overlay**: `http://127.0.0.1:8080/`
+- **Web Settings Dashboard & OBS Dock**: `http://127.0.0.1:8765/dashboard`
+- **Transparent Browser Source Overlay**: `http://127.0.0.1:8765/`
 - **Gemini 3.5 Transcribe Setup**: In the dashboard's **🎙️ Audio & Engine** tab, paste your Google AI Studio API key to activate real-time Gemini 3.5 Transcribe streaming (see [INSTALL_GUIDE.md](file:///Users/techguyowen/Documents/antigravity/delightful-bohr/INSTALL_GUIDE.md#option-b-google-gemini-35-transcribe-live-state-of-the-art-intelligence--accuracy) for detailed steps).
 
 ---
@@ -70,14 +70,14 @@ Once running:
 ### 1. Add the In-OBS Control Dock (Recommended)
 1. In OBS Studio, go to the top menu: **Docks -> Custom Browser Docks...**
 2. **Dock Name**: `Live Captions`
-3. **URL**: `http://127.0.0.1:8080/dashboard`
+3. **URL**: `http://127.0.0.1:8765/dashboard`
 4. Click **Apply** and dock the panel anywhere in your OBS workspace.
 
 ---
 
 ### 2. Add the Transparent Stream Overlay
 1. In your OBS Scene, click **+ (Add Source) -> Browser**.
-2. **URL**: `http://127.0.0.1:8080/`
+2. **URL**: `http://127.0.0.1:8765/`
 3. **Width**: `1920`, **Height**: `1080` (or match your canvas resolution).
 4. Check **"Shutdown source when not visible"** and **"Refresh browser when scene becomes active"**.
 

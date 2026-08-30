@@ -39,13 +39,13 @@ Welcome! This suite offers **two different ways** to run live captions in OBS St
 ### 3. Setting Up OBS Studio
 **A. Add the Control Panel Dock:**
 1. In OBS, go to the top menu: **Docks ➔ Custom Browser Docks...**
-2. Name: `Live Captions` | URL: `http://127.0.0.1:8080/dashboard`
+2. Name: `Live Captions` | URL: `http://127.0.0.1:8765/dashboard`
 3. Click Apply, then drag the new panel anywhere into your OBS layout.
 
 **B. Add the Stream Overlay (The Captions):**
 1. In your active Scene, click **+ ➔ Browser**.
 2. Name it `Captions Overlay`.
-3. URL: `http://127.0.0.1:8080/`
+3. URL: `http://127.0.0.1:8765/`
 4. Set Width to `1920` and Height to `1080` (or match your canvas).
 5. **Check** "Shutdown source when not visible" and "Refresh browser when scene becomes active".
 
@@ -81,7 +81,7 @@ Google's newest streaming AI provides the highest accuracy, automatically cleans
 
 **Step 2: Configure the App**
 *(If using Method 1 - Web Dashboard)*
-1. Go to your **Live Captions Dock** inside OBS (or open `http://127.0.0.1:8080/dashboard` in Chrome).
+1. Go to your **Live Captions Dock** inside OBS (or open `http://127.0.0.1:8765/dashboard` in Chrome).
 2. Click the **🎙️ Audio & Engine** tab.
 3. Under **Speech-to-Text Engine**, select: **✨ Gemini 3.5 Transcribe Live (Google AI Studio / Live API)**
 4. Paste your `AIzaSy...` key into the **Google AI Studio API Key** box.
@@ -117,7 +117,7 @@ If the conference room display ever shows a blank desktop or someone accidentall
 
 ### 2. Built-in 1-Click Projector Trigger (In the Web Dashboard / OBS Dock)
 You don't need to dig through right-click menus anymore!
-1. Open the **Live Captions** Dock inside OBS (or go to `http://127.0.0.1:8080/dashboard`).
+1. Open the **Live Captions** Dock inside OBS (or go to `http://127.0.0.1:8765/dashboard`).
 2. Go to the new **📺 Projectors & Displays** tab.
 3. Select your display (**Monitor 1: LONTIUM / Conference Screen**).
 4. Click **📺 Open to Screen** — the preview is immediately sent to the conference room with 1 click!

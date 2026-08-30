@@ -65,10 +65,12 @@ class WebOverlayServer:
     def _setup_routes(self):
         static_dir = Path(__file__).parent / "static"
         
-        # HTML Pages
-        self.app.router.add_get("/", self._handle_index)
-        self.app.router.add_get("/dashboard", self._handle_dashboard)
-        self.app.router.add_get("/dock", self._handle_dashboard)
+        # HTML Pages with comprehensive aliases
+        for path in ("/", "/index", "/index.html", "/overlay", "/overlay.html"):
+            self.app.router.add_get(path, self._handle_index)
+        
+        for path in ("/dashboard", "/dashboard/", "/dashboard.html", "/dock", "/dock/", "/settings", "/settings/", "/control"):
+            self.app.router.add_get(path, self._handle_dashboard)
         
         # WebSockets
         self.app.router.add_get("/ws", self._handle_caption_ws)
@@ -495,20 +497,34 @@ class WebOverlayServer:
             return False
 
         host = self.config.overlay.host
-        port = self.config.overlay.port
-        logger.info(f"Starting Web Control Dashboard at http://{host}:{port}/dashboard")
+        initial_port = self.config.overlay.port or 8765
 
-        try:
-            self.runner = web.AppRunner(self.app)
-            await self.runner.setup()
-            self.site = web.TCPSite(self.runner, host, port)
-            await self.site.start()
-            logger.info(f"Overlay URL: http://127.0.0.1:{port}/")
-            logger.info(f"OBS Custom Browser Dock URL: http://127.0.0.1:{port}/dashboard")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to start overlay server: {e}")
-            return False
+        self.runner = web.AppRunner(self.app)
+        await self.runner.setup()
+
+        # Attempt to bind to requested port, auto-fallback if port is occupied (e.g. by REAPER)
+        for offset in range(10):
+            current_port = initial_port + offset
+            try:
+                self.site = web.TCPSite(self.runner, host, current_port)
+                await self.site.start()
+                self.config.overlay.port = current_port
+                
+                if offset > 0:
+                    logger.warning(f"⚠️ Port {initial_port} was already in use by another app (e.g. REAPER). Auto-switched to port {current_port}!")
+                
+                logger.info(f"✅ Web Control Dashboard live at: http://{host}:{current_port}/dashboard")
+                logger.info(f"✅ Overlay URL: http://{host}:{current_port}/")
+                return True
+            except OSError as e:
+                logger.debug(f"Port {current_port} busy ({e}), trying next port...")
+                continue
+            except Exception as e:
+                logger.error(f"Failed to start overlay server: {e}")
+                return False
+
+        logger.error(f"Failed to bind web server to any port between {initial_port} and {initial_port + 9}")
+        return False
 
     async def stop(self):
         """Stop the web server."""

@@ -85,7 +85,7 @@ class OBSConfig:
 class OverlayConfig:
     enabled: bool = True
     host: str = "127.0.0.1"
-    port: int = 8080
+    port: int = 8765
     theme_id: str = "modern_clean"
     max_width: str = "90%"
     max_lines: int = 2
