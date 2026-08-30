@@ -1,0 +1,28 @@
+# OBS Real-Time Live Captioner Dependencies
+
+# Core Audio & Signal Processing
+sounddevice>=0.4.6
+numpy>=1.24.0
+scipy>=1.10.0
+
+# OBS WebSocket Integration (v5 protocol)
+obsws-python>=1.6.0
+websockets>=12.0
+aiohttp>=3.9.0
+
+# Speech-to-Text: Google Cloud STT
+google-cloud-speech>=2.24.0
+
+# Speech-to-Text: Google Gemini Live API
+google-genai>=0.1.1
+
+# Speech-to-Text: Local Offline Engine
+faster-whisper>=1.0.0
+
+# Voice Activity Detection (VAD)
+silero-vad>=5.1.0
+torch>=2.0.0
+
+# Utility & CLI
+colorama>=0.4.6
+pydantic>=2.5.0

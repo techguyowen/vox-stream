@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OBS Live Captions — Pro Dashboard &amp; Dock</title>
+    <!-- Google Fonts for typography previews -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Bebas+Neue&family=Inter:wght@400;600;800&family=Montserrat:wght@400;700;900&family=Open+Sans:wght@400;700&family=Oswald:wght@500;700&family=Poppins:wght@400;600;800&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top Navigation / Status Header -->
+        <header class="header">
+            <div class="brand">
+                <div class="logo-icon">🎙️</div>
+                <div>
+                    <h1>OBS Live Captions <span class="badge-pro">PRO</span></h1>
+                    <span class="subtext">Control Panel &amp; In-OBS Custom Dock</span>
+                </div>
+            </div>
+            
+            <div class="header-controls">
+                <button id="btn-reopen-projector" class="btn" title="Forcefully open or restore the video preview to the Conference Screen (LONTIUM)" style="background: rgba(56, 189, 248, 0.15); border: 1px solid #38BDF8; color: #38BDF8; font-weight: 700; cursor: pointer;">📺 Start / Reopen Screen</button>
+
+                <div class="vu-container" title="Microphone Level">
+                    <span class="vu-label">MIC</span>
+                    <div class="vu-bar-wrapper">
+                        <div id="vu-meter-bar" class="vu-meter-bar"></div>
+                    </div>
+                </div>
+
+                <div class="status-pill" id="status-pill">
+                    <span class="status-dot online"></span>
+                    <span id="status-text">Active</span>
+                </div>
+
+                <button id="btn-toggle-engine" class="btn btn-danger">⏹ Stop Captions</button>
+            </div>
+        </header>
+
+        <!-- Main Layout with Tabs -->
+        <div class="main-content">
+            <!-- Navigation Tabs -->
+            <nav class="nav-tabs">
+                <button class="tab-btn active" data-tab="styling">🎨 Style &amp; Themes</button>
+                <button class="tab-btn" data-tab="filter">🛡️ Church &amp; Safety Filter</button>
+                <button class="tab-btn" data-tab="translation">🌐 Live Translation</button>
+                <button class="tab-btn" data-tab="audio">🎙️ Audio &amp; Engine</button>
+                <button class="tab-btn" data-tab="projectors">📺 Projectors &amp; Displays</button>
+                <button class="tab-btn" data-tab="twitch">👾 Twitch Chat Bot</button>
+                <button class="tab-btn" data-tab="transcript">📜 Transcripts &amp; Export</button>
+                <button class="tab-btn" data-tab="api">⚡ REST API &amp; Docks</button>
+            </nav>
+
+            <!-- TAB 1: STYLING & THEMES -->
+            <div id="tab-styling" class="tab-pane active">
+                <!-- Theme Presets Gallery -->
+                <div class="panel theme-gallery-panel">
+                    <h2>✨ 1-Click Theme Presets</h2>
+                    <div class="theme-grid" id="theme-grid">
+                        <!-- Loaded dynamically from /api/presets -->
+                    </div>
+                </div>
+
+                <div class="two-col-layout">
+                    <!-- Left: Custom Sliders & Pickers -->
+                    <div class="panel">
+                        <h2>Fine-Tune Typography</h2>
+                        
+                        <div class="form-group">
+                            <label>Google / System Font</label>
+                            <select id="font_family" class="form-control">
+                                <option value="Inter, sans-serif">Inter (Modern Clean)</option>
+                                <option value="Montserrat, sans-serif">Montserrat (Bold &amp; Clean)</option>
+                                <option value="Poppins, sans-serif">Poppins (Smooth Rounded)</option>
+                                <option value="'Bebas Neue', sans-serif">Bebas Neue (Stream Headline)</option>
+                                <option value="Oswald, sans-serif">Oswald (Tall Condensed)</option>
+                                <option value="Roboto, sans-serif">Roboto (Neutral)</option>
+                                <option value="'Open Sans', sans-serif">Open Sans (High Legibility)</option>
+                                <option value="Bangers, cursive">Bangers (Comic / Gaming)</option>
+                                <option value="'Segoe UI', sans-serif">Segoe UI (Windows Default)</option>
+                                <option value="Impact, sans-serif">Impact (Heavy Meme Style)</option>
+                            </select>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Font Size (<span id="val-font-size">32px</span>)</label>
+                                <input type="range" id="font_size_slider" min="16" max="72" value="32" class="slider">
+                            </div>
+                            <div class="form-group">
+                                <label>Max Box Width (<span id="val-max-width">90%</span>)</label>
+                                <input type="range" id="max_width_slider" min="30" max="100" value="90" class="slider">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Max Lines</label>
+                                <select id="max_lines" class="form-control">
+                                    <option value="1">1 Line (Ticker Style)</option>
+                                    <option value="2" selected>2 Lines (Standard Subtitles)</option>
+                                    <option value="3">3 Lines (Paragraph)</option>
+                                    <option value="4">4 Lines</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Text Alignment</label>
+                                <select id="text_align" class="form-control">
+                                    <option value="center" selected>Center</option>
+                                    <option value="left">Left</option>
+                                    <option value="right">Right</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Animation Style</label>
+                                <select id="animation_style" class="form-control">
+                                    <option value="word_pop" selected>Word Pop (Bouncy)</option>
+                                    <option value="karaoke">Karaoke Highlight</option>
+                                    <option value="fade">Smooth Fade</option>
+                                    <option value="instant">Instant (No Animation)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Auto-Hide Silence (<span id="val-auto-hide">4s</span>)</label>
+                                <input type="range" id="auto_hide_slider" min="0" max="15" step="0.5" value="4" class="slider">
+                            </div>
+                        </div>
+
+                        <div class="form-row colors-grid">
+                            <div class="form-group">
+                                <label>Text Color</label>
+                                <input type="color" id="text_color" value="#FFFFFF" class="color-input">
+                            </div>
+                            <div class="form-group">
+                                <label>Interim Color</label>
+                                <input type="color" id="interim_color" value="#90CAF9" class="color-input">
+                            </div>
+                            <div class="form-group">
+                                <label>Word Highlight</label>
+                                <input type="color" id="highlight_color" value="#FFD166" class="color-input">
+                            </div>
+                            <div class="form-group">
+                                <label>Box Background</label>
+                                <input type="color" id="bg_color_picker" value="#0F0F14" class="color-input">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Box Background Opacity (<span id="val-bg-opacity">72%</span>)</label>
+                            <input type="range" id="bg_opacity_slider" min="0" max="100" value="72" class="slider">
+                        </div>
+
+                        <button id="btn-save-style" class="btn btn-primary btn-block">💾 Save Custom Styling</button>
+                    </div>
+
+                    <!-- Right: Live Interactive Preview -->
+                    <div class="panel preview-panel">
+                        <h2>Live Preview</h2>
+                        <p class="subtext">Matches your OBS Browser Source in real time.</p>
+                        
+                        <div class="preview-stage" id="preview-stage">
+                            <div id="preview-box" class="caption-box">
+                                <div id="preview-final" class="final-lines">Welcome to the live stream today!</div>
+                                <div id="preview-interim" class="interim-line">speaking real time captions...</div>
+                            </div>
+                        </div>
+
+                        <div class="preview-actions">
+                            <input type="text" id="preview-test-input" placeholder="Type custom test phrase..." class="form-control">
+                            <button id="btn-test-preview" class="btn btn-secondary">Test Text</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: CHURCH & SAFETY FILTER (CRUD MANAGEMENT) -->
+            <div id="tab-filter" class="tab-pane">
+                <div class="panel">
+                    <h2>Church-Appropriate &amp; Family-Safe Content Filter</h2>
+                    <p class="subtext">Manage blacklist words, whitelists, and wholesome word replacements in real time.</p>
+
+                    <div class="form-group toggle-row">
+                        <label class="switch-label">
+                            <input type="checkbox" id="censor_enabled" checked>
+                            <span class="switch-text"><strong>Enable Content Filter</strong></span>
+                        </label>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Filter Action Mode</label>
+                        <select id="censor_mode" class="form-control">
+                            <option value="replacement" selected>Wholesome Word Replacement (e.g. "damn" -&gt; "darn", "fuck" -&gt; "fudge")</option>
+                            <option value="asterisk">Asterisk Masking (e.g. "f***", "d***")</option>
+                            <option value="censored_label">[CENSORED] Tag</option>
+                            <option value="drop_sentence">Drop Entire Sentence (Mute caption if bad word detected)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Active Filter Categories</label>
+                        <div class="checkbox-group">
+                            <label><input type="checkbox" id="filter_standard_profanity" checked> Standard Profanities &amp; Vulgarities</label>
+                            <label><input type="checkbox" id="filter_church_blasphemy" checked> ⛪ Harsh Curses &amp; Vulgarities ("God damn", "Holy hell", etc. — sacred names like Jesus &amp; Christ are preserved)</label>
+                            <label><input type="checkbox" id="filter_crude_terms" checked> Crude, Slurs &amp; Sexual Slang</label>
+                        </div>
+                    </div>
+
+                    <!-- CRUD: Wholesome Replacement Dictionary -->
+                    <div class="crud-section">
+                        <h3>🔄 Wholesome Word Substitution Dictionary</h3>
+                        <p class="subtext">Automatically replaces words with clean stream-safe alternatives.</p>
+                        <div class="crud-add-row">
+                            <input type="text" id="new-rep-orig" placeholder="Original word (e.g. damn)" class="form-control">
+                            <input type="text" id="new-rep-sub" placeholder="Wholesome replacement (e.g. darn)" class="form-control">
+                            <button id="btn-add-replacement" class="btn btn-secondary">+ Add Substitution</button>
+                        </div>
+                        <div class="table-container">
+                            <table class="crud-table" id="table-replacements">
+                                <thead>
+                                    <tr>
+                                        <th>Original Word</th>
+                                        <th>Wholesome Substitution</th>
+                                        <th style="width: 80px;">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- CRUD: Blacklist & Whitelist Tables -->
+                    <div class="two-col-layout" style="margin-top: 16px;">
+                        <div class="crud-section">
+                            <h3>🚫 Custom Blacklist</h3>
+                            <div class="crud-add-row">
+                                <input type="text" id="new-blacklist-term" placeholder="Add custom word to block..." class="form-control">
+                                <button id="btn-add-blacklist" class="btn btn-secondary">+ Add</button>
+                            </div>
+                            <div class="tag-list" id="blacklist-tags"></div>
+                        </div>
+
+                        <div class="crud-section">
+                            <h3>🛡️ Custom Whitelist (Never Block)</h3>
+                            <div class="crud-add-row">
+                                <input type="text" id="new-whitelist-term" placeholder="Add word to protect..." class="form-control">
+                                <button id="btn-add-whitelist" class="btn btn-secondary">+ Protect</button>
+                            </div>
+                            <div class="tag-list" id="whitelist-tags"></div>
+                        </div>
+                    </div>
+
+                    <div class="filter-tester" style="margin-top: 16px;">
+                        <h3>🧪 Live Filter Sandbox</h3>
+                        <div class="form-row">
+                            <input type="text" id="filter-test-text" value="Oh goddammit, what the fuck is this crazy thing?!" class="form-control">
+                            <button id="btn-run-filter-test" class="btn btn-secondary">Test Filter</button>
+                        </div>
+                        <div id="filter-test-result" class="test-result-box">Click 'Test Filter' to preview result</div>
+                    </div>
+
+                    <button id="btn-save-filter" class="btn btn-primary btn-block">💾 Save Filter Settings</button>
+                </div>
+            </div>
+
+            <!-- TAB 3: LIVE TRANSLATION -->
+            <div id="tab-translation" class="tab-pane">
+                <div class="panel">
+                    <h2>🌐 Real-Time Multi-Language Translation</h2>
+                    <p class="subtext">Automatically translates spoken captions into 30+ languages live on stream.</p>
+
+                    <div class="form-group toggle-row">
+                        <label class="switch-label">
+                            <input type="checkbox" id="translation_enabled">
+                            <span class="switch-text"><strong>Enable Real-Time Translation</strong></span>
+                        </label>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Target Language</label>
+                            <select id="translation_target" class="form-control">
+                                <option value="es" selected>Spanish (Español)</option>
+                                <option value="fr">French (Français)</option>
+                                <option value="de">German (Deutsch)</option>
+                                <option value="ja">Japanese (日本語)</option>
+                                <option value="pt">Portuguese (Português)</option>
+                                <option value="it">Italian (Italiano)</option>
+                                <option value="zh">Chinese Simplified (中文)</option>
+                                <option value="ko">Korean (한국어)</option>
+                                <option value="ru">Russian (Русский)</option>
+                                <option value="ar">Arabic (العربية)</option>
+                                <option value="hi">Hindi (हिन्दी)</option>
+                                <option value="nl">Dutch (Nederlands)</option>
+                                <option value="pl">Polish (Polski)</option>
+                                <option value="sv">Swedish (Svenska)</option>
+                                <option value="tr">Turkish (Türkçe)</option>
+                                <option value="uk">Ukrainian (Українська)</option>
+                                <option value="vi">Vietnamese (Tiếng Việt)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Display Mode</label>
+                            <select id="translation_mode" class="form-control">
+                                <option value="dual" selected>Dual Subtitles (Original Spoken + Translated Underneath)</option>
+                                <option value="translated_only">Translated Subtitles Only</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <button id="btn-save-translation" class="btn btn-primary btn-block">💾 Save Translation Settings</button>
+                </div>
+            </div>
+
+            <!-- TAB 4: AUDIO & ENGINE -->
+            <div id="tab-audio" class="tab-pane">
+                <div class="panel">
+                    <h2>Audio Capture &amp; Speech-to-Text Engine</h2>
+                    
+                    <div class="form-group">
+                        <label>Audio Input Device (Microphone / Loopback)</label>
+                        <select id="audio_device_select" class="form-control">
+                            <option value="default">Default Input Device</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Speech-to-Text Engine</label>
+                            <select id="engine_select" class="form-control">
+                                <option value="google_web">🆓 Google Speech Recognition (100% Free / Zero-Setup - No API Key!)</option>
+                                <option value="gemini_live" selected>✨ Gemini 3.5 Transcribe Live (Google AI Studio / Live API)</option>
+                                <option value="google_stt">Google Cloud STT Streaming (v1 / Chirp)</option>
+                                <option value="local_whisper">Local Faster-Whisper (100% Offline GPU/CPU)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Spoken Language</label>
+                            <select id="language_select" class="form-control">
+                                <option value="en-US">English (US)</option>
+                                <option value="en-GB">English (UK)</option>
+                                <option value="es-ES">Spanish</option>
+                                <option value="fr-FR">French</option>
+                                <option value="de-DE">German</option>
+                                <option value="pt-BR">Portuguese</option>
+                                <option value="ja-JP">Japanese</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Noise Gate dB (<span id="val-noise-gate">-45 dB</span>)</label>
+                            <input type="range" id="noise_gate_slider" min="-80" max="-10" value="-45" class="slider">
+                        </div>
+                        <div class="form-group">
+                            <label>VAD Sensitivity (<span id="val-vad">0.5</span>)</label>
+                            <input type="range" id="vad_slider" min="0.1" max="0.9" step="0.05" value="0.5" class="slider">
+                        </div>
+                    </div>
+
+                    <div id="gemini-live-fields" class="engine-fields">
+                        <h3>✨ Gemini 3.5 Transcribe Live Settings</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Model Version</label>
+                                <select id="gemini_model" class="form-control">
+                                    <option value="gemini-3.5-transcribe-live" selected>gemini-3.5-transcribe-live (Recommended - Sub-second Latency)</option>
+                                    <option value="gemini-3.5-transcribe-live-preview">gemini-3.5-transcribe-live-preview (Enterprise Agent Preview)</option>
+                                    <option value="gemini-3.5-transcribe">gemini-3.5-transcribe (Interactions / Batch API)</option>
+                                    <option value="gemini-2.0-flash">gemini-2.0-flash (General Multimodal Live)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Google AI Studio API Key</label>
+                                <input type="password" id="gemini_api_key" placeholder="AIzaSy..." class="form-control">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Custom Vocabulary (Comma-separated specialized words, names, jargon)</label>
+                            <input type="text" id="gemini_custom_vocab" placeholder="OBS Studio, Twitch, Discord, YouTube, Jesus Christ" class="form-control">
+                        </div>
+                        <div class="form-group toggle-row">
+                            <label class="switch-label">
+                                <input type="checkbox" id="gemini_smart_transcription" checked>
+                                <span class="switch-text"><strong>Smart Transcription</strong> (Clean up filler words 'ums/ahs', natural self-corrections, auto-punctuation)</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div id="google-stt-fields" class="engine-fields">
+                        <h3>Google Cloud STT Settings</h3>
+                        <div class="form-group">
+                            <label>Service Account JSON Path</label>
+                            <input type="text" id="google_creds_path" placeholder="google_credentials.json or leave empty for default env" class="form-control">
+                        </div>
+                    </div>
+
+                    <div id="whisper-fields" class="engine-fields">
+                        <h3>💻 Local Faster-Whisper Settings (Offline / Zero-Cost)</h3>
+                        <p class="subtext">Optimized for NVIDIA GPUs (GTX 1660, RTX series) and multicore CPUs.</p>
+
+                        <!-- Hardware Optimization Quick Presets -->
+                        <div class="form-group" style="margin-top: 10px;">
+                            <label>⚡ 1-Click Hardware Presets</label>
+                            <div class="preset-btn-row">
+                                <button type="button" class="btn btn-secondary btn-sm" id="preset-gtx1660" title="Ideal for GTX 1660 (6GB VRAM) - high accuracy with low GPU load">🎮 GTX 1660 (Recommended)</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="preset-ultrafast" title="Lowest VRAM footprint (~900MB) and instant ~60ms response">⚡ Ultra-Fast (Low VRAM)</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="preset-maxacc" title="Distil-Medium for maximum vocabulary precision">🎯 High Accuracy (Distil)</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="preset-cpu" title="Quantized for CPU running without dedicated GPU">💻 CPU Mode</button>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Model Size</label>
+                                <select id="whisper_model" class="form-control">
+                                    <option value="small.en">small.en (High accuracy - Perfect for GTX 1660)</option>
+                                    <option value="base.en" selected>base.en (Fast &amp; Light - 60ms latency)</option>
+                                    <option value="distil-small.en">distil-small.en (Distil Fast &amp; Accurate)</option>
+                                    <option value="distil-medium.en">distil-medium.en (Near-Large accuracy, 6x faster)</option>
+                                    <option value="medium.en">medium.en (High accuracy English - 4GB VRAM)</option>
+                                    <option value="tiny.en">tiny.en (Fastest / Lowest CPU)</option>
+                                    <option value="large-v3-turbo">large-v3-turbo (State-of-the-art Multilingual / GPU)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Acceleration Device</label>
+                                <select id="whisper_device" class="form-control">
+                                    <option value="cuda" selected>NVIDIA GPU (CUDA - Recommended for GTX 1660)</option>
+                                    <option value="auto">Auto (Detect GPU else CPU)</option>
+                                    <option value="cpu">CPU Only</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>GPU Compute Precision</label>
+                                <select id="whisper_compute" class="form-control">
+                                    <option value="float16" selected>float16 (Fastest on GTX 1660 / RTX Turing)</option>
+                                    <option value="int8_float16">int8_float16 (Lower VRAM)</option>
+                                    <option value="int8">int8 (Standard for CPU)</option>
+                                    <option value="auto">auto</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Beam Search Width</label>
+                                <select id="whisper_beam" class="form-control">
+                                    <option value="1" selected>Beam 1 (Greedy - Lowest Latency / Real-Time)</option>
+                                    <option value="2">Beam 2 (Balanced)</option>
+                                    <option value="5">Beam 5 (Maximum Precision)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="whisper-stat-banner" id="whisper-stat-banner">
+                            Estimated VRAM: <strong id="val-est-vram">~1.8 GB</strong> &bull; Latency: <strong id="val-est-latency">~120ms</strong> &bull; GPU Headroom for OBS/Games: <strong id="val-est-headroom">~4.2 GB Free</strong>
+                        </div>
+                    </div>
+
+                    <button id="btn-save-audio" class="btn btn-primary btn-block">💾 Save Audio &amp; Engine</button>
+                </div>
+            </div>
+
+            <!-- TAB: PROJECTORS & DISPLAYS (EMBRACE CONFERENCE / LONTIUM) -->
+            <div id="tab-projectors" class="tab-pane">
+                <div class="panel">
+                    <h2>📺 OBS Projector &amp; Display Automation</h2>
+                    <p class="subtext">Automatically project your video preview or live captions to external conference screens (LONTIUM), stage monitors, or projectors with 1 click.</p>
+
+                    <!-- Quick 1-Click Launch Action -->
+                    <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+                        <h3 style="margin-top: 0; color: #38BDF8;">🚀 1-Click Projector Trigger</h3>
+                        <p style="font-size: 13px; color: #E0E7FF; margin-bottom: 12px;">Instantly send the OBS video preview to the conference room screen without navigating right-click menus:</p>
+                        <div class="form-row" style="align-items: flex-end;">
+                            <div class="form-group" style="flex: 2;">
+                                <label>Target Display Screen</label>
+                                <select id="quick_projector_monitor" class="form-control">
+                                    <option value="1" selected>Monitor 1 (LONTIUM / Conference Room Screen)</option>
+                                    <option value="0">Monitor 0 (Primary Display)</option>
+                                    <option value="2">Monitor 2 (Stage Display 2)</option>
+                                    <option value="3">Monitor 3 (Stage Display 3)</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <button type="button" id="btn-quick-open-projector" class="btn btn-primary btn-block" style="background: linear-gradient(135deg, #38BDF8, #6366F1);">📺 Open to Screen</button>
+                            </div>
+                        </div>
+                        <div id="projector-status-msg" style="font-size: 12px; margin-top: 8px; display: none;"></div>
+                    </div>
+
+                    <!-- Auto-Open Startup Automation Settings -->
+                    <h3>⚙️ Zero-Touch Startup Automation</h3>
+                    <p class="subtext">Automatically open the projector the moment OBS starts or whenever you start streaming.</p>
+
+                    <div class="form-group toggle-row">
+                        <label class="switch-label">
+                            <input type="checkbox" id="obs_auto_projector">
+                            <span class="switch-text"><strong>Auto-Open Fullscreen Projector on OBS Launch / Stream Start</strong></span>
+                        </label>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Projector Content / Source</label>
+                            <select id="obs_projector_type" class="form-control">
+                                <option value="preview" selected>Video Preview (Full Scene Preview)</option>
+                                <option value="program">Program Output (Live Broadcast Feed)</option>
+                                <option value="source">Specific Source (e.g. Captions Overlay Only)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Default Target Monitor</label>
+                            <select id="obs_projector_monitor" class="form-control">
+                                <option value="1" selected>Monitor 1 (LONTIUM / Secondary)</option>
+                                <option value="0">Monitor 0 (Main Monitor)</option>
+                                <option value="2">Monitor 2</option>
+                                <option value="3">Monitor 3</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="group-projector-source-name" style="display: none;">
+                        <label>Source Name to Project</label>
+                        <input type="text" id="obs_projector_source_name" class="form-control" placeholder="Captions Overlay" value="Captions Overlay">
+                    </div>
+
+                    <button id="btn-save-projector" class="btn btn-primary btn-block">💾 Save Projector Automation Settings</button>
+
+                    <!-- Safe Mode & Crash Prevention Info -->
+                    <div style="margin-top: 24px; padding: 14px; background: rgba(15, 15, 20, 0.6); border: 1px solid var(--border-color); border-radius: 8px;">
+                        <h4 style="margin: 0 0 6px 0; color: #F59E0B;">🛡️ Auto-Start Tip: Crash &amp; Safe Mode Prevention</h4>
+                        <p style="font-size: 12px; color: var(--text-muted); margin: 0; line-height: 1.5;">
+                            Use the included <code>launch_obs_clean.bat</code> launcher to open OBS without prompt interruptions. In OBS, also enable <em>Settings ➔ General ➔ Projectors ➔ Save projectors on exit</em>.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 5: TWITCH CHAT BOT -->
+            <div id="tab-twitch" class="tab-pane">
+                <div class="panel">
+                    <h2>👾 Twitch Chat Caption Bot</h2>
+                    <p class="subtext">Automatically broadcast live captions into your Twitch chat for accessibility.</p>
+
+                    <div class="form-group toggle-row">
+                        <label class="switch-label">
+                            <input type="checkbox" id="twitch_enabled">
+                            <span class="switch-text"><strong>Enable Twitch Chat Broadcaster</strong></span>
+                        </label>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Twitch Channel Name</label>
+                            <input type="text" id="twitch_channel" placeholder="e.g. your_channel_name" class="form-control">
+                        </div>
+                        <div class="form-group">
+                            <label>Bot Username (Optional)</label>
+                            <input type="text" id="twitch_username" placeholder="Defaults to channel name" class="form-control">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Twitch OAuth Token</label>
+                        <input type="password" id="twitch_oauth" placeholder="oauth:xxxxxxxxxxxxxxxxxxxx" class="form-control">
+                        <span class="hint">Generate a token at <a href="https://twitchapps.com/tmi/" target="_blank" style="color: var(--accent);">twitchapps.com/tmi</a>.</span>
+                    </div>
+
+                    <button id="btn-save-twitch" class="btn btn-primary btn-block">💾 Save Twitch Bot Settings</button>
+                </div>
+            </div>
+
+            <!-- TAB 6: TRANSCRIPTS & EXPORT -->
+            <div id="tab-transcript" class="tab-pane">
+                <div class="panel">
+                    <div class="transcript-header">
+                        <h2>Session Transcripts</h2>
+                        <div class="export-btn-group">
+                            <a href="/api/transcript/export?format=srt" download class="btn btn-secondary">📥 Download .SRT</a>
+                            <a href="/api/transcript/export?format=vtt" download class="btn btn-secondary">📥 Download .VTT</a>
+                            <a href="/api/transcript/export?format=txt" download class="btn btn-secondary">📥 Download .TXT</a>
+                            <button id="btn-clear-transcript" class="btn btn-danger">🗑️ Clear</button>
+                        </div>
+                    </div>
+
+                    <div class="search-bar">
+                        <input type="text" id="transcript-search" placeholder="Search transcript history..." class="form-control">
+                    </div>
+
+                    <div id="transcript-list" class="transcript-list">
+                        <div class="empty-state">No transcript lines recorded yet. Speak to begin!</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 7: REST API & DOCKS -->
+            <div id="tab-api" class="tab-pane">
+                <div class="panel">
+                    <h2>Remote Control API &amp; Stream Deck Integration</h2>
+                    <p class="subtext">Control OBS Live Captions from Elgato Stream Deck, Touch Portal, Bitfocus Companion, or automated scripts.</p>
+
+                    <div class="api-card">
+                        <h3>📺 Emergency Restore Screen &amp; Captions</h3>
+                        <code>POST http://127.0.0.1:8080/api/control/reopen-screen</code>
+                    </div>
+
+                    <div class="api-card">
+                        <h3>🟢 Start Captioning</h3>
+                        <code>POST http://127.0.0.1:8080/api/control/start</code>
+                    </div>
+
+                    <div class="api-card">
+                        <h3>🔴 Stop Captioning</h3>
+                        <code>POST http://127.0.0.1:8080/api/control/stop</code>
+                    </div>
+
+                    <div class="api-card">
+                        <h3>📊 Get Current Status</h3>
+                        <code>GET http://127.0.0.1:8080/api/status</code>
+                    </div>
+
+                    <div class="api-card">
+                        <h3>📥 Download Live Subtitle File</h3>
+                        <code>GET http://127.0.0.1:8080/api/transcript/export?format=srt</code>
+                    </div>
+
+                    <div class="api-card">
+                        <h3>🌐 OBS Browser Source URL</h3>
+                        <code>http://127.0.0.1:8080/</code> (Width: 1920, Height: 1080)
+                    </div>
+
+                    <div class="api-card">
+                        <h3>⚓ OBS Custom Browser Dock URL</h3>
+                        <code>http://127.0.0.1:8080/dashboard</code> (Add via OBS <strong>Docks -&gt; Custom Browser Docks</strong>)
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating Toast Notification System -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="/static/dashboard.js"></script>
+</body>
+</html>

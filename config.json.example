@@ -1,0 +1,108 @@
+{
+  "general": {
+    "engine": "google_stt",
+    "language": "en-US",
+    "log_level": "INFO"
+  },
+  "audio": {
+    "device_name_filter": "default",
+    "device_index": null,
+    "sample_rate": 16000,
+    "chunk_duration_ms": 100,
+    "enable_vad": true,
+    "vad_threshold": 0.5,
+    "noise_gate_db": -45.0
+  },
+  "censor": {
+    "enabled": true,
+    "mode": "replacement",
+    "filter_standard_profanity": true,
+    "filter_church_blasphemy": true,
+    "filter_crude_terms": true,
+    "custom_blacklist": [],
+    "custom_whitelist": [
+      "pass",
+      "bass",
+      "grass",
+      "Dickens",
+      "peacock"
+    ],
+    "custom_replacements": {
+      "damn": "darn",
+      "hell": "heck",
+      "goddamn": "gosh darn"
+    }
+  },
+  "google_stt": {
+    "credentials_path": "",
+    "model": "latest_long",
+    "enable_automatic_punctuation": true,
+    "enable_word_time_offsets": true,
+    "profanity_filter": false,
+    "speech_contexts": [
+      "OBS",
+      "Twitch",
+      "Discord",
+      "YouTube"
+    ]
+  },
+  "gemini_live": {
+    "api_key": "",
+    "model": "gemini-3.5-transcribe-live",
+    "smart_transcription": true,
+    "custom_vocabulary": [
+      "OBS Studio",
+      "Twitch",
+      "Discord",
+      "YouTube",
+      "Jesus Christ"
+    ],
+    "system_instruction": "You are Gemini 3.5 Transcribe, a real-time speech transcriber. Transcribe the incoming audio accurately into text verbatim. Output only the transcribed text without commentary, pleasantries, or conversation."
+  },
+  "local_whisper": {
+    "model_size": "base.en",
+    "device": "auto",
+    "compute_type": "auto",
+    "language": "en",
+    "beam_size": 1
+  },
+  "obs": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 4455,
+    "password": "",
+    "auto_start_on_stream": true,
+    "auto_start_on_record": true,
+    "update_text_source": true,
+    "text_source_name": "Live Captions",
+    "send_cea608_captions": true
+  },
+  "overlay": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 8080,
+    "max_width": "90%",
+    "max_lines": 2,
+    "text_align": "center",
+    "vertical_align": "bottom",
+    "animation_style": "word_pop",
+    "google_font": "",
+    "font_family": "Inter, sans-serif",
+    "font_size": "32px",
+    "font_weight": "700",
+    "line_height": "1.35",
+    "text_color": "#FFFFFF",
+    "interim_color": "#90CAF9",
+    "highlight_color": "#FFD166",
+    "background_box_color": "rgba(15, 15, 20, 0.72)",
+    "border_radius": "12px",
+    "box_padding": "14px 26px",
+    "text_shadow": "2px 2px 5px rgba(0, 0, 0, 0.95)",
+    "text_stroke": "2px #000000",
+    "auto_hide_seconds": 4.0
+  },
+  "api": {
+    "enabled": true,
+    "api_key": ""
+  }
+}

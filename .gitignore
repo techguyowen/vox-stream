@@ -1,0 +1,46 @@
+# Virtual Environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# User Configurations & Secrets
+config.json
+google_credentials.json
+*.key
+*.pem
+.env
+
+# Build Artifacts (C++ OBS Plugin)
+obs_native_plugin/build/
+obs_native_plugin/bin/
+build/
+bin/
+*.dll
+*.lib
+*.exp
+*.pdb
+*.obj
+*.exe
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs & Transcripts
+*.log
+captions_*.srt
+captions_*.vtt
+captions_*.txt
