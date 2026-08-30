@@ -11,7 +11,7 @@ if not exist ".venv\Scripts\activate.bat" (
 call .venv\Scripts\activate.bat
 
 echo =======================================================
-echo   Starting OBS Real-Time Live Captioner...
+echo   Starting VoxStream Live Captioner...
 echo =======================================================
 python -m obs_captioner.main %*
 

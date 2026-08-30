@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 echo =======================================================
-echo   🎙️ OBS Real-Time Live Captioner - Windows Setup
+echo   🎙️ VoxStream: OBS Live Captioner Suite - Windows Setup
 echo =======================================================
 echo.
 
