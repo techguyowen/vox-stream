@@ -33,14 +33,28 @@ def list_audio_devices() -> List[Dict]:
         hostapis = sd.query_hostapis()
         device_list = sd.query_devices()
         for idx, dev in enumerate(device_list):
+            api_name = hostapis[dev["hostapi"]]["name"] if dev.get("hostapi") < len(hostapis) else "Unknown"
+            
+            # 1. Standard Input Devices (Microphones, Line-in, Virtual Cables)
             if dev.get("max_input_channels", 0) > 0:
-                api_name = hostapis[dev["hostapi"]]["name"] if dev.get("hostapi") < len(hostapis) else "Unknown"
                 devices.append({
                     "index": idx,
                     "name": dev["name"],
                     "hostapi": api_name,
                     "channels": dev["max_input_channels"],
                     "default_samplerate": dev["default_samplerate"],
+                    "is_loopback": False,
+                })
+            
+            # 2. Windows WASAPI Loopback (Monitors, HDMI Displays, TVs, Speakers)
+            elif "WASAPI" in api_name.upper() and dev.get("max_output_channels", 0) > 0:
+                devices.append({
+                    "index": idx,
+                    "name": f"{dev['name']} [Display/Speaker Loopback]",
+                    "hostapi": api_name,
+                    "channels": dev["max_output_channels"],
+                    "default_samplerate": dev["default_samplerate"],
+                    "is_loopback": True,
                 })
     except Exception as e:
         logger.error(f"Error querying audio devices: {e}")
@@ -113,7 +127,20 @@ class AudioCapture:
         logger.info(f"Opening audio input [{self.device_index}]: '{dev_name}' ({dev_api}) at {self.target_rate}Hz mono")
 
         native_rate = int(self.device_info["default_samplerate"]) if self.device_info else self.target_rate
+        is_loopback = self.device_info.get("is_loopback", False) if self.device_info else False
         stream_rate = self.target_rate
+        channels = 1
+        extra_settings = None
+
+        if is_loopback:
+            try:
+                if hasattr(sd, "WasapiSettings"):
+                    extra_settings = sd.WasapiSettings(loopback=True)
+                    channels = max(1, int(self.device_info.get("channels", 2)))
+                    stream_rate = native_rate
+                    logger.info(f"🔊 WASAPI Loopback active: capturing audio playing to '{dev_name}' ({channels}ch @ {native_rate}Hz)")
+            except Exception as we:
+                logger.debug(f"WASAPI loopback settings exception: {we}")
 
         def audio_callback(indata, frames, time_info, status):
             if not self._running:
@@ -143,8 +170,20 @@ class AudioCapture:
             else:
                 pcm16 = indata.astype(np.int16)
 
+            # Downmix multi-channel to mono
             if pcm16.ndim > 1 and pcm16.shape[1] > 1:
                 pcm16 = np.mean(pcm16, axis=1, dtype=np.int16)
+
+            # Resample down to 16kHz if captured at native rate (e.g. 48kHz -> 16kHz)
+            if stream_rate != self.target_rate and len(pcm16) > 0:
+                step = int(stream_rate / self.target_rate)
+                if step > 1 and stream_rate % self.target_rate == 0:
+                    pcm16 = pcm16[::step]
+                else:
+                    target_len = int(len(pcm16) * (self.target_rate / stream_rate))
+                    if target_len > 0:
+                        indices = np.linspace(0, len(pcm16) - 1, target_len).astype(int)
+                        pcm16 = pcm16[indices]
 
             pcm_bytes = pcm16.tobytes()
             try:
@@ -159,10 +198,11 @@ class AudioCapture:
         try:
             self.stream = sd.InputStream(
                 device=self.device_index,
-                channels=1,
+                channels=channels,
                 samplerate=stream_rate,
-                blocksize=self.chunk_samples,
+                blocksize=self.chunk_samples if stream_rate == self.target_rate else int(stream_rate * (self.config.chunk_duration_ms / 1000.0)),
                 dtype=np.int16,
+                extra_settings=extra_settings,
                 callback=audio_callback,
             )
             self.stream.start()
@@ -174,9 +214,10 @@ class AudioCapture:
             try:
                 self.stream = sd.InputStream(
                     device=self.device_index,
-                    channels=1,
+                    channels=channels,
                     samplerate=native_rate,
                     dtype=np.float32,
+                    extra_settings=extra_settings,
                     callback=audio_callback,
                 )
                 self.stream.start()
