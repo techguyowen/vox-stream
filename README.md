@@ -7,18 +7,19 @@
 
 **VoxStream** is a high-performance, low-latency, real-time speech-to-text captioning and broadcast automation suite for **OBS Studio** on **macOS, Windows, and Linux**.
 
-It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **6 Powerful Speech Engines** *(Local Vosk / Kaldi, Moonshine, Gemini 3.5 Live, Faster-Whisper, Google Web, Google Cloud STT)*, **⛪ Church & Biblical Lexicon with Scripture Citation Parsing**, **Smart Punctuation & Capitalization**, **Multi-Language Live Translation**, **1-Click Theme Gallery**, **Twitch Chat Caption Bot**, **Stage & Room Confidence Monitor**, and **Subtitle Exporter (SRT/VTT/TXT)**.
+It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Powerful Speech Engines** *(Local Vosk / Kaldi, Moonshine, Gemini 3.5 Live, Faster-Whisper, Bandwidth Labs Live STT, Google Web, Google Cloud STT)*, **⛪ Church & Biblical Lexicon with Scripture Citation Parsing**, **Smart Punctuation & Capitalization**, **Multi-Language Live Translation**, **1-Click Theme Gallery**, **Twitch Chat Caption Bot**, **Stage & Room Confidence Monitor**, and **Subtitle Exporter (SRT/VTT/TXT)**.
 
 ---
 
 ## ✨ Features Overview
 
-### ⚡ 1. 6 Multi-Tier Speech Recognition Engines (Hot-Switchable)
+### ⚡ 1. 7 Multi-Tier Speech Recognition Engines (Hot-Switchable)
 * ⚡ **Local Vosk / Kaldi (Ultra-Low Latency ~20ms)**: 100% offline, instantaneous speech recognition powered by Kaldi C-core acoustic models. Zero cloud dependency, zero API keys.
 * 🌙 **Local Moonshine (ONNX Neural STT)**: Next-generation lightweight neural speech-to-text designed specifically for real-time live streaming.
 * ✨ **Gemini 3.5 Transcribe Live**: Google's newest multimodal AI (`gemini-3.5-transcribe-live`) with custom vocabulary support, smart punctuation, and automated filler-word cleanup.
 * 💻 **Local Faster-Whisper**: 100% offline OpenAI Whisper running locally on your GPU (CUDA) or CPU with beam search and voice activity filtering.
 * 🆓 **Free Google Speech (Zero-Setup)**: 100% Free, zero-setup Google Speech engine requiring no API keys or accounts.
+* 🌐 **Bandwidth Labs Live STT**: Enterprise-grade streaming real-time speech recognition from labs.bandwidth.com.
 * ☁️ **Google Cloud Speech-to-Text**: High-accuracy enterprise streaming with automatic diarization and punctuation.
 * 🔄 **Live Hot-Switching**: Switch engines on the fly in the dashboard without interrupting your stream or restarting the server.
 
