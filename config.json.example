@@ -120,7 +120,7 @@
   },
   "overlay": {
     "enabled": true,
-    "host": "127.0.0.1",
+    "host": "0.0.0.0",
     "port": 8765,
     "theme_id": "modern_clean",
     "max_width": "90%",
