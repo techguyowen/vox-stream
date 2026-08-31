@@ -732,6 +732,112 @@ if (btnAddVocab) {
     });
 }
 
+
+// Bulk CSV & File Import / Export Handlers
+const vocabFileInput = document.getElementById("vocab-csv-file-input");
+const vocabFileName = document.getElementById("vocab-file-name");
+const vocabBulkTextarea = document.getElementById("vocab-bulk-textarea");
+const btnImportVocabBulk = document.getElementById("btn-import-vocab-bulk");
+const vocabBulkReplaceAll = document.getElementById("vocab-bulk-replace-all");
+const vocabImportStatus = document.getElementById("vocab-import-status");
+const btnCopyVocabCsv = document.getElementById("btn-copy-vocab-csv");
+const btnClearVocab = document.getElementById("btn-clear-vocab");
+
+if (vocabFileInput) {
+    vocabFileInput.addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            vocabFileName.textContent = file.name;
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                vocabBulkTextarea.value = evt.target.result;
+            };
+            reader.readAsText(file);
+        }
+    });
+}
+
+if (btnImportVocabBulk) {
+    btnImportVocabBulk.addEventListener("click", async () => {
+        const csvData = (vocabBulkTextarea ? vocabBulkTextarea.value : "").trim();
+        if (!csvData) {
+            alert("Please paste CSV/text or choose a file to import.");
+            return;
+        }
+
+        const replaceAll = vocabBulkReplaceAll ? vocabBulkReplaceAll.checked : false;
+        btnImportVocabBulk.disabled = true;
+        btnImportVocabBulk.textContent = "Importing...";
+
+        try {
+            const res = await fetch("/api/vocabulary/bulk", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ csv_data: csvData, replace_all: replaceAll }),
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                if (vocabImportStatus) {
+                    vocabImportStatus.style.display = "block";
+                    vocabImportStatus.style.background = "rgba(16, 185, 129, 0.15)";
+                    vocabImportStatus.style.color = "#10B981";
+                    vocabImportStatus.textContent = `✅ Successfully imported ${data.imported_count} terms! (Total active: ${data.total_count})`;
+                    setTimeout(() => { vocabImportStatus.style.display = "none"; }, 5000);
+                }
+                if (vocabBulkTextarea) vocabBulkTextarea.value = "";
+                if (vocabFileName) vocabFileName.textContent = "No file selected";
+                await loadVocabularyState();
+            } else {
+                const err = await res.json();
+                alert(`Import failed: ${err.error || "Unknown error"}`);
+            }
+        } catch (e) {
+            alert(`Import error: ${e}`);
+        } finally {
+            btnImportVocabBulk.disabled = false;
+            btnImportVocabBulk.textContent = "📥 Import Terms";
+        }
+    });
+}
+
+if (btnCopyVocabCsv) {
+    btnCopyVocabCsv.addEventListener("click", async () => {
+        try {
+            const res = await fetch("/api/vocabulary");
+            if (res.ok) {
+                const data = await res.json();
+                const terms = data.terms || {};
+                const rows = ["Misheard Phrase,Correct Replacement"];
+                for (const [k, v] of Object.entries(terms)) {
+                    rows.push(`"${k.replace(/"/g, '""')}","${v.replace(/"/g, '""')}"`);
+                }
+                await navigator.clipboard.writeText(rows.join("\n"));
+                btnCopyVocabCsv.textContent = "✅ Copied CSV!";
+                setTimeout(() => { btnCopyVocabCsv.textContent = "📋 Copy CSV"; }, 2000);
+            }
+        } catch (e) {
+            console.error("Error copying glossary:", e);
+        }
+    });
+}
+
+if (btnClearVocab) {
+    btnClearVocab.addEventListener("click", async () => {
+        if (confirm("Are you sure you want to clear ALL custom glossary terms?")) {
+            try {
+                await fetch("/api/vocabulary/clear", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" }
+                });
+                await loadVocabularyState();
+            } catch (e) {
+                console.error("Error clearing glossary:", e);
+            }
+        }
+    });
+}
+
 const btnRunVocabTest = document.getElementById("btn-run-vocab-test");
 if (btnRunVocabTest) {
     btnRunVocabTest.addEventListener("click", async () => {

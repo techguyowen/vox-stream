@@ -154,6 +154,9 @@ class WebOverlayServer:
         self.app.router.add_post("/api/vocabulary/set", self._handle_set_vocabulary)
         self.app.router.add_post("/api/vocabulary/remove", self._handle_remove_vocabulary)
         self.app.router.add_post("/api/vocabulary/test", self._handle_test_vocabulary)
+        self.app.router.add_post("/api/vocabulary/bulk", self._handle_bulk_vocabulary)
+        self.app.router.add_get("/api/vocabulary/export", self._handle_export_vocabulary)
+        self.app.router.add_post("/api/vocabulary/clear", self._handle_clear_vocabulary)
 
         # Static Assets
         self.app.router.add_static("/static/", path=str(static_dir), name="static")
@@ -771,6 +774,63 @@ class WebOverlayServer:
             })
         except Exception as e:
             return web.json_response({"error": str(e)}, status=400)
+
+    async def _handle_bulk_vocabulary(self, request: web.Request) -> web.Response:
+        """Bulk import custom vocabulary terms from CSV, TSV, or dictionary."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        try:
+            data = await request.json()
+            csv_data = data.get("csv_data", "")
+            terms_dict = data.get("terms", {})
+            replace_all = bool(data.get("replace_all", False))
+
+            vocab = VocabularyReplacer(self.config.vocabulary)
+            imported = 0
+
+            if csv_data:
+                imported = vocab.import_csv(csv_data, replace_all=replace_all)
+            elif terms_dict and isinstance(terms_dict, dict):
+                if replace_all:
+                    vocab.clear()
+                for orig, rep in terms_dict.items():
+                    if vocab.add_term(str(orig), str(rep)):
+                        imported += 1
+
+            save_config(self.config)
+            if self.on_config_updated:
+                self.on_config_updated(self.config)
+
+            return web.json_response({
+                "status": "success",
+                "imported_count": imported,
+                "total_count": len(self.config.vocabulary.terms),
+                "terms": vocab.get_terms(),
+            })
+        except Exception as e:
+            logger.error(f"Bulk vocabulary import error: {e}")
+            return web.json_response({"error": str(e)}, status=400)
+
+    async def _handle_export_vocabulary(self, request: web.Request) -> web.Response:
+        """Export all custom glossary terms as CSV file download."""
+        vocab = VocabularyReplacer(self.config.vocabulary)
+        csv_text = vocab.export_csv()
+        filename = f"voxstream_glossary_{int(time.time())}.csv"
+        headers = {
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        }
+        return web.Response(text=csv_text, content_type="text/csv", headers=headers)
+
+    async def _handle_clear_vocabulary(self, request: web.Request) -> web.Response:
+        """Clear all custom vocabulary terms."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        vocab = VocabularyReplacer(self.config.vocabulary)
+        vocab.clear()
+        save_config(self.config)
+        if self.on_config_updated:
+            self.on_config_updated(self.config)
+        return web.json_response({"status": "success", "message": "Glossary cleared.", "terms": {}})
 
     async def _handle_caption_ws(self, request: web.Request) -> web.WebSocketResponse:
         ws = web.WebSocketResponse()

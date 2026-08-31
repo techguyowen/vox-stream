@@ -159,6 +159,36 @@ class TestVocabulary(unittest.TestCase):
         self.assertFalse(mod2)
         self.assertEqual(res2, "we deploy to k8s cluster")
 
+    def test_vocabulary_bulk_csv(self):
+        cfg = VocabularyConfig(enabled=True, terms={"obs": "OBS"})
+        replacer = VocabularyReplacer(cfg)
+
+        csv_input = """Misheard Phrase,Correct Replacement
+box stream,VoxStream
+pastor mike,Pastor Mike
+k8s -> Kubernetes
+jesus = Jesus
+"""
+        count = replacer.import_csv(csv_input, replace_all=False)
+        self.assertEqual(count, 4)
+        terms = replacer.get_terms()
+        self.assertIn("box stream", terms)
+        self.assertEqual(terms["box stream"], "VoxStream")
+        self.assertEqual(terms["k8s"], "Kubernetes")
+        self.assertEqual(terms["jesus"], "Jesus")
+        self.assertEqual(terms["obs"], "OBS")
+
+        # Test CSV export
+        exported_csv = replacer.export_csv()
+        self.assertIn("Misheard Phrase,Correct Replacement", exported_csv)
+        self.assertIn("box stream,VoxStream", exported_csv)
+
+        # Test replace_all mode
+        replacer.import_csv("single term,Single Term", replace_all=True)
+        self.assertEqual(len(replacer.get_terms()), 1)
+        self.assertIn("single term", replacer.get_terms())
+
+
 
 class TestTranslator(unittest.TestCase):
 
