@@ -19,6 +19,7 @@ from ..history import TranscriptHistory
 from ..themes import THEME_PRESETS, get_all_presets
 from ..translator import SUPPORTED_LANGUAGES, SubtitleTranslator
 from ..vocabulary import VocabularyReplacer
+from ..model_downloader import ModelDownloadManager
 from ..security import (
     SimpleRateLimiter,
     escape_html,
@@ -63,6 +64,7 @@ class WebOverlayServer:
         # Generous: a dashboard (4s poll) + stage display (5s poll) + restart
         # polling from the same IP must not starve each other into 429s.
         self.rate_limiter = SimpleRateLimiter(max_requests=300, window_seconds=60.0)
+        self.model_downloader = ModelDownloadManager()
         # Rolling snapshot of recent final caption payloads, replayed to newly
         # connected /ws clients so refreshed views aren't blank until the next utterance.
         self._recent_finals: list = []
@@ -157,6 +159,11 @@ class WebOverlayServer:
         self.app.router.add_post("/api/vocabulary/bulk", self._handle_bulk_vocabulary)
         self.app.router.add_get("/api/vocabulary/export", self._handle_export_vocabulary)
         self.app.router.add_post("/api/vocabulary/clear", self._handle_clear_vocabulary)
+
+        # Model Downloader & Cache Manager
+        self.app.router.add_get("/api/models/status", self._handle_get_models_status)
+        self.app.router.add_post("/api/models/download", self._handle_download_model)
+        self.app.router.add_post("/api/models/cancel", self._handle_cancel_download_model)
 
         # Static Assets
         self.app.router.add_static("/static/", path=str(static_dir), name="static")
@@ -1052,3 +1059,49 @@ class WebOverlayServer:
         if self.runner:
             await self.runner.cleanup()
         logger.info("Overlay and API server stopped.")
+
+
+    async def _handle_get_models_status(self, request: web.Request) -> web.Response:
+        """Return catalog of all offline speech recognition models and their download status."""
+        summary = self.model_downloader.get_summary()
+        return web.json_response(summary)
+
+    async def _handle_download_model(self, request: web.Request) -> web.Response:
+        """Trigger background pre-download of a specific model or all models."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+
+        model_id = sanitize_text(data.get("model_id", "all")).strip()
+        if self.model_downloader.is_downloading:
+            return web.json_response({"status": "already_downloading", "message": "A model download is already in progress."}, status=409)
+
+        async def _broadcast_cb(evt: dict):
+            await self.broadcast_control(evt)
+
+        def _sync_cb(evt: dict):
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    asyncio.run_coroutine_threadsafe(_broadcast_cb(evt), loop)
+            except Exception:
+                pass
+
+        asyncio.create_task(self.model_downloader.download_model(model_id, _sync_cb))
+
+        return web.json_response({
+            "status": "started",
+            "model_id": model_id,
+            "message": f"Pre-download for model '{model_id}' started in background.",
+        })
+
+    async def _handle_cancel_download_model(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+
+        self.model_downloader.cancel_download()
+        return web.json_response({"status": "canceled", "message": "Model download cancellation requested."})

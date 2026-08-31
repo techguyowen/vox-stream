@@ -616,6 +616,28 @@ class TestServerEndpoints(AioHTTPTestCase):
         self.assertIn('engine', data)
         self.assertIn('uptime_seconds', data)
 
+    async def test_models_status_api(self):
+        resp = await self.client.request('GET', '/api/models/status')
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertIn('total_models', data)
+        self.assertIn('cached_models', data)
+        self.assertIn('models', data)
+        self.assertTrue(len(data['models']) >= 5)
+
+    async def test_models_download_api(self):
+        resp = await self.client.request('POST', '/api/models/download', json={'model_id': 'invalid_test'})
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertEqual(data['status'], 'started')
+
+    async def test_models_cancel_api(self):
+        resp = await self.client.request('POST', '/api/models/cancel')
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertEqual(data['status'], 'canceled')
+
+
 
 if __name__ == "__main__":
     unittest.main()

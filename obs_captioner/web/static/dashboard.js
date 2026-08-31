@@ -1,4 +1,161 @@
 
+// --- Offline Models Pre-Downloader Management --------------------------------
+let isModelsDownloading = false;
+
+async function loadModelsStatus() {
+    try {
+        const res = await fetch("/api/models/status");
+        if (res.ok) {
+            const data = await res.json();
+            renderModelsStatus(data);
+        }
+    } catch (e) {
+        console.debug("Error loading models status:", e);
+    }
+}
+
+function renderModelsStatus(data) {
+    const countEl = document.getElementById("models-cache-count");
+    const container = document.getElementById("models-list-container");
+    const btnDownloadAll = document.getElementById("btn-download-all-models");
+    const progressBox = document.getElementById("models-batch-progress-box");
+
+    if (countEl) {
+        countEl.innerHTML = `💾 <strong>${data.cached_models} of ${data.total_models} models ready</strong> (~${data.cached_size_mb} MB cached on disk)`;
+    }
+
+    if (btnDownloadAll) {
+        if (data.all_downloaded) {
+            btnDownloadAll.innerHTML = "<span>✅ All Models Downloaded</span>";
+            btnDownloadAll.style.background = "#10B981";
+            btnDownloadAll.disabled = false;
+        } else if (data.is_downloading) {
+            btnDownloadAll.innerHTML = "<span>⏳ Downloading Models...</span>";
+            btnDownloadAll.style.background = "#2563EB";
+            btnDownloadAll.disabled = true;
+        } else {
+            btnDownloadAll.innerHTML = "<span>📥 Download All Models</span>";
+            btnDownloadAll.style.background = "#2563EB";
+            btnDownloadAll.disabled = false;
+        }
+    }
+
+    if (!container || !data.models) return;
+
+    container.innerHTML = data.models.map(m => {
+        let badgeHtml = "";
+        let actionBtnHtml = "";
+
+        if (m.is_cached) {
+            badgeHtml = `<span style="background: rgba(16, 185, 129, 0.15); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.3); padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">✅ Cached (${m.size_mb} MB)</span>`;
+            actionBtnHtml = `<span style="font-size: 12px; color: #10B981; font-weight: 600;">Ready</span>`;
+        } else if (m.status === "downloading" || (data.is_downloading && data.current_download_id === m.id)) {
+            badgeHtml = `<span style="background: rgba(59, 130, 246, 0.2); color: #60A5FA; border: 1px solid rgba(59, 130, 246, 0.4); padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">⏳ Downloading...</span>`;
+            actionBtnHtml = `<span style="font-size: 12px; color: #60A5FA; font-weight: 600;">In Progress</span>`;
+        } else {
+            badgeHtml = `<span style="background: rgba(255, 255, 255, 0.08); color: var(--text-muted); padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">Not Cached (~${m.size_mb} MB)</span>`;
+            actionBtnHtml = `<button type="button" class="btn btn-secondary btn-sm btn-download-single-model" data-model-id="${m.id}" style="padding: 4px 10px; font-size: 11.5px; font-weight: 600;">📥 Download</button>`;
+        }
+
+        const engineIcon = m.engine === "moonshine" ? "⚡" : (m.engine === "vosk" ? "🎙️" : "💻");
+
+        return `
+            <div style="background: #161B22; border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 200px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 14px;">${engineIcon}</span>
+                        <strong style="color: var(--text-main); font-size: 13px;">${escapeHtml(m.name)}</strong>
+                        ${m.recommended ? '<span style="background: rgba(245, 158, 11, 0.2); color: #F59E0B; font-size: 9.5px; font-weight: 700; padding: 1px 5px; border-radius: 3px; text-transform: uppercase;">Recommended</span>' : ''}
+                    </div>
+                    <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">
+                        ${escapeHtml(m.description)}
+                    </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    ${badgeHtml}
+                    ${actionBtnHtml}
+                </div>
+            </div>
+        `;
+    }).join("");
+
+    // Attach click listeners to single download buttons
+    container.querySelectorAll(".btn-download-single-model").forEach(btn => {
+        btn.addEventListener("click", async (e) => {
+            const mId = e.currentTarget.getAttribute("data-model-id");
+            if (mId) {
+                await triggerModelDownload(mId);
+            }
+        });
+    });
+}
+
+async function triggerModelDownload(modelId = "all") {
+    const progressBox = document.getElementById("models-batch-progress-box");
+    const progressTitle = document.getElementById("batch-progress-title");
+    const progressDetail = document.getElementById("batch-progress-detail");
+    const progressBar = document.getElementById("batch-progress-bar");
+
+    if (progressBox) progressBox.style.display = "block";
+    if (progressTitle) progressTitle.textContent = modelId === "all" ? "Starting full model suite download..." : `Downloading ${modelId}...`;
+    if (progressDetail) progressDetail.textContent = "Connecting to model repository...";
+    if (progressBar) progressBar.style.width = "5%";
+
+    try {
+        const res = await fetch("/api/models/download", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ model_id: modelId })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            showToast(`📥 Pre-download started for ${modelId === "all" ? "all models" : modelId}!`, "info", 4000);
+            await loadModelsStatus();
+        } else {
+            showToast(`❌ Download failed: ${data.message || "Unknown error"}`, "error", 5000);
+        }
+    } catch (e) {
+        showToast(`❌ Download error: ${e}`, "error", 5000);
+    }
+}
+
+function handleModelDownloadProgressEvent(msg) {
+    const progressBox = document.getElementById("models-batch-progress-box");
+    const progressTitle = document.getElementById("batch-progress-title");
+    const progressDetail = document.getElementById("batch-progress-detail");
+    const progressBar = document.getElementById("batch-progress-bar");
+
+    if (!progressBox) return;
+
+    if (msg.status === "downloading") {
+        progressBox.style.display = "block";
+        if (progressTitle) progressTitle.textContent = msg.message || "Downloading model weights...";
+        if (progressDetail) progressDetail.textContent = msg.message || "";
+        if (progressBar && msg.current_index && msg.total_count) {
+            const pct = Math.round((msg.current_index / msg.total_count) * 100);
+            progressBar.style.width = `${pct}%`;
+        }
+        loadModelsStatus();
+    } else if (msg.status === "completed") {
+        progressBox.style.display = "block";
+        if (progressTitle) progressTitle.textContent = "✅ Downloads Complete!";
+        if (progressDetail) progressDetail.textContent = msg.message || "All models are cached locally.";
+        if (progressBar) progressBar.style.width = "100%";
+        showToast("🎉 All speech recognition models downloaded and cached for offline use!", "success", 5000);
+        setTimeout(() => {
+            if (progressBox) progressBox.style.display = "none";
+        }, 6000);
+        loadModelsStatus();
+    } else if (msg.status === "error" || msg.status === "canceled") {
+        progressBox.style.display = "block";
+        if (progressTitle) progressTitle.textContent = msg.status === "error" ? "❌ Download Error" : "⚠️ Canceled";
+        if (progressDetail) progressDetail.textContent = msg.message || "Download stopped.";
+        if (progressBar) progressBar.style.width = "0%";
+        loadModelsStatus();
+    }
+}
+
+
 function handleEngineSwitchProgress(msg) {
     const box = document.getElementById("engine-switching-box");
     const spinner = document.getElementById("engine-switching-spinner");
@@ -210,7 +367,28 @@ async function applyThemePreset(themeId) {
         });
         if (res.ok) {
             activeThemeId = themeId;
-            await loadConfig();
+            // Initialize Models Status
+    const btnDlAll = document.getElementById("btn-download-all-models");
+    if (btnDlAll) {
+        btnDlAll.addEventListener("click", () => triggerModelDownload("all"));
+    }
+    const btnCancelDl = document.getElementById("btn-cancel-models-download");
+    if (btnCancelDl) {
+        btnCancelDl.addEventListener("click", async () => {
+            await fetch("/api/models/cancel", { method: "POST" });
+            showToast("⚠️ Model download canceled.", "info", 3000);
+        });
+    }
+    const btnRefModels = document.getElementById("btn-refresh-models-status");
+    if (btnRefModels) {
+        btnRefModels.addEventListener("click", async () => {
+            await loadModelsStatus();
+            showToast("🔄 Model cache status refreshed.", "info", 2000);
+        });
+    }
+    await loadModelsStatus();
+
+    await loadConfig();
             await loadThemes();
             showToast("🎨 Theme preset applied!", "success", 2000);
         }
@@ -1255,7 +1433,28 @@ async function saveConfigPayload(payload, successMsg) {
             if (successMsg) {
                 showToast(successMsg, "success");
             }
-            await loadConfig();
+            // Initialize Models Status
+    const btnDlAll = document.getElementById("btn-download-all-models");
+    if (btnDlAll) {
+        btnDlAll.addEventListener("click", () => triggerModelDownload("all"));
+    }
+    const btnCancelDl = document.getElementById("btn-cancel-models-download");
+    if (btnCancelDl) {
+        btnCancelDl.addEventListener("click", async () => {
+            await fetch("/api/models/cancel", { method: "POST" });
+            showToast("⚠️ Model download canceled.", "info", 3000);
+        });
+    }
+    const btnRefModels = document.getElementById("btn-refresh-models-status");
+    if (btnRefModels) {
+        btnRefModels.addEventListener("click", async () => {
+            await loadModelsStatus();
+            showToast("🔄 Model cache status refreshed.", "info", 2000);
+        });
+    }
+    await loadModelsStatus();
+
+    await loadConfig();
         } else {
             showToast("⚠️ Error saving configuration.", "error");
         }
@@ -1588,6 +1787,8 @@ function connectControlWs() {
                 const db = (typeof msg.level_db === "number") ? msg.level_db : -100;
                 const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
                 vuBar.style.width = `${pct}%`;
+            } else if (msg.type === "model_download_progress") {
+                handleModelDownloadProgressEvent(msg);
             } else if (msg.type === "engine_switching_status") {
                 handleEngineSwitchProgress(msg);
             } else if (msg.type === "engine_changed") {
@@ -1759,6 +1960,27 @@ function escapeHtml(str) {
 
 // Initialize on page load
 window.addEventListener("DOMContentLoaded", async () => {
+    // Initialize Models Status
+    const btnDlAll = document.getElementById("btn-download-all-models");
+    if (btnDlAll) {
+        btnDlAll.addEventListener("click", () => triggerModelDownload("all"));
+    }
+    const btnCancelDl = document.getElementById("btn-cancel-models-download");
+    if (btnCancelDl) {
+        btnCancelDl.addEventListener("click", async () => {
+            await fetch("/api/models/cancel", { method: "POST" });
+            showToast("⚠️ Model download canceled.", "info", 3000);
+        });
+    }
+    const btnRefModels = document.getElementById("btn-refresh-models-status");
+    if (btnRefModels) {
+        btnRefModels.addEventListener("click", async () => {
+            await loadModelsStatus();
+            showToast("🔄 Model cache status refreshed.", "info", 2000);
+        });
+    }
+    await loadModelsStatus();
+
     await loadConfig();
     await loadThemes();
     await loadAudioDevices();

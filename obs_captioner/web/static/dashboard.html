@@ -689,6 +689,48 @@
                         </div>
                     </div>
 
+                    <!-- Offline AI Speech Models Pre-Downloader Card -->
+                    <div class="model-manager-card" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 18px 20px; margin: 24px 0 18px 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;">
+                            <div>
+                                <h3 style="margin: 0; font-size: 15px; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                                    <span>📦 Offline AI Speech Models Manager</span>
+                                </h3>
+                                <p style="font-size: 12.5px; color: var(--text-muted); margin: 3px 0 0 0;">
+                                    Pre-download all local neural models for zero-latency offline recognition without waiting on internet speeds during live streams.
+                                </p>
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <button type="button" id="btn-download-all-models" class="btn btn-primary" style="background: #2563EB; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px;">
+                                    <span>📥 Download All Models</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Progress Bar Box (shown during active batch download) -->
+                        <div id="models-batch-progress-box" style="display: none; background: rgba(37, 99, 235, 0.1); border: 1px solid rgba(37, 99, 235, 0.3); border-radius: 6px; padding: 12px 14px; margin-bottom: 16px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <span id="batch-progress-title" style="font-size: 13px; font-weight: 700; color: #60A5FA;">Downloading models...</span>
+                                <button type="button" id="btn-cancel-models-download" class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 11px;">Cancel</button>
+                            </div>
+                            <div style="background: rgba(255,255,255,0.1); height: 6px; border-radius: 3px; overflow: hidden; margin-bottom: 6px;">
+                                <div id="batch-progress-bar" style="background: #3B82F6; height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+                            </div>
+                            <div id="batch-progress-detail" style="font-size: 11.5px; color: #CBD5E1; font-family: monospace;">Checking cache...</div>
+                        </div>
+
+                        <!-- Summary Counter Banner -->
+                        <div id="models-cache-summary" style="font-size: 12px; color: var(--text-muted); margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 8px;">
+                            <span id="models-cache-count">Loading model cache status...</span>
+                            <button type="button" id="btn-refresh-models-status" style="background: none; border: none; color: #3B82F6; cursor: pointer; font-size: 12px; display: flex; align-items: center; gap: 4px; font-weight: 600;">🔄 Refresh Status</button>
+                        </div>
+
+                        <!-- Models List / Table -->
+                        <div id="models-list-container" style="display: flex; flex-direction: column; gap: 8px;">
+                            <!-- Populated dynamically via JS -->
+                        </div>
+                    </div>
+
                     <button id="btn-save-audio" class="btn btn-primary btn-block">💾 Save Audio &amp; Engine</button>
                 </div>
             </div>
