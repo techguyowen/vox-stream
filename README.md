@@ -9,6 +9,10 @@
 
 It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Powerful Speech Engines** *(Local Vosk / Kaldi, Moonshine, Gemini 3.5 Live, Faster-Whisper, Bandwidth Labs Live STT, Google Web, Google Cloud STT)*, **⛪ Church & Biblical Lexicon with Scripture Citation Parsing**, **Smart Punctuation & Capitalization**, **Multi-Language Live Translation**, **1-Click Theme Gallery**, **Twitch Chat Caption Bot**, **Stage & Room Confidence Monitor**, and **Subtitle Exporter (SRT/VTT/TXT)**.
 
+<p align="center">
+  <img src="docs/screenshots/dashboard_engine.png" alt="VoxStream In-OBS Control Dashboard" width="850" style="border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+</p>
+
 ---
 
 ## ✨ Features Overview
@@ -60,6 +64,10 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Po
 * **Stage & Room Confidence Monitor (`http://127.0.0.1:8765/display`)**: High-contrast, large-format confidence monitor for stage screens, sanctuary confidence monitors, and speakers.
 * **OpenDyslexic & Accessibility**: Includes built-in support for OpenDyslexic and high-legibility fonts.
 
+<p align="center">
+  <img src="docs/screenshots/stage_monitor.png" alt="VoxStream Stage Confidence Monitor" width="850" style="border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+</p>
+
 ---
 
 ### 🌐 6. Real-Time Live Translation
@@ -72,6 +80,10 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Po
 * **Pre-Built Themes**: *Modern Clean (Glassmorphism), Broadcast News Lower-Third, Sanctuary & Worship, Corporate Keynote & Tech, Minimalist Cinema (Netflix/BBC), High-Contrast Stage Confidence, Editorial & Talk Show, Classic Broadcast CEA-708, OpenDyslexic (Accessibility)*.
 * **Custom Typography**: Google Fonts (*Inter, Roboto, Montserrat, Oswald, Lora, Poppins, OpenDyslexic*) + custom system fonts.
 * **Custom Layouts**: Font Size (16px–72px), Max Box Width (% slider), Max Lines (1–4), Text Alignment, Line Height, and Box Background Opacity.
+
+<p align="center">
+  <img src="docs/screenshots/theme_gallery.png" alt="VoxStream 1-Click Theme Gallery & Live Preview" width="850" style="border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+</p>
 
 ---
 
