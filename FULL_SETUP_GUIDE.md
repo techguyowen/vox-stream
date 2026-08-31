@@ -1,4 +1,4 @@
-# 🎙️ OBS Live Captioner PRO: The Complete Setup Guide
+# 🎙️ VoxStream — Real-Time Live Captioner & Broadcast Suite: Complete Setup Guide
 
 Welcome! This suite offers **two different ways** to run live captions in OBS Studio. You can choose the method that best fits your workflow. 
 

@@ -1,6 +1,6 @@
 # 📖 VoxStream Live Captioner — Complete Installation & Setup Guide
 
-This step-by-step guide walks you through setting up the **VoxStream Real-Time Live Captioner Suite** on **macOS** and **Windows**.
+This step-by-step guide walks you through setting up the **VoxStream Real-Time Live Captioner & Broadcast Suite** on **macOS**, **Windows**, and **Linux**.
 
 ---
 
@@ -10,21 +10,25 @@ This step-by-step guide walks you through setting up the **VoxStream Real-Time L
    - [macOS / Linux Installation](#-macos--linux-setup)
    - [Windows Installation](#-windows-setup)
 3. [Step 2: Choosing Your Speech Engine](#-step-2-choosing-your-speech-engine)
-   - [Option A: Google Speech (100% Free / Zero-Setup)](#option-a-google-speech-recognition-100-free--zero-setup)
+   - [Option A: Vosk (Ultra-Fast CPU Streaming - Zero Latency)](#option-a-vosk-kaldi-ultra-fast-cpu-streaming)
    - [Option B: Local Moonshine (Fast Offline Neural Model - Mac GPU / MPS)](#option-b-local-moonshine-fast-offline-ai--mac-gpu-mps)
-   - [Option C: Vosk (Ultra-Fast CPU Streaming - Zero Latency)](#option-c-vosk-kaldi-ultra-fast-cpu-streaming)
-   - [Option D: Google Gemini 3.5 Transcribe Live](#option-d-google-gemini-35-transcribe-live)
-   - [Option E: Local Faster-Whisper (NVIDIA GPU / CUDA)](#option-e-local-faster-whisper-nvidia-gpu)
+   - [Option C: Google Gemini 3.5 Transcribe Live](#option-c-google-gemini-35-transcribe-live)
+   - [Option D: Local Faster-Whisper (NVIDIA GPU / CUDA)](#option-d-local-faster-whisper-nvidia-gpu)
+   - [Option E: Google Speech (100% Free / Zero-Setup)](#option-e-google-speech-recognition-100-free--zero-setup)
    - [Option F: Bandwidth Labs Live STT (Streaming Cloud)](#option-f-bandwidth-labs-live-stt-streaming-cloud)
 4. [Step 3: Setting Up OBS Studio](#-step-3-setting-up-obs-studio)
-   - [Add the Control Dock](#a-add-the-in-obs-control-dock-recommended)
-   - [Add the Stream Overlay](#b-add-the-stream-caption-overlay)
-   - [Add the Room / Stage Confidence Monitor](#c-add-the-room--stage-confidence-monitor)
-   - [Enable Zero-Touch Auto-Start](#d-enable-zero-touch-auto-start-with-obs)
-   - [Enable Native Closed Captions (CEA-608)](#e-enable-twitch--youtube-closed-captions-cea-608)
-5. [Step 4: Customizing Filters, Glossary & Typography](#-step-4-customizing-filters-glossary--typography)
-6. [macOS Specific Tips & Audio Routing](#-macos-specific-tips--audio-routing)
-7. [Troubleshooting & FAQs](#-troubleshooting--faqs)
+   - [Add the In-OBS Control Dock](#a-add-the-in-obs-control-dock-recommended)
+   - [Add the Transparent Stream Overlay](#b-add-the-transparent-stream-overlay)
+   - [Enable Native Closed Captions (YouTube & Twitch [CC])](#c-enable-youtube--twitch-closed-captions-native-cc-button-)
+   - [Enable Zero-Touch Auto-Start with OBS](#d-enable-zero-touch-auto-start-with-obs-launch-when-obs-opens-)
+5. [Step 4: PWA Stage Confidence Monitor & Multi-Device Setup](#-step-4-pwa-stage-confidence-monitor--multi-device-setup)
+   - [Accessing on Local Wi-Fi / Network](#1-accessing-on-local-wi-fi--network)
+   - [Installing as a PWA (iPad, iPhone, Android, Laptop)](#2-installing-as-a-pwa-standalone-app)
+   - [2 Tailored Display Modes](#3-choosing-a-display-mode)
+   - [Screen Wake Lock (No Sleep on Stage)](#4-automatic-screen-wake-lock)
+6. [Step 5: Customizing Filters, Glossary & Themes](#-step-5-customizing-filters-glossary--themes)
+7. [macOS Specific Tips & Audio Routing](#-macos-specific-tips--audio-routing)
+8. [Troubleshooting & FAQs](#-troubleshooting--faqs)
 
 ---
 
@@ -33,6 +37,7 @@ This step-by-step guide walks you through setting up the **VoxStream Real-Time L
 * **Operating System**:
   * **macOS**: macOS 12 (Monterey), 13 (Ventura), 14 (Sonoma), 15 (Sequoia) on Apple Silicon (M1/M2/M3/M4) or Intel.
   * **Windows**: Windows 10 or 11 (64-bit).
+  * **Linux**: Ubuntu 20.04+, Debian, Fedora, Arch.
 * **OBS Studio**: OBS Studio 28.0 or newer (OBS WebSocket v5 is built-in by default).
 * **Python**: Python 3.9, 3.10, 3.11, or 3.12.
 
@@ -44,7 +49,8 @@ This step-by-step guide walks you through setting up the **VoxStream Real-Time L
 
 1. Open **Terminal** and navigate to the project directory:
    ```bash
-   cd /path/to/vox-stream
+   git clone https://github.com/techguyowen/vox-stream.git
+   cd vox-stream
    ```
 2. Run the automated setup script:
    ```bash
@@ -56,7 +62,7 @@ This step-by-step guide walks you through setting up the **VoxStream Real-Time L
    ```bash
    ./run_captioner.sh
    ```
-   *(Leave this running in Terminal. You can now access the Web Dashboard at `http://localhost:8080/dashboard` or `http://localhost:8765/dashboard`)*.
+   *(Leave this running in Terminal. You can now access the Web Dashboard at `http://127.0.0.1:8765/dashboard`)*.
 
 ---
 
@@ -81,10 +87,11 @@ This step-by-step guide walks you through setting up the **VoxStream Real-Time L
 
 You can select and configure your engine directly in the **Web Control Dashboard** (`/dashboard`) under the **🎙️ Audio & Engine** tab, or in `config.json`:
 
-### Option A: Google Speech Recognition (100% Free / Zero-Setup) ⭐ DEFAULT
-* **Best for**: Instant, zero-friction setup without needing API keys or cloud accounts.
-* **Cost**: 100% Free.
-* **How to use**: Selected by default! Simply start speaking.
+### Option A: Vosk (Kaldi) (Ultra-Fast CPU Streaming) ⭐ LOWEST LATENCY
+* **Best for**: Instant token-by-token continuous streaming with lowest latency (~20–40ms), 100% offline, zero API keys, and minimal CPU load (<3%).
+* **Models**:
+  * `small`: `vosk-model-small-en-us-0.15` (~40MB, auto-downloads on first launch).
+  * `accurate`: `vosk-model-en-us-0.22` (~1.8GB broadcast model).
 
 ---
 
@@ -99,15 +106,7 @@ You can select and configure your engine directly in the **Web Control Dashboard
 
 ---
 
-### Option C: Vosk (Kaldi) (Ultra-Fast CPU Streaming)
-* **Best for**: Instant token-by-token continuous streaming with lowest latency (~20–40ms) and minimal CPU load (<3%).
-* **Models**:
-  * `small`: `vosk-model-small-en-us-0.15` (~40MB, auto-downloads on first launch).
-  * `accurate`: `vosk-model-en-us-0.22` (~1.8GB broadcast model).
-
----
-
-### Option D: Google Gemini 3.5 Transcribe Live
+### Option C: Google Gemini 3.5 Transcribe Live
 * **Best for**: State-of-the-art conversational intelligence, custom vocabulary recognition, and automatic removal of filler words (*"ums"* and *"ahs"*).
 * **Setup**:
   1. Get a free API key at **[Google AI Studio (aistudio.google.com)](https://aistudio.google.com/)**.
@@ -116,9 +115,15 @@ You can select and configure your engine directly in the **Web Control Dashboard
 
 ---
 
-### Option E: Local Faster-Whisper (NVIDIA GPU)
+### Option D: Local Faster-Whisper (NVIDIA GPU)
 * **Best for**: Windows PCs with dedicated NVIDIA GPUs (e.g. GTX 1660, RTX 3060/4070+).
 * **Setup**: Select **Local Faster-Whisper** and click the **🎮 GTX 1660 (Recommended)** 1-click preset button.
+
+---
+
+### Option E: Google Speech Recognition (100% Free / Zero-Setup)
+* **Best for**: Instant, zero-friction setup without needing API keys or cloud accounts.
+* **Cost**: 100% Free.
 
 ---
 
@@ -138,18 +143,18 @@ This puts the live control dashboard, microphone VU meter, and status controls d
 1. In OBS Studio, open the top menu: **Docks ➔ Custom Browser Docks...**
 2. In the table:
    * **Dock Name**: `Live Captions`
-   * **URL**: `http://127.0.0.1:8765/dashboard` *(or port 8080)*
+   * **URL**: `http://127.0.0.1:8765/dashboard`
 3. Click **Apply**.
 4. Drag and snap the dock anywhere in your OBS workspace.
 
 ---
 
-### B. Add the Stream Caption Overlay
+### B. Add the Transparent Stream Overlay
 This adds transparent, beautifully styled captions over your broadcast video:
 1. In your active OBS Scene, under **Sources**, click **+ ➔ Browser**.
 2. Name the source: `Captions Overlay`.
 3. Set the properties:
-   * **URL**: `http://127.0.0.1:8765/`
+   * **URL**: `http://127.0.0.1:8765/` *(or `http://127.0.0.1:8765/?lang=es` for Spanish subtitles)*
    * **Width**: `1920` (or match your base canvas)
    * **Height**: `1080` (or match your base canvas)
    * ✅ Check: **"Shutdown source when not visible"**
@@ -158,35 +163,7 @@ This adds transparent, beautifully styled captions over your broadcast video:
 
 ---
 
-### C. Add the Room / Stage Confidence Monitor
-For secondary displays, stage confidence monitors, or TVs in another room:
-1. Open a browser on the remote display or TV.
-2. Navigate to:
-   ```
-   http://<YOUR_COMPUTER_IP>:8765/display
-   ```
-3. Features:
-   * Giant, high-contrast, scalable text (`+` / `-` buttons or keys).
-   * Live clock and status badge (`🔴 LIVE`).
-   * 1-Click fullscreen (`⛶` button or `F11`). Press `H` to toggle header controls on/off.
-
----
-
-### D. Enable Zero-Touch Auto-Start with OBS (Launch when OBS Opens) 🚀
-If you want VoxStream to **automatically start running in the background the moment OBS Studio opens**, you can link the included OBS Python script:
-1. In OBS Studio, go to **Tools ➔ Scripts**.
-2. On **macOS**:
-   * Under **Python Settings**, verify your Python framework path is selected (e.g. `/opt/homebrew/Frameworks/Python.framework/Versions/3.11` or `/Library/Frameworks/Python.framework/Versions/3.11`).
-3. On **Windows**:
-   * Under **Python Settings**, select your Python directory (e.g. `C:\Users\<User>\AppData\Local\Programs\Python\Python311`).
-4. Click the **Scripts** tab, click **+ (Add Script)**, and choose `obs_script/obs_live_captions.py`.
-5. In the script properties on the right:
-   * ✅ Check **"Auto-start when OBS launches"**
-   * ✅ Check **"Auto-start when Streaming/Recording starts"**
-
----
-
-### E. Enable YouTube & Twitch Closed Captions (Native [CC] Button) 📺
+### C. Enable YouTube & Twitch Closed Captions (Native [CC] Button) 📺
 To send viewer-toggleable closed captions directly into your YouTube and Twitch video player:
 1. **In OBS Studio**:
    * Go to **Tools ➔ WebSocket Server Settings**.
@@ -196,12 +173,56 @@ To send viewer-toggleable closed captions directly into your YouTube and Twitch 
    * Under **Closed captions**, toggle the switch **ON**.
    * Select **"Embedded 608/708"** as the caption source.
 3. **In VoxStream**:
-   * In the Web Dashboard (`/dashboard`), verify that **"Send CEA-608 Captions to Stream"** is checked in settings.
+   * In the Web Dashboard (`/dashboard`), verify that **"Send CEA-608 Captions to Stream"** is checked.
    * VoxStream will automatically inject standard CEA-608/708 packets into OBS H.264 stream headers, activating the native `[CC]` button on YouTube and Twitch!
 
 ---
 
-## 🎨 Step 4: Customizing Filters, Glossary & Typography
+### D. Enable Zero-Touch Auto-Start with OBS (Launch when OBS Opens) 🚀
+1. In OBS Studio, go to **Tools ➔ Scripts**.
+2. Under **Python Settings**, select your Python path.
+3. Click the **Scripts** tab, click **+ (Add Script)**, and choose `obs_script/obs_live_captions.py`.
+4. Check **"Auto-start when OBS launches"** and **"Auto-start when Streaming/Recording starts"**.
+
+---
+
+## 📱 Step 4: PWA Stage Confidence Monitor & Multi-Device Setup
+
+VoxStream includes a dedicated **Progressive Web App (PWA)** confidence monitor at `/display` built for stage monitors, podium iPads, overflow rooms, and choir screens.
+
+### 1. Accessing on Local Wi-Fi / Network
+VoxStream automatically binds to `0.0.0.0:8765`, making it accessible to any device on the same local network:
+* **On Main Computer**: `http://127.0.0.1:8765/display`
+* **On Any iPad, Phone, or Stage TV**: `http://<YOUR_COMPUTER_IP>:8765/display` *(e.g. `http://192.168.1.145:8765/display`)*
+
+---
+
+### 2. Installing as a PWA (Standalone App)
+* **iPad / iPhone (Safari)**:
+  1. Open `http://<YOUR_IP>:8765/display` in Safari.
+  2. Tap the **Share** button (`⎙` / `↑`).
+  3. Tap **"Add to Home Screen"**.
+* **Android (Chrome)**:
+  1. Open `http://<YOUR_IP>:8765/display`.
+  2. Tap the **`📲 Install`** button in the top header (or Chrome Menu ➔ *"Install App"*).
+* **Mac / PC (Chrome / Edge / Brave)**:
+  1. Click the **`📲 Install`** button in the header bar or the install icon in the URL bar to run VoxStream as a separate desktop window.
+
+---
+
+### 3. Choosing a Display Mode
+The display bar includes two dedicated modes:
+* **`📜 Scrollable History` (Default)**: Displays the complete continuous transcript of the sermon or presentation. Presenters can scroll up with touch or mouse wheel to read previous points or Bible verses.
+* **`⚡ Live Prompter (Auto-Fade)`**: Shows only the active 2 lines on screen and automatically fades out on silence for clean broadcast teleprompting.
+
+---
+
+### 4. Automatic Screen Wake Lock
+The display monitor automatically invokes the **Screen Wake Lock API**, preventing tablets and phones on podiums or stage stands from dimming or falling asleep during live speech.
+
+---
+
+## 🎨 Step 5: Customizing Filters, Glossary & Themes
 
 Open the Web Dashboard (`/dashboard`):
 
@@ -245,10 +266,13 @@ When launching VoxStream for the first time on macOS:
 * **In Terminal**: Press `Ctrl+C` to shut down cleanly.
 
 ### Q: Port 8765 is already in use by another app (e.g. REAPER).
-* VoxStream automatically detects occupied ports and will automatically bind to the next available port (e.g. `8766` or `8080`) without crashing! Check your terminal log for the active port.
+* VoxStream automatically detects occupied ports and will automatically bind to the next available port (e.g. `8766` or `8767`) without crashing! Check your terminal log for the active port.
 
-### Q: How do I control it from an Elgato Stream Deck?
-* Add an HTTP request action to your Stream Deck:
+### Q: How do I control it from an Elgato Stream Deck or Bitfocus Companion?
+* See the full guide and downloadable profile configs in [**`integrations/streamdeck_companion.md`**](integrations/streamdeck_companion.md).
+* Quick HTTP actions:
+  * Panic Wipe: `POST http://127.0.0.1:8765/api/control/panic`
+  * Toggle Speech: `POST http://127.0.0.1:8765/api/control/toggle`
   * Start: `POST http://127.0.0.1:8765/api/control/start`
   * Stop: `POST http://127.0.0.1:8765/api/control/stop`
   * Restart: `POST http://127.0.0.1:8765/api/control/restart`

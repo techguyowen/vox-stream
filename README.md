@@ -4,22 +4,19 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
 [![OBS Studio](https://img.shields.io/badge/OBS%20Studio-30.0%2B-darkgreen.svg)](https://obsproject.com/)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey.svg)]()
+[![PWA Ready](https://img.shields.io/badge/PWA-Ready-brightgreen.svg)]()
 
 **VoxStream** is a high-performance, low-latency, real-time speech-to-text captioning and broadcast automation suite for **OBS Studio** on **macOS, Windows, and Linux**.
 
-It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Powerful Speech Engines** *(Local Vosk / Kaldi, Moonshine, Gemini 3.5 Live, Faster-Whisper, Bandwidth Labs Live STT, Google Web, Google Cloud STT)*, **⛪ Church & Biblical Lexicon with Scripture Citation Parsing**, **Smart Punctuation & Capitalization**, **Multi-Language Live Translation**, **1-Click Theme Gallery**, **Twitch Chat Caption Bot**, **Stage & Room Confidence Monitor**, and **Subtitle Exporter (SRT/VTT/TXT)**.
-
-<p align="center">
-  <img src="docs/screenshots/dashboard_engine.png" alt="VoxStream In-OBS Control Dashboard" width="850" style="border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
-</p>
+It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Powerful Speech Engines** *(Local Vosk / Kaldi, Moonshine, Gemini 3.5 Live, Faster-Whisper, Bandwidth Labs Live STT, Google Web, Google Cloud STT)*, **⛪ Church & Biblical Lexicon with Scripture Citation Parsing**, **Smart Punctuation & Capitalization**, **Multi-Language Live Translation**, **1-Click Theme Gallery**, **PWA Mobile/Tablet Stage Confidence Monitor**, **Twitch Chat Caption Bot**, **YouTube Live CEA-608 Closed Captions**, **Stream Deck / Bitfocus Companion Integration**, and **Automated YouTube Chapters & Subtitle Exporter (SRT/VTT/TXT)**.
 
 ---
 
-## ✨ Features Overview
+## ✨ Key Features Overview
 
 ### ⚡ 1. 7 Multi-Tier Speech Recognition Engines (Hot-Switchable)
 * ⚡ **Local Vosk / Kaldi (Ultra-Low Latency ~20ms)**: 100% offline, instantaneous speech recognition powered by Kaldi C-core acoustic models. Zero cloud dependency, zero API keys.
-* 🌙 **Local Moonshine (ONNX Neural STT)**: Next-generation lightweight neural speech-to-text designed specifically for real-time live streaming.
+* 🌙 **Local Moonshine (ONNX Neural STT)**: Next-generation lightweight neural speech-to-text designed specifically for real-time live streaming (~5x faster than Whisper).
 * ✨ **Gemini 3.5 Transcribe Live**: Google's newest multimodal AI (`gemini-3.5-transcribe-live`) with custom vocabulary support, smart punctuation, and automated filler-word cleanup.
 * 💻 **Local Faster-Whisper**: 100% offline OpenAI Whisper running locally on your GPU (CUDA) or CPU with beam search and voice activity filtering.
 * 🆓 **Free Google Speech (Zero-Setup)**: 100% Free, zero-setup Google Speech engine requiring no API keys or accounts.
@@ -29,55 +26,55 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Po
 
 ---
 
-### ⛪ 2. Church, Worship & Biblical Lexicon
+### 📱 2. Progressive Web App (PWA) & Stage Confidence Monitor (`/display`)
+* **PWA Standalone Mode**: Installable directly on **iPads, iPhones, Android tablets, TVs, and laptops** with custom app icon and full-screen standalone window (no URL bars or browser tabs).
+* **🔋 Screen Wake Lock API**: Automatically keeps the screen awake so stage podium tablets and confidence monitor TVs never dim or go to sleep during speech.
+* **2 Tailored Display Modes**:
+  * **`📜 Scrollable History` (Default)**: Full persistent, bi-directional scrollable transcript of the service. Presenters can scroll up with touch or mouse wheel to review earlier points or scripture verses.
+  * **`⚡ Live Prompter (Auto-Fade)`**: Displays only the active 2 lines on screen and automatically fades out on silence for clean broadcast teleprompting.
+* **Fully Responsive UI**: Fluidly adapts across 4K displays, ultrawide monitors, iPads, and mobile phones with touch-friendly controls and responsive typography.
+
+---
+
+### 🌐 3. Multi-Track Live Translation & Local Network (LAN) Support
+* **Multi-Device LAN Access (`0.0.0.0:8765`)**: Any device on your church or studio Wi-Fi can open `http://<your-ip>:8765/display` in real-time. Supports **200+ simultaneous devices** with `< 5ms` broadcast latency.
+* **Independent Per-Screen Settings**: Each device independently chooses its own:
+  * **Language Track** (e.g. Spanish in the overflow room, Chinese in the translation booth, English on stage).
+  * **Display Mode** (Live Prompter vs Scrollable History).
+  * **Font Size & High-Contrast Themes** (OLED Black, Amber Stage, Slate Blue, High Light).
+* **30+ Supported Languages**: Real-time translation to Spanish, French, German, Portuguese, Italian, Chinese, Japanese, Korean, Russian, Arabic, Hindi, Dutch, Polish, Swedish, Turkish, Ukrainian, Vietnamese, and more.
+
+---
+
+### ⛪ 4. Church, Worship & Biblical Lexicon
 * **Sacred Names & Titles of Deity**: Automatically capitalizes and truecases:
   * `God`, `God's`, `Lord`, `Lord's`, `Jesus`, `Jesus Christ`, `Christ`, `Holy Spirit`, `Holy Ghost`, `Heavenly Father`, `Almighty God`, `King of Kings`, `Lord of Lords`, `Son of God`, `Prince of Peace`, `Lamb of God`, `Messiah`, `Savior`, `Yahweh`, `Jehovah`, `Emmanuel`.
 * **Spoken Scripture Reference Parser**: Automatically detects and formats spoken Bible references into standard chapter:verse citations:
-  * `"John 3 16"` or `"John chapter 3 verse 16"` $\rightarrow$ **`John 3:16`**
-  * `"Romans 8 28"` $\rightarrow$ **`Romans 8:28`**
-  * `"First Corinthians 13 4 through 7"` $\rightarrow$ **`1 Corinthians 13:4-7`**
-  * `"Psalm twenty three"` $\rightarrow$ **`Psalm 23`**
-  * `"In Jesus name amen"` $\rightarrow$ **`in Jesus' name, Amen`**
+  * `"John 3 16"` or `"John chapter 3 verse 16"` → **`John 3:16`**
+  * `"Romans 8 28"` → **`Romans 8:28`**
+  * `"First Corinthians 13 4 through 7"` → **`1 Corinthians 13:4-7`**
+  * `"Psalm twenty three"` → **`Psalm 23`**
+  * `"In Jesus name amen"` → **`in Jesus' name, Amen`**
 * **All 66 Books of the Bible**: Formats canonical names across Old and New Testaments (`Genesis`, `Exodus`, `1 Kings`, `Matthew`, `Philippians`, `Revelation`, etc.).
 * **Church Whitelist**: Context-aware filter protects scriptural phrases like `"heaven and hell"` or `"gates of hell"` from false-positive profanity censoring.
 
 ---
 
-### 🔤 3. Intelligent Capitalization & Punctuation Engine
+### 🔤 5. Intelligent Capitalization & Punctuation Engine
 * **Sentence Capitalization**: Capitalizes sentence beginnings, standalone pronoun `I`, tech brands & acronyms (`OBS`, `GPU`, `CPU`, `HDMI`, `YouTube`, `Twitch`, `Discord`), and common contractions (`I'm`, `don't`, `can't`, `that's`).
-* **Smart Punctuation**: Restores interrogative question marks (`?`), exclamation marks (`!`), periods (`.`), and natural comma pauses before coordinating conjunctions.
-* **Ultra-Fast Single-Pass Pipeline**: Unified master Trie regex lookup executes in **$< 0.08$ms** per audio frame with zero perceptible latency.
+* **Smart Punctuation**: Restores question marks (`?`), exclamation marks (`!`), periods (`.`), and natural comma pauses before coordinating conjunctions.
+* **Ultra-Fast Single-Pass Pipeline**: Unified master Trie regex lookup executes in **< 0.08ms** per audio frame with zero perceptible latency.
 
 ---
 
-### 🎛️ 4. In-OBS Control Dashboard & Custom Browser Dock
-* Embeddable directly inside OBS Studio (`Docks -> Custom Browser Docks`) or accessible in any web browser at `http://127.0.0.1:8765/dashboard`.
-* **⚡ Active Engine & Model Card**: Real-time status indicator showing which AI model and acoustic backend is actively processing audio.
-* **Live Audio VU Meter**: Visual audio level monitor with Silero neural VAD and dB noise gate sliders.
-* **Non-Blocking Toast System**: Modern notification system for instant feedback on setting changes and model switches.
-* **Interactive Live Preview**: Instant visual preview of styling, fonts, and word-pop animations.
+### 📺 6. YouTube Livestream & Twitch Closed Captions (Native [CC] Button)
+* **Embedded CEA-608 / CEA-708**: Injects native closed caption packets directly into OBS H.264 stream output headers via OBS WebSocket v5 (`SendStreamCaption`).
+* **Viewer Toggleable [CC]**: Viewers on YouTube Live and Twitch can toggle captions on/off right on the video player without permanently burning text into video pixels.
+* **Twitch Chat Caption Broadcaster**: Automatically sends live captions into Twitch chat for mobile and hearing-impaired viewers.
 
 ---
 
-### 📺 5. Transparent Stream Overlay & Multi-Track Stage Monitors
-* **Transparent Web Overlay (`http://127.0.0.1:8765/`)**: Zero-background transparent HTML5 overlay designed for OBS Browser Sources. Supports multi-track translations with URL parameters (e.g. `http://127.0.0.1:8765/?lang=es`).
-* **Stage & Room Confidence Monitor (`http://127.0.0.1:8765/display`)**: High-contrast, large-format confidence monitor for stage screens, sanctuary confidence monitors, and speakers. Includes an **on-screen language switcher** and URL query parameter support (`?lang=es`, `?lang=fr`, `?lang=zh`) defaulting to English.
-* **OpenDyslexic & Accessibility**: Includes built-in support for OpenDyslexic and high-legibility fonts.
-
-<p align="center">
-  <img src="docs/screenshots/stage_monitor.png" alt="VoxStream Stage Confidence Monitor" width="850" style="border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
-</p>
-
----
-
-### 🌐 6. Real-Time Live Translation & Multi-Track WebSockets
-* Automatically translates spoken words into 30+ languages (*Spanish, French, German, Japanese, Portuguese, Chinese, Korean, Italian, etc.*).
-* **Dual Subtitles Mode**: Displays original spoken words with translated subtitles simultaneously underneath.
-* **Multi-Client Translation Channels**: Stage monitors and OBS browser sources can connect to independent language tracks concurrently without affecting each other.
-
----
-
-### 🎛️ 7. Elgato Stream Deck & Bitfocus Companion Support
+### 🎛️ 7. Elgato Stream Deck & Bitfocus Companion Integration
 * Full REST API control for hardware broadcast switchers and Stream Decks.
 * **1-Button Panic Drop**: Instantly wipe visible captions across all broadcast screens and overlays (`POST /api/control/panic`).
 * **1-Button Toggle**: Start or pause speech recognition on demand (`POST /api/control/toggle`).
@@ -94,13 +91,9 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Po
 ---
 
 ### 🎨 9. 1-Click Theme Gallery & Typography Customizer
-* **Pre-Built Themes**: *Modern Clean (Glassmorphism), Broadcast News Lower-Third, Sanctuary & Worship, Corporate Keynote & Tech, Minimalist Cinema (Netflix/BBC), High-Contrast Stage Confidence, Editorial & Talk Show, Classic Broadcast CEA-708, OpenDyslexic (Accessibility)*.
+* **Pre-Built Themes**: *Modern Clean, Broadcast News Lower-Third, Sanctuary & Worship, Corporate Keynote & Tech, Minimalist Cinema, High-Contrast Stage Confidence, Editorial & Talk Show, Classic Broadcast CEA-708, OpenDyslexic (Accessibility)*.
 * **Custom Typography**: Google Fonts (*Inter, Roboto, Montserrat, Oswald, Lora, Poppins, OpenDyslexic*) + custom system fonts.
-* **Custom Layouts**: Font Size (16px–72px), Max Box Width (% slider), Max Lines (1–4), Text Alignment, Line Height, and Box Background Opacity.
-
-<p align="center">
-  <img src="docs/screenshots/theme_gallery.png" alt="VoxStream 1-Click Theme Gallery & Live Preview" width="850" style="border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
-</p>
+* **Custom Layouts**: Font Size (16px–96px), Max Box Width (% slider), Max Lines (1–4), Text Alignment, Line Height, and Box Background Opacity.
 
 ---
 
@@ -110,19 +103,6 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Po
 * **Tier 3 (Crude Terms)**: Filters crude slang and inappropriate phrases.
 * **4 Action Modes**: Wholesome Word Replacement, Asterisk Masking (`****`), `[CENSORED]` Tag, or Drop Sentence.
 * **Interactive In-Browser CRUD Editor**: Add/remove custom blacklist words, custom whitelists, and wholesome word replacements in clean visual tables.
-
----
-
-### 🔄 11. Self-Healing In-Process Restart
-* Native `while True:` supervisor loop ensures clean, instantaneous reboots in **$< 1.5$ seconds**.
-* **Instance ID Verification**: UI verifies the new server instance ID before reloading, preventing premature reloads or dropped connections.
-* **Multi-Step Visual Progress Modal**: Displays real-time progress through restart stages.
-
----
-
-### 👾 12. Twitch Chat Caption Broadcaster & CEA-608
-* Automatically broadcasts finalized captions into Twitch chat for mobile and hearing-impaired viewers.
-* Native CEA-608 Closed Captions via OBS WebSocket v5 (`SendStreamCaption`).
 
 ---
 
@@ -147,19 +127,20 @@ cd vox-stream
 
 ---
 
-### 🌐 Access URLs (Once Running)
-| View | URL | Description |
-| :--- | :--- | :--- |
-| **Web Control Dashboard** | `http://127.0.0.1:8765/dashboard` | Main control panel & OBS Dock |
-| **Transparent Stream Overlay** | `http://127.0.0.1:8765/` | OBS Browser Source overlay |
-| **Room / Stage Monitor** | `http://127.0.0.1:8765/display` | High-visibility stage confidence monitor |
+## 🌐 Access URLs (Once Running)
+
+| View | Local URL | Network / Wi-Fi URL | Description |
+| :--- | :--- | :--- | :--- |
+| **Web Control Dashboard** | `http://127.0.0.1:8765/dashboard` | `http://<YOUR_IP>:8765/dashboard` | Main control panel & In-OBS Dock |
+| **Transparent Stream Overlay** | `http://127.0.0.1:8765/` | `http://<YOUR_IP>:8765/` | OBS Browser Source overlay |
+| **Stage / Room Confidence Monitor** | `http://127.0.0.1:8765/display` | `http://<YOUR_IP>:8765/display` | PWA Fullscreen Stage Monitor for iPads/TVs |
 
 ---
 
 ## 🖥️ OBS Studio Setup
 
 ### 1. Add the In-OBS Control Dock (Recommended)
-1. In OBS Studio, go to the top menu: **Docks $\rightarrow$ Custom Browser Docks...**
+1. In OBS Studio, go to the top menu: **Docks $ightarrow$ Custom Browser Docks...**
 2. **Dock Name**: `Live Captions`
 3. **URL**: `http://127.0.0.1:8765/dashboard`
 4. Click **Apply** and dock the panel anywhere in your OBS workspace.
@@ -167,7 +148,7 @@ cd vox-stream
 ---
 
 ### 2. Add the Transparent Stream Overlay
-1. In your OBS Scene, click **+ (Add Source) $\rightarrow$ Browser**.
+1. In your OBS Scene, click **+ (Add Source) $ightarrow$ Browser**.
 2. **URL**: `http://127.0.0.1:8765/`
 3. **Width**: `1920`, **Height**: `1080` (or match your canvas resolution).
 4. Check **"Shutdown source when not visible"** and **"Refresh browser when scene becomes active"**.
@@ -175,8 +156,7 @@ cd vox-stream
 ---
 
 ### 3. Native Closed Captions (YouTube & Twitch [CC] Button) 📺
-You can broadcast native viewer-toggleable closed captions directly to YouTube Live and Twitch so viewers can toggle `[CC]` on the player:
-1. **In OBS Studio**: Go to **Tools $\rightarrow$ WebSocket Server Settings** and check **"Enable WebSocket server"** (Port `4455`).
+1. **In OBS Studio**: Go to **Tools $ightarrow$ WebSocket Server Settings** and check **"Enable WebSocket server"** (Port `4455`).
 2. **For YouTube Livestreams**:
    * Open your stream in **YouTube Studio** (Live Control Room).
    * In **Stream Settings**, toggle **Closed Captions** to **ON**.
@@ -189,10 +169,10 @@ You can broadcast native viewer-toggleable closed captions directly to YouTube L
 
 ### 4. Auto-Start VoxStream Automatically When OBS Opens 🚀
 You can have OBS Studio launch VoxStream in the background automatically whenever OBS opens:
-1. In OBS Studio, go to **Tools $\rightarrow$ Scripts**.
+1. In OBS Studio, go to **Tools $ightarrow$ Scripts**.
 2. **On macOS**: In the **Python Settings** tab, ensure your Python path is set (e.g. `/opt/homebrew/Frameworks/Python.framework/Versions/3.11` or `/Library/Frameworks/Python.framework/Versions/3.11`). On Windows, select your Python install folder.
 3. Click the **Scripts** tab, click **+ (Add Script)**, and select `obs_script/obs_live_captions.py`.
-4. Check **"Auto-start when OBS launches"** and choose your default speech engine (e.g. *Bandwidth Labs, Vosk, Moonshine, etc.*).
+4. Check **"Auto-start when OBS launches"** and choose your default speech engine (e.g. *Vosk, Moonshine, Bandwidth Labs, etc.*).
 
 ---
 
@@ -205,6 +185,7 @@ You can have OBS Studio launch VoxStream in the background automatically wheneve
 | `POST` | `/api/config` | Updates configuration & hot-reloads live pipeline |
 | `POST` | `/api/control/start` | Starts / unpauses speech recognition |
 | `POST` | `/api/control/stop` | Pauses speech recognition |
+| `POST` | `/api/control/panic` | Emergency Panic Button: wipes captions from all screens |
 | `POST` | `/api/control/restart` | Cleanly restarts backend process |
 | `POST` | `/api/control/shutdown` | Gracefully shuts down application |
 | `GET` | `/api/presets` | Returns all pre-built visual theme presets |
@@ -215,8 +196,11 @@ You can have OBS Studio launch VoxStream in the background automatically wheneve
 | `POST` | `/api/filter/whitelist/add` | Adds word to custom whitelist |
 | `POST` | `/api/filter/replacements/set`| Adds/updates wholesome word substitution |
 | `GET` | `/api/transcript/history` | Returns recent session transcript entries |
-| `GET` | `/api/transcript/export` | Downloads subtitle file (`?format=srt\|vtt\|txt`) |
-| `WS` | `/ws` | Real-time caption event broadcast stream |
+| `GET` | `/api/transcript/chapters` | Returns auto-generated YouTube chapters & scripture markers |
+| `GET` | `/api/transcript/export` | Downloads subtitle file (`?format=srt|vtt|txt`) |
+| `GET` | `/manifest.json` | PWA Web App Manifest |
+| `GET` | `/sw.js` | PWA Service Worker |
+| `WS` | `/ws` | Real-time caption event broadcast stream (`?lang=es` for translated) |
 | `WS` | `/api/control/ws` | Real-time telemetry, VU meter, and control stream |
 
 ---
