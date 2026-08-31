@@ -59,9 +59,9 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Po
 
 ---
 
-### 📺 5. Transparent Stream Overlay & Stage Monitor
-* **Transparent Web Overlay (`http://127.0.0.1:8765/`)**: Zero-background transparent HTML5 overlay designed for OBS Browser Sources.
-* **Stage & Room Confidence Monitor (`http://127.0.0.1:8765/display`)**: High-contrast, large-format confidence monitor for stage screens, sanctuary confidence monitors, and speakers.
+### 📺 5. Transparent Stream Overlay & Multi-Track Stage Monitors
+* **Transparent Web Overlay (`http://127.0.0.1:8765/`)**: Zero-background transparent HTML5 overlay designed for OBS Browser Sources. Supports multi-track translations with URL parameters (e.g. `http://127.0.0.1:8765/?lang=es`).
+* **Stage & Room Confidence Monitor (`http://127.0.0.1:8765/display`)**: High-contrast, large-format confidence monitor for stage screens, sanctuary confidence monitors, and speakers. Includes an **on-screen language switcher** and URL query parameter support (`?lang=es`, `?lang=fr`, `?lang=zh`) defaulting to English.
 * **OpenDyslexic & Accessibility**: Includes built-in support for OpenDyslexic and high-legibility fonts.
 
 <p align="center">
@@ -70,13 +70,30 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Po
 
 ---
 
-### 🌐 6. Real-Time Live Translation
+### 🌐 6. Real-Time Live Translation & Multi-Track WebSockets
 * Automatically translates spoken words into 30+ languages (*Spanish, French, German, Japanese, Portuguese, Chinese, Korean, Italian, etc.*).
 * **Dual Subtitles Mode**: Displays original spoken words with translated subtitles simultaneously underneath.
+* **Multi-Client Translation Channels**: Stage monitors and OBS browser sources can connect to independent language tracks concurrently without affecting each other.
 
 ---
 
-### 🎨 7. 1-Click Theme Gallery & Typography Customizer
+### 🎛️ 7. Elgato Stream Deck & Bitfocus Companion Support
+* Full REST API control for hardware broadcast switchers and Stream Decks.
+* **1-Button Panic Drop**: Instantly wipe visible captions across all broadcast screens and overlays (`POST /api/control/panic`).
+* **1-Button Toggle**: Start or pause speech recognition on demand (`POST /api/control/toggle`).
+* **1-Button Theme Switching**: Apply themes on the fly (`POST /api/presets/apply`).
+* Complete guide and JSON profiles available in [**`integrations/streamdeck_companion.md`**](integrations/streamdeck_companion.md).
+
+---
+
+### 📑 8. Automated YouTube Video Chapters & Subtitle Export
+* **Intelligent YouTube Chapters**: Automatically detects scripture readings (*e.g. John 3:16, Romans 8:28*), sermon topic shifts, prayers, and liturgical milestones into timestamped chapter markers.
+* **1-Click Copy**: Copy ready-to-paste video descriptions for YouTube uploads directly from the Transcripts tab.
+* **Subtitle Export**: 1-click export to **`.SRT`**, **`.VTT`**, and **`.TXT`** with millisecond timecodes.
+
+---
+
+### 🎨 9. 1-Click Theme Gallery & Typography Customizer
 * **Pre-Built Themes**: *Modern Clean (Glassmorphism), Broadcast News Lower-Third, Sanctuary & Worship, Corporate Keynote & Tech, Minimalist Cinema (Netflix/BBC), High-Contrast Stage Confidence, Editorial & Talk Show, Classic Broadcast CEA-708, OpenDyslexic (Accessibility)*.
 * **Custom Typography**: Google Fonts (*Inter, Roboto, Montserrat, Oswald, Lora, Poppins, OpenDyslexic*) + custom system fonts.
 * **Custom Layouts**: Font Size (16px–72px), Max Box Width (% slider), Max Lines (1–4), Text Alignment, Line Height, and Box Background Opacity.
@@ -87,7 +104,7 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Po
 
 ---
 
-### 🛡️ 8. 3-Tier Content Filtering & Wholesome Replacements
+### 🛡️ 10. 3-Tier Content Filtering & Wholesome Replacements
 * **Tier 1 (Standard Profanities)**: Filters vulgarities and offensive words.
 * **Tier 2 (Harsh Vulgarities & Blasphemies)**: Filters harsh expletives while safely protecting sacred names and scriptural citations. When **Church Mode** is on, ordinary theological vocabulary (e.g. *hell*, *damned* in sermon contexts) is exempt from this tier so scripture readings display verbatim.
 * **Tier 3 (Crude Terms)**: Filters crude slang and inappropriate phrases.
@@ -96,22 +113,16 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Po
 
 ---
 
-### 🔄 9. Self-Healing In-Process Restart
+### 🔄 11. Self-Healing In-Process Restart
 * Native `while True:` supervisor loop ensures clean, instantaneous reboots in **$< 1.5$ seconds**.
 * **Instance ID Verification**: UI verifies the new server instance ID before reloading, preventing premature reloads or dropped connections.
 * **Multi-Step Visual Progress Modal**: Displays real-time progress through restart stages.
 
 ---
 
-### 👾 10. Twitch Chat Caption Broadcaster & CEA-608
+### 👾 12. Twitch Chat Caption Broadcaster & CEA-608
 * Automatically broadcasts finalized captions into Twitch chat for mobile and hearing-impaired viewers.
 * Native CEA-608 Closed Captions via OBS WebSocket v5 (`SendStreamCaption`).
-
----
-
-### 📜 11. Transcript History & Subtitle Export
-* Rolling transcript history log with live search filter.
-* 1-click export to **`.SRT`**, **`.VTT`**, and **`.TXT`** with millisecond timecodes for Premiere Pro, DaVinci Resolve, or YouTube upload.
 
 ---
 

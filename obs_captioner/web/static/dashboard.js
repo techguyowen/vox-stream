@@ -1531,8 +1531,49 @@ document.getElementById("btn-clear-transcript").addEventListener("click", async 
     if (confirm("Clear transcript history?")) {
         await fetch("/api/transcript/clear", { method: "POST" });
         loadTranscriptHistory();
+        loadYouTubeChapters();
     }
 });
+
+// YouTube Chapters Handling
+async function loadYouTubeChapters() {
+    const chaptersTextEl = document.getElementById("youtube-chapters-text");
+    if (!chaptersTextEl) return;
+    try {
+        const res = await fetch("/api/transcript/chapters");
+        if (res.ok) {
+            const data = await res.json();
+            chaptersTextEl.value = data.formatted || "00:00:00 - Introduction & Welcome";
+        }
+    } catch (e) {
+        console.debug("Could not query chapters:", e);
+    }
+}
+
+const btnRefreshChapters = document.getElementById("btn-refresh-chapters");
+if (btnRefreshChapters) {
+    btnRefreshChapters.addEventListener("click", async () => {
+        await loadYouTubeChapters();
+        showToast("🔄 YouTube chapter markers refreshed!", "info", 2000);
+    });
+}
+
+const btnCopyChapters = document.getElementById("btn-copy-chapters");
+if (btnCopyChapters) {
+    btnCopyChapters.addEventListener("click", async () => {
+        const chaptersTextEl = document.getElementById("youtube-chapters-text");
+        if (chaptersTextEl && chaptersTextEl.value) {
+            try {
+                await navigator.clipboard.writeText(chaptersTextEl.value);
+                showToast("📋 YouTube chapters copied to clipboard!", "success", 3000);
+            } catch (err) {
+                chaptersTextEl.select();
+                document.execCommand("copy");
+                showToast("📋 YouTube chapters copied to clipboard!", "success", 3000);
+            }
+        }
+    });
+}
 
 function escapeHtml(str) {
     if (!str) return "";
@@ -1553,6 +1594,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     await loadVocabularyState();
     await loadFilterState();
     await refreshEngineStatus();
+    await loadYouTubeChapters();
     connectControlWs();
     connectCaptionWs();
 

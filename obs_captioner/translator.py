@@ -40,6 +40,25 @@ class TranslationConfig:
 
 
 class SubtitleTranslator:
+    async def translate_to_language(self, text: str, target_lang: str, source_lang: str = "auto") -> Optional[str]:
+        """Translate text directly into a specified target language."""
+        if not text or not text.strip() or target_lang in ("en", "original", "none"):
+            return text
+
+        clean_text = text.strip()
+        cache_key = f"{source_lang}:{target_lang}:{clean_text}"
+
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        translated = await self._fetch_translation(clean_text, source_lang, target_lang)
+        if translated:
+            self._cache[cache_key] = translated
+            if len(self._cache) > 2500:
+                self._cache.clear()
+            return translated
+        return clean_text
+
     """Performs low-latency subtitle translation with memory caching."""
 
     def __init__(self, config: TranslationConfig):

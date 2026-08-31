@@ -210,7 +210,9 @@ function handleCaption(data) {
 let captionReconnectAttempts = 0;
 function connectCaptionWebSocket() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    const urlParams = new URLSearchParams(window.location.search);
+    const lang = urlParams.get('lang') || 'en';
+    const wsUrl = `${protocol}//${window.location.host}/ws?lang=${encodeURIComponent(lang)}`;
 
     ws = new WebSocket(wsUrl);
 

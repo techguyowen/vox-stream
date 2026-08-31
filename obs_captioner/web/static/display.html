@@ -332,6 +332,28 @@
         <div class="clock-display" id="clockDisplay">12:00:00 PM</div>
 
         <div class="header-right">
+            <!-- Language Track Selector -->
+            <select class="theme-select" id="langSelect" title="Display Language Track">
+                <option value="en" selected>🌐 English (Original)</option>
+                <option value="es">🇪🇸 Spanish (Español)</option>
+                <option value="fr">🇫🇷 French (Français)</option>
+                <option value="de">🇩🇪 German (Deutsch)</option>
+                <option value="pt">🇧🇷 Portuguese (Português)</option>
+                <option value="it">🇮🇹 Italian (Italiano)</option>
+                <option value="zh">🇨🇳 Chinese (中文)</option>
+                <option value="ja">🇯🇵 Japanese (日本語)</option>
+                <option value="ko">🇰🇷 Korean (한국어)</option>
+                <option value="ru">🇷🇺 Russian (Русский)</option>
+                <option value="ar">🇸🇦 Arabic (العربية)</option>
+                <option value="hi">🇮🇳 Hindi (हिन्दी)</option>
+                <option value="nl">🇳🇱 Dutch (Nederlands)</option>
+                <option value="pl">🇵🇱 Polish (Polski)</option>
+                <option value="sv">🇸🇪 Swedish (Svenska)</option>
+                <option value="tr">🇹🇷 Turkish (Türkçe)</option>
+                <option value="uk">🇺🇦 Ukrainian (Українська)</option>
+                <option value="vi">🇻🇳 Vietnamese (Tiếng Việt)</option>
+            </select>
+
             <!-- Font Selector -->
             <select class="theme-select" id="fontSelect" title="Typography / Font Family">
                 <option value="'Inter', system-ui, -apple-system, sans-serif" selected>Inter (Default)</option>
@@ -385,6 +407,10 @@
         let ws = null;
         let autoScroll = true;
 
+        // URL Language override (e.g. /display?lang=es)
+        const urlParams = new URLSearchParams(window.location.search);
+        let currentLang = urlParams.get('lang') || localStorage.getItem('voxstream_display_lang') || 'en';
+
         // Elements
         const stageContainer = document.getElementById('stageContainer');
         const transcriptContent = document.getElementById('transcriptContent');
@@ -393,7 +419,20 @@
         const statusText = document.getElementById('statusText');
         const fontSelect = document.getElementById('fontSelect');
         const themeSelect = document.getElementById('themeSelect');
+        const langSelect = document.getElementById('langSelect');
         const headerBar = document.getElementById('headerBar');
+
+        if (langSelect) {
+            langSelect.value = currentLang;
+            langSelect.addEventListener('change', async (e) => {
+                currentLang = e.target.value;
+                localStorage.setItem('voxstream_display_lang', currentLang);
+                if (ws) {
+                    ws.close();
+                }
+                connectWebSocket();
+            });
+        }
 
         // Clock Update
         function updateClock() {
@@ -582,7 +621,7 @@
         let reconnectAttempts = 0;
         function connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            const wsUrl = `${protocol}//${window.location.host}/ws?lang=${encodeURIComponent(currentLang || 'en')}`;
 
             ws = new WebSocket(wsUrl);
 

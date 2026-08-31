@@ -750,7 +750,7 @@
 
             <!-- TAB 6: TRANSCRIPTS & EXPORT -->
             <div id="tab-transcript" class="tab-pane">
-                <div class="panel">
+                <div class="panel" style="margin-bottom: 20px;">
                     <div class="transcript-header">
                         <h2>Session Transcripts</h2>
                         <div class="export-btn-group">
@@ -769,56 +769,71 @@
                         <div class="empty-state">No transcript lines recorded yet. Speak to begin!</div>
                     </div>
                 </div>
+
+                <!-- YouTube Timestamp Chapters Card -->
+                <div class="panel">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+                        <div>
+                            <h2>📑 Automated YouTube Chapter Markers</h2>
+                            <p class="subtext" style="margin-bottom: 0;">Automatically detects scripture readings, sermon points, prayer invocations, and time blocks into YouTube-ready video description chapters.</p>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button id="btn-copy-chapters" class="btn btn-secondary btn-sm">📋 Copy Chapters</button>
+                            <button id="btn-refresh-chapters" class="btn btn-secondary btn-sm">🔄 Refresh</button>
+                        </div>
+                    </div>
+
+                    <textarea id="youtube-chapters-text" class="form-control" rows="6" readonly style="font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.6; background: rgba(0, 0, 0, 0.4); color: #A5B4FC; resize: vertical;" placeholder="00:00:00 - Introduction & Welcome&#10;00:05:22 - Scripture Reading (John 3:16)&#10;00:18:45 - Sermon Discussion&#10;00:45:10 - Benediction & Closing"></textarea>
+                </div>
             </div>
 
             <!-- TAB 7: REST API & DOCKS -->
             <div id="tab-api" class="tab-pane">
                 <div class="panel">
-                    <h2>Remote Control API &amp; Stream Deck Integration</h2>
-                    <p class="subtext">Control OBS Live Captions from Elgato Stream Deck, Touch Portal, Bitfocus Companion, or automated scripts.</p>
+                    <h2>🎛️ Elgato Stream Deck &amp; Bitfocus Companion Integration</h2>
+                    <p class="subtext">Trigger VoxStream actions instantly from physical Stream Deck buttons, Touch Portal, or Bitfocus Companion via simple HTTP POST commands.</p>
 
-                    <div class="api-card">
-                        <h3>📺 Emergency Restore Screen &amp; Captions</h3>
-                        <code>POST http://127.0.0.1:8765/api/control/reopen-screen</code>
+                    <div class="two-col-layout" style="margin-top: 14px; margin-bottom: 20px;">
+                        <div class="api-card" style="border-left: 4px solid #EF4444;">
+                            <h3 style="color: #EF4444;">🚨 Emergency Panic Censor Drop</h3>
+                            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Instantly wipes visible captions from OBS, Stage Screens, and Web Overlay.</p>
+                            <code>POST http://127.0.0.1:8765/api/control/panic</code>
+                        </div>
+
+                        <div class="api-card" style="border-left: 4px solid #10B981;">
+                            <h3 style="color: #10B981;">⏯️ Toggle Captions (Play/Pause)</h3>
+                            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Toggles speech recognition between running and stopped with 1 button.</p>
+                            <code>POST http://127.0.0.1:8765/api/control/toggle</code>
+                        </div>
+
+                        <div class="api-card" style="border-left: 4px solid #38BDF8;">
+                            <h3 style="color: #38BDF8;">📺 Restore External Screen Projector</h3>
+                            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Re-triggers fullscreen preview to LONTIUM / Conference Screen &amp; starts live captions.</p>
+                            <code>POST http://127.0.0.1:8765/api/control/reopen-screen</code>
+                        </div>
+
+                        <div class="api-card" style="border-left: 4px solid #F59E0B;">
+                            <h3 style="color: #F59E0B;">🎨 1-Click Theme Preset Switcher</h3>
+                            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Apply theme instantly (e.g. <code>sanctuary_worship</code>, <code>broadcast_news</code>, <code>minimalist_cinema</code>).</p>
+                            <code>POST http://127.0.0.1:8765/api/presets/apply</code>
+                            <div style="font-size: 11px; color: #A5B4FC; margin-top: 4px;">Payload: <code>{"theme_id": "sanctuary_worship"}</code></div>
+                        </div>
                     </div>
 
+                    <h2>🌐 Multi-Language Display &amp; Stream URLs</h2>
                     <div class="api-card">
-                        <h3>🟢 Start Captioning</h3>
-                        <code>POST http://127.0.0.1:8765/api/control/start</code>
-                    </div>
-
-                    <div class="api-card">
-                        <h3>🔴 Stop Captioning</h3>
-                        <code>POST http://127.0.0.1:8765/api/control/stop</code>
-                    </div>
-
-                    <div class="api-card">
-                        <h3>🔄 Restart Backend Application</h3>
-                        <code>POST http://127.0.0.1:8765/api/control/restart</code>
-                    </div>
-
-                    <div class="api-card">
-                        <h3>🛑 Clean Shutdown Application</h3>
-                        <code>POST http://127.0.0.1:8765/api/control/shutdown</code>
-                    </div>
-
-                    <div class="api-card">
-                        <h3>📥 Download Live Subtitle File</h3>
-                        <code>GET http://127.0.0.1:8765/api/transcript/export?format=srt</code>
-                    </div>
-
-                    <div class="api-card">
-                        <h3>🌐 OBS Browser Source URL</h3>
-                        <code>http://127.0.0.1:8765/</code> (Width: 1920, Height: 1080)
-                    </div>
-
-                    <div class="api-card">
-                        <h3>📺 Room &amp; Stage Confidence Monitor</h3>
+                        <h3>📺 Stage &amp; Room Confidence Monitor (Multi-Language)</h3>
                         <code>http://127.0.0.1:8765/display</code>
+                        <p style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">To lock a stage screen or tablet to a specific language, add <code>?lang=es</code>, <code>?lang=fr</code>, <code>?lang=de</code>, <code>?lang=zh</code>, etc.</p>
                     </div>
 
                     <div class="api-card">
-                        <h3>⚓ OBS Custom Browser Dock URL</h3>
+                        <h3>🌐 OBS Browser Source (Multi-Track Translation)</h3>
+                        <code>http://127.0.0.1:8765/</code> (English Default) &bull; <code>http://127.0.0.1:8765/?lang=es</code> (Spanish Track)
+                    </div>
+
+                    <div class="api-card">
+                        <h3>⚓ OBS Custom Browser Dock</h3>
                         <code>http://127.0.0.1:8765/dashboard</code> (Add via OBS <strong>Docks -&gt; Custom Browser Docks</strong>)
                     </div>
                 </div>

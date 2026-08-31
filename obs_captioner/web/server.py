@@ -17,7 +17,7 @@ from ..audio_capture import list_audio_devices
 from ..censor import ContentFilter
 from ..history import TranscriptHistory
 from ..themes import THEME_PRESETS, get_all_presets
-from ..translator import SUPPORTED_LANGUAGES
+from ..translator import SUPPORTED_LANGUAGES, SubtitleTranslator
 from ..vocabulary import VocabularyReplacer
 from ..security import (
     SimpleRateLimiter,
@@ -57,6 +57,7 @@ class WebOverlayServer:
         self.get_app_status = get_app_status
         self.obs_client = obs_client
         self.audio_capture = audio_capture
+        self.translator = SubtitleTranslator(self.config.translation)
         self.server_start_time = time.time()
         self.instance_id = str(uuid.uuid4())[:8]
         # Generous: a dashboard (4s poll) + stage display (5s poll) + restart
@@ -70,7 +71,7 @@ class WebOverlayServer:
         self.app = web.Application()
         self.runner: web.AppRunner = None
         self.site: web.TCPSite = None
-        self.caption_sockets: Set[web.WebSocketResponse] = set()
+        self.caption_sockets: Dict[web.WebSocketResponse, str] = {}
         self.control_sockets: Set[web.WebSocketResponse] = set()
 
         self._setup_routes()
@@ -115,6 +116,8 @@ class WebOverlayServer:
         # Control Endpoints
         self.app.router.add_post("/api/control/start", self._handle_control_start)
         self.app.router.add_post("/api/control/stop", self._handle_control_stop)
+        self.app.router.add_post("/api/control/toggle", self._handle_control_toggle)
+        self.app.router.add_post("/api/control/panic", self._handle_control_panic)
         self.app.router.add_post("/api/control/restart", self._handle_control_restart)
         self.app.router.add_post("/api/control/shutdown", self._handle_control_shutdown)
         self.app.router.add_post("/api/control/reopen-screen", self._handle_control_reopen_screen)
@@ -124,10 +127,12 @@ class WebOverlayServer:
         self.app.router.add_post("/api/obs/projector/open", self._handle_open_projector)
         self.app.router.add_get("/api/obs/monitors", self._handle_get_monitors)
         
-        # Transcript & Export
+        # Transcript, Chapters, Translation & Export
         self.app.router.add_get("/api/transcript/history", self._handle_get_history)
+        self.app.router.add_get("/api/transcript/chapters", self._handle_get_chapters)
         self.app.router.add_get("/api/transcript/export", self._handle_export_transcript)
         self.app.router.add_post("/api/transcript/clear", self._handle_clear_history)
+        self.app.router.add_get("/api/translate", self._handle_translate_text)
         
         # Filter Management CRUD
         self.app.router.add_get("/api/filter/state", self._handle_filter_state)
@@ -352,6 +357,74 @@ class WebOverlayServer:
 
     async def _handle_get_languages(self, request: web.Request) -> web.Response:
         return web.json_response({"languages": SUPPORTED_LANGUAGES})
+
+    async def _handle_control_toggle(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        is_running = False
+        if self.get_app_status:
+            try:
+                st = self.get_app_status()
+                is_running = st.get("is_running", False)
+            except Exception:
+                pass
+        if is_running:
+            if self.on_stop_requested:
+                self.on_stop_requested()
+            new_state = False
+            msg = "Captioner stopped."
+        else:
+            if self.on_start_requested:
+                self.on_start_requested()
+            new_state = True
+            msg = "Captioner started."
+        return web.json_response({"status": "success", "is_running": new_state, "message": msg})
+
+    async def _handle_control_panic(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        self._recent_finals.clear()
+        panic_payload = {"text": "", "is_final": True, "is_censored": True, "panic": True, "timestamp": time.time()}
+        msg = json.dumps(panic_payload)
+        for ws in list(self.caption_sockets.keys()):
+            try:
+                await ws.send_str(msg)
+            except Exception:
+                pass
+        if self.obs_client and self.config.obs.update_text_source and self.config.obs.text_source_name:
+            try:
+                await self.obs_client.update_text_source(self.config.obs.text_source_name, "")
+            except Exception:
+                pass
+        logger.info("[PANIC BUTTON] Live captions wiped from all screens.")
+        return web.json_response({"status": "success", "message": "Panic button triggered: live captions cleared."})
+
+    async def _handle_get_chapters(self, request: web.Request) -> web.Response:
+        try:
+            min_interval = float(request.query.get("min_interval", 45.0))
+        except ValueError:
+            min_interval = 45.0
+        chapters = self.history.generate_chapters(min_interval_seconds=min_interval)
+        formatted = self.history.export_youtube_chapters()
+        return web.json_response({
+            "chapters": chapters,
+            "formatted": formatted,
+            "count": len(chapters)
+        })
+
+    async def _handle_translate_text(self, request: web.Request) -> web.Response:
+        text = sanitize_text(request.query.get("text", "")).strip()
+        target = sanitize_text(request.query.get("target", "es")).strip().lower()
+        source = sanitize_text(request.query.get("source", "auto")).strip().lower()
+        if not text:
+            return web.json_response({"original": "", "translated": "", "target": target})
+        translated = await self.translator.translate_to_language(text, target_lang=target, source_lang=source)
+        return web.json_response({
+            "original": text,
+            "translated": translated or text,
+            "target": target,
+            "source": source
+        })
 
     async def _handle_control_start(self, request: web.Request) -> web.Response:
         if not self._check_auth(request):
@@ -685,18 +758,24 @@ class WebOverlayServer:
     async def _handle_caption_ws(self, request: web.Request) -> web.WebSocketResponse:
         ws = web.WebSocketResponse()
         await ws.prepare(request)
-        self.caption_sockets.add(ws)
+        lang = sanitize_text(request.query.get("lang", "en")).lower().strip() or "en"
+        self.caption_sockets[ws] = lang
         try:
-            # Replay recent finals so a refreshed/reconnected view isn't blank
-            # (an empty snapshot still tells the client to reset stale state).
             try:
-                await ws.send_str(json.dumps({"type": "snapshot", "lines": self._recent_finals}))
+                if lang in ("en", "original", "none", ""):
+                    await ws.send_str(json.dumps({"type": "snapshot", "lines": self._recent_finals}))
+                else:
+                    translated_lines = []
+                    for line in self._recent_finals:
+                        t_text = await self.translator.translate_to_language(line.get("text", ""), target_lang=lang)
+                        translated_lines.append({**line, "text": t_text})
+                    await ws.send_str(json.dumps({"type": "snapshot", "lines": translated_lines}))
             except Exception:
                 pass
             async for _ in ws:
                 pass
         finally:
-            self.caption_sockets.discard(ws)
+            self.caption_sockets.pop(ws, None)
         return ws
 
     async def _handle_control_ws(self, request: web.Request) -> web.WebSocketResponse:
@@ -767,21 +846,28 @@ class WebOverlayServer:
             self._recent_finals.clear()
 
     async def broadcast_caption(self, payload: dict):
-        """Broadcast live captions to overlay and dashboard."""
         self._record_snapshot(payload)
         if not self.caption_sockets:
             return
-        message = json.dumps(payload)
+        raw_text = payload.get("text", "")
+        lang_payloads = {}
         stale = []
-        # Iterate over a snapshot: the set mutates when clients (dis)connect
-        # while this coroutine is suspended in send_str.
-        for ws in list(self.caption_sockets):
+        for ws, lang in list(self.caption_sockets.items()):
             try:
-                await ws.send_str(message)
+                if lang in ("en", "original", "none", "") or not raw_text:
+                    if "en" not in lang_payloads:
+                        lang_payloads["en"] = json.dumps(payload)
+                    await ws.send_str(lang_payloads["en"])
+                else:
+                    if lang not in lang_payloads:
+                        t_text = await self.translator.translate_to_language(raw_text, target_lang=lang)
+                        custom_payload = {**payload, "text": t_text, "original_text": raw_text}
+                        lang_payloads[lang] = json.dumps(custom_payload)
+                    await ws.send_str(lang_payloads[lang])
             except Exception:
                 stale.append(ws)
         for ws in stale:
-            self.caption_sockets.discard(ws)
+            self.caption_sockets.pop(ws, None)
 
     async def broadcast_control(self, payload: dict):
         """Broadcast telemetry/config events to dashboard control websockets."""
@@ -838,7 +924,7 @@ class WebOverlayServer:
 
     async def stop(self):
         """Stop the web server."""
-        for ws in list(self.caption_sockets | self.control_sockets):
+        for ws in list(set(self.caption_sockets.keys()) | self.control_sockets):
             try:
                 await ws.close()
             except Exception:

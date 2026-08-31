@@ -490,5 +490,46 @@ class TestChurchCensorship(unittest.TestCase):
             if old_env is not None:
                 os.environ["BANDWIDTH_API_KEY"] = old_env
 
+    def test_generate_youtube_chapters(self):
+        from obs_captioner.history import TranscriptHistory
+        hist = TranscriptHistory()
+        t0 = hist.session_start_time
+
+        # Add entries simulating a church service
+        hist.add_entry("Welcome to Sunday service everybody.", start_time=t0 + 2.0, end_time=t0 + 6.0)
+        hist.add_entry("Let us pray together.", start_time=t0 + 60.0, end_time=t0 + 65.0)
+        hist.add_entry("Please turn with me in your Bibles to John 3:16.", start_time=t0 + 150.0, end_time=t0 + 155.0)
+        hist.add_entry("Today's message is about unconditional grace.", start_time=t0 + 240.0, end_time=t0 + 245.0)
+        hist.add_entry("In conclusion, go in peace and have a blessed week.", start_time=t0 + 400.0, end_time=t0 + 405.0)
+
+        chapters = hist.generate_chapters(min_interval_seconds=30.0)
+        self.assertGreaterEqual(len(chapters), 4)
+        # First chapter must start at 00:00:00 for YouTube compliance
+        self.assertEqual(chapters[0]["timecode"], "00:00:00")
+        self.assertEqual(chapters[0]["title"], "Introduction & Welcome")
+
+        # Verify scripture reading detected
+        scripture_caps = [c for c in chapters if "John 3:16" in c["title"]]
+        self.assertEqual(len(scripture_caps), 1)
+
+        # Formatted string check
+        formatted = hist.export_youtube_chapters()
+        self.assertIn("00:00:00 - Introduction & Welcome", formatted)
+        self.assertIn("Scripture Reading (John 3:16)", formatted)
+
+    def test_translate_to_language(self):
+        from obs_captioner.translator import SubtitleTranslator, TranslationConfig
+        tr = SubtitleTranslator(TranslationConfig(enabled=True, target_language="es"))
+
+        loop = asyncio.new_event_loop()
+        # English passthrough
+        res_en = loop.run_until_complete(tr.translate_to_language("Hello world", target_lang="en"))
+        self.assertEqual(res_en, "Hello world")
+
+        # Spanish translation test (with memory cache check)
+        res_es = loop.run_until_complete(tr.translate_to_language("Hello world", target_lang="es"))
+        self.assertTrue(bool(res_es))
+        loop.close()
+
 if __name__ == "__main__":
     unittest.main()
