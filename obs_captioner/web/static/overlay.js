@@ -41,8 +41,8 @@ function applyStyles(ov) {
         document.body.classList.remove("align-top");
     }
 
-    if (ov.max_lines) config.max_lines = ov.max_lines;
-    if (ov.auto_hide_seconds !== undefined) config.auto_hide_seconds = ov.auto_hide_seconds;
+    if (ov.max_lines) config.max_lines = parseInt(ov.max_lines) || 2;
+    if (ov.auto_hide_seconds !== undefined) config.auto_hide_seconds = parseFloat(ov.auto_hide_seconds) || 0;
     if (ov.animation_style) config.animation_style = ov.animation_style;
 }
 
@@ -78,8 +78,11 @@ function showBox() {
     }
 }
 
-function renderFinalLines() {
-    finalLinesEl.innerHTML = finalLines
+function renderFinalLines(activeInterim = false) {
+    const maxFinal = activeInterim ? Math.max(0, config.max_lines - 1) : config.max_lines;
+    const linesToDisplay = finalLines.slice(Math.max(0, finalLines.length - maxFinal));
+
+    finalLinesEl.innerHTML = linesToDisplay
         .map(item => {
             if (typeof item === "object" && item.translated) {
                 return `
@@ -127,7 +130,7 @@ function escapeHtml(str) {
 
 function handleCaption(data) {
     showBox();
-    const text = data.text || "";
+    const text = (data.text || "").trim();
     const translated = data.translated_text || null;
 
     if (data.is_final) {
@@ -137,10 +140,20 @@ function handleCaption(data) {
             while (finalLines.length > config.max_lines) {
                 finalLines.shift();
             }
-            renderFinalLines();
+            renderFinalLines(false);
+        } else {
+            // Empty final = silence auto-clear signal → hide box and clear lines
+            finalLines = [];
+            renderFinalLines(false);
         }
     } else {
-        renderInterim(text);
+        if (text) {
+            renderFinalLines(true);
+            renderInterim(text);
+        } else {
+            interimLineEl.innerHTML = "";
+            renderFinalLines(false);
+        }
     }
 }
 

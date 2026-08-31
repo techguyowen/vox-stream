@@ -6,6 +6,8 @@ from .google_stt import GoogleSTTEngine
 from .gemini_live import GeminiLiveEngine
 from .google_web import GoogleWebEngine
 from .local_whisper import LocalWhisperEngine
+from .vosk import VoskEngine
+from .moonshine import MoonshineEngine
 from ..config import AppConfig
 
 
@@ -21,9 +23,13 @@ def create_engine(config: AppConfig) -> BaseSTTEngine:
         return GeminiLiveEngine(config)
     elif engine_type in ("local", "whisper", "local_whisper", "faster_whisper"):
         return LocalWhisperEngine(config)
+    elif engine_type in ("vosk", "local_vosk", "kaldi"):
+        return VoskEngine(config)
+    elif engine_type in ("moonshine", "local_moonshine"):
+        return MoonshineEngine(config)
     else:
         raise ValueError(
-            f"Unknown engine '{engine_type}'. Supported engines are: 'google_web', 'gemini_live', 'google_stt', 'local_whisper'"
+            f"Unknown engine '{engine_type}'. Supported engines are: 'google_web', 'gemini_live', 'google_stt', 'local_whisper', 'vosk', 'moonshine'"
         )
 
 
@@ -35,5 +41,7 @@ __all__ = [
     "GoogleSTTEngine",
     "GeminiLiveEngine",
     "LocalWhisperEngine",
+    "VoskEngine",
+    "MoonshineEngine",
     "create_engine",
 ]

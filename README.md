@@ -43,25 +43,27 @@ A high-performance, low-latency, real-time speech-to-text captioning and automat
 
 ---
 
-## 📋 Quick Start Guide (Windows)
+## 📋 Quick Start Guide
 
-### 1. Automated Installation
-1. Open the project folder and double-click **`setup_windows.bat`**.
-2. **`setup_windows.bat`** automatically:
-   - Detects if Python is installed (if missing, installs Python 3.11 automatically via Windows `winget`).
-   - Creates the `.venv` virtual environment and installs all dependencies.
-   - Generates `config.json`.
-   - Lists your audio input devices and their numbers.
+### 🍏 macOS & Linux (1-Click)
+```bash
+# 1. Setup environment and install dependencies
+./setup_mac.sh
+
+# 2. Start VoxStream
+./run_captioner.sh
+```
+
+### 🪟 Windows (1-Click)
+1. Double-click `setup_windows.bat` (automatically installs Python and dependencies).
+2. Double-click `run_captioner.bat`.
 
 ---
 
-### 2. Launching the Suite
-Double-click **`run_captioner.bat`** (or run `python -m obs_captioner.main`).
-
-Once running:
-- **Web Settings Dashboard & OBS Dock**: `http://127.0.0.1:8765/dashboard`
-- **Transparent Browser Source Overlay**: `http://127.0.0.1:8765/`
-- **Gemini 3.5 Transcribe Setup**: In the dashboard's **🎙️ Audio & Engine** tab, paste your Google AI Studio API key to activate real-time Gemini 3.5 Transcribe streaming (see [INSTALL_GUIDE.md](file:///Users/techguyowen/Documents/antigravity/delightful-bohr/INSTALL_GUIDE.md#option-b-google-gemini-35-transcribe-live-state-of-the-art-intelligence--accuracy) for detailed steps).
+### Once Running:
+* **Web Settings Dashboard & In-OBS Dock**: `http://127.0.0.1:8765/dashboard` *(or port 8080)*
+* **Transparent Stream Caption Overlay**: `http://127.0.0.1:8765/`
+* **Room / Stage Confidence Monitor**: `http://127.0.0.1:8765/display`
 
 ---
 

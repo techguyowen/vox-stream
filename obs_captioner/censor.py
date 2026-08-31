@@ -76,8 +76,12 @@ DEFAULT_WHOLESOME_REPLACEMENTS = {
 
 # Whitelist of words to prevent false positives and protect sacred terms
 DEFAULT_WHITELIST = [
-    "jesus christ", "jesus", "christ", "god", "lord", "holy spirit", "holy ghost",
-    "amen", "hallelujah", "bible", "scripture", "pastor", "preacher", "worship",
+    "jesus christ", "jesus", "christ", "god", "god's", "lord", "lord's", "holy spirit", "holy ghost",
+    "heavenly father", "almighty god", "son of god", "lamb of god", "prince of peace",
+    "amen", "hallelujah", "alleluia", "hosanna", "bible", "holy bible", "scripture", "scriptures",
+    "pastor", "preacher", "worship", "sanctuary", "apostle", "apostles", "disciple", "disciples",
+    "gospel", "old testament", "new testament", "resurrection", "crucifixion", "communion",
+    "heaven and hell", "gates of hell", "cast into hell", "saved from hell", "power of hell",
     "pass", "passed", "passing", "passport", "compass", "surpass", "trespass",
     "grass", "glass", "class", "classic", "mass", "massive", "bass", "brass",
     "assume", "asset", "assist", "assistant", "assess", "assessment", "associate",

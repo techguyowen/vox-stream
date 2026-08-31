@@ -28,13 +28,19 @@ Welcome! This suite offers **two different ways** to run live captions in OBS St
 ## 🚀 Setup Guide: Method 1 (Python App & Web Dashboard)
 
 ### 1. Installation
-1. Open the project folder.
-2. Double-click **`setup_windows.bat`**.
-   *(This will automatically install Python 3.11 if you don't have it, create an isolated virtual environment, and install all AI dependencies).*
+* **On macOS / Linux**: Open Terminal in this folder and run:
+  ```bash
+  ./setup_mac.sh
+  ```
+* **On Windows**: Double-click **`setup_windows.bat`** (automatically installs Python 3.11 if needed and installs all AI dependencies).
 
 ### 2. Launching the App
-1. Double-click **`run_captioner.bat`**. 
-2. A black terminal window will open—leave this running in the background while you stream!
+* **On macOS / Linux**:
+  ```bash
+  ./run_captioner.sh
+  ```
+* **On Windows**: Double-click **`run_captioner.bat`**. 
+*(Leave this running in the background while broadcasting!)*
 
 ### 3. Setting Up OBS Studio
 **A. Add the Control Panel Dock:**

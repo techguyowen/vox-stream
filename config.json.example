@@ -1,17 +1,25 @@
 {
   "general": {
-    "engine": "google_stt",
+    "engine": "moonshine",
     "language": "en-US",
     "log_level": "INFO"
   },
   "audio": {
-    "device_name_filter": "default",
+    "device_name_filter": "MacBook Pro Microphone",
     "device_index": null,
     "sample_rate": 16000,
     "chunk_duration_ms": 100,
     "enable_vad": true,
     "vad_threshold": 0.5,
-    "noise_gate_db": -45.0
+    "noise_gate_db": -45
+  },
+  "vocabulary": {
+    "enabled": true,
+    "terms": {
+      "obs": "OBS",
+      "voxstream": "VoxStream",
+      "vox stream": "VoxStream"
+    }
   },
   "censor": {
     "enabled": true,
@@ -33,6 +41,20 @@
       "goddamn": "gosh darn"
     }
   },
+  "translation": {
+    "enabled": false,
+    "source_language": "auto",
+    "target_language": "es",
+    "display_mode": "dual"
+  },
+  "twitch": {
+    "enabled": false,
+    "channel": "",
+    "bot_username": "",
+    "oauth_token": "",
+    "message_prefix": "[CC] ",
+    "min_interval_seconds": 1.5
+  },
   "google_stt": {
     "credentials_path": "",
     "model": "latest_long",
@@ -49,7 +71,6 @@
   "gemini_live": {
     "api_key": "",
     "model": "gemini-3.5-transcribe-live",
-    "smart_transcription": true,
     "custom_vocabulary": [
       "OBS Studio",
       "Twitch",
@@ -57,6 +78,7 @@
       "YouTube",
       "Jesus Christ"
     ],
+    "smart_transcription": true,
     "system_instruction": "You are Gemini 3.5 Transcribe, a real-time speech transcriber. Transcribe the incoming audio accurately into text verbatim. Output only the transcribed text without commentary, pleasantries, or conversation."
   },
   "local_whisper": {
@@ -65,6 +87,15 @@
     "compute_type": "auto",
     "language": "en",
     "beam_size": 1
+  },
+  "vosk": {
+    "model_name": "small",
+    "model_path": "",
+    "sample_rate": 16000
+  },
+  "moonshine": {
+    "model_name": "moonshine/base",
+    "sample_rate": 16000
   },
   "obs": {
     "enabled": true,
@@ -75,12 +106,17 @@
     "auto_start_on_record": true,
     "update_text_source": true,
     "text_source_name": "Live Captions",
-    "send_cea608_captions": true
+    "send_cea608_captions": true,
+    "auto_open_projector": false,
+    "projector_type": "preview",
+    "projector_monitor_index": 1,
+    "projector_source_name": "Captions Overlay"
   },
   "overlay": {
     "enabled": true,
     "host": "127.0.0.1",
     "port": 8765,
+    "theme_id": "modern_clean",
     "max_width": "90%",
     "max_lines": 2,
     "text_align": "center",

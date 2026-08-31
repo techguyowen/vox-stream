@@ -3,7 +3,9 @@
 import asyncio
 import json
 import logging
+import re
 import time
+import uuid
 from dataclasses import asdict
 from pathlib import Path
 from typing import Callable, Optional, Set
@@ -16,6 +18,7 @@ from ..censor import ContentFilter
 from ..history import TranscriptHistory
 from ..themes import THEME_PRESETS, get_all_presets
 from ..translator import SUPPORTED_LANGUAGES
+from ..vocabulary import VocabularyReplacer
 from ..security import (
     SimpleRateLimiter,
     escape_html,
@@ -29,7 +32,7 @@ logger = logging.getLogger("obs_captioner.web")
 
 
 class WebOverlayServer:
-    """Async web server serving overlay, settings dashboard, and hardened REST/WebSocket API."""
+    """Provides WebSocket and HTTP endpoints for OBS overlay, stage display, and control dashboard."""
 
     def __init__(
         self,
@@ -38,6 +41,8 @@ class WebOverlayServer:
         on_config_updated: Optional[Callable[[AppConfig], None]] = None,
         on_start_requested: Optional[Callable[[], None]] = None,
         on_stop_requested: Optional[Callable[[], None]] = None,
+        on_restart_requested: Optional[Callable[[], None]] = None,
+        on_shutdown_requested: Optional[Callable[[], None]] = None,
         get_app_status: Optional[Callable[[], dict]] = None,
         obs_client: Optional[any] = None,
         audio_capture: Optional[any] = None,
@@ -47,9 +52,13 @@ class WebOverlayServer:
         self.on_config_updated = on_config_updated
         self.on_start_requested = on_start_requested
         self.on_stop_requested = on_stop_requested
+        self.on_restart_requested = on_restart_requested
+        self.on_shutdown_requested = on_shutdown_requested
         self.get_app_status = get_app_status
         self.obs_client = obs_client
         self.audio_capture = audio_capture
+        self.server_start_time = time.time()
+        self.instance_id = str(uuid.uuid4())[:8]
         self.rate_limiter = SimpleRateLimiter(max_requests=120, window_seconds=60.0)
 
         self.app = web.Application()
@@ -73,6 +82,9 @@ class WebOverlayServer:
         
         for path in ("/dashboard", "/dashboard/", "/dashboard.html", "/dock", "/dock/", "/settings", "/settings/", "/control"):
             self.app.router.add_get(path, self._handle_dashboard)
+
+        for path in ("/display", "/display/", "/display.html", "/monitor", "/monitor/", "/stage", "/confidence"):
+            self.app.router.add_get(path, self._handle_display)
         
         # WebSockets
         self.app.router.add_get("/ws", self._handle_caption_ws)
@@ -87,11 +99,15 @@ class WebOverlayServer:
         self.app.router.add_get("/api/devices", self._handle_get_devices)
         self.app.router.add_get("/api/presets", self._handle_get_presets)
         self.app.router.add_post("/api/presets/apply", self._handle_apply_preset)
+        self.app.router.add_post("/api/presets/save", self._handle_save_preset)
+        self.app.router.add_post("/api/presets/delete", self._handle_delete_preset)
         self.app.router.add_get("/api/languages", self._handle_get_languages)
         
         # Control Endpoints
         self.app.router.add_post("/api/control/start", self._handle_control_start)
         self.app.router.add_post("/api/control/stop", self._handle_control_stop)
+        self.app.router.add_post("/api/control/restart", self._handle_control_restart)
+        self.app.router.add_post("/api/control/shutdown", self._handle_control_shutdown)
         self.app.router.add_post("/api/control/reopen-screen", self._handle_control_reopen_screen)
         self.app.router.add_post("/api/control/restore-display", self._handle_control_reopen_screen)
         
@@ -114,6 +130,12 @@ class WebOverlayServer:
         self.app.router.add_post("/api/filter/replacements/set", self._handle_set_replacement)
         self.app.router.add_post("/api/filter/replacements/remove", self._handle_remove_replacement)
 
+        # Custom Vocabulary & Glossary CRUD
+        self.app.router.add_get("/api/vocabulary", self._handle_get_vocabulary)
+        self.app.router.add_post("/api/vocabulary/set", self._handle_set_vocabulary)
+        self.app.router.add_post("/api/vocabulary/remove", self._handle_remove_vocabulary)
+        self.app.router.add_post("/api/vocabulary/test", self._handle_test_vocabulary)
+
         # Static Assets
         self.app.router.add_static("/static/", path=str(static_dir), name="static")
 
@@ -124,6 +146,10 @@ class WebOverlayServer:
     async def _handle_dashboard(self, request: web.Request) -> web.FileResponse:
         dash_file = Path(__file__).parent / "static" / "dashboard.html"
         return web.FileResponse(dash_file)
+
+    async def _handle_display(self, request: web.Request) -> web.FileResponse:
+        display_file = Path(__file__).parent / "static" / "display.html"
+        return web.FileResponse(display_file)
 
     async def _handle_get_status(self, request: web.Request) -> web.Response:
         client_ip = request.remote or "127.0.0.1"
@@ -139,6 +165,9 @@ class WebOverlayServer:
             "theme": self.config.overlay.theme_id,
             "translation_enabled": self.config.translation.enabled,
             "timestamp": time.time(),
+            "instance_id": self.instance_id,
+            "server_start_time": self.server_start_time,
+            "uptime_seconds": round(time.time() - self.server_start_time, 1),
         }
         if self.get_app_status:
             try:
@@ -180,23 +209,107 @@ class WebOverlayServer:
         return web.json_response({"devices": devices})
 
     async def _handle_get_presets(self, request: web.Request) -> web.Response:
-        return web.json_response({"presets": get_all_presets()})
+        return web.json_response({"presets": get_all_presets(self.config.custom_presets)})
 
     async def _handle_apply_preset(self, request: web.Request) -> web.Response:
         try:
             data = await request.json()
-            theme_id = data.get("theme_id", "")
-            if theme_id not in THEME_PRESETS:
-                return web.json_response({"error": f"Unknown theme '{theme_id}'"}, status=404)
+            theme_id = sanitize_text(data.get("theme_id", ""))
 
-            self.config.overlay.apply_theme(theme_id)
+            applied = self.config.overlay.apply_theme(theme_id, self.config.custom_presets)
+            if not applied:
+                return web.json_response({"error": f"Unknown theme preset '{theme_id}'"}, status=404)
+
             save_config(self.config)
 
             if self.on_config_updated:
                 self.on_config_updated(self.config)
 
             await self.broadcast_control({"type": "config_updated", "config": asdict(self.config)})
-            return web.json_response({"status": "success", "theme": asdict(THEME_PRESETS[theme_id])})
+
+            # Find applied preset info
+            applied_preset = None
+            for p in get_all_presets(self.config.custom_presets):
+                if p["id"] == theme_id:
+                    applied_preset = p
+                    break
+
+            return web.json_response({"status": "success", "theme": applied_preset or {"id": theme_id}})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=400)
+
+    async def _handle_save_preset(self, request: web.Request) -> web.Response:
+        try:
+            data = await request.json()
+            name = sanitize_text(data.get("name", "").strip(), max_len=60)
+            if not name:
+                return web.json_response({"error": "Preset name is required."}, status=400)
+
+            # Auto-generate preset ID
+            raw_id = sanitize_text(data.get("id", "").strip().lower(), max_len=50)
+            if not raw_id:
+                raw_id = re.sub(r"[^a-z0-9_]+", "_", name.lower()).strip("_")
+            if not raw_id:
+                raw_id = f"custom_{int(time.time())}"
+
+            desc = sanitize_text(data.get("description", "Custom user preset."), max_len=150)
+
+            preset_entry = {
+                "id": raw_id,
+                "name": name,
+                "description": desc,
+                "font_family": data.get("font_family", self.config.overlay.font_family),
+                "font_size": data.get("font_size", self.config.overlay.font_size),
+                "font_weight": data.get("font_weight", self.config.overlay.font_weight),
+                "line_height": data.get("line_height", self.config.overlay.line_height),
+                "text_color": data.get("text_color", self.config.overlay.text_color),
+                "interim_color": data.get("interim_color", self.config.overlay.interim_color),
+                "highlight_color": data.get("highlight_color", self.config.overlay.highlight_color),
+                "background_box_color": data.get("background_box_color", self.config.overlay.background_box_color),
+                "border_radius": data.get("border_radius", self.config.overlay.border_radius),
+                "box_padding": data.get("box_padding", self.config.overlay.box_padding),
+                "text_shadow": data.get("text_shadow", self.config.overlay.text_shadow),
+                "text_stroke": data.get("text_stroke", self.config.overlay.text_stroke),
+                "animation_style": data.get("animation_style", self.config.overlay.animation_style),
+                "is_custom": True,
+            }
+
+            self.config.custom_presets[raw_id] = preset_entry
+            save_config(self.config)
+
+            if self.on_config_updated:
+                self.on_config_updated(self.config)
+
+            return web.json_response({
+                "status": "success",
+                "message": f"Preset '{name}' saved successfully.",
+                "preset": preset_entry,
+                "presets": get_all_presets(self.config.custom_presets),
+            })
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=400)
+
+    async def _handle_delete_preset(self, request: web.Request) -> web.Response:
+        try:
+            data = await request.json()
+            preset_id = sanitize_text(data.get("id", "").strip())
+            if preset_id in THEME_PRESETS:
+                return web.json_response({"error": "Cannot delete built-in theme presets."}, status=400)
+
+            if preset_id not in self.config.custom_presets:
+                return web.json_response({"error": f"Custom preset '{preset_id}' not found."}, status=404)
+
+            deleted = self.config.custom_presets.pop(preset_id, None)
+            save_config(self.config)
+
+            if self.on_config_updated:
+                self.on_config_updated(self.config)
+
+            return web.json_response({
+                "status": "success",
+                "message": "Preset deleted.",
+                "presets": get_all_presets(self.config.custom_presets),
+            })
         except Exception as e:
             return web.json_response({"error": str(e)}, status=400)
 
@@ -216,6 +329,38 @@ class WebOverlayServer:
         if self.on_stop_requested:
             self.on_stop_requested()
         return web.json_response({"status": "success", "message": "Captioner stopped."})
+
+    async def _handle_control_restart(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        logger.info("Received request to restart application.")
+        if self.on_restart_requested:
+            # Notify connected clients via WebSocket
+            try:
+                await self.broadcast_control({
+                    "type": "server_restarting",
+                    "instance_id": self.instance_id,
+                    "message": "Application is restarting now...",
+                })
+            except Exception:
+                pass
+
+            asyncio.get_event_loop().call_later(0.3, self.on_restart_requested)
+            return web.json_response({
+                "status": "restarting",
+                "instance_id": self.instance_id,
+                "message": "Application is restarting...",
+            })
+        return web.json_response({"error": "Restart handler not configured."}, status=500)
+
+    async def _handle_control_shutdown(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        logger.info("Received request to shut down application.")
+        if self.on_shutdown_requested:
+            asyncio.get_event_loop().call_later(0.5, self.on_shutdown_requested)
+            return web.json_response({"status": "shutting_down", "message": "Application is shutting down..."})
+        return web.json_response({"error": "Shutdown handler not configured."}, status=500)
 
     async def _handle_control_reopen_screen(self, request: web.Request) -> web.Response:
         """1-Click Emergency Trigger: Restores the screen projector and starts live captions."""
@@ -432,6 +577,58 @@ class WebOverlayServer:
         except Exception as e:
             return web.json_response({"error": str(e)}, status=400)
 
+    async def _handle_get_vocabulary(self, request: web.Request) -> web.Response:
+        vocab = VocabularyReplacer(self.config.vocabulary)
+        return web.json_response({
+            "enabled": self.config.vocabulary.enabled,
+            "terms": vocab.get_terms(),
+            "count": len(self.config.vocabulary.terms),
+        })
+
+    async def _handle_set_vocabulary(self, request: web.Request) -> web.Response:
+        try:
+            data = await request.json()
+            original = sanitize_text(data.get("original", "")).strip()
+            replacement = sanitize_text(data.get("replacement", "")).strip()
+            if not original or not replacement:
+                return web.json_response({"error": "Both original and replacement are required."}, status=400)
+
+            vocab = VocabularyReplacer(self.config.vocabulary)
+            vocab.add_term(original, replacement)
+            save_config(self.config)
+            if self.on_config_updated:
+                self.on_config_updated(self.config)
+            return web.json_response({"status": "success", "terms": vocab.get_terms()})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=400)
+
+    async def _handle_remove_vocabulary(self, request: web.Request) -> web.Response:
+        try:
+            data = await request.json()
+            original = sanitize_text(data.get("original", "")).strip()
+            vocab = VocabularyReplacer(self.config.vocabulary)
+            vocab.remove_term(original)
+            save_config(self.config)
+            if self.on_config_updated:
+                self.on_config_updated(self.config)
+            return web.json_response({"status": "success", "terms": vocab.get_terms()})
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=400)
+
+    async def _handle_test_vocabulary(self, request: web.Request) -> web.Response:
+        try:
+            data = await request.json()
+            sample_text = data.get("text", "")
+            vocab = VocabularyReplacer(self.config.vocabulary)
+            modified, was_changed = vocab.replace(sample_text)
+            return web.json_response({
+                "original": sample_text,
+                "modified": modified,
+                "was_modified": was_changed,
+            })
+        except Exception as e:
+            return web.json_response({"error": str(e)}, status=400)
+
     async def _handle_caption_ws(self, request: web.Request) -> web.WebSocketResponse:
         ws = web.WebSocketResponse()
         await ws.prepare(request)
@@ -457,6 +654,10 @@ class WebOverlayServer:
                             self.on_start_requested()
                         elif action == "stop" and self.on_stop_requested:
                             self.on_stop_requested()
+                        elif action == "restart" and self.on_restart_requested:
+                            self.on_restart_requested()
+                        elif action == "shutdown" and self.on_shutdown_requested:
+                            self.on_shutdown_requested()
                     except Exception:
                         pass
         finally:

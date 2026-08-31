@@ -10,13 +10,23 @@ if not exist ".venv\Scripts\activate.bat" (
 
 call .venv\Scripts\activate.bat
 
+:app_loop
 echo =======================================================
 echo   Starting VoxStream Live Captioner...
 echo =======================================================
 python -m obs_captioner.main %*
+set APP_EXIT_CODE=%errorlevel%
 
-if %errorlevel% neq 0 (
+:: Exit code 42 indicates an intentional application restart
+if %APP_EXIT_CODE% EQU 42 (
     echo.
-    echo [ERROR] Captioner stopped with an error code: %errorlevel%
+    echo [VoxStream] Application restart requested. Reloading...
+    timeout /t 1 /nobreak >nul
+    goto app_loop
+)
+
+if %APP_EXIT_CODE% NEQ 0 (
+    echo.
+    echo [ERROR] Captioner stopped with an error code: %APP_EXIT_CODE%
     pause
 )

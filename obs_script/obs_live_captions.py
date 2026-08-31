@@ -20,7 +20,7 @@ process = None
 python_path = sys.executable or "python"
 auto_start_obs = True
 auto_start_stream = True
-selected_engine = "google_stt"
+selected_engine = "google_web"
 text_source_name = "Live Captions"
 
 
@@ -133,9 +133,12 @@ def script_properties():
         obs.OBS_COMBO_TYPE_LIST,
         obs.OBS_COMBO_FORMAT_STRING,
     )
-    obs.obs_property_list_add_string(engine_list, "Google Cloud STT (Recommended)", "google_stt")
+    obs.obs_property_list_add_string(engine_list, "Google Speech (Free / Zero-Setup - Recommended)", "google_web")
+    obs.obs_property_list_add_string(engine_list, "Local Vosk / Kaldi (Fastest Offline Streaming)", "vosk")
+    obs.obs_property_list_add_string(engine_list, "Local Moonshine (5x Faster than Whisper)", "moonshine")
+    obs.obs_property_list_add_string(engine_list, "Local Faster-Whisper (Offline GPU/CPU)", "local_whisper")
     obs.obs_property_list_add_string(engine_list, "Gemini Live API", "gemini_live")
-    obs.obs_property_list_add_string(engine_list, "Local Faster-Whisper (Offline)", "local_whisper")
+    obs.obs_property_list_add_string(engine_list, "Google Cloud STT (API Key)", "google_stt")
 
     # Auto start options
     obs.obs_properties_add_bool(props, "auto_start_obs", "Auto-start when OBS launches")
@@ -158,7 +161,7 @@ def script_update(settings):
 
     auto_start_obs = obs.obs_data_get_bool(settings, "auto_start_obs")
     auto_start_stream = obs.obs_data_get_bool(settings, "auto_start_stream")
-    selected_engine = obs.obs_data_get_string(settings, "engine") or "google_stt"
+    selected_engine = obs.obs_data_get_string(settings, "engine") or "google_web"
     text_source_name = obs.obs_data_get_string(settings, "text_source_name") or "Live Captions"
 
 
@@ -168,5 +171,5 @@ def script_defaults(settings):
 
     obs.obs_data_set_default_bool(settings, "auto_start_obs", True)
     obs.obs_data_set_default_bool(settings, "auto_start_stream", True)
-    obs.obs_data_set_default_string(settings, "engine", "google_stt")
+    obs.obs_data_set_default_string(settings, "engine", "google_web")
     obs.obs_data_set_default_string(settings, "text_source_name", "Live Captions")

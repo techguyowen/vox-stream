@@ -23,7 +23,8 @@
             </div>
             
             <div class="header-controls">
-                <button id="btn-reopen-projector" class="btn" title="Forcefully open or restore the video preview to the Conference Screen (LONTIUM)" style="background: rgba(56, 189, 248, 0.15); border: 1px solid #38BDF8; color: #38BDF8; font-weight: 700; cursor: pointer;">📺 Start / Reopen Screen</button>
+                <a href="/display" target="_blank" class="btn" title="Open large-format Room / Stage Confidence Monitor" style="background: rgba(168, 85, 247, 0.15); border: 1px solid #A855F7; color: #C084FC; font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">📺 Room Display</a>
+                <button id="btn-reopen-projector" class="btn" title="Forcefully open or restore the video preview to the Conference Screen (LONTIUM)" style="background: rgba(56, 189, 248, 0.15); border: 1px solid #38BDF8; color: #38BDF8; font-weight: 700; cursor: pointer;">🖥️ Restore Projector</button>
 
                 <div class="vu-container" title="Microphone Level">
                     <span class="vu-label">MIC</span>
@@ -32,12 +33,20 @@
                     </div>
                 </div>
 
+                <!-- Active Engine Badge -->
+                <div class="active-engine-pill" id="active-engine-pill" title="Currently Active Speech Recognition Model" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 20px; padding: 5px 12px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: #A5B4FC;">
+                    <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #6366F1; box-shadow: 0 0 8px #6366F1;"></span>
+                    <span id="active-engine-badge-text">Engine: Loading...</span>
+                </div>
+
                 <div class="status-pill" id="status-pill">
                     <span class="status-dot online"></span>
                     <span id="status-text">Active</span>
                 </div>
 
                 <button id="btn-toggle-engine" class="btn btn-danger">⏹ Stop Captions</button>
+                <button id="btn-restart-app" class="btn btn-secondary" title="Cleanly restart the VoxStream backend process" style="font-weight: 600;">🔄 Restart</button>
+                <button id="btn-shutdown-app" class="btn" title="Shut down the VoxStream application" style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.4); color: #EF4444; font-weight: 600;">🛑 Quit</button>
             </div>
         </header>
 
@@ -46,7 +55,8 @@
             <!-- Navigation Tabs -->
             <nav class="nav-tabs">
                 <button class="tab-btn active" data-tab="styling">🎨 Style &amp; Themes</button>
-                <button class="tab-btn" data-tab="filter">🛡️ Church &amp; Safety Filter</button>
+                <button class="tab-btn" data-tab="vocabulary">📖 Custom Glossary</button>
+                <button class="tab-btn" data-tab="filter">🛡️ Safety Filter</button>
                 <button class="tab-btn" data-tab="translation">🌐 Live Translation</button>
                 <button class="tab-btn" data-tab="audio">🎙️ Audio &amp; Engine</button>
                 <button class="tab-btn" data-tab="projectors">📺 Projectors &amp; Displays</button>
@@ -59,7 +69,22 @@
             <div id="tab-styling" class="tab-pane active">
                 <!-- Theme Presets Gallery -->
                 <div class="panel theme-gallery-panel">
-                    <h2>✨ 1-Click Theme Presets</h2>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+                        <h2>✨ 1-Click Theme Presets</h2>
+                        <button id="btn-open-save-preset" class="btn btn-secondary btn-sm" style="font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">➕ Save Style as New Preset</button>
+                    </div>
+
+                    <!-- Collapsible Save Preset Card -->
+                    <div id="save-preset-card" style="display: none; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                        <h3 style="font-size: 14px; margin-bottom: 8px; color: #A5B4FC; display: flex; align-items: center; gap: 6px;">💾 Save Current Styling into Custom Preset</h3>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                            <input type="text" id="preset-new-name" class="form-control" placeholder="Preset Name (e.g. Amber Stage, Gaming Pop)" style="flex: 1; min-width: 200px;">
+                            <input type="text" id="preset-new-desc" class="form-control" placeholder="Description (optional)" style="flex: 1.5; min-width: 200px;">
+                            <button id="btn-save-new-preset" class="btn btn-primary btn-sm">💾 Save Preset</button>
+                            <button id="btn-cancel-save-preset" class="btn btn-secondary btn-sm">Cancel</button>
+                        </div>
+                    </div>
+
                     <div class="theme-grid" id="theme-grid">
                         <!-- Loaded dynamically from /api/presets -->
                     </div>
@@ -74,6 +99,7 @@
                             <label>Google / System Font</label>
                             <select id="font_family" class="form-control">
                                 <option value="Inter, sans-serif">Inter (Modern Clean)</option>
+                                <option value="'OpenDyslexic', sans-serif">📖 OpenDyslexic (Accessibility &amp; Reading Aid)</option>
                                 <option value="Montserrat, sans-serif">Montserrat (Bold &amp; Clean)</option>
                                 <option value="Poppins, sans-serif">Poppins (Smooth Rounded)</option>
                                 <option value="'Bebas Neue', sans-serif">Bebas Neue (Stream Headline)</option>
@@ -99,12 +125,18 @@
 
                         <div class="form-row">
                             <div class="form-group">
-                                <label>Max Lines</label>
+                                <label>Max Lines Visible</label>
                                 <select id="max_lines" class="form-control">
                                     <option value="1">1 Line (Ticker Style)</option>
-                                    <option value="2" selected>2 Lines (Standard Subtitles)</option>
+                                    <option value="2">2 Lines (Standard Subtitles)</option>
                                     <option value="3">3 Lines (Paragraph)</option>
-                                    <option value="4">4 Lines</option>
+                                    <option value="4">4 Lines (Extended)</option>
+                                    <option value="5">5 Lines (Multi-Line)</option>
+                                    <option value="6">6 Lines (Extended Stage)</option>
+                                    <option value="8">8 Lines (Auditorium / Conference)</option>
+                                    <option value="10">10 Lines (Full Transcript Box)</option>
+                                    <option value="15">15 Lines (Continuous Scroll)</option>
+                                    <option value="20">20 Lines (Full Screen Roll)</option>
                                 </select>
                             </div>
                             <div class="form-group">
@@ -176,6 +208,46 @@
                             <input type="text" id="preview-test-input" placeholder="Type custom test phrase..." class="form-control">
                             <button id="btn-test-preview" class="btn btn-secondary">Test Text</button>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB: CUSTOM GLOSSARY & VOCABULARY -->
+            <div id="tab-vocabulary" class="tab-pane">
+                <div class="panel">
+                    <h2>📖 Custom Vocabulary &amp; Phonetic Glossary</h2>
+                    <p class="subtext">Automatically replace misheard phrases, proper nouns, brand names, slang, speaker names, and specialized jargon in real time across all engines.</p>
+
+                    <div class="crud-section" style="margin-top: 16px;">
+                        <h3>➕ Add New Vocabulary Term</h3>
+                        <p class="subtext">Type the word or phrase that STT commonly mishears, and the exact proper spelling you want displayed.</p>
+                        <div class="crud-add-row">
+                            <input type="text" id="new-vocab-orig" placeholder="Misheard phrase (e.g. box stream, pastor mike)" class="form-control">
+                            <input type="text" id="new-vocab-sub" placeholder="Correct spelling (e.g. VoxStream, Pastor Mike)" class="form-control">
+                            <button id="btn-add-vocab" class="btn btn-secondary">+ Add to Glossary</button>
+                        </div>
+                        <div class="table-container" style="margin-top: 14px;">
+                            <table class="crud-table" id="table-vocabulary">
+                                <thead>
+                                    <tr>
+                                        <th>Misheard Phrase / Word</th>
+                                        <th>Correct Replacement</th>
+                                        <th style="width: 80px;">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="filter-tester" style="margin-top: 20px;">
+                        <h3>🧪 Live Glossary Sandbox</h3>
+                        <p class="subtext">Type a test sentence to preview real-time vocabulary substitution.</p>
+                        <div class="form-row">
+                            <input type="text" id="vocab-test-text" value="Welcome to box stream live captions on obs!" class="form-control">
+                            <button id="btn-run-vocab-test" class="btn btn-secondary">Test Glossary</button>
+                        </div>
+                        <div id="vocab-test-result" class="test-result-box">Click 'Test Glossary' to preview substitution</div>
                     </div>
                 </div>
             </div>
@@ -322,6 +394,24 @@
             <div id="tab-audio" class="tab-pane">
                 <div class="panel">
                     <h2>Audio Capture &amp; Speech-to-Text Engine</h2>
+
+                    <!-- Live Active Engine & Model Banner -->
+                    <div class="active-model-hero-card" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.12)); border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 12px; padding: 16px 20px; margin: 16px 0 20px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+                        <div>
+                            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #A5B4FC; font-weight: 700; margin-bottom: 4px;">⚡ Currently Active Engine &amp; Model</div>
+                            <div style="font-size: 18px; font-weight: 800; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
+                                <span class="status-dot online"></span>
+                                <span id="hero-active-model-name">Loading Active Model...</span>
+                            </div>
+                            <div id="hero-active-model-desc" style="font-size: 12px; color: #9CA3AF; margin-top: 4px;">Loading specifications...</div>
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <span id="hero-active-badge" style="background: rgba(16, 185, 129, 0.2); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.4); padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 5px;">
+                                <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #10B981;"></span>
+                                LIVE IN MEMORY
+                            </span>
+                        </div>
+                    </div>
                     
                     <div class="form-group">
                         <label>Audio Input Device (Microphone / Loopback)</label>
@@ -334,10 +424,12 @@
                         <div class="form-group">
                             <label>Speech-to-Text Engine</label>
                             <select id="engine_select" class="form-control">
-                                <option value="google_web">🆓 Google Speech Recognition (100% Free / Zero-Setup - No API Key!)</option>
-                                <option value="gemini_live" selected>✨ Gemini 3.5 Transcribe Live (Google AI Studio / Live API)</option>
+                                <option value="google_web" selected>🆓 Google Speech Recognition (100% Free / Zero-Setup - No API Key!)</option>
+                                <option value="vosk">🎙️ Local Vosk / Kaldi (100% Offline / Ultra-Low Latency ~30ms)</option>
+                                <option value="moonshine">⚡ Local Moonshine (5x Faster than Whisper / Variable Transformer)</option>
+                                <option value="local_whisper">💻 Local Faster-Whisper (100% Offline GPU/CPU)</option>
+                                <option value="gemini_live">✨ Gemini 3.5 Transcribe Live (Google AI Studio / Live API)</option>
                                 <option value="google_stt">Google Cloud STT Streaming (v1 / Chirp)</option>
-                                <option value="local_whisper">Local Faster-Whisper (100% Offline GPU/CPU)</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -354,14 +446,81 @@
                         </div>
                     </div>
 
+                    <div class="form-row" style="margin-top: -6px; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+                        <div class="form-group" style="margin-bottom: 0; min-width: 220px;">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #E0E7FF; font-size: 13px;">
+                                <input type="checkbox" id="auto_capitalization" checked style="width: 17px; height: 17px; cursor: pointer; accent-color: #6366F1;">
+                                <span>🔤 Auto-Capitalize (Sentences, "I", Acronyms)</span>
+                            </label>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0; min-width: 220px;">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #E0E7FF; font-size: 13px;">
+                                <input type="checkbox" id="auto_punctuation" checked style="width: 17px; height: 17px; cursor: pointer; accent-color: #6366F1;">
+                                <span>✍️ Auto-Punctuate (Periods ., Questions ?, !)</span>
+                            </label>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0; min-width: 240px;">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #FCD34D; font-size: 13px; font-weight: 600;">
+                                <input type="checkbox" id="church_mode" checked style="width: 17px; height: 17px; cursor: pointer; accent-color: #F59E0B;">
+                                <span>⛪ Church &amp; Scripture Mode ("John 3:16", Sacred Names)</span>
+                            </label>
+                        </div>
+                    </div>
+
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Noise Gate dB (<span id="val-noise-gate">-45 dB</span>)</label>
+                            <label style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>Noise Gate Threshold (<span id="val-noise-gate">-45 dB</span>)</span>
+                                <span style="font-size: 11px; color: #9CA3AF; font-weight: normal;">Volume Cutoff</span>
+                            </label>
                             <input type="range" id="noise_gate_slider" min="-80" max="-10" value="-45" class="slider">
+                            <span class="subtext" style="margin-top: 4px; font-size: 11px; color: #9CA3AF; display: block;">
+                                Drops raw audio below this volume (e.g. air conditioners, room hum, computer fans).
+                            </span>
                         </div>
                         <div class="form-group">
-                            <label>VAD Sensitivity (<span id="val-vad">0.5</span>)</label>
+                            <label style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>VAD Sensitivity (<span id="val-vad">0.5</span>)</span>
+                                <span style="font-size: 11px; color: #A5B4FC; font-weight: 600;">🧠 AI Voice Detector</span>
+                            </label>
                             <input type="range" id="vad_slider" min="0.1" max="0.9" step="0.05" value="0.5" class="slider">
+                            <span class="subtext" style="margin-top: 4px; font-size: 11px; color: #9CA3AF; display: block;">
+                                <strong>Voice Activity Detection</strong> (Silero AI): Filters out non-speech sounds like typing, breathing, coughing, or paper shuffling. (<strong>0.1–0.3</strong>: Catches soft whispers; <strong>0.5</strong>: Balanced default; <strong>0.7–0.9</strong>: Strict speech only).
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- VOSK SETTINGS PANEL -->
+                    <div id="vosk-fields" class="engine-fields">
+                        <h3>🎙️ Local Vosk / Kaldi Engine Settings (100% Offline)</h3>
+                        <p class="subtext">Lightning-fast continuous streaming (~20-40ms latency) with word-by-word interim token delivery. Zero GPU required.</p>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Vosk Model Preset</label>
+                                <select id="vosk_model" class="form-control">
+                                    <option value="small" selected>small-en-us (~40 MB, Instant CPU Streaming - Recommended)</option>
+                                    <option value="accurate">en-us-0.22 (~1.8 GB, High Accuracy Broadcast Model)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Custom Model Directory Path (Optional)</label>
+                                <input type="text" id="vosk_model_path" placeholder="Leave blank for auto-download ~/.cache/vosk" class="form-control">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- MOONSHINE SETTINGS PANEL -->
+                    <div id="moonshine-fields" class="engine-fields">
+                        <h3>⚡ Local Moonshine Engine Settings (Useful Sensors)</h3>
+                        <p class="subtext">Next-gen variable-length AI transformer. 5x faster than Whisper with built-in capitalization &amp; punctuation.</p>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Model Size</label>
+                                <select id="moonshine_model" class="form-control">
+                                    <option value="moonshine/tiny" selected>moonshine/tiny (~27M parameters, Ultra-Fast, Low CPU)</option>
+                                    <option value="moonshine/base">moonshine/base (~61M parameters, Whisper-Base Accuracy)</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
 
@@ -623,8 +782,13 @@
                     </div>
 
                     <div class="api-card">
-                        <h3>📊 Get Current Status</h3>
-                        <code>GET http://127.0.0.1:8765/api/status</code>
+                        <h3>🔄 Restart Backend Application</h3>
+                        <code>POST http://127.0.0.1:8765/api/control/restart</code>
+                    </div>
+
+                    <div class="api-card">
+                        <h3>🛑 Clean Shutdown Application</h3>
+                        <code>POST http://127.0.0.1:8765/api/control/shutdown</code>
                     </div>
 
                     <div class="api-card">
@@ -638,10 +802,31 @@
                     </div>
 
                     <div class="api-card">
+                        <h3>📺 Room &amp; Stage Confidence Monitor</h3>
+                        <code>http://127.0.0.1:8765/display</code>
+                    </div>
+
+                    <div class="api-card">
                         <h3>⚓ OBS Custom Browser Dock URL</h3>
                         <code>http://127.0.0.1:8765/dashboard</code> (Add via OBS <strong>Docks -&gt; Custom Browser Docks</strong>)
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fullscreen Reconnecting / Restart Overlay -->
+    <div id="restart-modal" style="display: none; position: fixed; inset: 0; background: rgba(10, 10, 15, 0.92); backdrop-filter: blur(12px); z-index: 9999; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #fff; padding: 24px;">
+        <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 16px; padding: 36px 40px; max-width: 460px; width: 100%; box-shadow: 0 20px 50px rgba(0,0,0,0.6);">
+            <div id="restart-modal-icon" style="font-size: 54px; margin-bottom: 18px; display: inline-block;">🔄</div>
+            <h2 id="restart-modal-title" style="font-size: 22px; font-weight: 700; margin-bottom: 8px;">Restarting VoxStream...</h2>
+            <p id="restart-modal-sub" style="color: #9CA3AF; font-size: 13px; margin-bottom: 20px; line-height: 1.5;">Reloading speech recognition engine and audio streams...</p>
+            <div style="background: rgba(255,255,255,0.08); border-radius: 999px; height: 6px; overflow: hidden; margin-bottom: 16px; width: 100%;">
+                <div id="restart-progress-bar" style="background: linear-gradient(90deg, #6366F1, #A855F7); width: 35%; height: 100%; border-radius: 999px; transition: width 0.3s ease;"></div>
+            </div>
+            <div id="restart-step-status" style="font-size: 12px; color: #A5B4FC; font-weight: 600;">Step 1/3: Sending restart signal...</div>
+            <div id="restart-manual-actions" style="margin-top: 18px; display: none;">
+                <button id="btn-restart-retry" class="btn btn-primary" style="font-size: 13px; padding: 8px 18px;">🔄 Refresh Interface</button>
             </div>
         </div>
     </div>

@@ -8,9 +8,11 @@ from typing import Optional
 from ..config import AppConfig
 from ..engines.base import TranscriptEvent
 from ..censor import ContentFilter
+from ..formatter import TextFormatter
 from ..history import TranscriptHistory
 from ..translator import SubtitleTranslator
 from ..twitch_bot import TwitchCaptionBot
+from ..vocabulary import VocabularyReplacer
 from .ws_client import OBSWebSocketClient
 
 logger = logging.getLogger("obs_captioner.sink")
@@ -30,6 +32,12 @@ class CaptionSink:
         self.config = config
         self.obs_client = obs_client
         self.web_server = web_server
+        self.vocabulary = VocabularyReplacer(config.vocabulary)
+        self.formatter = TextFormatter(
+            auto_capitalization=getattr(config.general, "auto_capitalization", True),
+            auto_punctuation=getattr(config.general, "auto_punctuation", True),
+            church_mode=getattr(config.general, "church_mode", True),
+        )
         self.content_filter = ContentFilter(config.censor)
         self.translator = SubtitleTranslator(config.translation)
         self.history = history or TranscriptHistory()
@@ -41,6 +49,12 @@ class CaptionSink:
     def update_config(self, new_config: AppConfig):
         """Live update configuration, filter dictionary, and translation rules."""
         self.config = new_config
+        self.vocabulary = VocabularyReplacer(new_config.vocabulary)
+        self.formatter = TextFormatter(
+            auto_capitalization=getattr(new_config.general, "auto_capitalization", True),
+            auto_punctuation=getattr(new_config.general, "auto_punctuation", True),
+            church_mode=getattr(new_config.general, "church_mode", True),
+        )
         self.content_filter = ContentFilter(new_config.censor)
         self.translator = SubtitleTranslator(new_config.translation)
 
@@ -51,8 +65,14 @@ class CaptionSink:
         if not raw_text:
             return
 
-        # 1. Content and Profanity Filtering
-        clean_text, was_censored = self.content_filter.filter_text(raw_text)
+        # 1. Custom Vocabulary & Glossary Replacements
+        vocab_text, _ = self.vocabulary.replace(raw_text)
+
+        # 2. Capitalization & Punctuation Formatting
+        formatted_text = self.formatter.format_text(vocab_text, is_final=event.is_final)
+
+        # 3. Content and Profanity Filtering
+        clean_text, was_censored = self.content_filter.filter_text(formatted_text)
         
         # If drop_sentence mode triggered on censored text
         if was_censored and self.config.censor.mode == "drop_sentence":
@@ -124,14 +144,20 @@ class CaptionSink:
             self._auto_clear_task = asyncio.create_task(self._auto_clear_worker())
 
     async def _auto_clear_worker(self):
-        """Clear OBS Text Source after silence timeout."""
+        """Clear OBS Text Source and web overlay after silence timeout."""
         try:
             await asyncio.sleep(self.config.overlay.auto_hide_seconds)
+            # Clear OBS text source
             if self.obs_client and self.obs_client.is_connected:
                 if self.config.obs.update_text_source and self.config.obs.text_source_name:
                     await self.obs_client.update_text_source(
                         self.config.obs.text_source_name,
                         "",
                     )
+            # Clear web overlay browser source too
+            if self.web_server:
+                await self.web_server.broadcast_caption(
+                    {"text": "", "is_final": True, "is_censored": False, "timestamp": 0}
+                )
         except asyncio.CancelledError:
             pass

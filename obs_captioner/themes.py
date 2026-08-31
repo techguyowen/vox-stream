@@ -1,7 +1,7 @@
 """Preset visual themes and styling templates for OBS Live Captions."""
 
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 @dataclass
@@ -151,10 +151,41 @@ THEME_PRESETS: Dict[str, ThemePreset] = {
         text_stroke="none",
         animation_style="fade",
     ),
+    "opendyslexic": ThemePreset(
+        id="opendyslexic",
+        name="📖 OpenDyslexic (Accessibility)",
+        description="Specialized bottom-heavy letterforms designed to enhance readability.",
+        font_family="'OpenDyslexic', sans-serif",
+        font_size="32px",
+        font_weight="700",
+        line_height="1.5",
+        text_color="#FFFFFF",
+        interim_color="#7DD3FC",
+        highlight_color="#FDE047",
+        background_box_color="rgba(15, 23, 42, 0.88)",
+        border_radius="12px",
+        box_padding="16px 28px",
+        text_shadow="2px 2px 4px rgba(0, 0, 0, 0.95)",
+        text_stroke="2px #000000",
+        animation_style="word_pop",
+    ),
 }
 
 
-def get_all_presets() -> List[dict]:
-    """Return all theme presets as dictionaries for API / UI dropdowns."""
+def get_all_presets(custom_presets: Optional[Dict[str, dict]] = None) -> List[dict]:
+    """Return all theme presets including built-in and user-saved custom presets."""
     from dataclasses import asdict
-    return [asdict(t) for t in THEME_PRESETS.values()]
+    presets = []
+    for t in THEME_PRESETS.values():
+        p_dict = asdict(t)
+        p_dict["is_custom"] = False
+        presets.append(p_dict)
+
+    if custom_presets:
+        for p_id, p_val in custom_presets.items():
+            if isinstance(p_val, dict):
+                p_entry = dict(p_val)
+                p_entry["id"] = p_id
+                p_entry["is_custom"] = True
+                presets.append(p_entry)
+    return presets

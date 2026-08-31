@@ -10,6 +10,7 @@ from typing import Dict, List, Optional
 from .censor import CensorConfig
 from .translator import TranslationConfig
 from .twitch_bot import TwitchConfig
+from .vocabulary import VocabularyConfig
 from .themes import THEME_PRESETS
 
 logger = logging.getLogger("obs_captioner.config")
@@ -17,9 +18,12 @@ logger = logging.getLogger("obs_captioner.config")
 
 @dataclass
 class GeneralConfig:
-    engine: str = "google_stt"  # "google_stt", "gemini_live", "local_whisper"
+    engine: str = "vosk"  # "vosk", "moonshine", "google_web", "gemini_live", "google_stt", "local_whisper"
     language: str = "en-US"
     log_level: str = "INFO"
+    auto_capitalization: bool = True
+    auto_punctuation: bool = True
+    church_mode: bool = True
 
 
 @dataclass
@@ -65,6 +69,19 @@ class LocalWhisperConfig:
 
 
 @dataclass
+class VoskConfig:
+    model_name: str = "small"  # "small" (vosk-model-small-en-us-0.15) or "accurate" (vosk-model-en-us-0.22)
+    model_path: str = ""  # Optional custom local folder path
+    sample_rate: int = 16000
+
+
+@dataclass
+class MoonshineConfig:
+    model_name: str = "moonshine/tiny"  # "moonshine/tiny" or "moonshine/base"
+    sample_rate: int = 16000
+
+
+@dataclass
 class OBSConfig:
     enabled: bool = True
     host: str = "127.0.0.1"
@@ -107,8 +124,8 @@ class OverlayConfig:
     text_stroke: str = "2px #000000"
     auto_hide_seconds: float = 4.0
 
-    def apply_theme(self, theme_id: str):
-        """Apply attributes from a known theme preset."""
+    def apply_theme(self, theme_id: str, custom_presets: Optional[Dict[str, dict]] = None) -> bool:
+        """Apply attributes from a known theme preset or custom user preset."""
         preset = THEME_PRESETS.get(theme_id)
         if preset:
             self.theme_id = preset.id
@@ -125,6 +142,25 @@ class OverlayConfig:
             self.text_shadow = preset.text_shadow
             self.text_stroke = preset.text_stroke
             self.animation_style = preset.animation_style
+            return True
+        elif custom_presets and theme_id in custom_presets:
+            cp = custom_presets[theme_id]
+            self.theme_id = theme_id
+            self.font_family = cp.get("font_family", self.font_family)
+            self.font_size = cp.get("font_size", self.font_size)
+            self.font_weight = cp.get("font_weight", self.font_weight)
+            self.line_height = cp.get("line_height", self.line_height)
+            self.text_color = cp.get("text_color", self.text_color)
+            self.interim_color = cp.get("interim_color", self.interim_color)
+            self.highlight_color = cp.get("highlight_color", self.highlight_color)
+            self.background_box_color = cp.get("background_box_color", self.background_box_color)
+            self.border_radius = cp.get("border_radius", self.border_radius)
+            self.box_padding = cp.get("box_padding", self.box_padding)
+            self.text_shadow = cp.get("text_shadow", self.text_shadow)
+            self.text_stroke = cp.get("text_stroke", self.text_stroke)
+            self.animation_style = cp.get("animation_style", self.animation_style)
+            return True
+        return False
 
 
 @dataclass
@@ -137,12 +173,16 @@ class APIConfig:
 class AppConfig:
     general: GeneralConfig = field(default_factory=GeneralConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
+    vocabulary: VocabularyConfig = field(default_factory=VocabularyConfig)
+    custom_presets: Dict[str, dict] = field(default_factory=dict)
     censor: CensorConfig = field(default_factory=CensorConfig)
     translation: TranslationConfig = field(default_factory=TranslationConfig)
     twitch: TwitchConfig = field(default_factory=TwitchConfig)
     google_stt: GoogleSTTConfig = field(default_factory=GoogleSTTConfig)
     gemini_live: GeminiLiveConfig = field(default_factory=GeminiLiveConfig)
     local_whisper: LocalWhisperConfig = field(default_factory=LocalWhisperConfig)
+    vosk: VoskConfig = field(default_factory=VoskConfig)
+    moonshine: MoonshineConfig = field(default_factory=MoonshineConfig)
     obs: OBSConfig = field(default_factory=OBSConfig)
     overlay: OverlayConfig = field(default_factory=OverlayConfig)
     api: APIConfig = field(default_factory=APIConfig)
@@ -191,12 +231,15 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
     cfg = AppConfig(
         general=GeneralConfig(**data.get("general", {})),
         audio=AudioConfig(**data.get("audio", {})),
+        vocabulary=VocabularyConfig(**data.get("vocabulary", {})),
         censor=CensorConfig(**data.get("censor", {})),
         translation=TranslationConfig(**data.get("translation", {})),
         twitch=TwitchConfig(**data.get("twitch", {})),
         google_stt=GoogleSTTConfig(**data.get("google_stt", {})),
         gemini_live=GeminiLiveConfig(**data.get("gemini_live", {})),
         local_whisper=LocalWhisperConfig(**data.get("local_whisper", {})),
+        vosk=VoskConfig(**data.get("vosk", {})),
+        moonshine=MoonshineConfig(**data.get("moonshine", {})),
         obs=OBSConfig(**data.get("obs", {})),
         overlay=OverlayConfig(**data.get("overlay", {})),
         api=APIConfig(**data.get("api", {})),

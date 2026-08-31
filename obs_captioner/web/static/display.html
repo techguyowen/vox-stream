@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoxStream - Room Confidence Monitor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;700&family=Montserrat:wght@700;800&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+    <style>
+        @font-face {
+            font-family: 'OpenDyslexic';
+            src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Regular.woff') format('woff'),
+                 url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/ttf/OpenDyslexic-Regular.ttf') format('truetype');
+            font-weight: normal;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'OpenDyslexic';
+            src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Bold.woff') format('woff'),
+                 url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/ttf/OpenDyslexic-Bold.ttf') format('truetype');
+            font-weight: bold;
+            font-style: normal;
+            font-display: swap;
+        }
+
+        :root {
+            --bg-color: #000000;
+            --text-color: #FFFFFF;
+            --text-muted: #8E8E93;
+            --interim-color: #FFD166;
+            --accent: #3B82F6;
+            --success: #10B981;
+            --card-bg: rgba(24, 24, 27, 0.85);
+            --border: #27272A;
+            --font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            --font-size: 48px;
+            --line-height: 1.45;
+        }
+
+        /* High Contrast Themes */
+        body.theme-oled {
+            --bg-color: #000000;
+            --text-color: #FFFFFF;
+            --interim-color: #38BDF8;
+        }
+        body.theme-amber {
+            --bg-color: #050505;
+            --text-color: #FFB703;
+            --interim-color: #FB8500;
+            --text-muted: #8D7B48;
+        }
+        body.theme-slate {
+            --bg-color: #0F172A;
+            --text-color: #F8FAFC;
+            --interim-color: #FBBF24;
+            --text-muted: #64748B;
+        }
+        body.theme-light {
+            --bg-color: #F8FAFC;
+            --text-color: #0F172A;
+            --interim-color: #2563EB;
+            --text-muted: #94A3B8;
+            --card-bg: rgba(255, 255, 255, 0.9);
+            --border: #E2E8F0;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: var(--font-family);
+            overflow: hidden;
+            user-select: none;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        /* Top Header Bar */
+        .header-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 64px;
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            z-index: 100;
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+
+        .header-bar.hidden {
+            opacity: 0;
+            transform: translateY(-100%);
+            pointer-events: none;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .brand-badge {
+            font-size: 14px;
+            font-weight: 800;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            color: var(--accent);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .status-pill.offline {
+            background: rgba(239, 68, 68, 0.15);
+            color: #EF4444;
+            border-color: rgba(239, 68, 68, 0.3);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: currentColor;
+            box-shadow: 0 0 8px currentColor;
+        }
+
+        .clock-display {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-color);
+            letter-spacing: 1px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .ctrl-btn {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-color);
+            border: 1px solid var(--border);
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .ctrl-btn:hover {
+            background: rgba(255, 255, 255, 0.16);
+            transform: translateY(-1px);
+        }
+
+        .theme-select {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-color);
+            border: 1px solid var(--border);
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            outline: none;
+        }
+
+        .theme-select option {
+            background: #18181B;
+            color: #FFFFFF;
+        }
+
+        /* Main Scrolling Container */
+        .stage-container {
+            position: absolute;
+            top: 64px;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            overflow-y: auto;
+            scroll-behavior: smooth;
+            padding: 40px 60px 140px 60px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            min-height: calc(100% - 64px);
+        }
+
+        .stage-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        .stage-container::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+        }
+
+        .transcript-content {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            max-width: 1600px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .caption-sentence {
+            font-size: var(--font-size);
+            line-height: var(--line-height);
+            font-weight: 700;
+            color: var(--text-color);
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+            opacity: 0.92;
+            word-wrap: break-word;
+            transition: opacity 0.2s ease;
+        }
+
+        .caption-sentence.previous {
+            opacity: 0.55;
+            font-weight: 600;
+        }
+
+        .caption-sentence.interim {
+            color: var(--interim-color);
+            opacity: 1;
+            font-weight: 800;
+        }
+
+        .caption-sentence.interim::after {
+            content: "▍";
+            display: inline-block;
+            margin-left: 6px;
+            animation: blink 0.9s infinite;
+            color: var(--interim-color);
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        .empty-indicator {
+            text-align: center;
+            color: var(--text-muted);
+            font-size: calc(var(--font-size) * 0.65);
+            font-weight: 600;
+            padding: 100px 0;
+        }
+
+        /* Floating Auto-Scroll / Controls Button */
+        .floating-controls {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+        }
+
+        .float-btn {
+            background: var(--card-bg);
+            color: var(--text-color);
+            border: 1px solid var(--border);
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            cursor: pointer;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+            backdrop-filter: blur(8px);
+            transition: transform 0.2s ease, background-color 0.2s ease;
+        }
+
+        .float-btn:hover {
+            transform: scale(1.1);
+            background: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body class="theme-oled">
+
+    <!-- Header Navigation Bar -->
+    <header class="header-bar" id="headerBar">
+        <div class="header-left">
+            <div class="brand-badge">
+                <span>🎙️ VoxStream</span>
+                <span style="opacity: 0.5;">|</span>
+                <span style="font-weight: 600;">Room Display</span>
+            </div>
+            <div class="status-pill" id="statusPill">
+                <span class="status-dot"></span>
+                <span id="statusText">LIVE</span>
+            </div>
+        </div>
+
+        <div class="clock-display" id="clockDisplay">12:00:00 PM</div>
+
+        <div class="header-right">
+            <!-- Font Selector -->
+            <select class="theme-select" id="fontSelect" title="Typography / Font Family">
+                <option value="'Inter', system-ui, -apple-system, sans-serif" selected>Inter (Default)</option>
+                <option value="'OpenDyslexic', sans-serif">📖 OpenDyslexic (Accessibility)</option>
+                <option value="'Montserrat', sans-serif">Montserrat (Bold)</option>
+                <option value="'Poppins', sans-serif">Poppins (Rounded)</option>
+                <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
+            </select>
+
+            <!-- Theme Selector -->
+            <select class="theme-select" id="themeSelect">
+                <option value="theme-oled" selected>🌑 OLED Black</option>
+                <option value="theme-amber">🟡 Amber Stage</option>
+                <option value="theme-slate">🌌 Slate Blue</option>
+                <option value="theme-light">☀️ High Light</option>
+            </select>
+
+            <!-- Font Size Controls -->
+            <button class="ctrl-btn" id="btnFontDec" title="Decrease font size (Shortcut: -)">A-</button>
+            <button class="ctrl-btn" id="btnFontInc" title="Increase font size (Shortcut: +)">A+</button>
+
+            <!-- Fullscreen -->
+            <button class="ctrl-btn" id="btnFullscreen" title="Toggle Fullscreen (F11)">⛶ Fullscreen</button>
+
+            <!-- Clear -->
+            <button class="ctrl-btn" id="btnClear" title="Clear Screen History">🗑️ Clear</button>
+        </div>
+    </header>
+
+    <!-- Main Scrolling Area -->
+    <main class="stage-container" id="stageContainer">
+        <div class="transcript-content" id="transcriptContent">
+            <div class="empty-indicator" id="emptyNotice">
+                Listening for speech... Captions will appear here in real-time.
+            </div>
+        </div>
+    </main>
+
+    <!-- Floating Actions -->
+    <div class="floating-controls">
+        <button class="float-btn" id="btnToggleHeader" title="Toggle Header Bar">⚙️</button>
+        <button class="float-btn" id="btnScrollBottom" title="Scroll to Latest Speech">⬇️</button>
+    </div>
+
+    <script>
+        // State
+        let currentFontSize = 48;
+        const maxHistorySentences = 20;
+        let finalSentences = [];
+        let interimText = "";
+        let ws = null;
+        let autoScroll = true;
+
+        // Elements
+        const stageContainer = document.getElementById('stageContainer');
+        const transcriptContent = document.getElementById('transcriptContent');
+        const emptyNotice = document.getElementById('emptyNotice');
+        const clockDisplay = document.getElementById('clockDisplay');
+        const statusPill = document.getElementById('statusPill');
+        const statusText = document.getElementById('statusText');
+        const fontSelect = document.getElementById('fontSelect');
+        const themeSelect = document.getElementById('themeSelect');
+        const headerBar = document.getElementById('headerBar');
+
+        // Clock Update
+        function updateClock() {
+            const now = new Date();
+            clockDisplay.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // Font Size & Family
+        function setFontSize(size) {
+            currentFontSize = Math.max(24, Math.min(96, size));
+            document.documentElement.style.setProperty('--font-size', `${currentFontSize}px`);
+            localStorage.setItem('voxstream_display_fontsize', currentFontSize);
+        }
+
+        function setFontFamily(font) {
+            document.documentElement.style.setProperty('--font-family', font);
+            localStorage.setItem('voxstream_display_font', font);
+            if (fontSelect) fontSelect.value = font;
+        }
+
+        // Restore Preferences
+        const savedSize = localStorage.getItem('voxstream_display_fontsize');
+        if (savedSize) setFontSize(parseInt(savedSize));
+
+        const savedFont = localStorage.getItem('voxstream_display_font');
+        if (savedFont) setFontFamily(savedFont);
+
+        const savedTheme = localStorage.getItem('voxstream_display_theme');
+        if (savedTheme) {
+            document.body.className = savedTheme;
+            themeSelect.value = savedTheme;
+        }
+
+        // Font Family Change
+        if (fontSelect) {
+            fontSelect.addEventListener('change', (e) => {
+                setFontFamily(e.target.value);
+            });
+        }
+
+        // Theme Change
+        themeSelect.addEventListener('change', (e) => {
+            document.body.className = e.target.value;
+            localStorage.setItem('voxstream_display_theme', e.target.value);
+        });
+
+        // Controls
+        document.getElementById('btnFontInc').addEventListener('click', () => setFontSize(currentFontSize + 4));
+        document.getElementById('btnFontDec').addEventListener('click', () => setFontSize(currentFontSize - 4));
+        
+        document.getElementById('btnClear').addEventListener('click', () => {
+            finalSentences = [];
+            interimText = "";
+            renderCaptions();
+        });
+
+        document.getElementById('btnFullscreen').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            } else {
+                document.exitFullscreen().catch(() => {});
+            }
+        });
+
+        document.getElementById('btnToggleHeader').addEventListener('click', () => {
+            headerBar.classList.toggle('hidden');
+        });
+
+        document.getElementById('btnScrollBottom').addEventListener('click', () => {
+            stageContainer.scrollTop = stageContainer.scrollHeight;
+            autoScroll = true;
+        });
+
+        // Keyboard Shortcuts
+        window.addEventListener('keydown', (e) => {
+            if (e.key === '+' || e.key === '=') setFontSize(currentFontSize + 4);
+            if (e.key === '-' || e.key === '_') setFontSize(currentFontSize - 4);
+            if (e.key === 'h' || e.key === 'H') headerBar.classList.toggle('hidden');
+            if (e.key === 'c' || e.key === 'C') {
+                finalSentences = [];
+                interimText = "";
+                renderCaptions();
+            }
+        });
+
+        // Render Captions
+        function renderCaptions() {
+            if (finalSentences.length === 0 && !interimText) {
+                transcriptContent.innerHTML = '<div class="empty-indicator" id="emptyNotice">Listening for speech... Captions will appear here in real-time.</div>';
+                return;
+            }
+
+            let html = '';
+            // Render previous finalized sentences (dimmed slightly)
+            const count = finalSentences.length;
+            finalSentences.forEach((sentence, idx) => {
+                const isRecent = idx >= count - 2;
+                const cls = isRecent ? 'caption-sentence' : 'caption-sentence previous';
+                html += `<div class="${cls}">${escapeHtml(sentence)}</div>`;
+            });
+
+            // Render current live interim speech
+            if (interimText) {
+                html += `<div class="caption-sentence interim">${escapeHtml(interimText)}</div>`;
+            }
+
+            transcriptContent.innerHTML = html;
+
+            if (autoScroll) {
+                stageContainer.scrollTop = stageContainer.scrollHeight;
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Track manual scroll
+        stageContainer.addEventListener('scroll', () => {
+            const atBottom = stageContainer.scrollHeight - stageContainer.scrollTop - stageContainer.clientHeight < 50;
+            autoScroll = atBottom;
+        });
+
+        // WebSocket Connection
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                statusPill.classList.remove('offline');
+                statusText.textContent = 'LIVE';
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleCaptionEvent(data);
+                } catch (err) {
+                    console.error('Error parsing caption event:', err);
+                }
+            };
+
+            ws.onclose = () => {
+                statusPill.classList.add('offline');
+                statusText.textContent = 'RECONNECTING';
+                setTimeout(connectWebSocket, 1500);
+            };
+
+            ws.onerror = () => {
+                ws.close();
+            };
+        }
+
+        function handleCaptionEvent(data) {
+            const text = (data.text || '').trim();
+
+            if (data.is_final) {
+                if (text) {
+                    finalSentences.push(text);
+                    if (finalSentences.length > maxHistorySentences) {
+                        finalSentences.shift();
+                    }
+                }
+                interimText = "";
+            } else {
+                interimText = text;
+            }
+
+            renderCaptions();
+        }
+
+        // Start WebSocket & Status
+        connectWebSocket();
+
+        async function updateDisplayStatus() {
+            try {
+                const res = await fetch('/api/status');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (statusText && ws && ws.readyState === WebSocket.OPEN) {
+                        statusText.textContent = `LIVE • ${data.engine_name || 'Active'}`;
+                    }
+                }
+            } catch (e) {}
+        }
+        updateDisplayStatus();
+        setInterval(updateDisplayStatus, 5000);
+    </script>
+</body>
+</html>

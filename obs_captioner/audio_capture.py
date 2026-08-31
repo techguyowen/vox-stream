@@ -172,7 +172,7 @@ class AudioCapture:
 
             # Downmix multi-channel to mono
             if pcm16.ndim > 1 and pcm16.shape[1] > 1:
-                pcm16 = np.mean(pcm16, axis=1, dtype=np.int16)
+                pcm16 = np.mean(pcm16, axis=1).astype(np.int16)
 
             # Resample down to 16kHz if captured at native rate (e.g. 48kHz -> 16kHz)
             if stream_rate != self.target_rate and len(pcm16) > 0:
@@ -210,8 +210,9 @@ class AudioCapture:
             logger.info("Audio capture stream started.")
             return True
         except Exception as e:
-            logger.error(f"Failed to open audio stream: {e}")
+            logger.error(f"Failed to open audio stream at {stream_rate}Hz: {e}")
             try:
+                stream_rate = native_rate
                 self.stream = sd.InputStream(
                     device=self.device_index,
                     channels=channels,
@@ -236,7 +237,8 @@ class AudioCapture:
         # Calculate VU meter level from PCM bytes
         try:
             if np is not None:
-                audio_np = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+                even_len = len(pcm_bytes) & ~1
+                audio_np = np.frombuffer(pcm_bytes[:even_len], dtype=np.int16).astype(np.float32) / 32768.0
                 rms = np.sqrt(np.mean(audio_np ** 2)) if len(audio_np) > 0 else 0.0
                 db = 20 * math.log10(rms) if rms > 1e-5 else -100.0
                 self.current_rms_db = max(-100.0, min(0.0, float(db)))

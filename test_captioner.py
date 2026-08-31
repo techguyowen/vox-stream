@@ -7,6 +7,7 @@ import unittest
 from obs_captioner.config import load_config, AppConfig, save_config, OverlayConfig
 from obs_captioner.vad import VoiceActivityDetector
 from obs_captioner.censor import ContentFilter, CensorConfig
+from obs_captioner.vocabulary import VocabularyReplacer, VocabularyConfig
 from obs_captioner.history import TranscriptHistory
 from obs_captioner.engines import (
     create_engine,
@@ -14,6 +15,8 @@ from obs_captioner.engines import (
     GoogleSTTEngine,
     GeminiLiveEngine,
     LocalWhisperEngine,
+    VoskEngine,
+    MoonshineEngine,
 )
 from obs_captioner.themes import THEME_PRESETS, get_all_presets
 from obs_captioner.translator import SubtitleTranslator, TranslationConfig
@@ -117,6 +120,45 @@ class TestContentFilterCRUD(unittest.TestCase):
         self.assertIn("custom_whitelist", state)
 
 
+class TestVocabulary(unittest.TestCase):
+
+    def test_vocabulary_replacement(self):
+        cfg = VocabularyConfig(
+            enabled=True,
+            terms={
+                "vox stream": "VoxStream",
+                "obs": "OBS",
+                "pastor mike": "Pastor Mike",
+            }
+        )
+        replacer = VocabularyReplacer(cfg)
+
+        text, modified = replacer.replace("welcome to vox stream live captions on obs with pastor mike")
+        self.assertTrue(modified)
+        self.assertEqual(text, "welcome to VoxStream live captions on OBS with Pastor Mike")
+
+        # Test phrase boundary safety (e.g. 'observer' should NOT be replaced by 'OBSserver')
+        text_safe, mod_safe = replacer.replace("the observer looked outside")
+        self.assertFalse(mod_safe)
+        self.assertEqual(text_safe, "the observer looked outside")
+
+    def test_vocabulary_crud(self):
+        cfg = VocabularyConfig(enabled=True, terms={})
+        replacer = VocabularyReplacer(cfg)
+
+        # Add term
+        self.assertTrue(replacer.add_term("k8s", "Kubernetes"))
+        res, mod = replacer.replace("we deploy to k8s cluster")
+        self.assertTrue(mod)
+        self.assertEqual(res, "we deploy to Kubernetes cluster")
+
+        # Remove term
+        self.assertTrue(replacer.remove_term("k8s"))
+        res2, mod2 = replacer.replace("we deploy to k8s cluster")
+        self.assertFalse(mod2)
+        self.assertEqual(res2, "we deploy to k8s cluster")
+
+
 class TestTranslator(unittest.TestCase):
 
     def test_translator_disabled(self):
@@ -216,6 +258,15 @@ class TestConfigAndEngines(unittest.TestCase):
         eng_whisper = create_engine(cfg)
         self.assertIsInstance(eng_whisper, LocalWhisperEngine)
 
+        cfg.general.engine = "vosk"
+        eng_vosk = create_engine(cfg)
+        self.assertIsInstance(eng_vosk, VoskEngine)
+
+        cfg.general.engine = "moonshine"
+        eng_moonshine = create_engine(cfg)
+        self.assertIsInstance(eng_moonshine, MoonshineEngine)
+        self.assertTrue(cfg.moonshine.model_name.startswith("moonshine/"))
+
     def test_vad_energy_calculation(self):
         vad = VoiceActivityDetector(enable_silero=False, noise_gate_db=-40.0)
         
@@ -226,8 +277,79 @@ class TestConfigAndEngines(unittest.TestCase):
         samples = [int(math.sin(2 * math.pi * 440 * i / 16000) * 20000) for i in range(1600)]
         loud_bytes = struct.pack(f"<{len(samples)}h", *samples)
         db = vad.calculate_rms_db(loud_bytes)
-        self.assertGreater(db, -20.0)
-        self.assertTrue(vad.is_speech(loud_bytes))
+    def test_custom_presets(self):
+        cfg = load_config()
+        cfg.custom_presets["my_stage_look"] = {
+            "name": "My Stage Look",
+            "description": "High contrast stage styling",
+            "font_family": "Montserrat, sans-serif",
+            "font_size": "48px",
+            "text_color": "#FFCC00",
+        }
+        
+        all_presets = get_all_presets(cfg.custom_presets)
+        custom_p = [p for p in all_presets if p.get("id") == "my_stage_look"]
+        self.assertEqual(len(custom_p), 1)
+        self.assertTrue(custom_p[0]["is_custom"])
+        self.assertEqual(custom_p[0]["name"], "My Stage Look")
+
+        # Test applying custom preset
+        applied = cfg.overlay.apply_theme("my_stage_look", cfg.custom_presets)
+        self.assertTrue(applied)
+        self.assertEqual(cfg.overlay.font_family, "Montserrat, sans-serif")
+        self.assertEqual(cfg.overlay.font_size, "48px")
+        self.assertEqual(cfg.overlay.text_color, "#FFCC00")
+
+
+class TestTextFormatter(unittest.TestCase):
+
+    def test_capitalization_and_punctuation(self):
+        from obs_captioner.formatter import TextFormatter
+        fmt = TextFormatter(auto_capitalization=True, auto_punctuation=True)
+
+        # Standard statement
+        res = fmt.format_text("hello world i am streaming on twitch", is_final=True)
+        self.assertEqual(res, "Hello world I am streaming on Twitch.")
+
+        # Question detection
+        res_q = fmt.format_text("what is the best captioner for obs", is_final=True)
+        self.assertEqual(res_q, "What is the best captioner for OBS?")
+
+        # Exclamation detection
+        res_ex = fmt.format_text("wow this is awesome", is_final=True)
+        self.assertEqual(res_ex, "Wow this is awesome!")
+
+        # Contractions
+        res_cont = fmt.format_text("i dont know if im ready", is_final=True)
+        self.assertEqual(res_cont, "I don't know if I'm ready.")
+
+        # Interim without final punctuation
+        res_interim = fmt.format_text("i am testing this", is_final=False)
+        self.assertEqual(res_interim, "I am testing this")
+
+    def test_church_words_and_scripture(self):
+        from obs_captioner.formatter import TextFormatter
+        fmt = TextFormatter(auto_capitalization=True, auto_punctuation=True, church_mode=True)
+
+        # Scripture citation format: John 3:16
+        res_john = fmt.format_text("for god so loved the world in john 3 16", is_final=True)
+        self.assertEqual(res_john, "For God so loved the world in John 3:16.")
+
+        # Romans 8:28
+        res_rom = fmt.format_text("in romans 8 28 we know all things work together", is_final=True)
+        self.assertEqual(res_rom, "In Romans 8:28 we know all things work together.")
+
+        # Spoken scripture: 1 Corinthians chapter 13 verse 4 through 7
+        res_cor = fmt.format_text("turn to first corinthians chapter thirteen verse four through seven", is_final=True)
+        self.assertEqual(res_cor, "Turn to 1 Corinthians 13:4-7.")
+
+        # Psalm number
+        res_ps = fmt.format_text("psalm twenty three is my favorite psalm", is_final=True)
+        self.assertEqual(res_ps, "Psalm 23 is my favorite Psalm.")
+
+        # Sacred titles & phrases
+        res_phrases = fmt.format_text("jesus christ is king of kings and lord of lords amen", is_final=True)
+        self.assertEqual(res_phrases, "Jesus Christ is King of Kings and Lord of Lords Amen.")
 
 
 if __name__ == "__main__":

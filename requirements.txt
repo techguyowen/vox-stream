@@ -16,8 +16,11 @@ google-cloud-speech>=2.24.0
 # Speech-to-Text: Google Gemini Live API
 google-genai>=0.1.1
 
-# Speech-to-Text: Local Offline Engine
+# Speech-to-Text: Local Offline Engines
 faster-whisper>=1.0.0
+vosk>=0.3.44
+useful-moonshine
+keras>=3.0.0
 
 # Voice Activity Detection (VAD)
 silero-vad>=5.1.0
