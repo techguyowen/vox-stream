@@ -96,7 +96,7 @@
                         <h2>Fine-Tune Typography</h2>
                         
                         <div class="form-group">
-                            <label>Google / System Font</label>
+                            <label for="font_family">Google / System Font</label>
                             <select id="font_family" class="form-control">
                                 <option value="Inter, sans-serif">Inter (Modern Clean)</option>
                                 <option value="'OpenDyslexic', sans-serif">📖 OpenDyslexic (Accessibility &amp; Reading Aid)</option>
@@ -125,7 +125,7 @@
 
                         <div class="form-row">
                             <div class="form-group">
-                                <label>Max Lines Visible</label>
+                                <label for="max_lines">Max Lines Visible</label>
                                 <select id="max_lines" class="form-control">
                                     <option value="1">1 Line (Ticker Style)</option>
                                     <option value="2">2 Lines (Standard Subtitles)</option>
@@ -140,7 +140,7 @@
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label>Text Alignment</label>
+                                <label for="text_align">Text Alignment</label>
                                 <select id="text_align" class="form-control">
                                     <option value="center" selected>Center</option>
                                     <option value="left">Left</option>
@@ -151,7 +151,7 @@
 
                         <div class="form-row">
                             <div class="form-group">
-                                <label>Animation Style</label>
+                                <label for="animation_style">Animation Style</label>
                                 <select id="animation_style" class="form-control">
                                     <option value="word_pop" selected>Word Pop (Bouncy)</option>
                                     <option value="karaoke">Karaoke Highlight</option>
@@ -167,19 +167,19 @@
 
                         <div class="form-row colors-grid">
                             <div class="form-group">
-                                <label>Text Color</label>
+                                <label for="text_color">Text Color</label>
                                 <input type="color" id="text_color" value="#FFFFFF" class="color-input">
                             </div>
                             <div class="form-group">
-                                <label>Interim Color</label>
+                                <label for="interim_color">Interim Color</label>
                                 <input type="color" id="interim_color" value="#90CAF9" class="color-input">
                             </div>
                             <div class="form-group">
-                                <label>Word Highlight</label>
+                                <label for="highlight_color">Word Highlight</label>
                                 <input type="color" id="highlight_color" value="#FFD166" class="color-input">
                             </div>
                             <div class="form-group">
-                                <label>Box Background</label>
+                                <label for="bg_color_picker">Box Background</label>
                                 <input type="color" id="bg_color_picker" value="#0F0F14" class="color-input">
                             </div>
                         </div>
@@ -266,7 +266,7 @@
                     </div>
 
                     <div class="form-group">
-                        <label>Filter Action Mode</label>
+                        <label for="censor_mode">Filter Action Mode</label>
                         <select id="censor_mode" class="form-control">
                             <option value="replacement" selected>Wholesome Word Replacement (e.g. "damn" -&gt; "darn", "fuck" -&gt; "fudge")</option>
                             <option value="asterisk">Asterisk Masking (e.g. "f***", "d***")</option>
@@ -356,7 +356,7 @@
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Target Language</label>
+                            <label for="translation_target">Target Language</label>
                             <select id="translation_target" class="form-control">
                                 <option value="es" selected>Spanish (Español)</option>
                                 <option value="fr">French (Français)</option>
@@ -378,7 +378,7 @@
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>Display Mode</label>
+                            <label for="translation_mode">Display Mode</label>
                             <select id="translation_mode" class="form-control">
                                 <option value="dual" selected>Dual Subtitles (Original Spoken + Translated Underneath)</option>
                                 <option value="translated_only">Translated Subtitles Only</option>
@@ -414,7 +414,7 @@
                     </div>
                     
                     <div class="form-group">
-                        <label>Audio Input Device (Microphone / Loopback)</label>
+                        <label for="audio_device_select">Audio Input Device (Microphone / Loopback)</label>
                         <select id="audio_device_select" class="form-control">
                             <option value="default">Default Input Device</option>
                         </select>
@@ -422,7 +422,7 @@
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Speech-to-Text Engine</label>
+                            <label for="engine_select">Speech-to-Text Engine</label>
                             <select id="engine_select" class="form-control">
                                 <option value="google_web" selected>🆓 Google Speech Recognition (100% Free / Zero-Setup - No API Key!)</option>
                                 <option value="vosk">🎙️ Local Vosk / Kaldi (100% Offline / Ultra-Low Latency ~30ms)</option>
@@ -433,7 +433,7 @@
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>Spoken Language</label>
+                            <label for="language_select">Spoken Language</label>
                             <select id="language_select" class="form-control">
                                 <option value="en-US">English (US)</option>
                                 <option value="en-GB">English (UK)</option>
@@ -496,14 +496,14 @@
                         <p class="subtext">Lightning-fast continuous streaming (~20-40ms latency) with word-by-word interim token delivery. Zero GPU required.</p>
                         <div class="form-row">
                             <div class="form-group">
-                                <label>Vosk Model Preset</label>
+                                <label for="vosk_model">Vosk Model Preset</label>
                                 <select id="vosk_model" class="form-control">
                                     <option value="small" selected>small-en-us (~40 MB, Instant CPU Streaming - Recommended)</option>
                                     <option value="accurate">en-us-0.22 (~1.8 GB, High Accuracy Broadcast Model)</option>
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label>Custom Model Directory Path (Optional)</label>
+                                <label for="vosk_model_path">Custom Model Directory Path (Optional)</label>
                                 <input type="text" id="vosk_model_path" placeholder="Leave blank for auto-download ~/.cache/vosk" class="form-control">
                             </div>
                         </div>
@@ -515,7 +515,7 @@
                         <p class="subtext">Next-gen variable-length AI transformer. 5x faster than Whisper with built-in capitalization &amp; punctuation.</p>
                         <div class="form-row">
                             <div class="form-group">
-                                <label>Model Size</label>
+                                <label for="moonshine_model">Model Size</label>
                                 <select id="moonshine_model" class="form-control">
                                     <option value="moonshine/tiny" selected>moonshine/tiny (~27M parameters, Ultra-Fast, Low CPU)</option>
                                     <option value="moonshine/base">moonshine/base (~61M parameters, Whisper-Base Accuracy)</option>
@@ -528,7 +528,7 @@
                         <h3>✨ Gemini 3.5 Transcribe Live Settings</h3>
                         <div class="form-row">
                             <div class="form-group">
-                                <label>Model Version</label>
+                                <label for="gemini_model">Model Version</label>
                                 <select id="gemini_model" class="form-control">
                                     <option value="gemini-3.5-transcribe-live" selected>gemini-3.5-transcribe-live (Recommended - Sub-second Latency)</option>
                                     <option value="gemini-3.5-transcribe-live-preview">gemini-3.5-transcribe-live-preview (Enterprise Agent Preview)</option>
@@ -537,12 +537,12 @@
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label>Google AI Studio API Key</label>
+                                <label for="gemini_api_key">Google AI Studio API Key</label>
                                 <input type="password" id="gemini_api_key" placeholder="AIzaSy..." class="form-control">
                             </div>
                         </div>
                         <div class="form-group">
-                            <label>Custom Vocabulary (Comma-separated specialized words, names, jargon)</label>
+                            <label for="gemini_custom_vocab">Custom Vocabulary (Comma-separated specialized words, names, jargon)</label>
                             <input type="text" id="gemini_custom_vocab" placeholder="OBS Studio, Twitch, Discord, YouTube, Jesus Christ" class="form-control">
                         </div>
                         <div class="form-group toggle-row">
@@ -556,7 +556,7 @@
                     <div id="google-stt-fields" class="engine-fields">
                         <h3>Google Cloud STT Settings</h3>
                         <div class="form-group">
-                            <label>Service Account JSON Path</label>
+                            <label for="google_creds_path">Service Account JSON Path</label>
                             <input type="text" id="google_creds_path" placeholder="google_credentials.json or leave empty for default env" class="form-control">
                         </div>
                     </div>
@@ -578,7 +578,7 @@
 
                         <div class="form-row">
                             <div class="form-group">
-                                <label>Model Size</label>
+                                <label for="whisper_model">Model Size</label>
                                 <select id="whisper_model" class="form-control">
                                     <option value="small.en">small.en (High accuracy - Perfect for GTX 1660)</option>
                                     <option value="base.en" selected>base.en (Fast &amp; Light - 60ms latency)</option>
@@ -590,7 +590,7 @@
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label>Acceleration Device</label>
+                                <label for="whisper_device">Acceleration Device</label>
                                 <select id="whisper_device" class="form-control">
                                     <option value="cuda" selected>NVIDIA GPU (CUDA - Recommended for GTX 1660)</option>
                                     <option value="auto">Auto (Detect GPU else CPU)</option>
@@ -601,7 +601,7 @@
 
                         <div class="form-row">
                             <div class="form-group">
-                                <label>GPU Compute Precision</label>
+                                <label for="whisper_compute">GPU Compute Precision</label>
                                 <select id="whisper_compute" class="form-control">
                                     <option value="float16" selected>float16 (Fastest on GTX 1660 / RTX Turing)</option>
                                     <option value="int8_float16">int8_float16 (Lower VRAM)</option>
@@ -610,7 +610,7 @@
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label>Beam Search Width</label>
+                                <label for="whisper_beam">Beam Search Width</label>
                                 <select id="whisper_beam" class="form-control">
                                     <option value="1" selected>Beam 1 (Greedy - Lowest Latency / Real-Time)</option>
                                     <option value="2">Beam 2 (Balanced)</option>
@@ -640,7 +640,7 @@
                         <p style="font-size: 13px; color: #E0E7FF; margin-bottom: 12px;">Instantly send the OBS video preview to the conference room screen without navigating right-click menus:</p>
                         <div class="form-row" style="align-items: flex-end;">
                             <div class="form-group" style="flex: 2;">
-                                <label>Target Display Screen</label>
+                                <label for="quick_projector_monitor">Target Display Screen</label>
                                 <select id="quick_projector_monitor" class="form-control">
                                     <option value="1" selected>Monitor 1 (LONTIUM / Conference Room Screen)</option>
                                     <option value="0">Monitor 0 (Primary Display)</option>
@@ -668,7 +668,7 @@
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Projector Content / Source</label>
+                            <label for="obs_projector_type">Projector Content / Source</label>
                             <select id="obs_projector_type" class="form-control">
                                 <option value="preview" selected>Video Preview (Full Scene Preview)</option>
                                 <option value="program">Program Output (Live Broadcast Feed)</option>
@@ -676,7 +676,7 @@
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>Default Target Monitor</label>
+                            <label for="obs_projector_monitor">Default Target Monitor</label>
                             <select id="obs_projector_monitor" class="form-control">
                                 <option value="1" selected>Monitor 1 (LONTIUM / Secondary)</option>
                                 <option value="0">Monitor 0 (Main Monitor)</option>
@@ -687,7 +687,7 @@
                     </div>
 
                     <div class="form-group" id="group-projector-source-name" style="display: none;">
-                        <label>Source Name to Project</label>
+                        <label for="obs_projector_source_name">Source Name to Project</label>
                         <input type="text" id="obs_projector_source_name" class="form-control" placeholder="Captions Overlay" value="Captions Overlay">
                     </div>
 
@@ -718,17 +718,17 @@
 
                     <div class="form-row">
                         <div class="form-group">
-                            <label>Twitch Channel Name</label>
+                            <label for="twitch_channel">Twitch Channel Name</label>
                             <input type="text" id="twitch_channel" placeholder="e.g. your_channel_name" class="form-control">
                         </div>
                         <div class="form-group">
-                            <label>Bot Username (Optional)</label>
+                            <label for="twitch_username">Bot Username (Optional)</label>
                             <input type="text" id="twitch_username" placeholder="Defaults to channel name" class="form-control">
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label>Twitch OAuth Token</label>
+                        <label for="twitch_oauth">Twitch OAuth Token</label>
                         <input type="password" id="twitch_oauth" placeholder="oauth:xxxxxxxxxxxxxxxxxxxx" class="form-control">
                         <span class="hint">Generate a token at <a href="https://twitchapps.com/tmi/" target="_blank" style="color: var(--accent);">twitchapps.com/tmi</a>.</span>
                     </div>
