@@ -309,6 +309,56 @@
             transform: scale(1.08);
             background: rgba(255, 255, 255, 0.15);
         }
+
+        /* Mobile & Tablet Responsive Design */
+        @media (max-width: 768px) {
+            :root {
+                --font-size: 26px;
+            }
+
+            .header-bar {
+                height: auto;
+                min-height: 52px;
+                padding: 8px 12px;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            .clock-display {
+                display: none; /* Hide clock on small mobile to give room to language & controls */
+            }
+
+            .brand-badge span:last-child {
+                display: none;
+            }
+
+            .header-right {
+                width: 100%;
+                justify-content: space-between;
+                overflow-x: auto;
+                padding-bottom: 2px;
+            }
+
+            .header-right select, .header-right button {
+                font-size: 11.5px;
+                padding: 5px 8px;
+            }
+
+            .stage-container {
+                top: 86px;
+                padding: 16px 16px 90px 16px;
+            }
+
+            .caption-sentence {
+                font-size: var(--font-size);
+                line-height: 1.4;
+            }
+
+            .floating-controls {
+                bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+                right: 16px;
+            }
+        }
     </style>
 </head>
 <body class="theme-oled">
@@ -464,11 +514,10 @@
         }
         setInterval(updateClock, 1000);
         updateClock();
-
         // Font Size & Family
         function setFontSize(size) {
-            if (!Number.isFinite(size)) size = 48;
-            currentFontSize = Math.max(24, Math.min(96, size));
+            if (!Number.isFinite(size)) size = isMobile ? 28 : 48;
+            currentFontSize = Math.max(18, Math.min(96, size));
             document.documentElement.style.setProperty('--font-size', `${currentFontSize}px`);
             localStorage.setItem('voxstream_display_fontsize', currentFontSize);
         }
@@ -480,8 +529,16 @@
         }
 
         // Restore Preferences
+        const isMobile = window.innerWidth <= 768;
+        const defaultFontSize = isMobile ? 28 : 48;
+        let currentFontSize = defaultFontSize;
+
         const savedSize = localStorage.getItem('voxstream_display_fontsize');
-        if (savedSize) setFontSize(parseInt(savedSize));
+        if (savedSize) {
+            setFontSize(parseInt(savedSize));
+        } else {
+            setFontSize(defaultFontSize);
+        }
 
         const savedFont = localStorage.getItem('voxstream_display_font');
         if (savedFont) setFontFamily(savedFont);
