@@ -209,28 +209,28 @@
             bottom: 0;
             left: 0;
             right: 0;
-            overflow-y: auto;
-            scroll-behavior: smooth;
-            padding: 36px 60px 120px 60px;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end;
-            min-height: calc(100% - 58px);
+            overflow-y: scroll;
+            overflow-x: hidden;
+            -webkit-overflow-scrolling: touch;
+            padding: 24px 40px 120px 40px;
+            overscroll-behavior-y: contain;
         }
 
         .stage-container::-webkit-scrollbar {
-            width: 6px;
+            width: 8px;
         }
         .stage-container::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.15);
-            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
         }
 
         .transcript-content {
+            min-height: calc(100% - 40px);
             display: flex;
             flex-direction: column;
+            justify-content: flex-end;
             gap: 20px;
-            max-width: 1600px;
+            max-width: 1500px;
             margin: 0 auto;
             width: 100%;
         }
@@ -692,7 +692,7 @@
 
         function scrollToBottom() {
             if (stageContainer) {
-                stageContainer.scrollTo({ top: stageContainer.scrollHeight, behavior: 'instant' });
+                stageContainer.scrollTop = stageContainer.scrollHeight;
             }
         }
 
@@ -704,9 +704,9 @@
 
         if (stageContainer) {
             stageContainer.addEventListener('scroll', () => {
-                const atBottom = stageContainer.scrollHeight - stageContainer.scrollTop - stageContainer.clientHeight < 50;
-                autoScroll = atBottom;
-            });
+                const dist = stageContainer.scrollHeight - stageContainer.scrollTop - stageContainer.clientHeight;
+                autoScroll = dist < 60;
+            }, { passive: true });
         }
 
         // WebSocket Connection
