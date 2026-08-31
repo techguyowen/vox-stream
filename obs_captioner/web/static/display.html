@@ -447,8 +447,10 @@
     </div>
 
     <script>
-        // State
-        let currentFontSize = 48;
+        // Screen & State
+        const isMobile = window.innerWidth <= 768;
+        const defaultFontSize = isMobile ? 28 : 48;
+        let currentFontSize = defaultFontSize;
         const maxHistorySentences = 20;
         let finalSentences = [];
         let interimText = "";
@@ -459,7 +461,7 @@
         const urlParams = new URLSearchParams(window.location.search);
         let currentLang = urlParams.get('lang') || localStorage.getItem('voxstream_display_lang') || 'en';
 
-        // Elements
+        // DOM Elements
         const stageContainer = document.getElementById('stageContainer');
         const transcriptContent = document.getElementById('transcriptContent');
         const clockDisplay = document.getElementById('clockDisplay');
@@ -470,6 +472,7 @@
         const langSelect = document.getElementById('langSelect');
         const headerBar = document.getElementById('headerBar');
 
+        // Language Selector
         if (langSelect) {
             langSelect.value = currentLang;
             langSelect.addEventListener('change', async (e) => {
@@ -477,13 +480,13 @@
                 currentLang = newLang;
                 localStorage.setItem('voxstream_display_lang', currentLang);
 
-                // Update URL parameter in browser address bar without page reload
+                // Update URL parameter without reload
                 const newUrl = currentLang === 'en'
                     ? window.location.pathname
                     : `${window.location.pathname}?lang=${encodeURIComponent(currentLang)}`;
                 window.history.replaceState(null, '', newUrl);
 
-                // If text is currently visible on screen, translate it instantly!
+                // Translate currently visible text immediately
                 if (finalSentences.length > 0 && currentLang !== 'en') {
                     const translatedList = await Promise.all(finalSentences.map(async (sentence) => {
                         try {
@@ -499,7 +502,7 @@
                     renderCaptions();
                 }
 
-                // Reconnect WebSocket cleanly to new language track
+                // Reconnect WebSocket cleanly to new language
                 if (ws) {
                     ws.onclose = null;
                     ws.close();
@@ -508,16 +511,18 @@
             });
         }
 
-        // Clock Update
+        // Live Clock
         function updateClock() {
+            if (!clockDisplay) return;
             const now = new Date();
             clockDisplay.textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         }
         setInterval(updateClock, 1000);
         updateClock();
-        // Font Size & Family
+
+        // Font Size & Family Controls
         function setFontSize(size) {
-            if (!Number.isFinite(size)) size = isMobile ? 28 : 48;
+            if (!Number.isFinite(size)) size = defaultFontSize;
             currentFontSize = Math.max(18, Math.min(96, size));
             document.documentElement.style.setProperty('--font-size', `${currentFontSize}px`);
             localStorage.setItem('voxstream_display_fontsize', currentFontSize);
@@ -529,11 +534,7 @@
             if (fontSelect) fontSelect.value = font;
         }
 
-        // Restore Preferences
-        const isMobile = window.innerWidth <= 768;
-        const defaultFontSize = isMobile ? 28 : 48;
-        let currentFontSize = defaultFontSize;
-
+        // Restore Saved Preferences
         const savedSize = localStorage.getItem('voxstream_display_fontsize');
         if (savedSize) {
             setFontSize(parseInt(savedSize));
@@ -545,12 +546,12 @@
         if (savedFont) setFontFamily(savedFont);
 
         function setTheme(theme) {
-            if (!/^theme-[a-z]+$/.test(theme)) return;
+            if (!theme || !/^theme-[a-z]+$/.test(theme)) return;
             document.body.classList.forEach(c => {
                 if (c.startsWith('theme-')) document.body.classList.remove(c);
             });
             document.body.classList.add(theme);
-            themeSelect.value = theme;
+            if (themeSelect) themeSelect.value = theme;
         }
 
         const savedTheme = localStorage.getItem('voxstream_display_theme');
@@ -562,37 +563,54 @@
             });
         }
 
-        themeSelect.addEventListener('change', (e) => {
-            setTheme(e.target.value);
-            localStorage.setItem('voxstream_display_theme', e.target.value);
-        });
+        if (themeSelect) {
+            themeSelect.addEventListener('change', (e) => {
+                setTheme(e.target.value);
+                localStorage.setItem('voxstream_display_theme', e.target.value);
+            });
+        }
 
-        // Controls
-        document.getElementById('btnFontInc').addEventListener('click', () => setFontSize(currentFontSize + 4));
-        document.getElementById('btnFontDec').addEventListener('click', () => setFontSize(currentFontSize - 4));
+        // Action Buttons
+        const btnFontInc = document.getElementById('btnFontInc');
+        if (btnFontInc) btnFontInc.addEventListener('click', () => setFontSize(currentFontSize + 4));
+
+        const btnFontDec = document.getElementById('btnFontDec');
+        if (btnFontDec) btnFontDec.addEventListener('click', () => setFontSize(currentFontSize - 4));
         
-        document.getElementById('btnClear').addEventListener('click', () => {
-            finalSentences = [];
-            interimText = "";
-            renderCaptions();
-        });
+        const btnClear = document.getElementById('btnClear');
+        if (btnClear) {
+            btnClear.addEventListener('click', () => {
+                finalSentences = [];
+                interimText = "";
+                renderCaptions();
+            });
+        }
 
-        document.getElementById('btnFullscreen').addEventListener('click', () => {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(() => {});
-            } else {
-                document.exitFullscreen().catch(() => {});
-            }
-        });
+        const btnFullscreen = document.getElementById('btnFullscreen');
+        if (btnFullscreen) {
+            btnFullscreen.addEventListener('click', () => {
+                if (!document.fullscreenElement) {
+                    document.documentElement.requestFullscreen().catch(() => {});
+                } else {
+                    document.exitFullscreen().catch(() => {});
+                }
+            });
+        }
 
-        document.getElementById('btnToggleHeader').addEventListener('click', () => {
-            headerBar.classList.toggle('hidden');
-        });
+        const btnToggleHeader = document.getElementById('btnToggleHeader');
+        if (btnToggleHeader && headerBar) {
+            btnToggleHeader.addEventListener('click', () => {
+                headerBar.classList.toggle('hidden');
+            });
+        }
 
-        document.getElementById('btnScrollBottom').addEventListener('click', () => {
-            autoScroll = true;
-            scrollToBottom();
-        });
+        const btnScrollBottom = document.getElementById('btnScrollBottom');
+        if (btnScrollBottom) {
+            btnScrollBottom.addEventListener('click', () => {
+                autoScroll = true;
+                scrollToBottom();
+            });
+        }
 
         // Keyboard Shortcuts
         window.addEventListener('keydown', (e) => {
@@ -600,7 +618,9 @@
             if (['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(tag)) return;
             if (e.key === '+' || e.key === '=') setFontSize(currentFontSize + 4);
             if (e.key === '-' || e.key === '_') setFontSize(currentFontSize - 4);
-            if (e.key === 'h' || e.key === 'H') headerBar.classList.toggle('hidden');
+            if (e.key === 'h' || e.key === 'H') {
+                if (headerBar) headerBar.classList.toggle('hidden');
+            }
             if (e.key === 'c' || e.key === 'C') {
                 finalSentences = [];
                 interimText = "";
@@ -610,6 +630,8 @@
 
         // Render Captions
         function renderCaptions() {
+            if (!transcriptContent) return;
+
             if (finalSentences.length === 0 && !interimText) {
                 transcriptContent.innerHTML = '<div class="empty-indicator">Listening for speech... Captions will appear here in real-time.</div>';
                 return;
@@ -669,19 +691,23 @@
         }
 
         function scrollToBottom() {
-            stageContainer.scrollTo({ top: stageContainer.scrollHeight, behavior: 'instant' });
+            if (stageContainer) {
+                stageContainer.scrollTo({ top: stageContainer.scrollHeight, behavior: 'instant' });
+            }
         }
 
         function escapeHtml(text) {
             const div = document.createElement('div');
-            div.textContent = text;
+            div.textContent = text || '';
             return div.innerHTML;
         }
 
-        stageContainer.addEventListener('scroll', () => {
-            const atBottom = stageContainer.scrollHeight - stageContainer.scrollTop - stageContainer.clientHeight < 50;
-            autoScroll = atBottom;
-        });
+        if (stageContainer) {
+            stageContainer.addEventListener('scroll', () => {
+                const atBottom = stageContainer.scrollHeight - stageContainer.scrollTop - stageContainer.clientHeight < 50;
+                autoScroll = atBottom;
+            });
+        }
 
         // WebSocket Connection
         let reconnectAttempts = 0;
@@ -693,8 +719,8 @@
 
             ws.onopen = () => {
                 reconnectAttempts = 0;
-                statusPill.classList.remove('offline');
-                statusText.textContent = 'LIVE';
+                if (statusPill) statusPill.classList.remove('offline');
+                if (statusText) statusText.textContent = 'LIVE';
             };
 
             ws.onmessage = (event) => {
@@ -707,8 +733,8 @@
             };
 
             ws.onclose = () => {
-                statusPill.classList.add('offline');
-                statusText.textContent = 'RECONNECTING';
+                if (statusPill) statusPill.classList.add('offline');
+                if (statusText) statusText.textContent = 'RECONNECTING';
                 setTimeout(connectWebSocket, Math.min(10000, (++reconnectAttempts) * 1500));
             };
 
@@ -719,14 +745,16 @@
 
         function handleCaptionEvent(data) {
             if (data.type === 'snapshot') {
-                finalSentences = [];
-                interimText = "";
-                for (const line of data.lines || []) {
-                    const t = (line.text || '').trim();
-                    if (t) finalSentences.push(t);
+                if (data.lines && data.lines.length > 0) {
+                    finalSentences = [];
+                    interimText = "";
+                    for (const line of data.lines) {
+                        const t = (line.text || '').trim();
+                        if (t) finalSentences.push(t);
+                    }
+                    while (finalSentences.length > maxHistorySentences) finalSentences.shift();
+                    renderCaptions();
                 }
-                while (finalSentences.length > maxHistorySentences) finalSentences.shift();
-                renderCaptions();
                 return;
             }
 
