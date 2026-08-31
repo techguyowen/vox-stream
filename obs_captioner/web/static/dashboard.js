@@ -568,9 +568,13 @@ document.getElementById("engine_select").addEventListener("change", (e) => {
 
 // Faster-Whisper Hardware Preset Handlers
 function updateWhisperStats() {
-    const model = document.getElementById("whisper_model").value;
-    const device = document.getElementById("whisper_device").value;
-    const compute = document.getElementById("whisper_compute").value;
+    const modelEl = document.getElementById("whisper_model");
+    const deviceEl = document.getElementById("whisper_device");
+    const computeEl = document.getElementById("whisper_compute");
+    if (!modelEl || !deviceEl) return;
+    const model = modelEl.value;
+    const device = deviceEl.value;
+    const compute = computeEl ? computeEl.value : "float16";
 
     let vram = "~1.8 GB";
     let latency = "~120ms";
@@ -1394,11 +1398,13 @@ async function refreshEngineStatus() {
 // WebSockets
 let pendingEngineSwitchToast = false;
 
+let controlReconnectAttempts = 0;
 function connectControlWs() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/api/control/ws${apiKeyQuerySuffix()}`;
     controlWs = new WebSocket(wsUrl);
 
+    controlWs.onopen = () => { controlReconnectAttempts = 0; };
     controlWs.onmessage = (event) => {
         try {
             const msg = JSON.parse(event.data);
@@ -1422,14 +1428,16 @@ function connectControlWs() {
         } catch (e) {}
     };
 
-    controlWs.onclose = () => setTimeout(connectControlWs, 3000);
+    controlWs.onclose = () => setTimeout(connectControlWs, Math.min(10000, (++controlReconnectAttempts) * 3000));
 }
 
+let captionReconnectAttempts = 0;
 function connectCaptionWs() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws`;
     captionWs = new WebSocket(wsUrl);
 
+    captionWs.onopen = () => { captionReconnectAttempts = 0; };
     captionWs.onmessage = (event) => {
         try {
             const data = JSON.parse(event.data);
@@ -1454,7 +1462,7 @@ function connectCaptionWs() {
         } catch (e) {}
     };
 
-    captionWs.onclose = () => setTimeout(connectCaptionWs, 3000);
+    captionWs.onclose = () => setTimeout(connectCaptionWs, Math.min(10000, (++captionReconnectAttempts) * 3000));
 }
 
 // Transcript History
