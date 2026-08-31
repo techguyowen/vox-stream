@@ -134,19 +134,23 @@
         }
 
         .status-pill {
-            display: flex;
+            display: inline-flex;
             align-items: center;
             gap: 5px;
-            padding: 4px 8px;
+            padding: 3px 8px;
             border-radius: 6px;
             font-size: 11px;
             font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.4px;
             background: rgba(16, 185, 129, 0.12);
             color: var(--success);
             border: 1px solid rgba(16, 185, 129, 0.25);
             white-space: nowrap;
+            max-width: 170px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex-shrink: 0;
         }
 
         .status-pill.offline {
@@ -391,6 +395,19 @@
             .header-left {
                 width: 100%;
                 justify-content: space-between;
+                align-items: center;
+                gap: 8px;
+            }
+
+            @media (max-width: 520px) {
+                .brand-sub {
+                    display: none;
+                }
+                .status-pill {
+                    max-width: 140px;
+                    font-size: 10.5px;
+                    padding: 2px 6px;
+                }
             }
 
             .header-right {
@@ -429,8 +446,8 @@
         <div class="header-left">
             <div class="brand-badge">
                 <span>🎙️ VoxStream</span>
-                <span style="opacity: 0.4;">|</span>
-                <span style="font-weight: 600; color: var(--text-muted);">Stage Display</span>
+                <span class="brand-sub" style="opacity: 0.4;">|</span>
+                <span class="brand-sub" style="font-weight: 600; color: var(--text-muted);">Stage Display</span>
             </div>
             <div class="status-pill" id="statusPill">
                 <span class="status-dot"></span>
@@ -954,13 +971,31 @@
         connectWebSocket();
         loadInitialHistory();
 
+        function formatEngineBadge(engine, engineName) {
+            const raw = (engineName || engine || '').toLowerCase();
+            if (raw.includes('google_web') || raw.includes('google speech') || raw.includes('free')) return 'Google';
+            if (raw.includes('google_stt') || raw.includes('google cloud')) return 'Cloud STT';
+            if (raw.includes('gemini')) return 'Gemini';
+            if (raw.includes('moonshine')) return 'Moonshine';
+            if (raw.includes('whisper')) return 'Whisper';
+            if (raw.includes('vosk')) return 'Vosk';
+            if (raw.includes('bandwidth')) return 'Bandwidth';
+            let clean = (engineName || engine || 'Active').split('(')[0].trim();
+            if (clean.length > 10) clean = clean.substring(0, 10);
+            return clean;
+        }
+
         async function updateDisplayStatus() {
             try {
                 const res = await fetch('/api/status');
                 if (res.ok) {
                     const data = await res.json();
                     if (statusText && ws && ws.readyState === WebSocket.OPEN) {
-                        statusText.textContent = `LIVE • ${data.engine_name || data.engine || 'Active'}`;
+                        const shortEngine = formatEngineBadge(data.engine, data.engine_name);
+                        statusText.textContent = `LIVE • ${shortEngine}`;
+                        if (statusPill) {
+                            statusPill.title = `Active Engine: ${data.engine_name || data.engine} | Uptime: ${data.uptime_seconds || 0}s`;
+                        }
                     }
                 }
             } catch (e) {}
