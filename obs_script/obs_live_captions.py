@@ -139,6 +139,7 @@ def script_properties():
     obs.obs_property_list_add_string(engine_list, "Local Faster-Whisper (Offline GPU/CPU)", "local_whisper")
     obs.obs_property_list_add_string(engine_list, "Gemini Live API", "gemini_live")
     obs.obs_property_list_add_string(engine_list, "Google Cloud STT (API Key)", "google_stt")
+    obs.obs_property_list_add_string(engine_list, "Bandwidth Labs Live STT (Streaming)", "bandwidth")
 
     # Auto start options
     obs.obs_properties_add_bool(props, "auto_start_obs", "Auto-start when OBS launches")
