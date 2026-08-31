@@ -76,6 +76,10 @@ class VoskConfig:
 
 
 @dataclass
+class BandwidthConfig:
+    api_key: str = ""
+
+@dataclass
 class MoonshineConfig:
     model_name: str = "moonshine/tiny"  # "moonshine/tiny" or "moonshine/base"
     sample_rate: int = 16000
@@ -183,6 +187,7 @@ class AppConfig:
     local_whisper: LocalWhisperConfig = field(default_factory=LocalWhisperConfig)
     vosk: VoskConfig = field(default_factory=VoskConfig)
     moonshine: MoonshineConfig = field(default_factory=MoonshineConfig)
+    bandwidth: BandwidthConfig = field(default_factory=BandwidthConfig)
     obs: OBSConfig = field(default_factory=OBSConfig)
     overlay: OverlayConfig = field(default_factory=OverlayConfig)
     api: APIConfig = field(default_factory=APIConfig)

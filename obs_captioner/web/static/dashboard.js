@@ -560,6 +560,8 @@ function toggleEngineFields(engine) {
     document.getElementById("whisper-fields").style.display = engine === "local_whisper" ? "block" : "none";
     document.getElementById("vosk-fields").style.display = (engine === "vosk" || engine === "local_vosk") ? "block" : "none";
     document.getElementById("moonshine-fields").style.display = (engine === "moonshine" || engine === "local_moonshine") ? "block" : "none";
+    const bwFields = document.getElementById("bandwidth-fields");
+    if (bwFields) bwFields.style.display = engine === "bandwidth" ? "block" : "none";
 }
 
 document.getElementById("engine_select").addEventListener("change", (e) => {
@@ -1009,6 +1011,9 @@ document.getElementById("obs_projector_type").addEventListener("change", toggleP
 
 document.getElementById("btn-save-projector").addEventListener("click", async () => {
     const payload = {
+        bandwidth: {
+            api_key: document.getElementById("bandwidth_api_key").value.trim()
+        },
         obs: {
             auto_open_projector: document.getElementById("obs_auto_projector").checked,
             projector_type: document.getElementById("obs_projector_type").value,

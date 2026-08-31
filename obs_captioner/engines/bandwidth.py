@@ -1,0 +1,144 @@
+"""Bandwidth Labs Speech-to-Text Engine."""
+
+import asyncio
+import json
+import logging
+import time
+import urllib.parse
+from typing import AsyncGenerator
+
+import websockets
+
+from .base import BaseSTTEngine, CaptionCallback, TranscriptEvent
+from ..config import AppConfig
+
+logger = logging.getLogger(__name__)
+
+class BandwidthEngine(BaseSTTEngine):
+    """
+    Connects to Bandwidth Labs' live streaming Speech-to-Text WebSocket API.
+    Docs: https://labs.bandwidth.com/docs/speech-to-text
+    """
+
+    def __init__(self, config: AppConfig):
+        super().__init__("Bandwidth")
+        self.config = config
+        self.ws_url = "wss://api.labs.bandwidth.com/audio/v1/listen"
+        
+        # We need an API key. For now, we'll try to fetch it from config.
+        # If there isn't a dedicated bandwidth API key field, we might misuse another one or environment variable.
+        # Let's check config object for bandwidth_api_key.
+        self.api_key = getattr(config.engines, "bandwidth_api_key", None)
+        if not self.api_key:
+            # Fallback to an env var or prompt the user. 
+            import os
+            self.api_key = os.getenv("BANDWIDTH_API_KEY", "")
+
+    async def _flush_loop(self, on_transcript: CaptionCallback):
+        """Background task to flush the interim buffer on punctuation or silence."""
+        while self.is_running:
+            await asyncio.sleep(0.1)
+            
+            async with self._lock:
+                if not self._buffer:
+                    continue
+
+                now = time.time()
+                silence_duration = now - self._last_update
+                
+                # Check for punctuation at the end of the trimmed string
+                trimmed = self._buffer.strip()
+                has_punctuation = trimmed.endswith((".", "?", "!"))
+                
+                # Flush if we have punctuation + a tiny pause, OR a long pause
+                if (has_punctuation and silence_duration > 0.3) or (silence_duration > 1.2) or len(self._buffer) > 200:
+                    text_to_flush = self._buffer.strip()
+                    self._buffer = ""
+                    if text_to_flush:
+                        try:
+                            await on_transcript(TranscriptEvent(text=text_to_flush, is_final=True))
+                        except Exception as e:
+                            logger.error(f"Error flushing final transcript: {e}")
+
+    async def initialize(self) -> bool:
+        if not self.api_key:
+            logger.error("Bandwidth API Key is missing! Please set BANDWIDTH_API_KEY env var.")
+            return False
+        return True
+
+    async def start_streaming(self, audio_stream: AsyncGenerator[bytes, None], on_transcript: CaptionCallback) -> None:
+        self.is_running = True
+        self._buffer = ""
+        self._last_update = time.time()
+        self._lock = asyncio.Lock()
+        
+        # Construct WS URL
+        params = {
+            "encoding": "linear16",
+            "sample_rate": str(self.config.audio.sample_rate)
+        }
+        headers = {
+            "X-BW-LABS-API-KEY": self.api_key
+        }
+        url = f"{self.ws_url}?{urllib.parse.urlencode(params)}"
+
+        flush_task = asyncio.create_task(self._flush_loop(on_transcript))
+
+        try:
+            async with websockets.connect(url, extra_headers=headers) as ws:
+                logger.info("Connected to Bandwidth Labs STT.")
+
+                async def send_audio():
+                    # Send audio frames
+                    try:
+                        async for chunk in audio_stream:
+                            if not self.is_running:
+                                break
+                            await ws.send(chunk)
+                    except Exception as e:
+                        logger.error(f"Error sending audio to Bandwidth: {e}")
+                    finally:
+                        if self.is_running:
+                            try:
+                                await ws.send(json.dumps({"type": "CloseStream"}))
+                            except Exception:
+                                pass
+
+                async def receive_transcripts():
+                    # Read messages
+                    try:
+                        async for message in ws:
+                            if not self.is_running:
+                                break
+                            try:
+                                msg = json.loads(message)
+                                mtype = msg.get("type")
+                                
+                                if mtype == "Segment":
+                                    text_delta = msg.get("text", "")
+                                    if text_delta:
+                                        async with self._lock:
+                                            self._buffer += text_delta
+                                            self._last_update = time.time()
+                                            # Send interim
+                                            await on_transcript(TranscriptEvent(text=self._buffer.strip(), is_final=False))
+                                            
+                                elif mtype == "SessionClosed":
+                                    break
+                                elif mtype == "Error":
+                                    logger.error(f"Bandwidth API Error: {msg}")
+                            except Exception as e:
+                                logger.error(f"Error parsing Bandwidth message: {e}")
+                    except Exception as e:
+                        logger.error(f"Error receiving from Bandwidth: {e}")
+
+                await asyncio.gather(send_audio(), receive_transcripts())
+        except Exception as e:
+            logger.error(f"Bandwidth STT connection failed: {e}")
+        finally:
+            self.is_running = False
+            flush_task.cancel()
+
+    async def stop(self) -> None:
+        self.is_running = False
+        logger.info("Bandwidth STT engine stopped.")

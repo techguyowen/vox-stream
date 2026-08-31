@@ -430,6 +430,7 @@
                                 <option value="local_whisper">💻 Local Faster-Whisper (100% Offline GPU/CPU)</option>
                                 <option value="gemini_live">✨ Gemini 3.5 Transcribe Live (Google AI Studio / Live API)</option>
                                 <option value="google_stt">Google Cloud STT Streaming (v1 / Chirp)</option>
+                                <option value="bandwidth">🌐 Bandwidth Labs Live STT (Streaming)</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -550,6 +551,16 @@
                                 <input type="checkbox" id="gemini_smart_transcription" checked>
                                 <span class="switch-text"><strong>Smart Transcription</strong> (Clean up filler words 'ums/ahs', natural self-corrections, auto-punctuation)</span>
                             </label>
+                        </div>
+                    </div>
+
+
+                    <div id="bandwidth-fields" class="engine-fields">
+                        <h3 style="color: #38BDF8;">🌐 Bandwidth Labs Settings</h3>
+                        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">The Bandwidth Labs real-time streaming endpoint. Set up at <a href="https://labs.bandwidth.com/docs/speech-to-text" target="_blank" style="color: #38BDF8;">labs.bandwidth.com</a>.</p>
+                        <div class="form-group">
+                            <label for="bandwidth_api_key">Bandwidth API Key</label>
+                            <input type="password" id="bandwidth_api_key" placeholder="bwa_key_..." class="form-control">
                         </div>
                     </div>
 
