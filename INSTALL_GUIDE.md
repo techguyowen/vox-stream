@@ -186,10 +186,18 @@ If you want VoxStream to **automatically start running in the background the mom
 
 ---
 
-### E. Enable Twitch & YouTube Closed Captions (CEA-608)
-1. In OBS Studio, go to **Tools ➔ WebSocket Server Settings**.
-2. Check **"Enable WebSocket server"** (Port `4455`).
-3. VoxStream will automatically inject native CEA-608 closed caption packets into your RTMP stream so viewers can toggle `[CC]` on player controls.
+### E. Enable YouTube & Twitch Closed Captions (Native [CC] Button) 📺
+To send viewer-toggleable closed captions directly into your YouTube and Twitch video player:
+1. **In OBS Studio**:
+   * Go to **Tools ➔ WebSocket Server Settings**.
+   * Check **"Enable WebSocket server"** (Port `4455`).
+2. **In YouTube Studio (Live Control Room)**:
+   * Go to your stream's **Stream Settings** tab.
+   * Under **Closed captions**, toggle the switch **ON**.
+   * Select **"Embedded 608/708"** as the caption source.
+3. **In VoxStream**:
+   * In the Web Dashboard (`/dashboard`), verify that **"Send CEA-608 Captions to Stream"** is checked in settings.
+   * VoxStream will automatically inject standard CEA-608/708 packets into OBS H.264 stream headers, activating the native `[CC]` button on YouTube and Twitch!
 
 ---
 

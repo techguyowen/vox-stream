@@ -163,9 +163,16 @@ cd vox-stream
 
 ---
 
-### 3. Native Closed Captions (CEA-608 for Twitch / YouTube)
-1. In OBS Studio, enable **Tools $\rightarrow$ WebSocket Server Settings** (Port `4455`).
-2. VoxStream connects automatically to send `SendStreamCaption` events. Viewers can toggle captions on/off via the player's native `[CC]` button.
+### 3. Native Closed Captions (YouTube & Twitch [CC] Button) 📺
+You can broadcast native viewer-toggleable closed captions directly to YouTube Live and Twitch so viewers can toggle `[CC]` on the player:
+1. **In OBS Studio**: Go to **Tools $\rightarrow$ WebSocket Server Settings** and check **"Enable WebSocket server"** (Port `4455`).
+2. **For YouTube Livestreams**:
+   * Open your stream in **YouTube Studio** (Live Control Room).
+   * In **Stream Settings**, toggle **Closed Captions** to **ON**.
+   * Under **Caption source**, select **"Embedded 608/708"**.
+3. **For Twitch Streams**:
+   * Twitch automatically reads embedded CEA-608 packets from OBS.
+   * You can also use the built-in **Twitch Chat Bot** in the VoxStream dashboard to broadcast captions directly into Twitch chat for mobile viewers!
 
 ---
 
