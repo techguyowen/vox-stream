@@ -95,6 +95,11 @@ class WebOverlayServer:
 
         for path in ("/display", "/display/", "/display.html", "/monitor", "/monitor/", "/stage", "/confidence"):
             self.app.router.add_get(path, self._handle_display)
+
+        # Progressive Web App (PWA) Manifest & Service Worker
+        self.app.router.add_get("/manifest.json", self._handle_manifest)
+        self.app.router.add_get("/manifest.webmanifest", self._handle_manifest)
+        self.app.router.add_get("/sw.js", self._handle_service_worker)
         
         # WebSockets
         self.app.router.add_get("/ws", self._handle_caption_ws)
@@ -164,6 +169,18 @@ class WebOverlayServer:
     async def _handle_display(self, request: web.Request) -> web.FileResponse:
         display_file = Path(__file__).parent / "static" / "display.html"
         return web.FileResponse(display_file)
+
+    async def _handle_manifest(self, request: web.Request) -> web.FileResponse:
+        manifest_file = Path(__file__).parent / "static" / "manifest.json"
+        return web.FileResponse(manifest_file, headers={"Content-Type": "application/manifest+json"})
+
+    async def _handle_service_worker(self, request: web.Request) -> web.FileResponse:
+        sw_file = Path(__file__).parent / "static" / "sw.js"
+        return web.FileResponse(sw_file, headers={
+            "Content-Type": "application/javascript",
+            "Service-Worker-Allowed": "/",
+            "Cache-Control": "no-cache"
+        })
 
     async def _handle_get_status(self, request: web.Request) -> web.Response:
         client_ip = request.remote or "127.0.0.1"

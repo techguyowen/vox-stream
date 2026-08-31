@@ -4,6 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>VoxStream - Room Confidence Monitor</title>
+    <!-- Progressive Web App (PWA) Meta & Icons -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#000000">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="VoxStream">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
+    <link rel="icon" type="image/svg+xml" href="/static/icon.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;700&family=Montserrat:wght@700;800&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
@@ -446,6 +455,7 @@
                 <button class="ctrl-btn" id="btnFontInc" title="Increase font size (+)">A+</button>
 
                 <!-- Fullscreen -->
+                <button class="ctrl-btn" id="btnInstallPwa" style="display: none;" title="Install VoxStream as Standalone App">📲 Install</button>
                 <button class="ctrl-btn" id="btnFullscreen" title="Toggle Fullscreen (F11)">⛶</button>
 
                 <!-- Clear Screen -->
@@ -885,6 +895,57 @@
         }
         updateDisplayStatus();
         setInterval(updateDisplayStatus, 5000);
+
+        // --- Progressive Web App (PWA) & Screen Wake Lock ---
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js').catch(() => {});
+            });
+        }
+
+        // Screen Wake Lock API (keeps iPad/phone screen active on stage)
+        let wakeLock = null;
+        async function requestScreenWakeLock() {
+            if ('wakeLock' in navigator && !wakeLock) {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    wakeLock.addEventListener('release', () => { wakeLock = null; });
+                } catch (err) {}
+            }
+        }
+        requestScreenWakeLock();
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') requestScreenWakeLock();
+        });
+        window.addEventListener('click', requestScreenWakeLock, { once: true });
+        window.addEventListener('touchstart', requestScreenWakeLock, { once: true });
+
+        // 1-Click Install App Prompt
+        let deferredInstallPrompt = null;
+        const btnInstallPwa = document.getElementById('btnInstallPwa');
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredInstallPrompt = e;
+            if (btnInstallPwa) btnInstallPwa.style.display = 'inline-flex';
+        });
+
+        if (btnInstallPwa) {
+            btnInstallPwa.addEventListener('click', async () => {
+                if (deferredInstallPrompt) {
+                    deferredInstallPrompt.prompt();
+                    const { outcome } = await deferredInstallPrompt.userChoice;
+                    if (outcome === 'accepted') {
+                        btnInstallPwa.style.display = 'none';
+                    }
+                    deferredInstallPrompt = null;
+                }
+            });
+        }
+
+        window.addEventListener('appinstalled', () => {
+            if (btnInstallPwa) btnInstallPwa.style.display = 'none';
+        });
+
     </script>
 </body>
 </html>
