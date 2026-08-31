@@ -207,12 +207,14 @@ function handleCaption(data) {
     }
 }
 
+let captionReconnectAttempts = 0;
 function connectCaptionWebSocket() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws`;
 
     ws = new WebSocket(wsUrl);
 
+    ws.onopen = () => { captionReconnectAttempts = 0; };
     ws.onmessage = (event) => {
         try {
             const data = JSON.parse(event.data);
@@ -222,15 +224,17 @@ function connectCaptionWebSocket() {
         }
     };
 
-    ws.onclose = () => setTimeout(connectCaptionWebSocket, 2000);
+    ws.onclose = () => setTimeout(connectCaptionWebSocket, Math.min(10000, (++captionReconnectAttempts) * 2000));
 }
 
+let controlReconnectAttempts = 0;
 function connectControlWebSocket() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/api/control/ws`;
 
     controlWs = new WebSocket(wsUrl);
 
+    controlWs.onopen = () => { controlReconnectAttempts = 0; };
     controlWs.onmessage = (event) => {
         try {
             const msg = JSON.parse(event.data);
@@ -240,7 +244,7 @@ function connectControlWebSocket() {
         } catch (e) {}
     };
 
-    controlWs.onclose = () => setTimeout(connectControlWebSocket, 3000);
+    controlWs.onclose = () => setTimeout(connectControlWebSocket, Math.min(10000, (++controlReconnectAttempts) * 3000));
 }
 
 window.addEventListener("DOMContentLoaded", async () => {

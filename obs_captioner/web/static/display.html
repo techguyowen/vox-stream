@@ -499,21 +499,59 @@
                 return;
             }
 
-            let html = '';
-            // Render previous finalized sentences (dimmed slightly)
-            const count = finalSentences.length;
-            finalSentences.forEach((sentence, idx) => {
-                const isRecent = idx >= count - 2;
-                const cls = isRecent ? 'caption-sentence' : 'caption-sentence previous';
-                html += `<div class="${cls}">${escapeHtml(sentence)}</div>`;
-            });
-
-            // Render current live interim speech
-            if (interimText) {
-                html += `<div class="caption-sentence interim">${escapeHtml(interimText)}</div>`;
+            // Remove empty indicator if it exists
+            const emptyEl = transcriptContent.querySelector('.empty-indicator');
+            if (emptyEl) {
+                transcriptContent.innerHTML = '';
             }
 
-            transcriptContent.innerHTML = html;
+            const existingFinals = transcriptContent.querySelectorAll('.caption-sentence:not(.interim)');
+            if (existingFinals.length !== finalSentences.length) {
+                // If array size changed, rebuild finals
+                let html = '';
+                const count = finalSentences.length;
+                finalSentences.forEach((sentence, idx) => {
+                    const isRecent = idx >= count - 2;
+                    const cls = isRecent ? 'caption-sentence' : 'caption-sentence previous';
+                    html += `<div class="${cls}">${escapeHtml(sentence)}</div>`;
+                });
+                
+                // Preserve interim node if it exists so we don't lose its object reference
+                const interimNode = transcriptContent.querySelector('.interim');
+                transcriptContent.innerHTML = html;
+                if (interimNode) {
+                    transcriptContent.appendChild(interimNode);
+                }
+            } else {
+                // Just update text content of finals
+                const count = finalSentences.length;
+                existingFinals.forEach((el, idx) => {
+                    if (el.textContent !== finalSentences[idx]) {
+                        el.textContent = finalSentences[idx];
+                    }
+                    // Update classes
+                    const isRecent = idx >= count - 2;
+                    const expectedCls = isRecent ? 'caption-sentence' : 'caption-sentence previous';
+                    if (el.className !== expectedCls) {
+                        el.className = expectedCls;
+                    }
+                });
+            }
+
+            // Handle interim
+            let interimNode = transcriptContent.querySelector('.interim');
+            if (interimText) {
+                if (!interimNode) {
+                    interimNode = document.createElement('div');
+                    interimNode.className = 'caption-sentence interim';
+                    transcriptContent.appendChild(interimNode);
+                }
+                if (interimNode.textContent !== interimText) {
+                    interimNode.textContent = interimText;
+                }
+            } else if (interimNode) {
+                interimNode.remove();
+            }
 
             if (autoScroll) {
                 scrollToBottom();
@@ -541,6 +579,7 @@
         });
 
         // WebSocket Connection
+        let reconnectAttempts = 0;
         function connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -548,6 +587,7 @@
             ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
+                reconnectAttempts = 0;
                 statusPill.classList.remove('offline');
                 statusText.textContent = 'LIVE';
             };
@@ -564,7 +604,7 @@
             ws.onclose = () => {
                 statusPill.classList.add('offline');
                 statusText.textContent = 'RECONNECTING';
-                setTimeout(connectWebSocket, 1500);
+                setTimeout(connectWebSocket, Math.min(10000, (++reconnectAttempts) * 1500));
             };
 
             ws.onerror = () => {
