@@ -233,6 +233,11 @@
             max-width: 1500px;
             margin: 0 auto;
             width: 100%;
+            transition: opacity 0.3s ease;
+        }
+
+        .transcript-content.faded {
+            opacity: 0;
         }
 
         .caption-sentence {
@@ -247,7 +252,7 @@
         }
 
         .caption-sentence.previous {
-            opacity: 0.5;
+            opacity: 0.45;
             font-weight: 600;
         }
 
@@ -310,131 +315,6 @@
             background: rgba(255, 255, 255, 0.15);
         }
 
-        
-        /* Full History Drawer / Modal */
-        .history-modal-backdrop {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.7);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            z-index: 1000;
-            display: flex;
-            justify-content: flex-end;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.25s ease;
-        }
-
-        .history-modal-backdrop.active {
-            opacity: 1;
-            pointer-events: auto;
-        }
-
-        .history-drawer {
-            width: 100%;
-            max-width: 540px;
-            height: 100%;
-            background: var(--card-bg);
-            border-left: 1px solid var(--border);
-            display: flex;
-            flex-direction: column;
-            box-shadow: -8px 0 32px rgba(0, 0, 0, 0.5);
-            transform: translateX(100%);
-            transition: transform 0.25s ease;
-        }
-
-        .history-modal-backdrop.active .history-drawer {
-            transform: translateX(0);
-        }
-
-        .drawer-header {
-            padding: 16px 20px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .drawer-title {
-            font-size: 16px;
-            font-weight: 700;
-            color: var(--text-color);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .drawer-close-btn {
-            background: transparent;
-            border: none;
-            color: var(--text-muted);
-            font-size: 20px;
-            cursor: pointer;
-            padding: 4px 8px;
-            border-radius: 4px;
-        }
-
-        .drawer-close-btn:hover {
-            color: var(--text-color);
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        .drawer-search-bar {
-            padding: 12px 20px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            gap: 10px;
-        }
-
-        .drawer-search-input {
-            flex: 1;
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid var(--border);
-            color: var(--text-color);
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 13px;
-            outline: none;
-        }
-
-        .drawer-body {
-            flex: 1;
-            overflow-y: auto;
-            padding: 16px 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .drawer-history-item {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 10px 14px;
-            font-size: 14px;
-            line-height: 1.45;
-        }
-
-        .drawer-history-time {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 11.5px;
-            color: var(--accent);
-            font-weight: 700;
-            margin-bottom: 4px;
-        }
-
-        .drawer-footer {
-            padding: 14px 20px;
-            border-top: 1px solid var(--border);
-            display: flex;
-            justify-content: space-between;
-            gap: 10px;
-        }
-
         /* Mobile & Tablet Responsive Design */
         @media (max-width: 768px) {
             :root {
@@ -450,7 +330,7 @@
             }
 
             .clock-display {
-                display: none; /* Hide clock on small mobile to give room to language & controls */
+                display: none;
             }
 
             .brand-badge span:last-child {
@@ -505,6 +385,12 @@
         <div class="clock-display" id="clockDisplay">12:00:00 PM</div>
 
         <div class="header-right">
+            <!-- Mode Selector: Scrollable History vs Live Prompter -->
+            <select class="theme-select" id="displayModeSelect" title="Display Mode">
+                <option value="scrollable" selected>📜 Scrollable History</option>
+                <option value="live">⚡ Live Prompter (Auto-Fade)</option>
+            </select>
+
             <!-- Language Track Selector -->
             <select class="theme-select" id="langSelect" title="Language Track">
                 <option value="en" selected>English (Original)</option>
@@ -536,20 +422,6 @@
                 <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
             </select>
 
-            <!-- History Length / Depth Selector -->
-            <select class="theme-select" id="historySelect" title="History Length on Screen">
-                <option value="20" selected>📜 History: 20 Lines</option>
-                <option value="10">📜 History: 10 Lines</option>
-                <option value="5">📜 History: 5 Lines</option>
-                <option value="50">📜 History: 50 Lines</option>
-                <option value="100">📜 History: 100 Lines</option>
-                <option value="2">⚡ Live Only (2 Lines)</option>
-                <option value="1">✨ Live Sentence Only</option>
-            </select>
-
-            <!-- Full History Modal Drawer Button -->
-            <button class="ctrl-btn" id="btnToggleHistoryDrawer" title="Open Full Session Transcript Drawer">📜 Full History</button>
-
             <!-- Theme Selector -->
             <select class="theme-select" id="themeSelect">
                 <option value="theme-oled" selected>🌑 OLED Black</option>
@@ -579,29 +451,6 @@
         </div>
     </main>
 
-    
-    <!-- Full History Slide-Over Drawer -->
-    <div class="history-modal-backdrop" id="historyDrawerBackdrop">
-        <div class="history-drawer">
-            <div class="drawer-header">
-                <div class="drawer-title">📜 Session Transcript History</div>
-                <button class="drawer-close-btn" id="btnCloseHistoryDrawer" title="Close Drawer">✕</button>
-            </div>
-            <div class="drawer-search-bar">
-                <input type="text" class="drawer-search-input" id="drawerSearchInput" placeholder="🔍 Search transcript..." />
-                <button class="ctrl-btn" id="btnRefreshHistoryDrawer" title="Refresh Transcript">🔄</button>
-            </div>
-            <div class="drawer-body" id="drawerHistoryList">
-                <div class="empty-indicator" style="padding: 40px 0; font-size: 14px;">Loading transcript history...</div>
-            </div>
-            <div class="drawer-footer">
-                <button class="ctrl-btn" id="btnCopyFullHistory" style="flex: 1;">📋 Copy Transcript</button>
-                <a href="/api/transcript/export?format=txt" download class="ctrl-btn" style="text-decoration: none;">💾 TXT</a>
-                <a href="/api/transcript/export?format=srt" download class="ctrl-btn" style="text-decoration: none;">💾 SRT</a>
-            </div>
-        </div>
-    </div>
-
     <!-- Floating Actions -->
     <div class="floating-controls">
         <button class="float-btn" id="btnToggleHeader" title="Toggle Header Bar">⚙️</button>
@@ -614,15 +463,19 @@
         const defaultFontSize = isMobile ? 28 : 48;
         let currentFontSize = defaultFontSize;
 
-        // URL & Preference state
+        // URL & Preference State
         const urlParams = new URLSearchParams(window.location.search);
         let currentLang = urlParams.get('lang') || localStorage.getItem('voxstream_display_lang') || 'en';
-        let maxHistorySentences = parseInt(urlParams.get('history') || localStorage.getItem('voxstream_display_history_depth') || '20') || 20;
+        let currentMode = urlParams.get('mode') || localStorage.getItem('voxstream_display_mode') || 'scrollable';
+
+        // In 'scrollable' mode we retain up to 300 sentences for scrolling back; in 'live' mode only 2 active lines
+        let maxHistorySentences = (currentMode === 'live') ? 2 : 300;
 
         let finalSentences = [];
         let interimText = "";
         let ws = null;
         let autoScroll = true;
+        let silenceHideTimer = null;
 
         // DOM Elements
         const stageContainer = document.getElementById('stageContainer');
@@ -630,14 +483,30 @@
         const clockDisplay = document.getElementById('clockDisplay');
         const statusPill = document.getElementById('statusPill');
         const statusText = document.getElementById('statusText');
+        const displayModeSelect = document.getElementById('displayModeSelect');
+        const langSelect = document.getElementById('langSelect');
         const fontSelect = document.getElementById('fontSelect');
         const themeSelect = document.getElementById('themeSelect');
-        const langSelect = document.getElementById('langSelect');
-        const historySelect = document.getElementById('historySelect');
         const headerBar = document.getElementById('headerBar');
-        const historyDrawerBackdrop = document.getElementById('historyDrawerBackdrop');
-        const drawerHistoryList = document.getElementById('drawerHistoryList');
-        const drawerSearchInput = document.getElementById('drawerSearchInput');
+
+        // Mode Selector: Scrollable History vs Live Prompter
+        if (displayModeSelect) {
+            displayModeSelect.value = currentMode;
+            displayModeSelect.addEventListener('change', async (e) => {
+                currentMode = e.target.value;
+                localStorage.setItem('voxstream_display_mode', currentMode);
+
+                if (currentMode === 'live') {
+                    maxHistorySentences = 2;
+                    while (finalSentences.length > 2) finalSentences.shift();
+                    renderCaptions();
+                } else {
+                    maxHistorySentences = 300;
+                    if (transcriptContent) transcriptContent.classList.remove('faded');
+                    await loadInitialHistory();
+                }
+            });
+        }
 
         // Language Selector
         if (langSelect) {
@@ -647,13 +516,11 @@
                 currentLang = newLang;
                 localStorage.setItem('voxstream_display_lang', currentLang);
 
-                // Update URL parameter without reload
                 const newUrl = currentLang === 'en'
                     ? window.location.pathname
                     : `${window.location.pathname}?lang=${encodeURIComponent(currentLang)}`;
                 window.history.replaceState(null, '', newUrl);
 
-                // Translate currently visible text immediately
                 if (finalSentences.length > 0 && currentLang !== 'en') {
                     const translatedList = await Promise.all(finalSentences.map(async (sentence) => {
                         try {
@@ -669,7 +536,6 @@
                     renderCaptions();
                 }
 
-                // Reconnect WebSocket cleanly to new language
                 if (ws) {
                     ws.onclose = null;
                     ws.close();
@@ -701,7 +567,6 @@
             if (fontSelect) fontSelect.value = font;
         }
 
-        // Restore Saved Preferences
         const savedSize = localStorage.getItem('voxstream_display_fontsize');
         if (savedSize) {
             setFontSize(parseInt(savedSize));
@@ -734,101 +599,6 @@
             themeSelect.addEventListener('change', (e) => {
                 setTheme(e.target.value);
                 localStorage.setItem('voxstream_display_theme', e.target.value);
-            });
-        }
-
-        // History Depth Selector
-        if (historySelect) {
-            historySelect.value = String(maxHistorySentences);
-            historySelect.addEventListener('change', async (e) => {
-                maxHistorySentences = parseInt(e.target.value) || 20;
-                localStorage.setItem('voxstream_display_history_depth', maxHistorySentences);
-
-                // Fetch new depth from history API if expanding
-                if (maxHistorySentences > finalSentences.length) {
-                    await loadInitialHistory();
-                } else {
-                    while (finalSentences.length > maxHistorySentences) {
-                        finalSentences.shift();
-                    }
-                    renderCaptions();
-                }
-            });
-        }
-
-        // Full History Drawer Handlers
-        async function loadDrawerHistory(searchQuery = "") {
-            if (!drawerHistoryList) return;
-            try {
-                const res = await fetch(`/api/transcript/history?limit=250&search=${encodeURIComponent(searchQuery)}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    const entries = data.history || [];
-                    if (entries.length === 0) {
-                        drawerHistoryList.innerHTML = '<div class="empty-indicator" style="padding: 40px 0; font-size: 14px;">No transcript entries found.</div>';
-                        return;
-                    }
-                    drawerHistoryList.innerHTML = entries.map(item => `
-                        <div class="drawer-history-item">
-                            <div class="drawer-history-time">[${escapeHtml(item.relative_time || '')}]</div>
-                            <div>${escapeHtml(item.text || '')}</div>
-                        </div>
-                    `).join('');
-                }
-            } catch(e) {
-                drawerHistoryList.innerHTML = '<div class="empty-indicator" style="padding: 40px 0; font-size: 14px;">Failed to load transcript history.</div>';
-            }
-        }
-
-        const btnToggleHistoryDrawer = document.getElementById('btnToggleHistoryDrawer');
-        if (btnToggleHistoryDrawer && historyDrawerBackdrop) {
-            btnToggleHistoryDrawer.addEventListener('click', () => {
-                historyDrawerBackdrop.classList.add('active');
-                loadDrawerHistory(drawerSearchInput ? drawerSearchInput.value : '');
-            });
-        }
-
-        const btnCloseHistoryDrawer = document.getElementById('btnCloseHistoryDrawer');
-        if (btnCloseHistoryDrawer && historyDrawerBackdrop) {
-            btnCloseHistoryDrawer.addEventListener('click', () => {
-                historyDrawerBackdrop.classList.remove('active');
-            });
-        }
-
-        if (historyDrawerBackdrop) {
-            historyDrawerBackdrop.addEventListener('click', (e) => {
-                if (e.target === historyDrawerBackdrop) {
-                    historyDrawerBackdrop.classList.remove('active');
-                }
-            });
-        }
-
-        if (drawerSearchInput) {
-            drawerSearchInput.addEventListener('input', () => {
-                loadDrawerHistory(drawerSearchInput.value);
-            });
-        }
-
-        const btnRefreshHistoryDrawer = document.getElementById('btnRefreshHistoryDrawer');
-        if (btnRefreshHistoryDrawer) {
-            btnRefreshHistoryDrawer.addEventListener('click', () => {
-                loadDrawerHistory(drawerSearchInput ? drawerSearchInput.value : '');
-            });
-        }
-
-        const btnCopyFullHistory = document.getElementById('btnCopyFullHistory');
-        if (btnCopyFullHistory) {
-            btnCopyFullHistory.addEventListener('click', async () => {
-                try {
-                    const res = await fetch('/api/transcript/history?limit=500');
-                    if (res.ok) {
-                        const data = await res.json();
-                        const lines = (data.history || []).map(e => `[${e.relative_time || ''}] ${e.text || ''}`);
-                        await navigator.clipboard.writeText(lines.join('\n'));
-                        btnCopyFullHistory.textContent = '✅ Copied!';
-                        setTimeout(() => { btnCopyFullHistory.textContent = '📋 Copy Transcript'; }, 2000);
-                    }
-                } catch(e) {}
             });
         }
 
@@ -889,6 +659,26 @@
                 renderCaptions();
             }
         });
+
+        // Silence Timer handling for Live Prompter mode
+        function triggerSilenceTimer() {
+            if (silenceHideTimer) clearTimeout(silenceHideTimer);
+            if (currentMode === 'live') {
+                silenceHideTimer = setTimeout(() => {
+                    if (transcriptContent) transcriptContent.classList.add('faded');
+                }, 4000);
+            }
+        }
+
+        function wakeLiveDisplay() {
+            if (silenceHideTimer) {
+                clearTimeout(silenceHideTimer);
+                silenceHideTimer = null;
+            }
+            if (transcriptContent) {
+                transcriptContent.classList.remove('faded');
+            }
+        }
 
         // Render Captions
         function renderCaptions() {
@@ -1024,13 +814,23 @@
 
             if (data.is_final) {
                 if (text) {
+                    wakeLiveDisplay();
                     finalSentences.push(text);
-                    if (finalSentences.length > maxHistorySentences) {
+                    while (finalSentences.length > maxHistorySentences) {
                         finalSentences.shift();
+                    }
+                    triggerSilenceTimer();
+                } else {
+                    // Empty final is silence signal
+                    if (currentMode === 'live') {
+                        if (transcriptContent) transcriptContent.classList.add('faded');
                     }
                 }
                 interimText = "";
             } else {
+                if (text) {
+                    wakeLiveDisplay();
+                }
                 interimText = text;
             }
 
@@ -1040,8 +840,8 @@
         // Initial history loader
         async function loadInitialHistory() {
             try {
-                const queryLimit = Math.max(15, maxHistorySentences);
-                const res = await fetch(`/api/transcript/history?limit=${queryLimit}`);
+                const limit = (currentMode === 'live') ? 2 : 100;
+                const res = await fetch(`/api/transcript/history?limit=${limit}`);
                 if (res.ok) {
                     const data = await res.json();
                     if (data.history && data.history.length > 0) {
