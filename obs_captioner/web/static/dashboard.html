@@ -17,14 +17,14 @@
             <div class="brand">
                 <div class="logo-icon">🎙️</div>
                 <div>
-                    <h1>OBS Live Captions <span class="badge-pro">PRO</span></h1>
+                    <h1>VoxStream Live Captions</h1>
                     <span class="subtext">Control Panel &amp; In-OBS Custom Dock</span>
                 </div>
             </div>
             
             <div class="header-controls">
-                <a href="/display" target="_blank" class="btn" title="Open large-format Room / Stage Confidence Monitor" style="background: rgba(168, 85, 247, 0.15); border: 1px solid #A855F7; color: #C084FC; font-weight: 700; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">📺 Room Display</a>
-                <button id="btn-reopen-projector" class="btn" title="Forcefully open or restore the video preview to the Conference Screen (LONTIUM)" style="background: rgba(56, 189, 248, 0.15); border: 1px solid #38BDF8; color: #38BDF8; font-weight: 700; cursor: pointer;">🖥️ Restore Projector</button>
+                <a href="/display" target="_blank" class="btn btn-secondary" title="Open large-format Room / Stage Confidence Monitor">📺 Stage Monitor</a>
+                <button id="btn-reopen-projector" class="btn btn-secondary" title="Restore the video preview to the Conference Screen">🖥️ Restore Screen</button>
 
                 <div class="vu-container" title="Microphone Level">
                     <span class="vu-label">MIC</span>
@@ -34,8 +34,8 @@
                 </div>
 
                 <!-- Active Engine Badge -->
-                <div class="active-engine-pill" id="active-engine-pill" title="Currently Active Speech Recognition Model" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 20px; padding: 5px 12px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: #A5B4FC; white-space: nowrap;">
-                    <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #6366F1; box-shadow: 0 0 8px #6366F1;"></span>
+                <div class="active-engine-pill" id="active-engine-pill" title="Currently Active Speech Recognition Model" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--text-main); white-space: nowrap;">
+                    <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent);"></span>
                     <span id="active-engine-badge-text">Engine: Loading...</span>
                 </div>
 
@@ -45,8 +45,8 @@
                 </div>
 
                 <button id="btn-toggle-engine" class="btn btn-danger">⏹ Stop Captions</button>
-                <button id="btn-restart-app" class="btn btn-secondary" title="Cleanly restart the VoxStream backend process" style="font-weight: 600;">🔄 Restart</button>
-                <button id="btn-shutdown-app" class="btn" title="Shut down the VoxStream application" style="background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.4); color: #EF4444; font-weight: 600;">🛑 Quit</button>
+                <button id="btn-restart-app" class="btn btn-secondary" title="Cleanly restart the VoxStream backend process">🔄 Restart</button>
+                <button id="btn-shutdown-app" class="btn btn-danger" title="Shut down the VoxStream application">🛑 Quit</button>
             </div>
         </header>
 
@@ -75,8 +75,8 @@
                     </div>
 
                     <!-- Collapsible Save Preset Card -->
-                    <div id="save-preset-card" style="display: none; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
-                        <h3 style="font-size: 14px; margin-bottom: 8px; color: #A5B4FC; display: flex; align-items: center; gap: 6px;">💾 Save Current Styling into Custom Preset</h3>
+                    <div id="save-preset-card" style="display: none; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                        <h3 style="font-size: 13.5px; margin-bottom: 8px; color: var(--text-main); display: flex; align-items: center; gap: 6px;">💾 Save Current Styling into Custom Preset</h3>
                         <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
                             <input type="text" id="preset-new-name" class="form-control" placeholder="Preset Name (e.g. Amber Stage, Gaming Pop)" style="flex: 1; min-width: 200px;">
                             <input type="text" id="preset-new-desc" class="form-control" placeholder="Description (optional)" style="flex: 1.5; min-width: 200px;">
@@ -160,8 +160,9 @@
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label for="auto_hide_slider">Auto-Hide Silence (<span id="val-auto-hide">4s</span>)</label>
+                                <label for="auto_hide_slider">Auto-Hide on Silence (<span id="val-auto-hide">4s</span>)</label>
                                 <input type="range" id="auto_hide_slider" min="0" max="15" step="0.5" value="4" class="slider">
+                                <span class="hint">Fades out captions when speech pauses (0s = stay visible).</span>
                             </div>
                         </div>
 
@@ -396,19 +397,19 @@
                     <h2>Audio Capture &amp; Speech-to-Text Engine</h2>
 
                     <!-- Live Active Engine & Model Banner -->
-                    <div class="active-model-hero-card" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(168, 85, 247, 0.12)); border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 12px; padding: 16px 20px; margin: 16px 0 20px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+                    <div class="active-model-hero-card" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px 18px; margin: 14px 0 18px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
                         <div>
-                            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: #A5B4FC; font-weight: 700; margin-bottom: 4px;">⚡ Currently Active Engine &amp; Model</div>
-                            <div style="font-size: 18px; font-weight: 800; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
+                            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 700; margin-bottom: 3px;">Active Engine &amp; Model</div>
+                            <div style="font-size: 16px; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
                                 <span class="status-dot online"></span>
                                 <span id="hero-active-model-name">Loading Active Model...</span>
                             </div>
-                            <div id="hero-active-model-desc" style="font-size: 12px; color: #9CA3AF; margin-top: 4px;">Loading specifications...</div>
+                            <div id="hero-active-model-desc" style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">Loading specifications...</div>
                         </div>
                         <div style="display: flex; gap: 8px; align-items: center;">
-                            <span id="hero-active-badge" style="background: rgba(16, 185, 129, 0.2); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.4); padding: 5px 12px; border-radius: 6px; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 5px;">
+                            <span id="hero-active-badge" style="background: rgba(16, 185, 129, 0.12); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.3); padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 5px;">
                                 <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #10B981;"></span>
-                                LIVE IN MEMORY
+                                ACTIVE
                             </span>
                         </div>
                     </div>
@@ -660,7 +661,7 @@
                                 </select>
                             </div>
                             <div class="form-group" style="flex: 1;">
-                                <button type="button" id="btn-quick-open-projector" class="btn btn-primary btn-block" style="background: linear-gradient(135deg, #38BDF8, #6366F1);">📺 Open to Screen</button>
+                                <button type="button" id="btn-quick-open-projector" class="btn btn-primary btn-block" >📺 Open to Screen</button>
                             </div>
                         </div>
                         <div id="projector-status-msg" style="font-size: 12px; margin-top: 8px; display: none;"></div>
@@ -848,7 +849,7 @@
             <h2 id="restart-modal-title" style="font-size: 22px; font-weight: 700; margin-bottom: 8px;">Restarting VoxStream...</h2>
             <p id="restart-modal-sub" style="color: #9CA3AF; font-size: 13px; margin-bottom: 20px; line-height: 1.5;">Reloading speech recognition engine and audio streams...</p>
             <div style="background: rgba(255,255,255,0.08); border-radius: 999px; height: 6px; overflow: hidden; margin-bottom: 16px; width: 100%;">
-                <div id="restart-progress-bar" style="background: linear-gradient(90deg, #6366F1, #A855F7); width: 35%; height: 100%; border-radius: 999px; transition: width 0.3s ease;"></div>
+                <div id="restart-progress-bar" style="background: var(--accent); width: 35%; height: 100%; border-radius: 999px; transition: width 0.3s ease;"></div>
             </div>
             <div id="restart-step-status" style="font-size: 12px; color: #A5B4FC; font-weight: 600;">Step 1/3: Sending restart signal...</div>
             <div id="restart-manual-actions" style="margin-top: 18px; display: none;">

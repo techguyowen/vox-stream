@@ -29,11 +29,11 @@
             --bg-color: #000000;
             --text-color: #FFFFFF;
             --text-muted: #8E8E93;
-            --interim-color: #FFD166;
+            --interim-color: #93C5FD;
             --accent: #3B82F6;
             --success: #10B981;
-            --card-bg: rgba(24, 24, 27, 0.85);
-            --border: #27272A;
+            --card-bg: rgba(22, 27, 34, 0.9);
+            --border: #30363D;
             --font-family: 'Inter', system-ui, -apple-system, sans-serif;
             --font-size: 48px;
             --line-height: 1.45;
@@ -43,7 +43,7 @@
         body.theme-oled {
             --bg-color: #000000;
             --text-color: #FFFFFF;
-            --interim-color: #38BDF8;
+            --interim-color: #93C5FD;
         }
         body.theme-amber {
             --bg-color: #050505;
@@ -62,7 +62,7 @@
             --text-color: #0F172A;
             --interim-color: #2563EB;
             --text-muted: #94A3B8;
-            --card-bg: rgba(255, 255, 255, 0.9);
+            --card-bg: rgba(255, 255, 255, 0.95);
             --border: #E2E8F0;
         }
 
@@ -80,7 +80,7 @@
             font-family: var(--font-family);
             overflow: hidden;
             user-select: none;
-            transition: background-color 0.3s ease, color 0.3s ease;
+            transition: background-color 0.25s ease, color 0.25s ease;
         }
 
         /* Top Header Bar */
@@ -89,16 +89,17 @@
             top: 0;
             left: 0;
             right: 0;
-            height: 64px;
+            height: 58px;
             background: var(--card-bg);
             backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
             border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0 24px;
+            padding: 0 20px;
             z-index: 100;
-            transition: opacity 0.3s ease, transform 0.3s ease;
+            transition: opacity 0.25s ease, transform 0.25s ease;
         }
 
         .header-bar.hidden {
@@ -110,15 +111,14 @@
         .header-left {
             display: flex;
             align-items: center;
-            gap: 16px;
+            gap: 14px;
         }
 
         .brand-badge {
-            font-size: 14px;
-            font-weight: 800;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-            color: var(--accent);
+            font-size: 13.5px;
+            font-weight: 700;
+            letter-spacing: -0.1px;
+            color: var(--text-color);
             display: flex;
             align-items: center;
             gap: 8px;
@@ -128,104 +128,102 @@
             display: flex;
             align-items: center;
             gap: 6px;
-            padding: 4px 12px;
-            border-radius: 999px;
-            font-size: 12px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11.5px;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            background: rgba(16, 185, 129, 0.15);
+            background: rgba(16, 185, 129, 0.12);
             color: var(--success);
-            border: 1px solid rgba(16, 185, 129, 0.3);
+            border: 1px solid rgba(16, 185, 129, 0.25);
         }
 
         .status-pill.offline {
-            background: rgba(239, 68, 68, 0.15);
+            background: rgba(239, 68, 68, 0.12);
             color: #EF4444;
-            border-color: rgba(239, 68, 68, 0.3);
+            border-color: rgba(239, 68, 68, 0.25);
         }
 
         .status-dot {
-            width: 8px;
-            height: 8px;
+            width: 7px;
+            height: 7px;
             border-radius: 50%;
             background-color: currentColor;
-            box-shadow: 0 0 8px currentColor;
         }
 
         .clock-display {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 20px;
+            font-size: 18px;
             font-weight: 700;
             color: var(--text-color);
-            letter-spacing: 1px;
+            letter-spacing: 0.5px;
         }
 
         .header-right {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 8px;
         }
 
         .ctrl-btn {
-            background: rgba(255, 255, 255, 0.08);
+            background: rgba(255, 255, 255, 0.06);
             color: var(--text-color);
             border: 1px solid var(--border);
-            padding: 8px 14px;
-            border-radius: 8px;
-            font-size: 14px;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 13px;
             font-weight: 600;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            transition: all 0.2s ease;
+            gap: 5px;
+            transition: all 0.15s ease;
         }
 
         .ctrl-btn:hover {
-            background: rgba(255, 255, 255, 0.16);
-            transform: translateY(-1px);
+            background: rgba(255, 255, 255, 0.12);
         }
 
         .theme-select {
-            background: rgba(255, 255, 255, 0.08);
-            color: var(--text-color);
+            background: #161B22;
+            color: #F0F3F6;
             border: 1px solid var(--border);
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-size: 13px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 12.5px;
             font-weight: 600;
             cursor: pointer;
             outline: none;
         }
 
         .theme-select option {
-            background: #18181B;
-            color: #FFFFFF;
+            background: #161B22;
+            color: #F0F3F6;
         }
 
         /* Main Scrolling Container */
         .stage-container {
             position: absolute;
-            top: 64px;
+            top: 58px;
             bottom: 0;
             left: 0;
             right: 0;
             overflow-y: auto;
             scroll-behavior: smooth;
-            padding: 40px 60px 140px 60px;
+            padding: 36px 60px 120px 60px;
             display: flex;
             flex-direction: column;
             justify-content: flex-end;
-            min-height: calc(100% - 64px);
+            min-height: calc(100% - 58px);
         }
 
         .stage-container::-webkit-scrollbar {
-            width: 8px;
+            width: 6px;
         }
         .stage-container::-webkit-scrollbar-thumb {
             background: rgba(255, 255, 255, 0.15);
-            border-radius: 4px;
+            border-radius: 3px;
         }
 
         .transcript-content {
@@ -242,14 +240,14 @@
             line-height: var(--line-height);
             font-weight: 700;
             color: var(--text-color);
-            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
-            opacity: 0.92;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+            opacity: 0.95;
             word-wrap: break-word;
             transition: opacity 0.2s ease;
         }
 
         .caption-sentence.previous {
-            opacity: 0.55;
+            opacity: 0.5;
             font-weight: 600;
         }
 
@@ -275,7 +273,7 @@
         .empty-indicator {
             text-align: center;
             color: var(--text-muted);
-            font-size: calc(var(--font-size) * 0.65);
+            font-size: calc(var(--font-size) * 0.6);
             font-weight: 600;
             padding: 100px 0;
         }
@@ -283,10 +281,10 @@
         /* Floating Auto-Scroll / Controls Button */
         .floating-controls {
             position: fixed;
-            bottom: 24px;
-            right: 24px;
+            bottom: 20px;
+            right: 20px;
             display: flex;
-            gap: 10px;
+            gap: 8px;
             z-index: 100;
         }
 
@@ -294,22 +292,22 @@
             background: var(--card-bg);
             color: var(--text-color);
             border: 1px solid var(--border);
-            width: 48px;
-            height: 48px;
+            width: 44px;
+            height: 44px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 20px;
+            font-size: 18px;
             cursor: pointer;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.4);
             backdrop-filter: blur(8px);
-            transition: transform 0.2s ease, background-color 0.2s ease;
+            transition: transform 0.15s ease, background-color 0.15s ease;
         }
 
         .float-btn:hover {
-            transform: scale(1.1);
-            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.08);
+            background: rgba(255, 255, 255, 0.15);
         }
     </style>
 </head>
@@ -320,8 +318,8 @@
         <div class="header-left">
             <div class="brand-badge">
                 <span>🎙️ VoxStream</span>
-                <span style="opacity: 0.5;">|</span>
-                <span style="font-weight: 600;">Room Display</span>
+                <span style="opacity: 0.4;">|</span>
+                <span style="font-weight: 600; color: var(--text-muted);">Stage Display</span>
             </div>
             <div class="status-pill" id="statusPill">
                 <span class="status-dot"></span>
@@ -333,33 +331,33 @@
 
         <div class="header-right">
             <!-- Language Track Selector -->
-            <select class="theme-select" id="langSelect" title="Display Language Track">
-                <option value="en" selected>🌐 English (Original)</option>
-                <option value="es">🇪🇸 Spanish (Español)</option>
-                <option value="fr">🇫🇷 French (Français)</option>
-                <option value="de">🇩🇪 German (Deutsch)</option>
-                <option value="pt">🇧🇷 Portuguese (Português)</option>
-                <option value="it">🇮🇹 Italian (Italiano)</option>
-                <option value="zh">🇨🇳 Chinese (中文)</option>
-                <option value="ja">🇯🇵 Japanese (日本語)</option>
-                <option value="ko">🇰🇷 Korean (한국어)</option>
-                <option value="ru">🇷🇺 Russian (Русский)</option>
-                <option value="ar">🇸🇦 Arabic (العربية)</option>
-                <option value="hi">🇮🇳 Hindi (हिन्दी)</option>
-                <option value="nl">🇳🇱 Dutch (Nederlands)</option>
-                <option value="pl">🇵🇱 Polish (Polski)</option>
-                <option value="sv">🇸🇪 Swedish (Svenska)</option>
-                <option value="tr">🇹🇷 Turkish (Türkçe)</option>
-                <option value="uk">🇺🇦 Ukrainian (Українська)</option>
-                <option value="vi">🇻🇳 Vietnamese (Tiếng Việt)</option>
+            <select class="theme-select" id="langSelect" title="Language Track">
+                <option value="en" selected>English (Original)</option>
+                <option value="es">Spanish (Español)</option>
+                <option value="fr">French (Français)</option>
+                <option value="de">German (Deutsch)</option>
+                <option value="pt">Portuguese (Português)</option>
+                <option value="it">Italian (Italiano)</option>
+                <option value="zh">Chinese (中文)</option>
+                <option value="ja">Japanese (日本語)</option>
+                <option value="ko">Korean (한국어)</option>
+                <option value="ru">Russian (Русский)</option>
+                <option value="ar">Arabic (العربية)</option>
+                <option value="hi">Hindi (हिन्दी)</option>
+                <option value="nl">Dutch (Nederlands)</option>
+                <option value="pl">Polish (Polski)</option>
+                <option value="sv">Swedish (Svenska)</option>
+                <option value="tr">Turkish (Türkçe)</option>
+                <option value="uk">Ukrainian (Українська)</option>
+                <option value="vi">Vietnamese (Tiếng Việt)</option>
             </select>
 
             <!-- Font Selector -->
             <select class="theme-select" id="fontSelect" title="Typography / Font Family">
-                <option value="'Inter', system-ui, -apple-system, sans-serif" selected>Inter (Default)</option>
-                <option value="'OpenDyslexic', sans-serif">📖 OpenDyslexic (Accessibility)</option>
-                <option value="'Montserrat', sans-serif">Montserrat (Bold)</option>
-                <option value="'Poppins', sans-serif">Poppins (Rounded)</option>
+                <option value="'Inter', system-ui, -apple-system, sans-serif" selected>Inter</option>
+                <option value="'OpenDyslexic', sans-serif">OpenDyslexic</option>
+                <option value="'Montserrat', sans-serif">Montserrat</option>
+                <option value="'Poppins', sans-serif">Poppins</option>
                 <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
             </select>
 
@@ -372,8 +370,8 @@
             </select>
 
             <!-- Font Size Controls -->
-            <button class="ctrl-btn" id="btnFontDec" title="Decrease font size (Shortcut: -)">A-</button>
-            <button class="ctrl-btn" id="btnFontInc" title="Increase font size (Shortcut: +)">A+</button>
+            <button class="ctrl-btn" id="btnFontDec" title="Decrease font size (-)">A-</button>
+            <button class="ctrl-btn" id="btnFontInc" title="Increase font size (+)">A+</button>
 
             <!-- Fullscreen -->
             <button class="ctrl-btn" id="btnFullscreen" title="Toggle Fullscreen (F11)">⛶ Fullscreen</button>
@@ -425,8 +423,33 @@
         if (langSelect) {
             langSelect.value = currentLang;
             langSelect.addEventListener('change', async (e) => {
-                currentLang = e.target.value;
+                const newLang = e.target.value;
+                currentLang = newLang;
                 localStorage.setItem('voxstream_display_lang', currentLang);
+
+                // Update URL parameter in browser address bar without page reload
+                const newUrl = currentLang === 'en'
+                    ? window.location.pathname
+                    : `${window.location.pathname}?lang=${encodeURIComponent(currentLang)}`;
+                window.history.replaceState(null, '', newUrl);
+
+                // If text is currently visible on screen, translate it instantly!
+                if (finalSentences.length > 0 && currentLang !== 'en') {
+                    const translatedList = await Promise.all(finalSentences.map(async (sentence) => {
+                        try {
+                            const res = await fetch(`/api/translate?text=${encodeURIComponent(sentence)}&target=${encodeURIComponent(currentLang)}`);
+                            if (res.ok) {
+                                const data = await res.json();
+                                return data.translated || sentence;
+                            }
+                        } catch (err) {}
+                        return sentence;
+                    }));
+                    finalSentences = translatedList;
+                    renderCaptions();
+                }
+
+                // Reconnect WebSocket to new language track
                 if (ws) {
                     ws.close();
                 }
@@ -463,7 +486,6 @@
         const savedFont = localStorage.getItem('voxstream_display_font');
         if (savedFont) setFontFamily(savedFont);
 
-        // Swap only theme-* classes so other body classes are preserved
         function setTheme(theme) {
             if (!/^theme-[a-z]+$/.test(theme)) return;
             document.body.classList.forEach(c => {
@@ -476,14 +498,12 @@
         const savedTheme = localStorage.getItem('voxstream_display_theme');
         if (savedTheme) setTheme(savedTheme);
 
-        // Font Family Change
         if (fontSelect) {
             fontSelect.addEventListener('change', (e) => {
                 setFontFamily(e.target.value);
             });
         }
 
-        // Theme Change
         themeSelect.addEventListener('change', (e) => {
             setTheme(e.target.value);
             localStorage.setItem('voxstream_display_theme', e.target.value);
@@ -516,8 +536,7 @@
             scrollToBottom();
         });
 
-        // Keyboard Shortcuts (ignored while a form control has focus so typing
-        // in a select/input can't accidentally clear the confidence monitor)
+        // Keyboard Shortcuts
         window.addEventListener('keydown', (e) => {
             const tag = (e.target && e.target.tagName) || '';
             if (['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(tag)) return;
@@ -538,7 +557,6 @@
                 return;
             }
 
-            // Remove empty indicator if it exists
             const emptyEl = transcriptContent.querySelector('.empty-indicator');
             if (emptyEl) {
                 transcriptContent.innerHTML = '';
@@ -546,7 +564,6 @@
 
             const existingFinals = transcriptContent.querySelectorAll('.caption-sentence:not(.interim)');
             if (existingFinals.length !== finalSentences.length) {
-                // If array size changed, rebuild finals
                 let html = '';
                 const count = finalSentences.length;
                 finalSentences.forEach((sentence, idx) => {
@@ -555,20 +572,17 @@
                     html += `<div class="${cls}">${escapeHtml(sentence)}</div>`;
                 });
                 
-                // Preserve interim node if it exists so we don't lose its object reference
                 const interimNode = transcriptContent.querySelector('.interim');
                 transcriptContent.innerHTML = html;
                 if (interimNode) {
                     transcriptContent.appendChild(interimNode);
                 }
             } else {
-                // Just update text content of finals
                 const count = finalSentences.length;
                 existingFinals.forEach((el, idx) => {
                     if (el.textContent !== finalSentences[idx]) {
                         el.textContent = finalSentences[idx];
                     }
-                    // Update classes
                     const isRecent = idx >= count - 2;
                     const expectedCls = isRecent ? 'caption-sentence' : 'caption-sentence previous';
                     if (el.className !== expectedCls) {
@@ -577,7 +591,6 @@
                 });
             }
 
-            // Handle interim
             let interimNode = transcriptContent.querySelector('.interim');
             if (interimText) {
                 if (!interimNode) {
@@ -597,11 +610,7 @@
             }
         }
 
-        // Programmatic scrolls are instant (bypassing the CSS smooth-scroll):
-        // intermediate smooth-scroll events land >50px from the bottom and
-        // would silently latch autoScroll off during rapid partial updates.
         function scrollToBottom() {
-            // 'instant' (not 'auto') is required to override the CSS smooth-scroll
             stageContainer.scrollTo({ top: stageContainer.scrollHeight, behavior: 'instant' });
         }
 
@@ -611,7 +620,6 @@
             return div.innerHTML;
         }
 
-        // Track manual scroll
         stageContainer.addEventListener('scroll', () => {
             const atBottom = stageContainer.scrollHeight - stageContainer.scrollTop - stageContainer.clientHeight < 50;
             autoScroll = atBottom;
@@ -652,9 +660,6 @@
         }
 
         function handleCaptionEvent(data) {
-            // Snapshot replay on (re)connect: drop stale sentences (including a
-            // frozen interim line from before a disconnect) and adopt the
-            // server's recent finals.
             if (data.type === 'snapshot') {
                 finalSentences = [];
                 interimText = "";
@@ -684,7 +689,6 @@
             renderCaptions();
         }
 
-        // Start WebSocket & Status
         connectWebSocket();
 
         async function updateDisplayStatus() {
