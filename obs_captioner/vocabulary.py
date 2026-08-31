@@ -123,56 +123,49 @@ class VocabularyReplacer:
     def import_csv(self, content: str, replace_all: bool = False) -> int:
         """
         Parse and import glossary terms from CSV, TSV, or delimited text lines.
-        Supports comma, tab, semicolon, arrow ('->'), and equal ('=').
+        Handles standard CSV/TSV, arrows ('->', '=>'), and equals ('=').
+        Supports quoted strings and preserves colons inside citations (e.g. John 3:16).
         Returns number of successfully imported/updated terms.
         """
         if replace_all:
             self.config.terms.clear()
 
         imported_count = 0
-        lines = content.strip().splitlines()
+        raw_text = content.strip()
+        if not raw_text:
+            return 0
 
-        for line_num, line in enumerate(lines):
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-
-            orig, rep = None, None
-
-            # 1. Check for arrow or equals syntax (e.g. "box stream -> VoxStream" or "obs = OBS")
-            for sep in ("->", "=>", "=", ":"):
-                if sep in line:
-                    parts = line.split(sep, 1)
-                    if len(parts) == 2:
-                        orig, rep = parts[0].strip(), parts[1].strip()
-                        break
-
-            # 2. Otherwise parse with CSV reader (comma, tab, semicolon)
-            if orig is None or rep is None:
-                try:
-                    delim = "\t" if "\t" in line else (";" if ";" in line and "," not in line else ",")
-                    reader = csv.reader([line], delimiter=delim)
-                    row = next(reader, [])
-                    if len(row) >= 2:
-                        orig, rep = row[0].strip(), row[1].strip()
-                except Exception:
+        # Attempt CSV reader first with tab or comma
+        delim = "\t" if "\t" in raw_text and "," not in raw_text else ","
+        try:
+            reader = csv.reader(io.StringIO(raw_text), delimiter=delim)
+            for line_num, row in enumerate(reader):
+                if not row or all(not cell.strip() for cell in row):
                     continue
 
-            if not orig or not rep:
-                continue
+                orig, rep = None, None
+                if len(row) >= 2:
+                    orig, rep = row[0].strip(), row[1].strip()
+                elif len(row) == 1:
+                    line = row[0].strip()
+                    for sep in ("->", "=>", "="):
+                        if sep in line:
+                            parts = line.split(sep, 1)
+                            orig, rep = parts[0].strip(), parts[1].strip()
+                            break
 
-            # Skip header row if present
-            if line_num == 0 and orig.lower() in ("misheard phrase", "original", "source", "misheard", "from", "word") and rep.lower() in ("correct replacement", "replacement", "target", "correct", "to", "spelling"):
-                continue
+                if not orig or not rep or orig.startswith("#"):
+                    continue
 
-            orig_clean = orig.lower()
-            rep_clean = rep
-            if orig_clean and rep_clean:
-                self.config.terms[orig_clean] = rep_clean
-                imported_count += 1
+                # Skip header row if present
+                if line_num == 0 and orig.lower() in ("misheard phrase", "original", "source", "misheard", "from", "word") and rep.lower() in ("correct replacement", "replacement", "target", "correct", "to", "spelling"):
+                    continue
 
-        self.rebuild()
-        logger.info(f"Imported {imported_count} glossary terms (total: {len(self.config.terms)}).")
+                if self.add_term(orig, rep):
+                    imported_count += 1
+        except Exception as e:
+            logger.error(f"Error parsing glossary CSV: {e}")
+
         return imported_count
 
     def get_terms(self) -> Dict[str, str]:

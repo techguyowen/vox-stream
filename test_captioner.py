@@ -561,5 +561,61 @@ class TestChurchCensorship(unittest.TestCase):
         self.assertTrue(bool(res_es))
         loop.close()
 
+
+from aiohttp.test_utils import AioHTTPTestCase
+from obs_captioner.web.server import WebOverlayServer
+
+class TestServerEndpoints(AioHTTPTestCase):
+    async def get_application(self):
+        self.cfg = AppConfig()
+        self.server = WebOverlayServer(self.cfg)
+        return self.server.app
+
+    async def test_manifest_endpoint(self):
+        resp = await self.client.request('GET', '/manifest.json')
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.content_type, 'application/manifest+json')
+        manifest = await resp.json()
+        self.assertEqual(manifest['name'], 'VoxStream Stage Display')
+        self.assertEqual(manifest['start_url'], '/display')
+
+    async def test_sw_endpoint(self):
+        resp = await self.client.request('GET', '/sw.js')
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.headers.get('Service-Worker-Allowed'), '/')
+        text = await resp.text()
+        self.assertIn('CACHE_NAME', text)
+
+    async def test_bulk_vocab_api(self):
+        resp = await self.client.request('POST', '/api/vocabulary/bulk', json={
+            'csv_data': 'test_a,Test A\ntest_b -> Test B',
+            'replace_all': False
+        })
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertEqual(data['imported_count'], 2)
+
+    async def test_export_vocab_api(self):
+        resp = await self.client.request('GET', '/api/vocabulary/export')
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.content_type, 'text/csv')
+        csv_out = await resp.text()
+        self.assertIn('Misheard Phrase,Correct Replacement', csv_out)
+
+    async def test_panic_button(self):
+        resp = await self.client.request('POST', '/api/control/panic')
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertEqual(data['status'], 'success')
+
+    async def test_api_status(self):
+        resp = await self.client.request('GET', '/api/status')
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertIn('engine', data)
+        self.assertIn('uptime_seconds', data)
+
+
 if __name__ == "__main__":
     unittest.main()

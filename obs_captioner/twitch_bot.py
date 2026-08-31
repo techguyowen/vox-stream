@@ -26,7 +26,7 @@ class TwitchCaptionBot:
         self.reader: Optional[asyncio.StreamReader] = None
         self.writer: Optional[asyncio.StreamWriter] = None
         self.is_connected = False
-        self._send_queue: asyncio.Queue = asyncio.Queue(maxsize=50)
+        self._send_queue: Optional[asyncio.Queue] = None
         self._worker_task: Optional[asyncio.Task] = None
 
     async def start(self) -> bool:
@@ -51,6 +51,7 @@ class TwitchCaptionBot:
             await self.writer.drain()
 
             self.is_connected = True
+            self._send_queue = asyncio.Queue(maxsize=50)
             self._worker_task = asyncio.create_task(self._send_worker())
             logger.info(f"Twitch Caption Bot joined #{channel} successfully.")
             return True

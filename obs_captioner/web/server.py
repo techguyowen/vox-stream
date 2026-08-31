@@ -222,13 +222,17 @@ class WebOverlayServer:
         "api": ("api_key",),
     }
 
-    async def _handle_get_config(self, request: web.Request) -> web.Response:
+    def get_masked_config_dict(self) -> dict:
+        """Return configuration dict with sensitive credentials masked."""
         data = asdict(self.config)
         for section, fields in self.SECRET_FIELDS.items():
             for f in fields:
                 if data.get(section, {}).get(f):
                     data[section][f] = self.SECRET_SENTINEL
-        return web.json_response(data)
+        return data
+
+    async def _handle_get_config(self, request: web.Request) -> web.Response:
+        return web.json_response(self.get_masked_config_dict())
 
     async def _handle_post_config(self, request: web.Request) -> web.Response:
         """Update live settings and persist to config.json."""
@@ -254,7 +258,7 @@ class WebOverlayServer:
             if self.on_config_updated:
                 self.on_config_updated(self.config)
 
-            await self.broadcast_control({"type": "config_updated", "config": asdict(self.config)})
+            await self.broadcast_control({"type": "config_updated", "config": self.get_masked_config_dict()})
             return web.json_response({"status": "success", "message": "Configuration updated and saved."})
         except Exception as e:
             logger.error(f"Error saving config via API: {e}")
@@ -283,7 +287,7 @@ class WebOverlayServer:
             if self.on_config_updated:
                 self.on_config_updated(self.config)
 
-            await self.broadcast_control({"type": "config_updated", "config": asdict(self.config)})
+            await self.broadcast_control({"type": "config_updated", "config": self.get_masked_config_dict()})
 
             # Find applied preset info
             applied_preset = None
@@ -421,8 +425,12 @@ class WebOverlayServer:
 
     async def _handle_get_chapters(self, request: web.Request) -> web.Response:
         try:
-            min_interval = float(request.query.get("min_interval", 45.0))
-        except ValueError:
+            raw_interval = float(request.query.get("min_interval", 45.0))
+            if re.search(r"nan|inf", str(raw_interval).lower()):
+                min_interval = 45.0
+            else:
+                min_interval = max(10.0, min(3600.0, raw_interval))
+        except (ValueError, TypeError):
             min_interval = 45.0
         chapters = self.history.generate_chapters(min_interval_seconds=min_interval)
         formatted = self.history.export_youtube_chapters()
@@ -433,6 +441,9 @@ class WebOverlayServer:
         })
 
     async def _handle_translate_text(self, request: web.Request) -> web.Response:
+        client_ip = request.remote or "127.0.0.1"
+        if not self.rate_limiter.is_allowed(client_ip):
+            return web.json_response({"error": "Rate limit exceeded"}, status=429)
         text = sanitize_text(request.query.get("text", "")).strip()
         target = sanitize_text(request.query.get("target", "es")).strip().lower()
         source = sanitize_text(request.query.get("source", "auto")).strip().lower()
@@ -502,7 +513,10 @@ class WebOverlayServer:
         except Exception:
             data = {}
 
-        mon_idx = int(request.query.get("monitor", data.get("monitor_index", self.config.obs.projector_monitor_index or 1)))
+        try:
+            mon_idx = int(request.query.get("monitor", data.get("monitor_index", self.config.obs.projector_monitor_index or 1)))
+        except (ValueError, TypeError):
+            mon_idx = 1
         mix_type = sanitize_text(request.query.get("mix_type", data.get("mix_type", self.config.obs.projector_type or "preview")))
 
         # 1. Start / Resume live captioning
@@ -535,7 +549,10 @@ class WebOverlayServer:
             data = {}
 
         mix_type = sanitize_text(data.get("mix_type", self.config.obs.projector_type or "preview"))
-        monitor_index = int(data.get("monitor_index", self.config.obs.projector_monitor_index))
+        try:
+            monitor_index = int(data.get("monitor_index", self.config.obs.projector_monitor_index or 1))
+        except (ValueError, TypeError):
+            monitor_index = 1
         source_name = sanitize_text(data.get("source_name", self.config.obs.projector_source_name or ""))
 
         success = await self.obs_client.open_projector(
@@ -601,6 +618,9 @@ class WebOverlayServer:
         return web.json_response(censor.get_filter_state())
 
     async def _handle_filter_test(self, request: web.Request) -> web.Response:
+        client_ip = request.remote or "127.0.0.1"
+        if not self.rate_limiter.is_allowed(client_ip):
+            return web.json_response({"error": "Rate limit exceeded"}, status=429)
         try:
             data = await request.json()
             test_text = sanitize_text(data.get("text", ""))
@@ -833,7 +853,7 @@ class WebOverlayServer:
         return web.json_response({"status": "success", "message": "Glossary cleared.", "terms": {}})
 
     async def _handle_caption_ws(self, request: web.Request) -> web.WebSocketResponse:
-        ws = web.WebSocketResponse()
+        ws = web.WebSocketResponse(heartbeat=25.0)
         await ws.prepare(request)
         lang = sanitize_text(request.query.get("lang", "en")).lower().strip() or "en"
         self.caption_sockets[ws] = lang
@@ -868,7 +888,7 @@ class WebOverlayServer:
         # Control actions (start/stop/restart/shutdown) require the same auth
         # as their HTTP counterparts (?api_key= works for WebSocket URLs).
         authorized = self._check_auth(request)
-        ws = web.WebSocketResponse()
+        ws = web.WebSocketResponse(heartbeat=25.0)
         await ws.prepare(request)
         self.control_sockets.add(ws)
         try:
@@ -896,6 +916,11 @@ class WebOverlayServer:
 
     async def _handle_audio_stream_ws(self, request: web.Request) -> web.WebSocketResponse:
         """WebSocket intake for raw 16kHz linear PCM audio bytes (e.g. streamed directly from OBS)."""
+        if not self._check_auth(request):
+            ws = web.WebSocketResponse()
+            await ws.prepare(request)
+            await ws.close(code=web.WSCloseCode.POLICY_VIOLATION, message=b"Unauthorized")
+            return ws
         ws = web.WebSocketResponse(max_msg_size=1024 * 1024)
         await ws.prepare(request)
         logger.info("Direct OBS Audio stream connected via WebSocket.")
@@ -913,6 +938,8 @@ class WebOverlayServer:
 
     async def _handle_audio_chunk_post(self, request: web.Request) -> web.Response:
         """HTTP POST intake for raw PCM audio chunks."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         data = await request.read()
         if self.audio_capture and data:
             self.audio_capture.inject_audio_chunk(data)

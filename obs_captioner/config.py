@@ -216,6 +216,14 @@ def get_config_path() -> str:
     return _current_config_path
 
 
+def _safe_dataclass_load(cls, data: Optional[dict]):
+    """Instantiate a dataclass, ignoring any unknown legacy/future fields."""
+    if not isinstance(data, dict):
+        return cls()
+    field_names = {f.name for f in cls.__dataclass_fields__.values()}
+    filtered = {k: v for k, v in data.items() if k in field_names}
+    return cls(**filtered)
+
 def load_config(config_path: Optional[str] = None) -> AppConfig:
     """Load configuration from JSON file with environment variable fallback overrides."""
     global _current_config_path
@@ -234,22 +242,23 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
             logger.warning(f"Failed to read {config_path}: {e}. Using defaults.")
 
     cfg = AppConfig(
-        general=GeneralConfig(**data.get("general", {})),
-        audio=AudioConfig(**data.get("audio", {})),
-        vocabulary=VocabularyConfig(**data.get("vocabulary", {})),
+        general=_safe_dataclass_load(GeneralConfig, data.get("general")),
+        audio=_safe_dataclass_load(AudioConfig, data.get("audio")),
+        vocabulary=_safe_dataclass_load(VocabularyConfig, data.get("vocabulary")),
         custom_presets=data.get("custom_presets", {}) or {},
-        censor=CensorConfig(**data.get("censor", {})),
-        translation=TranslationConfig(**data.get("translation", {})),
-        twitch=TwitchConfig(**data.get("twitch", {})),
-        google_stt=GoogleSTTConfig(**data.get("google_stt", {})),
-        gemini_live=GeminiLiveConfig(**data.get("gemini_live", {})),
-        local_whisper=LocalWhisperConfig(**data.get("local_whisper", {})),
-        vosk=VoskConfig(**data.get("vosk", {})),
-        moonshine=MoonshineConfig(**data.get("moonshine", {})),
-        bandwidth=BandwidthConfig(**data.get("bandwidth", {})),
-        obs=OBSConfig(**data.get("obs", {})),
-        overlay=OverlayConfig(**data.get("overlay", {})),
-        api=APIConfig(**data.get("api", {})),
+        censor=_safe_dataclass_load(CensorConfig, data.get("censor")),
+        translation=_safe_dataclass_load(TranslationConfig, data.get("translation")),
+        twitch=_safe_dataclass_load(TwitchConfig, data.get("twitch")),
+        google_stt=_safe_dataclass_load(GoogleSTTConfig, data.get("google_stt")),
+        gemini_live=_safe_dataclass_load(GeminiLiveConfig, data.get("gemini_live")),
+        local_whisper=_safe_dataclass_load(LocalWhisperConfig, data.get("local_whisper")),
+        vosk=_safe_dataclass_load(VoskConfig, data.get("vosk")),
+        moonshine=_safe_dataclass_load(MoonshineConfig, data.get("moonshine")),
+        bandwidth=_safe_dataclass_load(BandwidthConfig, data.get("bandwidth")),
+        obs=_safe_dataclass_load(OBSConfig, data.get("obs")),
+        overlay=_safe_dataclass_load(OverlayConfig, data.get("overlay")),
+        api=_safe_dataclass_load(APIConfig, data.get("api")),
+
     )
 
     # Environment variable overrides
@@ -272,20 +281,26 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
 
 
 def save_config(cfg: AppConfig, config_path: Optional[str] = None) -> bool:
-    """Serialize and save configuration back to config.json."""
-    path = config_path or get_config_path()
-    # config.json.example may be used as a read-only seed when no config.json
-    # exists, but user settings must never be written back into the example.
-    if Path(path).name == "config.json.example":
+    """Serialize and atomically save configuration back to config.json."""
+    target_path = Path(config_path or get_config_path())
+    if target_path.name == "config.json.example":
         global _current_config_path
-        path = str(Path(path).parent / "config.json")
-        _current_config_path = path
+        target_path = target_path.parent / "config.json"
+        _current_config_path = str(target_path)
+
+    tmp_path = target_path.with_suffix(".tmp")
     try:
         data = asdict(cfg)
-        with open(path, "w", encoding="utf-8") as f:
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
-        logger.info(f"Saved configuration to: {path}")
+        tmp_path.replace(target_path)
+        logger.info(f"Saved configuration atomically to: {target_path}")
         return True
     except Exception as e:
-        logger.error(f"Failed to save configuration to {path}: {e}")
+        logger.error(f"Failed to save configuration to {target_path}: {e}")
+        if tmp_path.is_file():
+            try:
+                tmp_path.unlink()
+            except Exception:
+                pass
         return False

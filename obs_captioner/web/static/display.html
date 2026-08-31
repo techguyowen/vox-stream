@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>VoxStream - Room Confidence Monitor</title>
     <!-- Progressive Web App (PWA) Meta & Icons -->
     <link rel="manifest" href="/manifest.json">
@@ -905,20 +905,25 @@
 
         // Screen Wake Lock API (keeps iPad/phone screen active on stage)
         let wakeLock = null;
+        let isRequestingWakeLock = false;
         async function requestScreenWakeLock() {
-            if ('wakeLock' in navigator && !wakeLock) {
-                try {
-                    wakeLock = await navigator.wakeLock.request('screen');
-                    wakeLock.addEventListener('release', () => { wakeLock = null; });
-                } catch (err) {}
+            if (!('wakeLock' in navigator) || wakeLock || isRequestingWakeLock) return;
+            try {
+                isRequestingWakeLock = true;
+                wakeLock = await navigator.wakeLock.request('screen');
+                wakeLock.addEventListener('release', () => { wakeLock = null; });
+            } catch (err) {
+                // Ignore silent wake lock rejections on inactive tabs
+            } finally {
+                isRequestingWakeLock = false;
             }
         }
         requestScreenWakeLock();
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') requestScreenWakeLock();
         });
-        window.addEventListener('click', requestScreenWakeLock, { once: true });
-        window.addEventListener('touchstart', requestScreenWakeLock, { once: true });
+        window.addEventListener('click', () => { if (!wakeLock) requestScreenWakeLock(); });
+        window.addEventListener('touchstart', () => { if (!wakeLock) requestScreenWakeLock(); });
 
         // 1-Click Install App Prompt
         let deferredInstallPrompt = null;
