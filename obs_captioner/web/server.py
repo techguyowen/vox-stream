@@ -59,7 +59,13 @@ class WebOverlayServer:
         self.audio_capture = audio_capture
         self.server_start_time = time.time()
         self.instance_id = str(uuid.uuid4())[:8]
-        self.rate_limiter = SimpleRateLimiter(max_requests=120, window_seconds=60.0)
+        # Generous: a dashboard (4s poll) + stage display (5s poll) + restart
+        # polling from the same IP must not starve each other into 429s.
+        self.rate_limiter = SimpleRateLimiter(max_requests=300, window_seconds=60.0)
+        # Rolling snapshot of recent final caption payloads, replayed to newly
+        # connected /ws clients so refreshed views aren't blank until the next utterance.
+        self._recent_finals: list = []
+        self._max_snapshot_lines = 10
 
         self.app = web.Application()
         self.runner: web.AppRunner = None
@@ -72,6 +78,9 @@ class WebOverlayServer:
     def _check_auth(self, request: web.Request) -> bool:
         auth_func = require_api_auth(self.config.api.api_key)
         return auth_func(request)
+
+    def _make_filter(self) -> ContentFilter:
+        return ContentFilter(self.config.censor, church_mode=getattr(self.config.general, "church_mode", True))
 
     def _setup_routes(self):
         static_dir = Path(__file__).parent / "static"
@@ -157,7 +166,6 @@ class WebOverlayServer:
             return web.json_response({"error": "Rate limit exceeded"}, status=429)
 
         status_info = {
-            "is_running": True,
             "engine": self.config.general.engine,
             "language": self.config.general.language,
             "audio_device": self.config.audio.device_name_filter,
@@ -173,11 +181,28 @@ class WebOverlayServer:
             try:
                 status_info.update(self.get_app_status())
             except Exception:
-                pass
+                logger.warning("get_app_status hook failed", exc_info=True)
+        # Never report "running" unless the app-status hook confirmed it
+        status_info.setdefault("is_running", False)
         return web.json_response(status_info)
 
+    # Sentinel used in place of secret values in GET /api/config responses.
+    # POSTing the sentinel back leaves the stored secret unchanged.
+    SECRET_SENTINEL = "•••"
+    SECRET_FIELDS = {
+        "gemini_live": ("api_key",),
+        "twitch": ("oauth_token",),
+        "obs": ("password",),
+        "api": ("api_key",),
+    }
+
     async def _handle_get_config(self, request: web.Request) -> web.Response:
-        return web.json_response(asdict(self.config))
+        data = asdict(self.config)
+        for section, fields in self.SECRET_FIELDS.items():
+            for f in fields:
+                if data.get(section, {}).get(f):
+                    data[section][f] = self.SECRET_SENTINEL
+        return web.json_response(data)
 
     async def _handle_post_config(self, request: web.Request) -> web.Response:
         """Update live settings and persist to config.json."""
@@ -190,8 +215,13 @@ class WebOverlayServer:
                 if hasattr(self.config, key) and isinstance(val, dict):
                     section = getattr(self.config, key)
                     for sec_k, sec_v in val.items():
-                        if hasattr(section, sec_k):
-                            setattr(section, sec_k, sec_v)
+                        if not hasattr(section, sec_k):
+                            continue
+                        # A masked secret round-tripped from GET /api/config
+                        # means "keep the existing value"
+                        if sec_v == self.SECRET_SENTINEL and sec_k in self.SECRET_FIELDS.get(key, ()):
+                            continue
+                        setattr(section, sec_k, sec_v)
 
             save_config(self.config)
 
@@ -212,6 +242,8 @@ class WebOverlayServer:
         return web.json_response({"presets": get_all_presets(self.config.custom_presets)})
 
     async def _handle_apply_preset(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         try:
             data = await request.json()
             theme_id = sanitize_text(data.get("theme_id", ""))
@@ -239,6 +271,8 @@ class WebOverlayServer:
             return web.json_response({"error": str(e)}, status=400)
 
     async def _handle_save_preset(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         try:
             data = await request.json()
             name = sanitize_text(data.get("name", "").strip(), max_len=60)
@@ -290,6 +324,8 @@ class WebOverlayServer:
             return web.json_response({"error": str(e)}, status=400)
 
     async def _handle_delete_preset(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         try:
             data = await request.json()
             preset_id = sanitize_text(data.get("id", "").strip())
@@ -467,14 +503,14 @@ class WebOverlayServer:
         return web.Response(text=content, content_type=content_type, headers=headers)
 
     async def _handle_filter_state(self, request: web.Request) -> web.Response:
-        censor = ContentFilter(self.config.censor)
+        censor = self._make_filter()
         return web.json_response(censor.get_filter_state())
 
     async def _handle_filter_test(self, request: web.Request) -> web.Response:
         try:
             data = await request.json()
             test_text = sanitize_text(data.get("text", ""))
-            censor = ContentFilter(self.config.censor)
+            censor = self._make_filter()
             filtered, was_censored = censor.filter_text(test_text)
             return web.json_response({
                 "original": test_text,
@@ -486,6 +522,8 @@ class WebOverlayServer:
             return web.json_response({"error": str(e)}, status=400)
 
     async def _handle_add_blacklist(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         try:
             data = await request.json()
             term = data.get("term", "")
@@ -493,7 +531,7 @@ class WebOverlayServer:
             if not valid:
                 return web.json_response({"error": msg}, status=400)
             
-            censor = ContentFilter(self.config.censor)
+            censor = self._make_filter()
             censor.add_blacklist_term(msg)
             save_config(self.config)
             if self.on_config_updated:
@@ -503,10 +541,12 @@ class WebOverlayServer:
             return web.json_response({"error": str(e)}, status=400)
 
     async def _handle_remove_blacklist(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         try:
             data = await request.json()
             term = data.get("term", "")
-            censor = ContentFilter(self.config.censor)
+            censor = self._make_filter()
             censor.remove_blacklist_term(term)
             save_config(self.config)
             if self.on_config_updated:
@@ -516,6 +556,8 @@ class WebOverlayServer:
             return web.json_response({"error": str(e)}, status=400)
 
     async def _handle_add_whitelist(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         try:
             data = await request.json()
             term = data.get("term", "")
@@ -523,7 +565,7 @@ class WebOverlayServer:
             if not valid:
                 return web.json_response({"error": msg}, status=400)
             
-            censor = ContentFilter(self.config.censor)
+            censor = self._make_filter()
             censor.add_whitelist_term(msg)
             save_config(self.config)
             if self.on_config_updated:
@@ -533,10 +575,12 @@ class WebOverlayServer:
             return web.json_response({"error": str(e)}, status=400)
 
     async def _handle_remove_whitelist(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         try:
             data = await request.json()
             term = data.get("term", "")
-            censor = ContentFilter(self.config.censor)
+            censor = self._make_filter()
             censor.remove_whitelist_term(term)
             save_config(self.config)
             if self.on_config_updated:
@@ -546,6 +590,8 @@ class WebOverlayServer:
             return web.json_response({"error": str(e)}, status=400)
 
     async def _handle_set_replacement(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         try:
             data = await request.json()
             original = data.get("original", "")
@@ -555,7 +601,7 @@ class WebOverlayServer:
             if not v1 or not v2:
                 return web.json_response({"error": "Invalid replacement term."}, status=400)
 
-            censor = ContentFilter(self.config.censor)
+            censor = self._make_filter()
             censor.set_replacement(orig_clean, rep_clean)
             save_config(self.config)
             if self.on_config_updated:
@@ -565,10 +611,12 @@ class WebOverlayServer:
             return web.json_response({"error": str(e)}, status=400)
 
     async def _handle_remove_replacement(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         try:
             data = await request.json()
             original = data.get("original", "")
-            censor = ContentFilter(self.config.censor)
+            censor = self._make_filter()
             censor.remove_replacement(original)
             save_config(self.config)
             if self.on_config_updated:
@@ -586,6 +634,8 @@ class WebOverlayServer:
         })
 
     async def _handle_set_vocabulary(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         try:
             data = await request.json()
             original = sanitize_text(data.get("original", "")).strip()
@@ -603,6 +653,8 @@ class WebOverlayServer:
             return web.json_response({"error": str(e)}, status=400)
 
     async def _handle_remove_vocabulary(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         try:
             data = await request.json()
             original = sanitize_text(data.get("original", "")).strip()
@@ -634,6 +686,12 @@ class WebOverlayServer:
         await ws.prepare(request)
         self.caption_sockets.add(ws)
         try:
+            # Replay recent finals so a refreshed/reconnected view isn't blank
+            # (an empty snapshot still tells the client to reset stale state).
+            try:
+                await ws.send_str(json.dumps({"type": "snapshot", "lines": self._recent_finals}))
+            except Exception:
+                pass
             async for _ in ws:
                 pass
         finally:
@@ -641,6 +699,9 @@ class WebOverlayServer:
         return ws
 
     async def _handle_control_ws(self, request: web.Request) -> web.WebSocketResponse:
+        # Control actions (start/stop/restart/shutdown) require the same auth
+        # as their HTTP counterparts (?api_key= works for WebSocket URLs).
+        authorized = self._check_auth(request)
         ws = web.WebSocketResponse()
         await ws.prepare(request)
         self.control_sockets.add(ws)
@@ -650,6 +711,9 @@ class WebOverlayServer:
                     try:
                         cmd = json.loads(msg.data)
                         action = cmd.get("action")
+                        if action and not authorized:
+                            await ws.send_str(json.dumps({"type": "error", "message": "Unauthorized"}))
+                            continue
                         if action == "start" and self.on_start_requested:
                             self.on_start_requested()
                         elif action == "stop" and self.on_stop_requested:
@@ -688,13 +752,29 @@ class WebOverlayServer:
             self.audio_capture.inject_audio_chunk(data)
         return web.Response(text="OK")
 
+    def _record_snapshot(self, payload: dict):
+        """Track recent finals for replay to newly connected clients."""
+        if not payload.get("is_final"):
+            return
+        text = (payload.get("text") or "").strip()
+        if text:
+            self._recent_finals.append(payload)
+            if len(self._recent_finals) > self._max_snapshot_lines:
+                self._recent_finals.pop(0)
+        else:
+            # Empty final is the silence/clear signal — snapshot resets too
+            self._recent_finals.clear()
+
     async def broadcast_caption(self, payload: dict):
         """Broadcast live captions to overlay and dashboard."""
+        self._record_snapshot(payload)
         if not self.caption_sockets:
             return
         message = json.dumps(payload)
         stale = []
-        for ws in self.caption_sockets:
+        # Iterate over a snapshot: the set mutates when clients (dis)connect
+        # while this coroutine is suspended in send_str.
+        for ws in list(self.caption_sockets):
             try:
                 await ws.send_str(message)
             except Exception:
@@ -708,7 +788,7 @@ class WebOverlayServer:
             return
         message = json.dumps(payload)
         stale = []
-        for ws in self.control_sockets:
+        for ws in list(self.control_sockets):
             try:
                 await ws.send_str(message)
             except Exception:

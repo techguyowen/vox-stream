@@ -277,6 +277,9 @@ class TestConfigAndEngines(unittest.TestCase):
         samples = [int(math.sin(2 * math.pi * 440 * i / 16000) * 20000) for i in range(1600)]
         loud_bytes = struct.pack(f"<{len(samples)}h", *samples)
         db = vad.calculate_rms_db(loud_bytes)
+        self.assertGreater(db, -40.0)
+        self.assertTrue(vad.is_speech(loud_bytes))
+
     def test_custom_presets(self):
         cfg = load_config()
         cfg.custom_presets["my_stage_look"] = {
@@ -350,6 +353,106 @@ class TestTextFormatter(unittest.TestCase):
         # Sacred titles & phrases
         res_phrases = fmt.format_text("jesus christ is king of kings and lord of lords amen", is_final=True)
         self.assertEqual(res_phrases, "Jesus Christ is King of Kings and Lord of Lords Amen.")
+
+    def test_no_false_capitalization(self):
+        """Regression: common words must not be capitalized as books/months/possessives."""
+        from obs_captioner.formatter import TextFormatter
+        fmt = TextFormatter(auto_capitalization=True, auto_punctuation=True, church_mode=True)
+
+        # Plural "gods" is not the possessive "God's"
+        self.assertEqual(
+            fmt.format_text("you shall have no other gods before me", is_final=True),
+            "You shall have no other gods before me.",
+        )
+        # Modal "may" / verb "march" are not months
+        self.assertEqual(fmt.format_text("you may be seated", is_final=True), "You may be seated.")
+        self.assertEqual(fmt.format_text("we march forward", is_final=True), "We march forward.")
+        # Ambiguous book names stay lowercase without chapter/verse context
+        self.assertEqual(
+            fmt.format_text("he did a great job on the numbers", is_final=True),
+            "He did a great job on the numbers.",
+        )
+        self.assertEqual(
+            fmt.format_text("the acts of kindness we do matter", is_final=True),
+            "The acts of kindness we do matter.",
+        )
+        self.assertEqual(fmt.format_text("it left a mark on me", is_final=True), "It left a mark on me.")
+        # ...but they still format inside citations
+        self.assertEqual(fmt.format_text("turn to acts 2 38", is_final=True), "Turn to Acts 2:38.")
+        # Verb "lets" is not the contraction "let's"
+        self.assertEqual(fmt.format_text("she lets him go", is_final=True), "She lets him go.")
+
+    def test_question_heuristic_narrowing(self):
+        """Regression: imperatives and filler endings must not become questions."""
+        from obs_captioner.formatter import TextFormatter
+        fmt = TextFormatter(auto_capitalization=True, auto_punctuation=True, church_mode=True)
+
+        self.assertEqual(fmt.format_text("do not be afraid", is_final=True), "Do not be afraid.")
+        self.assertEqual(fmt.format_text("have faith in god", is_final=True), "Have faith in God.")
+        self.assertEqual(
+            fmt.format_text("there is power in the blood you know", is_final=True),
+            "There is power in the blood you know.",
+        )
+        # Real questions still detected (aux + pronoun, wh-words)
+        self.assertEqual(fmt.format_text("will you pray with me", is_final=True), "Will you pray with me?")
+        self.assertEqual(fmt.format_text("can i get an amen", is_final=True), "Can I get an Amen?")
+
+    def test_spoken_verse_numbers(self):
+        """Regression: spoken multi-word verse numbers must not truncate or delete words."""
+        from obs_captioner.formatter import TextFormatter
+        fmt = TextFormatter(auto_capitalization=True, auto_punctuation=True, church_mode=True)
+
+        self.assertEqual(
+            fmt.format_text("please turn to john chapter three verse twenty three", is_final=True),
+            "Please turn to John 3:23.",
+        )
+        # Trailing non-number words must survive a verse range
+        self.assertEqual(
+            fmt.format_text("romans chapter 8 verse 28 through 30 today", is_final=True),
+            "Romans 8:28-30 today.",
+        )
+        self.assertEqual(
+            fmt.format_text("psalm one hundred nineteen is long", is_final=True),
+            "Psalm 119 is long.",
+        )
+        self.assertEqual(
+            fmt.format_text("psalm one hundred and nineteen is long", is_final=True),
+            "Psalm 119 is long.",
+        )
+
+
+class TestChurchCensorship(unittest.TestCase):
+    """Regression tests for the context-aware whitelist and church-mode exemptions."""
+
+    def test_whitelist_phrases_protect_context(self):
+        # Without church mode the bare term is still filtered, but whitelisted
+        # phrases must pass through untouched.
+        cf = ContentFilter(CensorConfig(enabled=True, mode="asterisk"), church_mode=False)
+        text, censored = cf.filter_text("heaven and hell")
+        self.assertEqual(text, "heaven and hell")
+        self.assertFalse(censored)
+
+        text2, censored2 = cf.filter_text("the gates of hell shall not prevail")
+        self.assertEqual(text2, "the gates of hell shall not prevail")
+        self.assertFalse(censored2)
+
+        # Outside a whitelisted phrase, the bare term is still masked
+        text3, censored3 = cf.filter_text("hell is real")
+        self.assertTrue(censored3)
+        self.assertNotIn("hell", text3)
+
+    def test_church_mode_exempts_theological_terms(self):
+        cf = ContentFilter(CensorConfig(enabled=True, mode="asterisk"), church_mode=True)
+        for phrase in ("hell is real", "you shall not be damned", "jesus descended into hell"):
+            text, censored = cf.filter_text(phrase)
+            self.assertEqual(text, phrase)
+            self.assertFalse(censored)
+
+        # Custom blacklist terms are still filtered in church mode
+        cf.add_blacklist_term("goober")
+        text, censored = cf.filter_text("what a goober move")
+        self.assertTrue(censored)
+        self.assertNotIn("goober", text)
 
 
 if __name__ == "__main__":

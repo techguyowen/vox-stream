@@ -111,7 +111,7 @@ async def main_async(args):
             try:
                 if engine:
                     logger.info(f"Stopping active engine: {engine.name}...")
-                    engine.stop()
+                    await engine.stop()
                     await asyncio.sleep(0.1)
 
                 logger.info(f"Instantiating new STT engine for: {new_cfg.general.engine}...")
@@ -227,8 +227,16 @@ async def main_async(args):
         twitch_bot = TwitchCaptionBot(config.twitch)
         await twitch_bot.start()
 
-    # 5. Initialize Caption Sink
-    sink = CaptionSink(config, obs_client=obs_client, web_server=web_server, history=history, twitch_bot=twitch_bot)
+    # 5. Initialize Caption Sink (is_paused gates dispatch so Stop works even
+    # while a continuous engine's streaming loop is still running)
+    sink = CaptionSink(
+        config,
+        obs_client=obs_client,
+        web_server=web_server,
+        history=history,
+        twitch_bot=twitch_bot,
+        is_paused=lambda: is_paused,
+    )
 
     # 6. Initialize STT Engine
     try:

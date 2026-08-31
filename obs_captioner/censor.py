@@ -103,13 +103,22 @@ class CensorConfig:
     custom_replacements: Dict[str, str] = field(default_factory=dict)
 
 
+# Theological vocabulary that is ordinary sermon speech, not profanity.
+# Exempted from the default tier-2 list when church mode is active.
+CHURCH_MODE_EXEMPT_TERMS = {
+    "hell", "hellish", "damn", "dammit", "damned", "damning",
+}
+
+
 class ContentFilter:
     """Multi-tier profanity, blasphemy, and inappropriate content filter."""
 
-    def __init__(self, config: CensorConfig):
+    def __init__(self, config: CensorConfig, church_mode: bool = False):
         self.config = config
+        self.church_mode = church_mode
         self._blacklist_patterns: List[Tuple[re.Pattern, str]] = []
         self._whitelist_set: Set[str] = set()
+        self._whitelist_patterns: List[re.Pattern] = []
         self._replacements: Dict[str, str] = {}
         self.rebuild_dictionary()
 
@@ -120,6 +129,12 @@ class ContentFilter:
             for w in self.config.custom_whitelist:
                 if w.strip():
                     self._whitelist_set.add(w.lower().strip())
+
+        # Compile whitelist phrases so protected spans can be located in context
+        self._whitelist_patterns = [
+            re.compile(rf"\b{re.escape(w)}\b", re.IGNORECASE)
+            for w in sorted(self._whitelist_set, key=len, reverse=True)
+        ]
 
         # Build active replacement map
         self._replacements = dict(DEFAULT_WHOLESOME_REPLACEMENTS)
@@ -132,7 +147,12 @@ class ContentFilter:
         if self.config.filter_standard_profanity:
             terms.update(DEFAULT_STANDARD_PROFANITIES)
         if self.config.filter_church_blasphemy:
-            terms.update(DEFAULT_CHURCH_BLASPHEMIES)
+            tier2 = set(DEFAULT_CHURCH_BLASPHEMIES)
+            if self.church_mode:
+                # "hell is real" / "you shall not be damned" are ordinary sermon
+                # speech; explicit blasphemies ("goddamn", "holy hell") stay filtered.
+                tier2 -= CHURCH_MODE_EXEMPT_TERMS
+            terms.update(tier2)
         if self.config.filter_crude_terms:
             terms.update(DEFAULT_CRUDE_TERMS)
         if self.config.custom_blacklist:
@@ -140,9 +160,13 @@ class ContentFilter:
                 if w.strip():
                     terms.add(w.lower().strip())
 
-        # Include custom substitutions in scanned terms
-        if self._replacements:
-            terms.update(self._replacements.keys())
+        # Include custom substitutions in scanned terms (church-mode exemptions
+        # apply to the default map, but a user-defined replacement always wins)
+        custom_keys = {k.lower().strip() for k in (self.config.custom_replacements or {})}
+        for key in self._replacements:
+            if self.church_mode and key in CHURCH_MODE_EXEMPT_TERMS and key not in custom_keys:
+                continue
+            terms.add(key)
 
         # Sort terms by length descending so multi-word phrases match before individual words
         sorted_terms = sorted(list(terms), key=lambda x: len(x), reverse=True)
@@ -160,6 +184,19 @@ class ContentFilter:
             return "*" * len(word)
         return word[0] + ("*" * (len(word) - 1))
 
+    def _protected_spans(self, text: str) -> List[Tuple[int, int]]:
+        """Locate every whitelisted word/phrase occurrence in the text.
+
+        A blacklist match inside a protected span (e.g. "hell" inside
+        "gates of hell") is left untouched — this is what makes the
+        whitelist context-aware rather than a plain word comparison.
+        """
+        spans = []
+        for pattern in self._whitelist_patterns:
+            for m in pattern.finditer(text):
+                spans.append(m.span())
+        return spans
+
     def filter_text(self, text: str) -> Tuple[str, bool]:
         """
         Filters input text based on configuration.
@@ -168,57 +205,58 @@ class ContentFilter:
         if not self.config.enabled or not text:
             return text, False
 
-        was_censored = False
-        result = text
         mode = self.config.mode
+        protected = self._protected_spans(text)
 
-        # Check for phrase / word matches
-        for pattern, raw_term in self._blacklist_patterns:
-            matches = list(pattern.finditer(result))
-            if not matches:
-                continue
-
-            # Process matches from right to left to keep string indices valid
-            for match in reversed(matches):
-                matched_str = match.group(0)
-                clean_lower = matched_str.lower()
-
-                # Check if matched word is in whitelist
-                if clean_lower in self._whitelist_set:
-                    continue
-
-                was_censored = True
-
-                if mode == "drop_sentence":
-                    return "", True
-
-                elif mode == "censored_label":
-                    replacement = "[CENSORED]"
-                elif mode == "replacement":
-                    # Look up wholesome substitution
-                    sub = self._replacements.get(clean_lower)
-                    if not sub:
-                        # Fallback to single word lookup
-                        sub = self._mask_word(matched_str)
-                    else:
-                        # Preserve uppercase / capitalization
-                        if matched_str.isupper():
-                            sub = sub.upper()
-                        elif matched_str[0].isupper():
-                            sub = sub.capitalize()
-                    replacement = sub
-                else:
-                    # Default: Asterisk masking
-                    if " " in matched_str:
-                        # Multi-word phrase: mask each word
-                        replacement = " ".join(self._mask_word(w) for w in matched_str.split())
-                    else:
-                        replacement = self._mask_word(matched_str)
-
+        # Collect all blacklist matches against the ORIGINAL text so whitelist
+        # spans stay valid. Patterns are sorted longest-term-first, so longer
+        # phrases claim their span before contained single words.
+        kept: List[Tuple[int, int, str]] = []  # (start, end, matched_str)
+        for pattern, _raw_term in self._blacklist_patterns:
+            for match in pattern.finditer(text):
                 start, end = match.span()
-                result = result[:start] + replacement + result[end:]
+                if any(start >= ps and end <= pe for ps, pe in protected):
+                    continue
+                if any(start < ke and end > ks for ks, ke, _ in kept):
+                    continue  # overlaps a longer, already-claimed match
+                kept.append((start, end, match.group(0)))
 
-        return result, was_censored
+        if not kept:
+            return text, False
+
+        if mode == "drop_sentence":
+            return "", True
+
+        # Apply replacements right-to-left to keep indices valid
+        result = text
+        for start, end, matched_str in sorted(kept, reverse=True):
+            clean_lower = matched_str.lower()
+            if mode == "censored_label":
+                replacement = "[CENSORED]"
+            elif mode == "replacement":
+                # Look up wholesome substitution
+                sub = self._replacements.get(clean_lower)
+                if not sub:
+                    # Fallback to single word lookup
+                    sub = self._mask_word(matched_str)
+                else:
+                    # Preserve uppercase / capitalization
+                    if matched_str.isupper():
+                        sub = sub.upper()
+                    elif matched_str[0].isupper():
+                        sub = sub.capitalize()
+                replacement = sub
+            else:
+                # Default: Asterisk masking
+                if " " in matched_str:
+                    # Multi-word phrase: mask each word
+                    replacement = " ".join(self._mask_word(w) for w in matched_str.split())
+                else:
+                    replacement = self._mask_word(matched_str)
+
+            result = result[:start] + replacement + result[end:]
+
+        return result, True
 
     def add_blacklist_term(self, term: str) -> bool:
         term_clean = term.strip().lower()

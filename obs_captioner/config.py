@@ -232,6 +232,7 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         general=GeneralConfig(**data.get("general", {})),
         audio=AudioConfig(**data.get("audio", {})),
         vocabulary=VocabularyConfig(**data.get("vocabulary", {})),
+        custom_presets=data.get("custom_presets", {}) or {},
         censor=CensorConfig(**data.get("censor", {})),
         translation=TranslationConfig(**data.get("translation", {})),
         twitch=TwitchConfig(**data.get("twitch", {})),
@@ -264,6 +265,12 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
 def save_config(cfg: AppConfig, config_path: Optional[str] = None) -> bool:
     """Serialize and save configuration back to config.json."""
     path = config_path or get_config_path()
+    # config.json.example may be used as a read-only seed when no config.json
+    # exists, but user settings must never be written back into the example.
+    if Path(path).name == "config.json.example":
+        global _current_config_path
+        path = str(Path(path).parent / "config.json")
+        _current_config_path = path
     try:
         data = asdict(cfg)
         with open(path, "w", encoding="utf-8") as f:

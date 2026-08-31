@@ -16,12 +16,11 @@ class TextFormatter:
         "friday": "Friday",
         "saturday": "Saturday",
         "sunday": "Sunday",
-        # Months
+        # Months ("may" and "march" are omitted: they are far more often the
+        # modal verb / the verb "to march" in live speech than the month)
         "january": "January",
         "february": "February",
-        "march": "March",
         "april": "April",
-        "may": "May",
         "june": "June",
         "july": "July",
         "august": "August",
@@ -160,11 +159,10 @@ class TextFormatter:
         "there's": "there's",
         "heres": "here's",
         "here's": "here's",
-        "lets": "let's",
+        # no "lets" -> "let's": "she lets him go" is valid English
         "let's": "let's",
         "youre": "you're",
         "you're": "you're",
-        "theyre": "they're",
         "theyre": "they're",
         "youve": "you've",
         "you've": "you've",
@@ -179,18 +177,23 @@ class TextFormatter:
         "it's": "it's",
     }
 
-    # Question starter words/phrases
+    # Question starters. Wh-words alone are a strong signal; auxiliary verbs
+    # only signal a question when followed by a subject pronoun (subject-aux
+    # inversion: "will you pray"), otherwise they are usually imperatives or
+    # statements ("do not be afraid", "have faith in God").
     QUESTION_STARTERS = re.compile(
-        r"^(what|why|how|when|where|who|whom|whose|which|is|are|am|was|were|"
-        r"do|does|did|can|could|would|should|will|won't|shall|has|have|had|"
-        r"aren't|isn't|wasn't|weren't|don't|doesn't|didn't|can't|couldn't|"
-        r"wouldn't|shouldn't|hasn't|haven't|hadn't)\b",
+        r"^(?:(?:what|why|how|when|where|who|whom|whose|which)\b"
+        r"|(?:is|are|am|was|were|do|does|did|can|could|would|should|will|shall|"
+        r"has|have|had|won't|aren't|isn't|wasn't|weren't|don't|doesn't|didn't|"
+        r"can't|couldn't|wouldn't|shouldn't|hasn't|haven't|hadn't)"
+        r"\s+(?:i|you|we|they|he|she|it|there|this|that|anyone|anybody|someone|somebody)\b)",
         re.IGNORECASE,
     )
 
-    # Question ending tags
+    # Question ending tags. Deliberately narrow: filler endings like
+    # "you know" / "right" are common in declarative sermon speech.
     QUESTION_ENDINGS = re.compile(
-        r"\b(right|correct|you know|isn't it|aren't they|don't you think|huh)\s*$",
+        r"\b(isn't it|aren't they|don't you think|huh)\s*$",
         re.IGNORECASE,
     )
 
@@ -217,13 +220,20 @@ class TextFormatter:
             master_dict.update(self.PROPER_NOUNS)
             master_dict.update(self.CONTRACTIONS)
         if self.church_mode:
-            master_dict.update(ChurchLexiconFormatter.BOOKS_OF_BIBLE)
+            # Ambiguous book words (job, mark, acts, ...) are excluded from the
+            # blind pass; the citation regexes still capitalize them in context.
+            master_dict.update({
+                k: v for k, v in ChurchLexiconFormatter.BOOKS_OF_BIBLE.items()
+                if k not in ChurchLexiconFormatter.AMBIGUOUS_BOOK_WORDS
+            })
             master_dict.update(ChurchLexiconFormatter.CHURCH_TERMS)
 
         self._lookup = {k.lower(): v for k, v in master_dict.items()}
         sorted_keys = sorted(self._lookup.keys(), key=len, reverse=True)
         if sorted_keys:
-            self._master_pattern = re.compile(rf"\b({'|'.join(map(re.escape, sorted_keys))})\b", re.IGNORECASE)
+            # (?!\w) instead of a trailing \b so keys ending in an apostrophe
+            # (e.g. "jesus'") can still match before a space or punctuation.
+            self._master_pattern = re.compile(rf"\b({'|'.join(map(re.escape, sorted_keys))})(?!\w)", re.IGNORECASE)
         else:
             self._master_pattern = None
 
@@ -288,7 +298,7 @@ class TextFormatter:
         if text[-1] in ".?!,:;…":
             return text
 
-        # Check for conjunction clauses in long sentences (>14 words) without existing punctuation
+        # Check for conjunction clauses in long sentences (12+ words) without existing punctuation
         words = text.split()
         if len(words) >= 12:
             # Insert natural commas before major conjunctions if no commas present

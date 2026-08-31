@@ -213,6 +213,12 @@ body {
     to { opacity: 1; transform: translateY(0); }
 }
 
+/* Used by the restart modal icon */
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
 /* Theme Presets Gallery */
 .theme-gallery-panel {
     margin-bottom: 16px;

@@ -76,7 +76,7 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **6 Po
 
 ### 🛡️ 8. 3-Tier Content Filtering & Wholesome Replacements
 * **Tier 1 (Standard Profanities)**: Filters vulgarities and offensive words.
-* **Tier 2 (Harsh Vulgarities & Blasphemies)**: Filters harsh expletives while safely protecting sacred names and scriptural citations.
+* **Tier 2 (Harsh Vulgarities & Blasphemies)**: Filters harsh expletives while safely protecting sacred names and scriptural citations. When **Church Mode** is on, ordinary theological vocabulary (e.g. *hell*, *damned* in sermon contexts) is exempt from this tier so scripture readings display verbatim.
 * **Tier 3 (Crude Terms)**: Filters crude slang and inappropriate phrases.
 * **4 Action Modes**: Wholesome Word Replacement, Asterisk Masking (`****`), `[CENSORED]` Tag, or Drop Sentence.
 * **Interactive In-Browser CRUD Editor**: Add/remove custom blacklist words, custom whitelists, and wholesome word replacements in clean visual tables.

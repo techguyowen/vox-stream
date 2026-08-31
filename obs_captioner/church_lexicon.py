@@ -137,6 +137,14 @@ class ChurchLexiconFormatter:
         "revelations": "Revelation",
     }
 
+    # Book names that are also common English words. These are only capitalized
+    # when they appear in a scripture citation (book + chapter/verse), never by
+    # the blind dictionary pass — "acts of kindness", "a great job", "the numbers".
+    AMBIGUOUS_BOOK_WORDS = {
+        "job", "mark", "acts", "numbers", "judges", "kings",
+        "revelation", "revelations",
+    }
+
     # Sacred Names, Titles of Deity, and Common Church Phrases
     CHURCH_TERMS: Dict[str, str] = {
         # Multi-Word Sacred Phrases
@@ -195,9 +203,10 @@ class ChurchLexiconFormatter:
         "old testament": "Old Testament",
         "new testament": "New Testament",
         # Single Word Sacred Names & Church Terms
+        # Note: no "gods" -> "God's" mapping — the plural ("no other gods
+        # before me") is not a possessive.
         "god": "God",
         "god's": "God's",
-        "gods": "God's",
         "lord": "Lord",
         "lord's": "Lord's",
         "jesus": "Jesus",
@@ -253,9 +262,11 @@ class ChurchLexiconFormatter:
         self._build_patterns()
 
     def _build_patterns(self):
-        # 1. Church phrases and terms (sorted by phrase length descending)
+        # 1. Church phrases and terms (sorted by phrase length descending).
+        # Ambiguous book words are excluded here; they are still formatted by
+        # the citation regexes when chapter/verse context is present.
         all_terms = {}
-        all_terms.update(self.BOOKS_OF_BIBLE)
+        all_terms.update({k: v for k, v in self.BOOKS_OF_BIBLE.items() if k not in self.AMBIGUOUS_BOOK_WORDS})
         all_terms.update(self.CHURCH_TERMS)
 
         sorted_terms = sorted(all_terms.items(), key=lambda x: len(x[0]), reverse=True)
@@ -281,10 +292,25 @@ class ChurchLexiconFormatter:
                 current += self.TENS[part]
             elif part == "hundred":
                 current = (current or 1) * 100
+            elif part == "and":
+                continue  # "one hundred and nineteen"
             elif part.isdigit():
                 current += int(part)
         total += current
         return total
+
+    @classmethod
+    def _number_phrase_regex(cls) -> str:
+        """Regex fragment matching a spoken or digit number phrase.
+
+        Restricted to number vocabulary so citation patterns can match greedily
+        without swallowing (or truncating) surrounding non-number words.
+        'and' is only allowed directly after 'hundred' ("one hundred and nineteen"),
+        so "verse four and five" keeps its second half intact.
+        """
+        words = sorted(list(cls.UNITS.keys()) + list(cls.TENS.keys()) + ["hundred"], key=len, reverse=True)
+        num = rf"(?:{'|'.join(words)}|\d+)"
+        return rf"{num}(?:[\s\-]+{num}|(?<=hundred)[\s\-]+and[\s\-]+{num})*"
 
     def format_church_text(self, text: str) -> str:
         """Apply church terminology capitalization and scripture reference formatting."""
@@ -333,9 +359,12 @@ class ChurchLexiconFormatter:
 
         text = digit_pattern.sub(replace_digits, text)
 
-        # 2. Chapter / Verse spoken pattern: "Book chapter X verse Y" or "Book X verse Y"
+        # 2. Chapter / Verse spoken pattern: "Book chapter X verse Y" or "Book X verse Y".
+        # Number groups only match number vocabulary, so "verse twenty three" is
+        # captured fully and trailing non-number words ("...through 30 today") survive.
+        num_phrase = self._number_phrase_regex()
         spoken_cv_pattern = re.compile(
-            rf"\b(?P<book>{books_regex})\s+(?:chapter\s+)?(?P<chap>[A-Za-z0-9\s\-]+?)\s+(?:verse|verses)\s+(?P<verse>[A-Za-z0-9\s\-]+?)(?:\s*(?:through|thru|to|-)\s*(?P<end_verse>[A-Za-z0-9\s\-]+))?(?=[.,;!?\s]|$)",
+            rf"\b(?P<book>{books_regex})\s+(?:chapter\s+)?(?P<chap>{num_phrase})\s+(?:verse|verses)\s+(?P<verse>{num_phrase})(?:\s*(?:through|thru|to|-)\s*(?P<end_verse>{num_phrase}))?\b",
             re.IGNORECASE,
         )
 
@@ -355,9 +384,9 @@ class ChurchLexiconFormatter:
 
         text = spoken_cv_pattern.sub(replace_spoken_cv, text)
 
-        # 3. Psalm pattern: "Psalm twenty three" -> "Psalm 23"
+        # 3. Psalm pattern: "Psalm twenty three" -> "Psalm 23", "psalm one hundred nineteen" -> "Psalm 119"
         psalm_pattern = re.compile(
-            rf"\b(?P<psalm>psalms?)\s+(?P<num>[A-Za-z\-]+(?:\s+[A-Za-z\-]+)?)\b",
+            rf"\b(?P<psalm>psalms?)\s+(?P<num>{num_phrase})\b",
             re.IGNORECASE,
         )
 

@@ -1,5 +1,40 @@
 // OBS Live Captions Dashboard & Dock Controller (PRO Suite)
 
+// --- API auth -------------------------------------------------------------
+// When api.api_key is set in config.json the backend returns 401 on control
+// endpoints. Wrap fetch for same-origin /api/ calls so a stored key is sent
+// as a Bearer token, prompting for it once when the server rejects us.
+const API_KEY_STORAGE = "voxstream_api_key";
+const nativeFetch = window.fetch.bind(window);
+let authPromptShown = false;
+window.fetch = async (url, opts = {}) => {
+    if (typeof url === "string" && url.startsWith("/api/")) {
+        const key = localStorage.getItem(API_KEY_STORAGE);
+        if (key) {
+            opts.headers = Object.assign({}, opts.headers, { "Authorization": `Bearer ${key}` });
+        }
+        let res = await nativeFetch(url, opts);
+        if (res.status === 401 && !authPromptShown) {
+            authPromptShown = true;
+            const entered = prompt("This VoxStream server requires an API key (config.json → api.api_key):");
+            if (entered && entered.trim()) {
+                localStorage.setItem(API_KEY_STORAGE, entered.trim());
+                opts.headers = Object.assign({}, opts.headers, { "Authorization": `Bearer ${entered.trim()}` });
+                res = await nativeFetch(url, opts);
+                if (res.ok) authPromptShown = false;
+            }
+        }
+        return res;
+    }
+    return nativeFetch(url, opts);
+};
+
+function apiKeyQuerySuffix() {
+    const key = localStorage.getItem(API_KEY_STORAGE);
+    return key ? `?api_key=${encodeURIComponent(key)}` : "";
+}
+// --------------------------------------------------------------------------
+
 let currentConfig = null;
 let controlWs = null;
 let captionWs = null;
@@ -163,22 +198,30 @@ if (btnSaveNewPreset) {
             return;
         }
 
-        // Collect current styling controls from the form
+        // Collect current styling: form controls for what the form edits, and
+        // the currently-applied overlay config for everything else (so saving
+        // a preset doesn't silently reset weight/line-height/radius/etc.)
+        const bgPicker = document.getElementById("bg_color_picker")?.value || "#0f0f14";
+        const bgOpacity = (parseInt(document.getElementById("bg_opacity_slider")?.value || 72, 10) / 100).toFixed(2);
+        const pr = parseInt(bgPicker.slice(1, 3), 16);
+        const pg = parseInt(bgPicker.slice(3, 5), 16);
+        const pb = parseInt(bgPicker.slice(5, 7), 16);
+        const ov = (currentConfig && currentConfig.overlay) || {};
         const presetData = {
             name: name,
             description: desc || "Custom user preset.",
-            font_family: document.getElementById("font_family")?.value || "Inter, sans-serif",
+            font_family: document.getElementById("font_family")?.value || ov.font_family || "Inter, sans-serif",
             font_size: (document.getElementById("font_size_slider")?.value || "32") + "px",
-            font_weight: "700",
-            line_height: "1.35",
+            font_weight: ov.font_weight || "700",
+            line_height: ov.line_height || "1.35",
             text_color: document.getElementById("text_color")?.value || "#FFFFFF",
             interim_color: document.getElementById("interim_color")?.value || "#90CAF9",
             highlight_color: document.getElementById("highlight_color")?.value || "#FFD166",
-            background_box_color: `rgba(15, 15, 20, ${(parseInt(document.getElementById("bg_opacity_slider")?.value || 72) / 100).toFixed(2)})`,
-            border_radius: "12px",
-            box_padding: "14px 26px",
-            text_shadow: "2px 2px 5px rgba(0, 0, 0, 0.95)",
-            text_stroke: "2px #000000",
+            background_box_color: `rgba(${pr}, ${pg}, ${pb}, ${bgOpacity})`,
+            border_radius: ov.border_radius || "12px",
+            box_padding: ov.box_padding || "14px 26px",
+            text_shadow: ov.text_shadow || "2px 2px 5px rgba(0, 0, 0, 0.95)",
+            text_stroke: ov.text_stroke || "2px #000000",
             animation_style: document.getElementById("animation_style")?.value || "word_pop",
         };
 
@@ -231,13 +274,51 @@ async function loadAudioDevices() {
     }
 }
 
+// Set a <select> value, adding the option dynamically if it's missing so an
+// unlisted config value (e.g. a theme's font) can't collapse to "" and get
+// written back to config.json as an empty string on the next auto-sync.
+function setSelectValue(select, value) {
+    if (!select || value === undefined || value === null || value === "") return;
+    select.value = String(value);
+    if (select.value !== String(value)) {
+        const opt = document.createElement("option");
+        opt.value = String(value);
+        opt.textContent = String(value);
+        select.appendChild(opt);
+        select.value = String(value);
+    }
+}
+
+// Parse a stored background color ("rgba(r,g,b,a)" or "#rrggbb") into the
+// color picker + opacity slider so style tweaks preserve the theme's box.
+function populateBackgroundControls(bgColor) {
+    const picker = document.getElementById("bg_color_picker");
+    const opacitySlider = document.getElementById("bg_opacity_slider");
+    const opacityLabel = document.getElementById("val-bg-opacity");
+    if (!picker || !opacitySlider || !bgColor) return;
+
+    const toHex = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
+    const rgbaMatch = bgColor.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)/i);
+    if (rgbaMatch) {
+        picker.value = `#${toHex(+rgbaMatch[1])}${toHex(+rgbaMatch[2])}${toHex(+rgbaMatch[3])}`;
+        const alpha = rgbaMatch[4] !== undefined ? parseFloat(rgbaMatch[4]) : 1.0;
+        opacitySlider.value = Math.round(alpha * 100);
+    } else if (/^#[0-9a-f]{6}$/i.test(bgColor)) {
+        picker.value = bgColor;
+        opacitySlider.value = 100;
+    } else {
+        return;
+    }
+    if (opacityLabel) opacityLabel.textContent = `${opacitySlider.value}%`;
+}
+
 // Populate Inputs with Config Values
 function populateFormFields(cfg) {
     // Style tab
     if (cfg.overlay) {
         const ov = cfg.overlay;
         activeThemeId = ov.theme_id || "modern_clean";
-        if (ov.font_family) document.getElementById("font_family").value = ov.font_family;
+        setSelectValue(document.getElementById("font_family"), ov.font_family);
         if (ov.font_size) {
             const sizeVal = parseInt(ov.font_size) || 32;
             document.getElementById("font_size_slider").value = sizeVal;
@@ -248,9 +329,9 @@ function populateFormFields(cfg) {
             document.getElementById("max_width_slider").value = wVal;
             document.getElementById("val-max-width").textContent = `${wVal}%`;
         }
-        if (ov.max_lines) document.getElementById("max_lines").value = ov.max_lines;
+        if (ov.max_lines) setSelectValue(document.getElementById("max_lines"), ov.max_lines);
         if (ov.text_align) document.getElementById("text_align").value = ov.text_align;
-        if (ov.animation_style) document.getElementById("animation_style").value = ov.animation_style;
+        if (ov.animation_style) setSelectValue(document.getElementById("animation_style"), ov.animation_style);
         if (ov.auto_hide_seconds !== undefined) {
             document.getElementById("auto_hide_slider").value = ov.auto_hide_seconds;
             document.getElementById("val-auto-hide").textContent = `${ov.auto_hide_seconds}s`;
@@ -258,6 +339,7 @@ function populateFormFields(cfg) {
         if (ov.text_color) document.getElementById("text_color").value = ov.text_color;
         if (ov.interim_color) document.getElementById("interim_color").value = ov.interim_color;
         if (ov.highlight_color) document.getElementById("highlight_color").value = ov.highlight_color;
+        populateBackgroundControls(ov.background_box_color);
     }
 
     // Filter tab
@@ -348,42 +430,47 @@ function populateFormFields(cfg) {
 // Live Preview Style Updates
 let autoSaveStyleTimer = null;
 
+function buildOverlayStylePayload() {
+    const bgPicker = document.getElementById("bg_color_picker").value;
+    const opacity = document.getElementById("bg_opacity_slider").value / 100.0;
+    const r = parseInt(bgPicker.slice(1, 3), 16);
+    const g = parseInt(bgPicker.slice(3, 5), 16);
+    const b = parseInt(bgPicker.slice(5, 7), 16);
+
+    const overlay = {
+        font_size: `${document.getElementById("font_size_slider").value}px`,
+        max_width: `${document.getElementById("max_width_slider").value}%`,
+        max_lines: parseInt(document.getElementById("max_lines").value, 10) || 2,
+        text_align: document.getElementById("text_align").value,
+        animation_style: document.getElementById("animation_style").value,
+        auto_hide_seconds: parseFloat(document.getElementById("auto_hide_slider").value) || 0,
+        text_color: document.getElementById("text_color").value,
+        interim_color: document.getElementById("interim_color").value,
+        highlight_color: document.getElementById("highlight_color").value,
+        background_box_color: `rgba(${r}, ${g}, ${b}, ${opacity})`,
+    };
+    // Never persist an empty font family (e.g. a select in a transient state)
+    const fontFamily = document.getElementById("font_family").value;
+    if (fontFamily) overlay.font_family = fontFamily;
+    return { overlay };
+}
+
 function autoSyncStyleChanges() {
     updatePreviewStyles();
     if (autoSaveStyleTimer) clearTimeout(autoSaveStyleTimer);
+    // 800ms debounce: every sync writes config.json to disk and broadcasts to
+    // all connected clients, so slider drags shouldn't fire dozens of them.
     autoSaveStyleTimer = setTimeout(async () => {
-        const bgPicker = document.getElementById("bg_color_picker").value;
-        const opacity = document.getElementById("bg_opacity_slider").value / 100.0;
-        const r = parseInt(bgPicker.slice(1, 3), 16);
-        const g = parseInt(bgPicker.slice(3, 5), 16);
-        const b = parseInt(bgPicker.slice(5, 7), 16);
-
-        const payload = {
-            overlay: {
-                font_family: document.getElementById("font_family").value,
-                font_size: `${document.getElementById("font_size_slider").value}px`,
-                max_width: `${document.getElementById("max_width_slider").value}%`,
-                max_lines: parseInt(document.getElementById("max_lines").value),
-                text_align: document.getElementById("text_align").value,
-                animation_style: document.getElementById("animation_style").value,
-                auto_hide_seconds: parseFloat(document.getElementById("auto_hide_slider").value),
-                text_color: document.getElementById("text_color").value,
-                interim_color: document.getElementById("interim_color").value,
-                highlight_color: document.getElementById("highlight_color").value,
-                background_box_color: `rgba(${r}, ${g}, ${b}, ${opacity})`,
-            }
-        };
-
         try {
             await fetch("/api/config", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
+                body: JSON.stringify(buildOverlayStylePayload()),
             });
         } catch (e) {
             console.warn("Auto-sync visual settings failed:", e);
         }
-    }, 250);
+    }, 800);
 }
 
 function updatePreviewStyles() {
@@ -814,28 +901,7 @@ document.getElementById("btn-run-filter-test").addEventListener("click", async (
 
 // Save Handlers
 document.getElementById("btn-save-style").addEventListener("click", async () => {
-    const bgPicker = document.getElementById("bg_color_picker").value;
-    const opacity = document.getElementById("bg_opacity_slider").value / 100.0;
-    const r = parseInt(bgPicker.slice(1, 3), 16);
-    const g = parseInt(bgPicker.slice(3, 5), 16);
-    const b = parseInt(bgPicker.slice(5, 7), 16);
-
-    const payload = {
-        overlay: {
-            font_family: document.getElementById("font_family").value,
-            font_size: `${document.getElementById("font_size_slider").value}px`,
-            max_width: `${document.getElementById("max_width_slider").value}%`,
-            max_lines: parseInt(document.getElementById("max_lines").value),
-            text_align: document.getElementById("text_align").value,
-            animation_style: document.getElementById("animation_style").value,
-            auto_hide_seconds: parseFloat(document.getElementById("auto_hide_slider").value),
-            text_color: document.getElementById("text_color").value,
-            interim_color: document.getElementById("interim_color").value,
-            highlight_color: document.getElementById("highlight_color").value,
-            background_box_color: `rgba(${r}, ${g}, ${b}, ${opacity})`,
-        }
-    };
-    await saveConfigPayload(payload, "Visual settings saved successfully!");
+    await saveConfigPayload(buildOverlayStylePayload(), "Visual settings saved successfully!");
 });
 
 document.getElementById("btn-save-filter").addEventListener("click", async () => {
@@ -906,12 +972,14 @@ document.getElementById("btn-save-audio").addEventListener("click", async () => 
         }
     };
 
-    await saveConfigPayload(payload, null);
+    // Toast the new engine name when the backend broadcasts engine_changed
+    // (the async hot-swap takes longer than any fixed timer). Fallback timeout
+    // clears the flag if the engine didn't actually change.
+    pendingEngineSwitchToast = true;
+    setTimeout(() => { pendingEngineSwitchToast = false; }, 15000);
 
-    setTimeout(async () => {
-        await refreshEngineStatus();
-        showToast(`✅ Active recognition engine: ${currentEngineName}`, "success", 4000);
-    }, 600);
+    await saveConfigPayload(payload, null);
+    await refreshEngineStatus();
 });
 
 document.getElementById("btn-save-twitch").addEventListener("click", async () => {
@@ -1093,15 +1161,21 @@ if (btnReopenProjector) {
 // Toggle Start / Stop Engine
 btnToggleEngine.addEventListener("click", async () => {
     const endpoint = isRunning ? "/api/control/stop" : "/api/control/start";
+    btnToggleEngine.disabled = true;
     try {
         const res = await fetch(endpoint, { method: "POST" });
         if (res.ok) {
             isRunning = !isRunning;
             updateStatusUI();
             showToast(isRunning ? "▶ Captioning started." : "⏹ Captioning stopped.", "info", 2500);
+        } else {
+            showToast("⚠️ Could not toggle captioning (server rejected the request).", "error");
         }
     } catch (e) {
         console.error("Error toggling engine:", e);
+        showToast("❌ Could not reach the server to toggle captioning.", "error");
+    } finally {
+        btnToggleEngine.disabled = false;
     }
 });
 
@@ -1134,93 +1208,105 @@ if (btnRestartRetry) {
     });
 }
 
+let restartMonitorActive = false;
+
+// Shows the restart modal and polls /api/status until a NEW backend instance
+// answers (instance-ID change or fresh uptime). Used by the restart button and
+// by the server_restarting broadcast (so restarts triggered elsewhere — a
+// second dashboard tab, a Stream Deck — also show progress here).
+function beginRestartMonitor(targetOldInstanceId) {
+    if (restartMonitorActive) return;
+    restartMonitorActive = true;
+
+    const modal = document.getElementById("restart-modal");
+    const modalTitle = document.getElementById("restart-modal-title");
+    const modalSub = document.getElementById("restart-modal-sub");
+    const modalIcon = document.getElementById("restart-modal-icon");
+    const progressBar = document.getElementById("restart-progress-bar");
+    const stepStatus = document.getElementById("restart-step-status");
+    const manualActions = document.getElementById("restart-manual-actions");
+
+    modal.style.display = "flex";
+    modalTitle.textContent = "Restarting VoxStream...";
+    modalSub.textContent = "Re-initializing speech recognition engines, audio capture, and web services...";
+    modalIcon.textContent = "🔄";
+    modalIcon.style.animation = "spin 1.5s linear infinite";
+    if (progressBar) progressBar.style.width = "25%";
+    if (stepStatus) stepStatus.textContent = "Step 1/3: Sending restart signal to backend...";
+    if (manualActions) manualActions.style.display = "none";
+
+    // Cosmetic step advancement
+    setTimeout(() => {
+        if (progressBar) progressBar.style.width = "60%";
+        if (stepStatus) stepStatus.textContent = "Step 2/3: Reloading audio streams and AI models...";
+    }, 800);
+    setTimeout(() => {
+        if (progressBar) progressBar.style.width = "85%";
+        if (stepStatus) stepStatus.textContent = "Step 3/3: Reconnecting to new server instance...";
+    }, 1600);
+
+    let attempts = 0;
+    const maxAttempts = 35;
+    const pollInterval = setInterval(async () => {
+        attempts++;
+        try {
+            const res = await fetch("/api/status", { cache: "no-store" });
+            if (res.ok) {
+                const data = await res.json();
+                // Only a genuinely new instance counts as success — no
+                // attempt-count escape hatch that fakes a completed restart.
+                const isNewInstance = targetOldInstanceId ? (data.instance_id !== targetOldInstanceId) : false;
+                const isFreshUptime = data.uptime_seconds !== undefined && data.uptime_seconds < 8.0;
+
+                if (isNewInstance || isFreshUptime) {
+                    clearInterval(pollInterval);
+                    restartMonitorActive = false;
+                    modalTitle.textContent = "✅ VoxStream Ready!";
+                    modalSub.textContent = `Connected to active instance (${data.engine_name || 'Speech Engine'}). Reloading interface...`;
+                    modalIcon.textContent = "✨";
+                    modalIcon.style.animation = "none";
+                    if (progressBar) {
+                        progressBar.style.width = "100%";
+                        progressBar.style.background = "#10B981";
+                    }
+                    if (stepStatus) stepStatus.textContent = "Restart complete!";
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 500);
+                    return;
+                }
+            }
+            // Non-OK responses (429/500 while the server cycles) fall through
+            // to the attempts check below instead of polling forever.
+        } catch (e) {
+            // Network failure while the server cycles — keep polling
+        }
+        if (attempts >= maxAttempts) {
+            clearInterval(pollInterval);
+            restartMonitorActive = false;
+            modalTitle.textContent = "⚠️ Restart Taking Longer";
+            modalSub.textContent = "The server is taking longer than expected to reload. You can refresh manually.";
+            modalIcon.textContent = "⏳";
+            modalIcon.style.animation = "none";
+            if (manualActions) manualActions.style.display = "block";
+        }
+    }, 600);
+}
+
 if (btnRestartApp) {
     btnRestartApp.addEventListener("click", async () => {
         if (!confirm("Are you sure you want to restart the VoxStream backend?")) {
             return;
         }
 
-        const modal = document.getElementById("restart-modal");
-        const modalTitle = document.getElementById("restart-modal-title");
-        const modalSub = document.getElementById("restart-modal-sub");
-        const modalIcon = document.getElementById("restart-modal-icon");
-        const progressBar = document.getElementById("restart-progress-bar");
-        const stepStatus = document.getElementById("restart-step-status");
-        const manualActions = document.getElementById("restart-manual-actions");
-
         const targetOldInstanceId = currentInstanceId;
-
-        modal.style.display = "flex";
-        modalTitle.textContent = "Restarting VoxStream...";
-        modalSub.textContent = "Re-initializing speech recognition engines, audio capture, and web services...";
-        modalIcon.textContent = "🔄";
-        modalIcon.style.animation = "spin 1.5s linear infinite";
-        if (progressBar) progressBar.style.width = "25%";
-        if (stepStatus) stepStatus.textContent = "Step 1/3: Sending restart signal to backend...";
-        if (manualActions) manualActions.style.display = "none";
+        beginRestartMonitor(targetOldInstanceId);
 
         try {
-            const res = await fetch("/api/control/restart", { method: "POST" });
-            if (res.ok) {
-                const data = await res.json();
-                if (data.instance_id) {
-                    // Confirmed restart acknowledged by backend
-                }
-            }
+            await fetch("/api/control/restart", { method: "POST" });
         } catch (e) {
             console.debug("Restart request sent (server cycling)");
         }
-
-        // Advance to step 2
-        setTimeout(() => {
-            if (progressBar) progressBar.style.width = "60%";
-            if (stepStatus) stepStatus.textContent = "Step 2/3: Reloading audio streams and AI models...";
-        }, 800);
-
-        // Advance to step 3 & poll /api/status until new backend instance is live
-        let attempts = 0;
-        const maxAttempts = 35;
-        setTimeout(() => {
-            if (progressBar) progressBar.style.width = "85%";
-            if (stepStatus) stepStatus.textContent = "Step 3/3: Reconnecting to new server instance...";
-        }, 1600);
-
-        const pollInterval = setInterval(async () => {
-            attempts++;
-            try {
-                const res = await fetch("/api/status", { cache: "no-store" });
-                if (res.ok) {
-                    const data = await res.json();
-                    const isNewInstance = targetOldInstanceId ? (data.instance_id !== targetOldInstanceId) : true;
-                    const isFreshUptime = data.uptime_seconds !== undefined ? (data.uptime_seconds < 8.0) : true;
-
-                    if (isNewInstance || isFreshUptime || attempts > 5) {
-                        clearInterval(pollInterval);
-                        modalTitle.textContent = "✅ VoxStream Ready!";
-                        modalSub.textContent = `Connected to active instance (${data.engine_name || 'Speech Engine'}). Reloading interface...`;
-                        modalIcon.textContent = "✨";
-                        modalIcon.style.animation = "none";
-                        if (progressBar) {
-                            progressBar.style.width = "100%";
-                            progressBar.style.background = "#10B981";
-                        }
-                        if (stepStatus) stepStatus.textContent = "Restart complete!";
-                        setTimeout(() => {
-                            window.location.reload();
-                        }, 500);
-                    }
-                }
-            } catch (e) {
-                if (attempts >= maxAttempts) {
-                    clearInterval(pollInterval);
-                    modalTitle.textContent = "⚠️ Restart Taking Longer";
-                    modalSub.textContent = "The server is taking longer than expected to reload. You can refresh manually.";
-                    modalIcon.textContent = "⏳";
-                    modalIcon.style.animation = "none";
-                    if (manualActions) manualActions.style.display = "block";
-                }
-            }
-        }, 600);
     });
 }
 
@@ -1306,20 +1392,32 @@ async function refreshEngineStatus() {
 }
 
 // WebSockets
+let pendingEngineSwitchToast = false;
+
 function connectControlWs() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/api/control/ws`;
+    const wsUrl = `${protocol}//${window.location.host}/api/control/ws${apiKeyQuerySuffix()}`;
     controlWs = new WebSocket(wsUrl);
 
     controlWs.onmessage = (event) => {
         try {
             const msg = JSON.parse(event.data);
             if (msg.type === "vu_meter") {
-                const db = msg.level_db || -100;
+                // 0 dB (full scale) is falsy — must not collapse to -100
+                const db = (typeof msg.level_db === "number") ? msg.level_db : -100;
                 const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
                 vuBar.style.width = `${pct}%`;
-            } else if (msg.type === "engine_changed" || msg.type === "config_updated") {
+            } else if (msg.type === "engine_changed") {
+                if (pendingEngineSwitchToast) {
+                    pendingEngineSwitchToast = false;
+                    showToast(`✅ Active recognition engine: ${msg.engine_name || msg.engine || "ready"}`, "success", 4000);
+                }
                 refreshEngineStatus();
+            } else if (msg.type === "config_updated") {
+                refreshEngineStatus();
+            } else if (msg.type === "server_restarting") {
+                // Restart triggered elsewhere (another tab, API, Stream Deck)
+                beginRestartMonitor(msg.instance_id || currentInstanceId);
             }
         } catch (e) {}
     };
@@ -1335,6 +1433,13 @@ function connectCaptionWs() {
     captionWs.onmessage = (event) => {
         try {
             const data = JSON.parse(event.data);
+            if (data.type === "snapshot") {
+                // Show the most recent line from the replayed history, if any
+                const lines = data.lines || [];
+                const last = lines[lines.length - 1];
+                if (last && last.text) previewFinal.textContent = last.text;
+                return;
+            }
             if (data.is_final) {
                 let displayText = data.text;
                 if (data.translated_text) {
@@ -1364,6 +1469,16 @@ async function loadTranscriptHistory() {
     } catch (e) {}
 }
 
+// Shared markup for one transcript row. Server history entries provide
+// {relative_time, text, is_censored}; live caption events provide {text, is_censored}.
+function transcriptItemHtml(timeLabel, entry) {
+    return `
+        <span class="transcript-time">[${escapeHtml(timeLabel)}]</span>
+        <span class="transcript-text">${escapeHtml(entry.text)}</span>
+        ${entry.is_censored ? '<span title="This line was filtered" style="margin-left: 6px;">🛡️</span>' : ''}
+    `;
+}
+
 function renderTranscriptList(entries) {
     const list = document.getElementById("transcript-list");
     if (!entries || entries.length === 0) {
@@ -1372,14 +1487,11 @@ function renderTranscriptList(entries) {
     }
 
     list.innerHTML = entries.map(e => `
-        <div class="transcript-item">
-            <span class="transcript-time">[${escapeHtml(e.relative_time)}]</span>
-            <span class="transcript-speaker">${escapeHtml(e.speaker || "Host")}:</span>
-            <span class="transcript-text">${escapeHtml(e.text)}</span>
-            ${e.translated_text ? `<div style="font-size: 11px; color: #38BDF8; margin-top: 2px;">🌐 ${escapeHtml(e.translated_text)}</div>` : ''}
-        </div>
+        <div class="transcript-item">${transcriptItemHtml(e.relative_time || "", e)}</div>
     `).join("");
 }
+
+const MAX_LIVE_TRANSCRIPT_ITEMS = 200;
 
 function appendTranscriptItem(entry) {
     const list = document.getElementById("transcript-list");
@@ -1388,13 +1500,14 @@ function appendTranscriptItem(entry) {
 
     const div = document.createElement("div");
     div.className = "transcript-item";
-    div.innerHTML = `
-        <span class="transcript-time">[Just now]</span>
-        <span class="transcript-speaker">Host:</span>
-        <span class="transcript-text">${escapeHtml(entry.text)}</span>
-        ${entry.translated_text ? `<div style="font-size: 11px; color: #38BDF8; margin-top: 2px;">🌐 ${escapeHtml(entry.translated_text)}</div>` : ''}
-    `;
+    div.innerHTML = transcriptItemHtml("Just now", entry);
     list.prepend(div);
+
+    // Cap DOM growth: a multi-hour service would otherwise accumulate
+    // thousands of nodes in a dock that stays open all day.
+    while (list.children.length > MAX_LIVE_TRANSCRIPT_ITEMS) {
+        list.removeChild(list.lastChild);
+    }
 }
 
 document.getElementById("transcript-search").addEventListener("input", () => {

@@ -28,42 +28,64 @@ class CaptionSink:
         web_server=None,
         history: Optional[TranscriptHistory] = None,
         twitch_bot: Optional[TwitchCaptionBot] = None,
+        is_paused=None,
     ):
         self.config = config
         self.obs_client = obs_client
         self.web_server = web_server
+        self.is_paused = is_paused  # optional callable; engines keep running, but events are dropped while paused
         self.vocabulary = VocabularyReplacer(config.vocabulary)
+        church_mode = getattr(config.general, "church_mode", True)
         self.formatter = TextFormatter(
             auto_capitalization=getattr(config.general, "auto_capitalization", True),
             auto_punctuation=getattr(config.general, "auto_punctuation", True),
-            church_mode=getattr(config.general, "church_mode", True),
+            church_mode=church_mode,
         )
-        self.content_filter = ContentFilter(config.censor)
+        self.content_filter = ContentFilter(config.censor, church_mode=church_mode)
         self.translator = SubtitleTranslator(config.translation)
         self.history = history or TranscriptHistory()
         self.twitch_bot = twitch_bot
         self._last_caption_time = 0.0
         self._sentence_start_time = time.time()
+        self._utterance_active = False
+        self._last_partial_text: Optional[str] = None
         self._auto_clear_task: Optional[asyncio.Task] = None
 
     def update_config(self, new_config: AppConfig):
         """Live update configuration, filter dictionary, and translation rules."""
         self.config = new_config
         self.vocabulary = VocabularyReplacer(new_config.vocabulary)
+        church_mode = getattr(new_config.general, "church_mode", True)
         self.formatter = TextFormatter(
             auto_capitalization=getattr(new_config.general, "auto_capitalization", True),
             auto_punctuation=getattr(new_config.general, "auto_punctuation", True),
-            church_mode=getattr(new_config.general, "church_mode", True),
+            church_mode=church_mode,
         )
-        self.content_filter = ContentFilter(new_config.censor)
+        self.content_filter = ContentFilter(new_config.censor, church_mode=church_mode)
         self.translator = SubtitleTranslator(new_config.translation)
 
     async def handle_transcript(self, event: TranscriptEvent):
         """Process, filter, translate, record, and dispatch a new transcript event."""
+        if self.is_paused and self.is_paused():
+            return
+
         self._last_caption_time = time.time()
         raw_text = event.text.strip()
         if not raw_text:
             return
+
+        if event.is_final:
+            self._last_partial_text = None
+        else:
+            # Continuous engines (Vosk) re-emit identical partials every audio
+            # chunk; skip re-broadcasting unchanged interim text.
+            if raw_text == self._last_partial_text:
+                return
+            self._last_partial_text = raw_text
+            # First partial after a final marks the start of a new utterance
+            if not self._utterance_active:
+                self._utterance_active = True
+                self._sentence_start_time = time.time()
 
         # 1. Custom Vocabulary & Glossary Replacements
         vocab_text, _ = self.vocabulary.replace(raw_text)
@@ -73,12 +95,19 @@ class CaptionSink:
 
         # 3. Content and Profanity Filtering
         clean_text, was_censored = self.content_filter.filter_text(formatted_text)
-        
-        # If drop_sentence mode triggered on censored text
-        if was_censored and self.config.censor.mode == "drop_sentence":
-            clean_text = ""
 
-        # 2. Live Translation if enabled
+        # A dropped sentence should vanish quietly: clear the interim line on
+        # connected views without wiping their visible caption history.
+        if event.is_final and was_censored and self.config.censor.mode == "drop_sentence":
+            self._utterance_active = False
+            if self.web_server:
+                await self.web_server.broadcast_caption(
+                    {"text": "", "is_final": False, "is_censored": True, "timestamp": event.timestamp}
+                )
+            logger.info("✓ [FINAL]   🛡️ [DROPPED]")
+            return
+
+        # 4. Live Translation if enabled
         translated_text = None
         if clean_text and self.config.translation.enabled:
             primary_text, translated_text = await self.translator.translate_text(clean_text)
@@ -86,7 +115,7 @@ class CaptionSink:
         else:
             display_text = clean_text
 
-        # 3. Record to history if finalized
+        # 5. Record to history if finalized
         if event.is_final and clean_text:
             recorded_text = clean_text
             if translated_text:
@@ -97,19 +126,20 @@ class CaptionSink:
                 end_time=time.time(),
                 is_censored=was_censored,
             )
+            self._utterance_active = False
             self._sentence_start_time = time.time()
 
             # Broadcast to Twitch Chat if enabled
             if self.twitch_bot and self.twitch_bot.is_connected:
                 await self.twitch_bot.send_caption(clean_text)
 
-        # 4. Console display
+        # 6. Console display
         status = "✓ [FINAL]  " if event.is_final else "… [INTERIM]"
         censor_tag = " 🛡️ [CENSORED]" if was_censored else ""
         trans_tag = f" 🌐 [{translated_text}]" if translated_text else ""
         logger.info(f"{status}{censor_tag} {display_text or '[DROPPED]'}{trans_tag}")
 
-        # 5. Dispatch to Web Overlay (Browser Source) and Dashboard Preview
+        # 7. Dispatch to Web Overlay (Browser Source) and Dashboard Preview
         if self.web_server:
             await self.web_server.broadcast_caption(
                 {
@@ -121,7 +151,7 @@ class CaptionSink:
                 }
             )
 
-        # 6. Dispatch to OBS WebSocket (Text Source & CEA-608)
+        # 8. Dispatch to OBS WebSocket (Text Source & CEA-608)
         if self.obs_client and self.obs_client.is_connected:
             obs_out_text = display_text
             if translated_text and self.config.translation.display_mode == "dual":

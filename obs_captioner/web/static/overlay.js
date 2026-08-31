@@ -8,6 +8,7 @@ let config = {
 };
 
 let hideTimer = null;
+let fadeWipeTimer = null;
 let finalLines = [];
 let ws = null;
 let controlWs = null;
@@ -20,20 +21,22 @@ function applyStyles(ov) {
     if (!ov) return;
     const root = document.documentElement;
     
-    if (ov.font_family) root.style.setProperty("--font-family", ov.font_family);
-    if (ov.font_size) root.style.setProperty("--font-size", ov.font_size);
-    if (ov.font_weight) root.style.setProperty("--font-weight", ov.font_weight);
-    if (ov.line_height) root.style.setProperty("--line-height", ov.line_height);
-    if (ov.max_width) root.style.setProperty("--max-width", ov.max_width);
-    if (ov.text_align) root.style.setProperty("--text-align", ov.text_align);
-    if (ov.text_color) root.style.setProperty("--text-color", ov.text_color);
-    if (ov.interim_color) root.style.setProperty("--interim-color", ov.interim_color);
-    if (ov.highlight_color) root.style.setProperty("--highlight-color", ov.highlight_color);
-    if (ov.background_box_color) root.style.setProperty("--background-box-color", ov.background_box_color);
-    if (ov.border_radius) root.style.setProperty("--border-radius", ov.border_radius);
-    if (ov.box_padding) root.style.setProperty("--box-padding", ov.box_padding);
-    if (ov.text_shadow) root.style.setProperty("--text-shadow", ov.text_shadow);
-    if (ov.text_stroke) root.style.setProperty("--text-stroke", ov.text_stroke);
+    // Explicit null checks so empty-string values ("none", cleared styles) still apply
+    const setVar = (name, val) => { if (val !== undefined && val !== null) root.style.setProperty(name, val); };
+    setVar("--font-family", ov.font_family);
+    setVar("--font-size", ov.font_size);
+    setVar("--font-weight", ov.font_weight);
+    setVar("--line-height", ov.line_height);
+    setVar("--max-width", ov.max_width);
+    setVar("--text-align", ov.text_align);
+    setVar("--text-color", ov.text_color);
+    setVar("--interim-color", ov.interim_color);
+    setVar("--highlight-color", ov.highlight_color);
+    setVar("--background-box-color", ov.background_box_color);
+    setVar("--border-radius", ov.border_radius);
+    setVar("--box-padding", ov.box_padding);
+    setVar("--text-shadow", ov.text_shadow);
+    setVar("--text-stroke", ov.text_stroke);
 
     if (ov.vertical_align === "top") {
         document.body.classList.add("align-top");
@@ -42,8 +45,17 @@ function applyStyles(ov) {
     }
 
     if (ov.max_lines) config.max_lines = parseInt(ov.max_lines) || 2;
-    if (ov.auto_hide_seconds !== undefined) config.auto_hide_seconds = parseFloat(ov.auto_hide_seconds) || 0;
     if (ov.animation_style) config.animation_style = ov.animation_style;
+    if (ov.auto_hide_seconds !== undefined) {
+        const newHide = parseFloat(ov.auto_hide_seconds) || 0;
+        if (newHide !== config.auto_hide_seconds) {
+            config.auto_hide_seconds = newHide;
+            // Re-arm an in-flight hide timer with the new duration
+            if (hideTimer && !captionBox.classList.contains("hidden")) {
+                showBox();
+            }
+        }
+    }
 }
 
 async function loadConfig() {
@@ -60,22 +72,41 @@ async function loadConfig() {
     }
 }
 
-function showBox() {
-    captionBox.classList.remove("hidden");
+function clearTimers() {
     if (hideTimer) {
         clearTimeout(hideTimer);
         hideTimer = null;
     }
+    // Cancel a pending post-fade wipe so speech resuming during the 400ms
+    // fade window doesn't get erased.
+    if (fadeWipeTimer) {
+        clearTimeout(fadeWipeTimer);
+        fadeWipeTimer = null;
+    }
+}
+
+function showBox() {
+    captionBox.classList.remove("hidden");
+    clearTimers();
     if (config.auto_hide_seconds > 0) {
         hideTimer = setTimeout(() => {
             captionBox.classList.add("hidden");
-            setTimeout(() => {
+            fadeWipeTimer = setTimeout(() => {
                 finalLines = [];
-                renderFinalLines();
-                interimLineEl.innerText = "";
+                renderFinalLines(false);
+                interimLineEl.innerHTML = "";
+                fadeWipeTimer = null;
             }, 400);
         }, config.auto_hide_seconds * 1000);
     }
+}
+
+function hideBoxNow() {
+    clearTimers();
+    captionBox.classList.add("hidden");
+    finalLines = [];
+    renderFinalLines(false);
+    interimLineEl.innerHTML = "";
 }
 
 function renderFinalLines(activeInterim = false) {
@@ -129,28 +160,47 @@ function escapeHtml(str) {
 }
 
 function handleCaption(data) {
-    showBox();
+    // Snapshot replay on (re)connect: reset stale local state, then adopt
+    // the server's recent final lines.
+    if (data.type === "snapshot") {
+        finalLines = [];
+        interimLineEl.innerHTML = "";
+        for (const line of data.lines || []) {
+            const t = (line.text || "").trim();
+            if (t) finalLines.push({ text: t, translated: line.translated_text || null });
+        }
+        while (finalLines.length > config.max_lines) finalLines.shift();
+        if (finalLines.length) {
+            renderFinalLines(false);
+            showBox();
+        }
+        return;
+    }
+
     const text = (data.text || "").trim();
     const translated = data.translated_text || null;
 
     if (data.is_final) {
-        interimLineEl.innerHTML = "";
         if (text) {
+            showBox();
+            interimLineEl.innerHTML = "";
             finalLines.push({ text: text, translated: translated });
             while (finalLines.length > config.max_lines) {
                 finalLines.shift();
             }
             renderFinalLines(false);
         } else {
-            // Empty final = silence auto-clear signal → hide box and clear lines
-            finalLines = [];
-            renderFinalLines(false);
+            // Empty final = silence auto-clear signal → hide immediately
+            // (never re-show an empty box)
+            hideBoxNow();
         }
     } else {
         if (text) {
+            showBox();
             renderFinalLines(true);
             renderInterim(text);
         } else {
+            // Empty interim (e.g. a dropped sentence): clear the interim line only
             interimLineEl.innerHTML = "";
             renderFinalLines(false);
         }

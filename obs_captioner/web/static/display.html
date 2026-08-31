@@ -388,7 +388,6 @@
         // Elements
         const stageContainer = document.getElementById('stageContainer');
         const transcriptContent = document.getElementById('transcriptContent');
-        const emptyNotice = document.getElementById('emptyNotice');
         const clockDisplay = document.getElementById('clockDisplay');
         const statusPill = document.getElementById('statusPill');
         const statusText = document.getElementById('statusText');
@@ -406,6 +405,7 @@
 
         // Font Size & Family
         function setFontSize(size) {
+            if (!Number.isFinite(size)) size = 48;
             currentFontSize = Math.max(24, Math.min(96, size));
             document.documentElement.style.setProperty('--font-size', `${currentFontSize}px`);
             localStorage.setItem('voxstream_display_fontsize', currentFontSize);
@@ -424,11 +424,18 @@
         const savedFont = localStorage.getItem('voxstream_display_font');
         if (savedFont) setFontFamily(savedFont);
 
-        const savedTheme = localStorage.getItem('voxstream_display_theme');
-        if (savedTheme) {
-            document.body.className = savedTheme;
-            themeSelect.value = savedTheme;
+        // Swap only theme-* classes so other body classes are preserved
+        function setTheme(theme) {
+            if (!/^theme-[a-z]+$/.test(theme)) return;
+            document.body.classList.forEach(c => {
+                if (c.startsWith('theme-')) document.body.classList.remove(c);
+            });
+            document.body.classList.add(theme);
+            themeSelect.value = theme;
         }
+
+        const savedTheme = localStorage.getItem('voxstream_display_theme');
+        if (savedTheme) setTheme(savedTheme);
 
         // Font Family Change
         if (fontSelect) {
@@ -439,7 +446,7 @@
 
         // Theme Change
         themeSelect.addEventListener('change', (e) => {
-            document.body.className = e.target.value;
+            setTheme(e.target.value);
             localStorage.setItem('voxstream_display_theme', e.target.value);
         });
 
@@ -466,12 +473,15 @@
         });
 
         document.getElementById('btnScrollBottom').addEventListener('click', () => {
-            stageContainer.scrollTop = stageContainer.scrollHeight;
             autoScroll = true;
+            scrollToBottom();
         });
 
-        // Keyboard Shortcuts
+        // Keyboard Shortcuts (ignored while a form control has focus so typing
+        // in a select/input can't accidentally clear the confidence monitor)
         window.addEventListener('keydown', (e) => {
+            const tag = (e.target && e.target.tagName) || '';
+            if (['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(tag)) return;
             if (e.key === '+' || e.key === '=') setFontSize(currentFontSize + 4);
             if (e.key === '-' || e.key === '_') setFontSize(currentFontSize - 4);
             if (e.key === 'h' || e.key === 'H') headerBar.classList.toggle('hidden');
@@ -485,7 +495,7 @@
         // Render Captions
         function renderCaptions() {
             if (finalSentences.length === 0 && !interimText) {
-                transcriptContent.innerHTML = '<div class="empty-indicator" id="emptyNotice">Listening for speech... Captions will appear here in real-time.</div>';
+                transcriptContent.innerHTML = '<div class="empty-indicator">Listening for speech... Captions will appear here in real-time.</div>';
                 return;
             }
 
@@ -506,8 +516,16 @@
             transcriptContent.innerHTML = html;
 
             if (autoScroll) {
-                stageContainer.scrollTop = stageContainer.scrollHeight;
+                scrollToBottom();
             }
+        }
+
+        // Programmatic scrolls are instant (bypassing the CSS smooth-scroll):
+        // intermediate smooth-scroll events land >50px from the bottom and
+        // would silently latch autoScroll off during rapid partial updates.
+        function scrollToBottom() {
+            // 'instant' (not 'auto') is required to override the CSS smooth-scroll
+            stageContainer.scrollTo({ top: stageContainer.scrollHeight, behavior: 'instant' });
         }
 
         function escapeHtml(text) {
@@ -555,6 +573,21 @@
         }
 
         function handleCaptionEvent(data) {
+            // Snapshot replay on (re)connect: drop stale sentences (including a
+            // frozen interim line from before a disconnect) and adopt the
+            // server's recent finals.
+            if (data.type === 'snapshot') {
+                finalSentences = [];
+                interimText = "";
+                for (const line of data.lines || []) {
+                    const t = (line.text || '').trim();
+                    if (t) finalSentences.push(t);
+                }
+                while (finalSentences.length > maxHistorySentences) finalSentences.shift();
+                renderCaptions();
+                return;
+            }
+
             const text = (data.text || '').trim();
 
             if (data.is_final) {
@@ -581,7 +614,7 @@
                 if (res.ok) {
                     const data = await res.json();
                     if (statusText && ws && ws.readyState === WebSocket.OPEN) {
-                        statusText.textContent = `LIVE • ${data.engine_name || 'Active'}`;
+                        statusText.textContent = `LIVE • ${data.engine_name || data.engine || 'Active'}`;
                     }
                 }
             } catch (e) {}
