@@ -954,6 +954,9 @@ document.getElementById("btn-save-audio").addEventListener("click", async () => 
             noise_gate_db: parseFloat(document.getElementById("noise_gate_slider").value),
             vad_threshold: parseFloat(document.getElementById("vad_slider").value),
         },
+        bandwidth: {
+            api_key: document.getElementById("bandwidth_api_key") ? document.getElementById("bandwidth_api_key").value.trim() : "",
+        },
         google_stt: {
             credentials_path: document.getElementById("google_creds_path").value.trim(),
         },
@@ -1011,9 +1014,6 @@ document.getElementById("obs_projector_type").addEventListener("change", toggleP
 
 document.getElementById("btn-save-projector").addEventListener("click", async () => {
     const payload = {
-        bandwidth: {
-            api_key: document.getElementById("bandwidth_api_key").value.trim()
-        },
         obs: {
             auto_open_projector: document.getElementById("obs_auto_projector").checked,
             projector_type: document.getElementById("obs_projector_type").value,
