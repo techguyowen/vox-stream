@@ -17,6 +17,7 @@ from obs_captioner.engines import (
     LocalWhisperEngine,
     VoskEngine,
     MoonshineEngine,
+    BandwidthEngine,
 )
 from obs_captioner.themes import THEME_PRESETS, get_all_presets
 from obs_captioner.translator import SubtitleTranslator, TranslationConfig
@@ -262,6 +263,10 @@ class TestConfigAndEngines(unittest.TestCase):
         eng_vosk = create_engine(cfg)
         self.assertIsInstance(eng_vosk, VoskEngine)
 
+        cfg.general.engine = "bandwidth"
+        eng_bandwidth = create_engine(cfg)
+        self.assertIsInstance(eng_bandwidth, BandwidthEngine)
+
         cfg.general.engine = "moonshine"
         eng_moonshine = create_engine(cfg)
         self.assertIsInstance(eng_moonshine, MoonshineEngine)
@@ -454,6 +459,36 @@ class TestChurchCensorship(unittest.TestCase):
         self.assertTrue(censored)
         self.assertNotIn("goober", text)
 
+
+
+    def test_bandwidth_engine_config_and_init(self):
+        import os
+        cfg = AppConfig()
+        cfg.general.engine = "bandwidth"
+        cfg.bandwidth.api_key = "test_bwa_key_123"
+        eng = create_engine(cfg)
+        self.assertIsInstance(eng, BandwidthEngine)
+        self.assertEqual(eng.api_key, "test_bwa_key_123")
+
+        loop = asyncio.new_event_loop()
+        init_ok = loop.run_until_complete(eng.initialize())
+        loop.close()
+        self.assertTrue(init_ok)
+
+        # Missing key should return False on initialize
+        cfg_empty = AppConfig()
+        cfg_empty.bandwidth.api_key = ""
+        # Ensure env var is unset for test
+        old_env = os.environ.pop("BANDWIDTH_API_KEY", None)
+        try:
+            eng_empty = BandwidthEngine(cfg_empty)
+            loop = asyncio.new_event_loop()
+            init_empty = loop.run_until_complete(eng_empty.initialize())
+            loop.close()
+            self.assertFalse(init_empty)
+        finally:
+            if old_env is not None:
+                os.environ["BANDWIDTH_API_KEY"] = old_env
 
 if __name__ == "__main__":
     unittest.main()

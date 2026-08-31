@@ -44,3 +44,8 @@ Thumbs.db
 captions_*.srt
 captions_*.vtt
 captions_*.txt
+
+# Node / Headless Browser
+node_modules/
+package-lock.json
+

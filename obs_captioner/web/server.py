@@ -191,6 +191,7 @@ class WebOverlayServer:
     SECRET_SENTINEL = "•••"
     SECRET_FIELDS = {
         "gemini_live": ("api_key",),
+        "bandwidth": ("api_key",),
         "twitch": ("oauth_token",),
         "obs": ("password",),
         "api": ("api_key",),

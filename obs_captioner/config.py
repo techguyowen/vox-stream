@@ -246,6 +246,7 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         local_whisper=LocalWhisperConfig(**data.get("local_whisper", {})),
         vosk=VoskConfig(**data.get("vosk", {})),
         moonshine=MoonshineConfig(**data.get("moonshine", {})),
+        bandwidth=BandwidthConfig(**data.get("bandwidth", {})),
         obs=OBSConfig(**data.get("obs", {})),
         overlay=OverlayConfig(**data.get("overlay", {})),
         api=APIConfig(**data.get("api", {})),
@@ -257,6 +258,9 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
 
     if os.environ.get("GEMINI_API_KEY") and not cfg.gemini_live.api_key:
         cfg.gemini_live.api_key = os.environ["GEMINI_API_KEY"]
+
+    if os.environ.get("BANDWIDTH_API_KEY") and not cfg.bandwidth.api_key:
+        cfg.bandwidth.api_key = os.environ["BANDWIDTH_API_KEY"]
 
     if os.environ.get("OBS_WS_PASSWORD"):
         cfg.obs.password = os.environ["OBS_WS_PASSWORD"]

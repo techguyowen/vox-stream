@@ -91,6 +91,8 @@ async def main_async(args):
             return f"Google Cloud Speech v2 ({cfg.google_stt.model or 'latest_long'})"
         elif eng == "gemini_live":
             return f"Gemini 3.5 Live ({cfg.gemini_live.model})"
+        elif eng in ("bandwidth", "labs.bandwidth.com", "bandwidth_labs"):
+            return "Bandwidth Labs Live STT (Real-Time Cloud)"
         return eng
 
     def get_app_status():
@@ -329,7 +331,7 @@ def main():
     """CLI parsing entry point."""
     parser = argparse.ArgumentParser(description="OBS Real-Time Live Captioner")
     parser.add_argument("--config", "-c", type=str, default=None, help="Path to config.json")
-    parser.add_argument("--engine", "-e", type=str, choices=["google_web", "gemini_live", "google_stt", "local_whisper", "vosk", "moonshine"], help="Override STT engine")
+    parser.add_argument("--engine", "-e", type=str, choices=["google_web", "gemini_live", "google_stt", "local_whisper", "vosk", "moonshine", "bandwidth"], help="Override STT engine")
     parser.add_argument("--device-index", "-d", type=int, default=None, help="Audio input device index")
     parser.add_argument("--device-name", "-n", type=str, default=None, help="Audio input device name filter")
     parser.add_argument("--list-devices", "-l", action="store_true", help="List all available audio input devices and exit")

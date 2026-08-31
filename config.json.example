@@ -2,7 +2,10 @@
   "general": {
     "engine": "moonshine",
     "language": "en-US",
-    "log_level": "INFO"
+    "log_level": "INFO",
+    "auto_capitalization": true,
+    "auto_punctuation": true,
+    "church_mode": true
   },
   "audio": {
     "device_name_filter": "MacBook Pro Microphone",
@@ -92,6 +95,9 @@
     "model_name": "small",
     "model_path": "",
     "sample_rate": 16000
+  },
+  "bandwidth": {
+    "api_key": ""
   },
   "moonshine": {
     "model_name": "moonshine/base",
