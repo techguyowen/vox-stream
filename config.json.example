@@ -146,5 +146,6 @@
   "api": {
     "enabled": true,
     "api_key": ""
-  }
+  },
+  "custom_presets": {}
 }
