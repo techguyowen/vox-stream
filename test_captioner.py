@@ -84,8 +84,8 @@ class TestThemes(unittest.TestCase):
         ov = OverlayConfig()
         ov.apply_theme("cyberpunk_neon")
         self.assertEqual(ov.theme_id, "cyberpunk_neon")
-        self.assertEqual(ov.text_color, "#00F0FF")
-        self.assertEqual(ov.font_family, "'Bebas Neue', sans-serif")
+        self.assertEqual(ov.text_color, "#38BDF8")
+        self.assertEqual(ov.font_family, "'Inter', sans-serif")
 
 
 class TestContentFilterCRUD(unittest.TestCase):

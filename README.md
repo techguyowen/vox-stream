@@ -69,8 +69,8 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Po
 ---
 
 ### 🎨 7. 1-Click Theme Gallery & Typography Customizer
-* **Pre-Built Themes**: *Modern Clean, Cyberpunk Neon, Minimalist Cinema, Twitch Purple, Comic/Gaming Pop, Retro Terminal, YouTube CC, OpenDyslexic*.
-* **Custom Typography**: Google Fonts (*Montserrat, Inter, Roboto, Poppins, Oswald, Bebas Neue, Bangers*) + custom system fonts.
+* **Pre-Built Themes**: *Modern Clean (Glassmorphism), Broadcast News Lower-Third, Sanctuary & Worship, Corporate Keynote & Tech, Minimalist Cinema (Netflix/BBC), High-Contrast Stage Confidence, Editorial & Talk Show, Classic Broadcast CEA-708, OpenDyslexic (Accessibility)*.
+* **Custom Typography**: Google Fonts (*Inter, Roboto, Montserrat, Oswald, Lora, Poppins, OpenDyslexic*) + custom system fonts.
 * **Custom Layouts**: Font Size (16px–72px), Max Box Width (% slider), Max Lines (1–4), Text Alignment, Line Height, and Box Background Opacity.
 
 ---

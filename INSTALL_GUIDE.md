@@ -206,7 +206,7 @@ Open the Web Dashboard (`/dashboard`):
 * Religious and sacred names (*"Jesus Christ"*, *"God"*, *"Lord"*, *"scripture"*, *"worship"*) are whitelisted and protected from censorship.
 
 ### 3. 🎨 Style & Themes Tab
-* Select from 1-click theme presets (*Modern Clean, Cyberpunk Neon, Minimal Cinema, Twitch Purple, Comic Pop, Retro Terminal*).
+* Select from 1-click theme presets (*Modern Clean, Broadcast Lower-Third, Sanctuary & Worship, Corporate Keynote, Minimal Cinema, Stage Confidence, Editorial Talk Show, Classic Broadcast CEA-708*).
 * Customize fonts (Google Fonts), font sizes, text stroke, highlight colors, and word-pop animations.
 
 ---
