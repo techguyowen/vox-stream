@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>VoxStream - Room Confidence Monitor</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -32,7 +32,7 @@
             --interim-color: #93C5FD;
             --accent: #3B82F6;
             --success: #10B981;
-            --card-bg: rgba(22, 27, 34, 0.9);
+            --card-bg: rgba(22, 27, 34, 0.95);
             --border: #30363D;
             --font-family: 'Inter', system-ui, -apple-system, sans-serif;
             --font-size: 48px;
@@ -73,23 +73,22 @@
         }
 
         html, body {
-            width: 100%;
-            height: 100%;
+            width: 100vw;
+            height: 100vh;
             background-color: var(--bg-color);
             color: var(--text-color);
             font-family: var(--font-family);
             overflow: hidden;
             user-select: none;
+            display: flex;
+            flex-direction: column;
             transition: background-color 0.25s ease, color 0.25s ease;
         }
 
-        /* Top Header Bar */
+        /* Fully Responsive Top Header Bar */
         .header-bar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 58px;
+            flex-shrink: 0;
+            width: 100%;
             background: var(--card-bg);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
@@ -97,21 +96,21 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0 20px;
+            padding: 8px 16px;
+            gap: 12px;
             z-index: 100;
-            transition: opacity 0.25s ease, transform 0.25s ease;
+            transition: transform 0.25s ease, opacity 0.25s ease, margin-top 0.25s ease;
         }
 
         .header-bar.hidden {
-            opacity: 0;
-            transform: translateY(-100%);
-            pointer-events: none;
+            display: none;
         }
 
         .header-left {
             display: flex;
             align-items: center;
-            gap: 14px;
+            gap: 12px;
+            flex-shrink: 0;
         }
 
         .brand-badge {
@@ -121,22 +120,24 @@
             color: var(--text-color);
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
+            white-space: nowrap;
         }
 
         .status-pill {
             display: flex;
             align-items: center;
-            gap: 6px;
-            padding: 4px 10px;
+            gap: 5px;
+            padding: 4px 8px;
             border-radius: 6px;
-            font-size: 11.5px;
+            font-size: 11px;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             background: rgba(16, 185, 129, 0.12);
             color: var(--success);
             border: 1px solid rgba(16, 185, 129, 0.25);
+            white-space: nowrap;
         }
 
         .status-pill.offline {
@@ -154,47 +155,53 @@
 
         .clock-display {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 700;
             color: var(--text-color);
             letter-spacing: 0.5px;
+            white-space: nowrap;
         }
 
         .header-right {
             display: flex;
             align-items: center;
             gap: 8px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
         }
 
         .ctrl-btn {
             background: rgba(255, 255, 255, 0.06);
             color: var(--text-color);
             border: 1px solid var(--border);
-            padding: 6px 12px;
+            padding: 6px 10px;
             border-radius: 6px;
-            font-size: 13px;
+            font-size: 12.5px;
             font-weight: 600;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
-            gap: 5px;
+            justify-content: center;
+            gap: 4px;
+            white-space: nowrap;
             transition: all 0.15s ease;
         }
 
         .ctrl-btn:hover {
-            background: rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.14);
         }
 
         .theme-select {
             background: #161B22;
             color: #F0F3F6;
             border: 1px solid var(--border);
-            padding: 6px 10px;
+            padding: 6px 8px;
             border-radius: 6px;
-            font-size: 12.5px;
+            font-size: 12px;
             font-weight: 600;
             cursor: pointer;
             outline: none;
+            max-width: 100%;
         }
 
         .theme-select option {
@@ -204,16 +211,15 @@
 
         /* Main Scrolling Container */
         .stage-container {
-            position: absolute;
-            top: 58px;
-            bottom: 0;
-            left: 0;
-            right: 0;
+            flex: 1 1 auto;
+            height: 100%;
+            width: 100%;
             overflow-y: scroll;
             overflow-x: hidden;
             -webkit-overflow-scrolling: touch;
-            padding: 24px 40px 120px 40px;
+            padding: 24px 32px 100px 32px;
             overscroll-behavior-y: contain;
+            position: relative;
         }
 
         .stage-container::-webkit-scrollbar {
@@ -225,11 +231,11 @@
         }
 
         .transcript-content {
-            min-height: calc(100% - 40px);
+            min-height: calc(100% - 20px);
             display: flex;
             flex-direction: column;
             justify-content: flex-end;
-            gap: 20px;
+            gap: 18px;
             max-width: 1500px;
             margin: 0 auto;
             width: 100%;
@@ -278,16 +284,16 @@
         .empty-indicator {
             text-align: center;
             color: var(--text-muted);
-            font-size: calc(var(--font-size) * 0.6);
+            font-size: calc(var(--font-size) * 0.55);
             font-weight: 600;
-            padding: 100px 0;
+            padding: 60px 0;
         }
 
         /* Floating Auto-Scroll / Controls Button */
         .floating-controls {
             position: fixed;
-            bottom: 20px;
-            right: 20px;
+            bottom: 18px;
+            right: 18px;
             display: flex;
             gap: 8px;
             z-index: 100;
@@ -315,53 +321,56 @@
             background: rgba(255, 255, 255, 0.15);
         }
 
-        /* Mobile & Tablet Responsive Design */
-        @media (max-width: 768px) {
-            :root {
-                --font-size: 26px;
-            }
-
-            .header-bar {
-                height: auto;
-                min-height: 52px;
-                padding: 8px 12px;
-                flex-wrap: wrap;
-                gap: 8px;
-            }
-
+        /* 📱 Responsive Tablet & Mobile Layouts */
+        @media (max-width: 1050px) {
             .clock-display {
                 display: none;
             }
+        }
 
-            .brand-badge span:last-child {
-                display: none;
+        @media (max-width: 820px) {
+            :root {
+                --font-size: 28px;
+            }
+
+            .header-bar {
+                flex-direction: column;
+                align-items: stretch;
+                padding: 8px 12px;
+                gap: 8px;
+            }
+
+            .header-left {
+                width: 100%;
+                justify-content: space-between;
             }
 
             .header-right {
                 width: 100%;
-                justify-content: space-between;
-                overflow-x: auto;
-                padding-bottom: 2px;
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 6px;
             }
 
-            .header-right select, .header-right button {
-                font-size: 11.5px;
-                padding: 5px 8px;
+            .header-controls-row {
+                grid-column: span 2;
+                display: flex;
+                gap: 6px;
+                justify-content: space-between;
+            }
+
+            .header-controls-row .ctrl-btn,
+            .header-controls-row .theme-select {
+                flex: 1;
             }
 
             .stage-container {
-                top: 86px;
-                padding: 16px 16px 90px 16px;
-            }
-
-            .caption-sentence {
-                font-size: var(--font-size);
-                line-height: 1.4;
+                padding: 16px 16px 80px 16px;
             }
 
             .floating-controls {
-                bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-                right: 16px;
+                bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+                right: 12px;
             }
         }
     </style>
@@ -393,52 +402,55 @@
 
             <!-- Language Track Selector -->
             <select class="theme-select" id="langSelect" title="Language Track">
-                <option value="en" selected>English (Original)</option>
-                <option value="es">Spanish (Español)</option>
-                <option value="fr">French (Français)</option>
-                <option value="de">German (Deutsch)</option>
-                <option value="pt">Portuguese (Português)</option>
-                <option value="it">Italian (Italiano)</option>
-                <option value="zh">Chinese (中文)</option>
-                <option value="ja">Japanese (日本語)</option>
-                <option value="ko">Korean (한국어)</option>
-                <option value="ru">Russian (Русский)</option>
-                <option value="ar">Arabic (العربية)</option>
-                <option value="hi">Hindi (हिन्दी)</option>
-                <option value="nl">Dutch (Nederlands)</option>
-                <option value="pl">Polish (Polski)</option>
-                <option value="sv">Swedish (Svenska)</option>
-                <option value="tr">Turkish (Türkçe)</option>
-                <option value="uk">Ukrainian (Українська)</option>
-                <option value="vi">Vietnamese (Tiếng Việt)</option>
+                <option value="en" selected>🌐 English (Original)</option>
+                <option value="es">🇪🇸 Spanish (Español)</option>
+                <option value="fr">🇫🇷 French (Français)</option>
+                <option value="de">🇩🇪 German (Deutsch)</option>
+                <option value="pt">🇧🇷 Portuguese (Português)</option>
+                <option value="it">🇮🇹 Italian (Italiano)</option>
+                <option value="zh">🇨🇳 Chinese (中文)</option>
+                <option value="ja">🇯🇵 Japanese (日本語)</option>
+                <option value="ko">🇰🇷 Korean (한국어)</option>
+                <option value="ru">🇷🇺 Russian (Русский)</option>
+                <option value="ar">🇸🇦 Arabic (العربية)</option>
+                <option value="hi">🇮🇳 Hindi (हिन्दी)</option>
+                <option value="nl">🇳🇱 Dutch (Nederlands)</option>
+                <option value="pl">🇵🇱 Polish (Polski)</option>
+                <option value="sv">🇸🇪 Swedish (Svenska)</option>
+                <option value="tr">🇹🇷 Turkish (Türkçe)</option>
+                <option value="uk">🇺🇦 Ukrainian (Українська)</option>
+                <option value="vi">🇻🇳 Vietnamese (Tiếng Việt)</option>
             </select>
 
-            <!-- Font Selector -->
-            <select class="theme-select" id="fontSelect" title="Typography / Font Family">
-                <option value="'Inter', system-ui, -apple-system, sans-serif" selected>Inter</option>
-                <option value="'OpenDyslexic', sans-serif">OpenDyslexic</option>
-                <option value="'Montserrat', sans-serif">Montserrat</option>
-                <option value="'Poppins', sans-serif">Poppins</option>
-                <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
-            </select>
+            <!-- Compact Secondary Controls Row (Adapts cleanly on mobile) -->
+            <div class="header-controls-row">
+                <!-- Typography Selector -->
+                <select class="theme-select" id="fontSelect" title="Typography / Font Family">
+                    <option value="'Inter', system-ui, -apple-system, sans-serif" selected>Inter</option>
+                    <option value="'OpenDyslexic', sans-serif">OpenDyslexic</option>
+                    <option value="'Montserrat', sans-serif">Montserrat</option>
+                    <option value="'Poppins', sans-serif">Poppins</option>
+                    <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
+                </select>
 
-            <!-- Theme Selector -->
-            <select class="theme-select" id="themeSelect">
-                <option value="theme-oled" selected>🌑 OLED Black</option>
-                <option value="theme-amber">🟡 Amber Stage</option>
-                <option value="theme-slate">🌌 Slate Blue</option>
-                <option value="theme-light">☀️ High Light</option>
-            </select>
+                <!-- Theme Selector -->
+                <select class="theme-select" id="themeSelect">
+                    <option value="theme-oled" selected>🌑 Dark</option>
+                    <option value="theme-amber">🟡 Amber</option>
+                    <option value="theme-slate">🌌 Slate</option>
+                    <option value="theme-light">☀️ Light</option>
+                </select>
 
-            <!-- Font Size Controls -->
-            <button class="ctrl-btn" id="btnFontDec" title="Decrease font size (-)">A-</button>
-            <button class="ctrl-btn" id="btnFontInc" title="Increase font size (+)">A+</button>
+                <!-- Font Size Controls -->
+                <button class="ctrl-btn" id="btnFontDec" title="Decrease font size (-)">A-</button>
+                <button class="ctrl-btn" id="btnFontInc" title="Increase font size (+)">A+</button>
 
-            <!-- Fullscreen -->
-            <button class="ctrl-btn" id="btnFullscreen" title="Toggle Fullscreen (F11)">⛶ Fullscreen</button>
+                <!-- Fullscreen -->
+                <button class="ctrl-btn" id="btnFullscreen" title="Toggle Fullscreen (F11)">⛶</button>
 
-            <!-- Clear -->
-            <button class="ctrl-btn" id="btnClear" title="Clear Screen History">🗑️ Clear</button>
+                <!-- Clear Screen -->
+                <button class="ctrl-btn" id="btnClear" title="Clear Screen History">🗑️</button>
+            </div>
         </div>
     </header>
 
@@ -821,7 +833,6 @@
                     }
                     triggerSilenceTimer();
                 } else {
-                    // Empty final is silence signal
                     if (currentMode === 'live') {
                         if (transcriptContent) transcriptContent.classList.add('faded');
                     }
