@@ -762,11 +762,20 @@ class WebOverlayServer:
         self.caption_sockets[ws] = lang
         try:
             try:
+                snapshot_lines = list(self._recent_finals)
+                if not snapshot_lines and self.history:
+                    # Fallback to persistent transcript history so display screens always populate immediately
+                    entries = self.history.get_history(limit=10)
+                    for e in reversed(entries):
+                        txt = e.get("text", "").strip()
+                        if txt:
+                            snapshot_lines.append({"text": txt, "is_final": True, "timestamp": e.get("timestamp", 0)})
+
                 if lang in ("en", "original", "none", ""):
-                    await ws.send_str(json.dumps({"type": "snapshot", "lines": self._recent_finals}))
+                    await ws.send_str(json.dumps({"type": "snapshot", "lines": snapshot_lines}))
                 else:
                     translated_lines = []
-                    for line in self._recent_finals:
+                    for line in snapshot_lines:
                         t_text = await self.translator.translate_to_language(line.get("text", ""), target_lang=lang)
                         translated_lines.append({**line, "text": t_text})
                     await ws.send_str(json.dumps({"type": "snapshot", "lines": translated_lines}))
@@ -841,15 +850,14 @@ class WebOverlayServer:
             self._recent_finals.append(payload)
             if len(self._recent_finals) > self._max_snapshot_lines:
                 self._recent_finals.pop(0)
-        else:
-            # Empty final is the silence/clear signal — snapshot resets too
-            self._recent_finals.clear()
 
     async def broadcast_caption(self, payload: dict):
         self._record_snapshot(payload)
         if not self.caption_sockets:
             return
-        raw_text = payload.get("text", "")
+        raw_text = (payload.get("text") or "").strip()
+        is_final = bool(payload.get("is_final"))
+
         lang_payloads = {}
         stale = []
         for ws, lang in list(self.caption_sockets.items()):
@@ -860,7 +868,12 @@ class WebOverlayServer:
                     await ws.send_str(lang_payloads["en"])
                 else:
                     if lang not in lang_payloads:
-                        t_text = await self.translator.translate_to_language(raw_text, target_lang=lang)
+                        if is_final:
+                            # Only execute network translation on finalized sentences
+                            t_text = await self.translator.translate_to_language(raw_text, target_lang=lang)
+                        else:
+                            # Deliver interim text with zero blocking network delay
+                            t_text = raw_text
                         custom_payload = {**payload, "text": t_text, "original_text": raw_text}
                         lang_payloads[lang] = json.dumps(custom_payload)
                     await ws.send_str(lang_payloads[lang])

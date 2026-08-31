@@ -499,8 +499,9 @@
                     renderCaptions();
                 }
 
-                // Reconnect WebSocket to new language track
+                // Reconnect WebSocket cleanly to new language track
                 if (ws) {
+                    ws.onclose = null;
                     ws.close();
                 }
                 connectWebSocket();
@@ -746,7 +747,27 @@
             renderCaptions();
         }
 
+        // Initial history loader
+        async function loadInitialHistory() {
+            try {
+                const res = await fetch('/api/transcript/history?limit=15');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.history && data.history.length > 0 && finalSentences.length === 0) {
+                        const items = [...data.history].reverse();
+                        for (const item of items) {
+                            const raw = (item.text || '').trim();
+                            if (raw) finalSentences.push(raw);
+                        }
+                        while (finalSentences.length > maxHistorySentences) finalSentences.shift();
+                        renderCaptions();
+                    }
+                }
+            } catch(e) {}
+        }
+
         connectWebSocket();
+        loadInitialHistory();
 
         async function updateDisplayStatus() {
             try {
