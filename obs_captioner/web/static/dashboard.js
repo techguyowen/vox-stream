@@ -1,3 +1,58 @@
+
+function handleEngineSwitchProgress(msg) {
+    const box = document.getElementById("engine-switching-box");
+    const spinner = document.getElementById("engine-switching-spinner");
+    const title = document.getElementById("engine-switching-title");
+    const tag = document.getElementById("engine-switching-tag");
+    const text = document.getElementById("engine-switching-status-text");
+    const badgeText = document.getElementById("active-engine-badge-text");
+
+    if (!box) return;
+
+    if (msg.is_switching) {
+        box.style.display = "block";
+        if (msg.is_error) {
+            box.style.background = "rgba(239, 68, 68, 0.15)";
+            box.style.borderColor = "rgba(239, 68, 68, 0.4)";
+            if (spinner) { spinner.textContent = "⚠️"; spinner.style.animation = "none"; }
+            if (title) { title.textContent = `❌ Failed to initialize ${msg.target_name || msg.target_engine}`; title.style.color = "#F87171"; }
+            if (tag) { tag.textContent = "Error"; tag.style.background = "rgba(239, 68, 68, 0.25)"; tag.style.color = "#FCA5A5"; }
+            if (text) { text.textContent = msg.status_text || "Error initializing model."; }
+            showToast(msg.status_text || "Error initializing model.", "error", 6000);
+        } else {
+            box.style.background = "rgba(59, 130, 246, 0.12)";
+            box.style.borderColor = "rgba(59, 130, 246, 0.4)";
+            if (spinner) { spinner.textContent = "🔄"; spinner.style.animation = "spin 1s infinite linear"; }
+            if (title) { title.textContent = `⏳ Loading / Downloading ${msg.target_name || msg.target_engine}...`; title.style.color = "#60A5FA"; }
+            if (tag) { tag.textContent = "Downloading"; tag.style.background = "rgba(59, 130, 246, 0.25)"; tag.style.color = "#93C5FD"; }
+            if (text) { text.textContent = msg.status_text || "Downloading model weights..."; }
+            if (badgeText) { badgeText.textContent = `⏳ Loading ${msg.target_name || msg.target_engine}...`; }
+        }
+    } else {
+        if (msg.is_error) {
+            box.style.display = "block";
+            box.style.background = "rgba(239, 68, 68, 0.15)";
+            box.style.borderColor = "rgba(239, 68, 68, 0.4)";
+            if (spinner) { spinner.textContent = "⚠️"; spinner.style.animation = "none"; }
+            if (title) { title.textContent = `❌ Initialization Failed`; title.style.color = "#F87171"; }
+            if (tag) { tag.textContent = "Failed"; tag.style.background = "rgba(239, 68, 68, 0.25)"; tag.style.color = "#FCA5A5"; }
+            if (text) { text.textContent = msg.status_text; }
+        } else {
+            box.style.background = "rgba(16, 185, 129, 0.12)";
+            box.style.borderColor = "rgba(16, 185, 129, 0.4)";
+            if (spinner) { spinner.textContent = "✅"; spinner.style.animation = "none"; }
+            if (title) { title.textContent = `✅ Ready: ${msg.target_name || msg.target_engine}`; title.style.color = "#34D399"; }
+            if (tag) { tag.textContent = "Ready"; tag.style.background = "rgba(16, 185, 129, 0.25)"; tag.style.color = "#6EE7B7"; }
+            if (text) { text.textContent = msg.status_text || "Model loaded into memory."; }
+            setTimeout(() => {
+                if (box.style.display !== "none" && tag && tag.textContent === "Ready") {
+                    box.style.display = "none";
+                }
+            }, 5000);
+        }
+    }
+}
+
 // OBS Live Captions Dashboard & Dock Controller (PRO Suite)
 
 // --- API auth -------------------------------------------------------------
@@ -1487,12 +1542,21 @@ async function refreshEngineStatus() {
             if (heroDesc) {
                 heroDesc.textContent = `${currentModelDetail} • Input: ${data.audio_device || 'Default Mic'}`;
             }
+            if (data.is_switching_engine) {
+                handleEngineSwitchProgress({
+                    is_switching: true,
+                    status_text: data.engine_switch_status || "Downloading model weights...",
+                    target_name: data.engine_switch_target || data.engine,
+                    is_error: !!data.engine_switch_error,
+                });
+            }
+
             if (heroBadge) {
                 if (data.is_switching_engine) {
                     heroBadge.style.background = "rgba(245, 158, 11, 0.2)";
                     heroBadge.style.color = "#F59E0B";
                     heroBadge.style.borderColor = "rgba(245, 158, 11, 0.4)";
-                    heroBadge.innerHTML = `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#F59E0B;"></span> SWITCHING...`;
+                    heroBadge.innerHTML = `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#F59E0B;"></span> DOWNLOADING...`;
                 } else {
                     heroBadge.style.background = "rgba(16, 185, 129, 0.2)";
                     heroBadge.style.color = "#10B981";
@@ -1524,6 +1588,8 @@ function connectControlWs() {
                 const db = (typeof msg.level_db === "number") ? msg.level_db : -100;
                 const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
                 vuBar.style.width = `${pct}%`;
+            } else if (msg.type === "engine_switching_status") {
+                handleEngineSwitchProgress(msg);
             } else if (msg.type === "engine_changed") {
                 if (pendingEngineSwitchToast) {
                     pendingEngineSwitchToast = false;

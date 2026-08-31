@@ -433,6 +433,22 @@
                 <div class="panel">
                     <h2>Audio Capture &amp; Speech-to-Text Engine</h2>
 
+                    <!-- Live Engine Switching & Download Progress Notification -->
+                    <div id="engine-switching-box" style="display: none; background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 8px; padding: 12px 16px; margin: 12px 0 16px 0;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <span id="engine-switching-spinner" style="font-size: 22px; display: inline-block;">🔄</span>
+                            <div style="flex: 1;">
+                                <div style="font-size: 13.5px; font-weight: 700; color: #60A5FA; display: flex; align-items: center; justify-content: space-between;">
+                                    <span id="engine-switching-title">Switching Speech Engine...</span>
+                                    <span id="engine-switching-tag" style="font-size: 10.5px; text-transform: uppercase; background: rgba(59, 130, 246, 0.25); color: #93C5FD; padding: 2px 8px; border-radius: 4px; font-weight: 700;">Downloading</span>
+                                </div>
+                                <div id="engine-switching-status-text" style="font-size: 12px; color: #E2E8F0; margin-top: 4px; font-family: monospace; word-break: break-word;">
+                                    Checking local cache and downloading model weights...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Live Active Engine & Model Banner -->
                     <div class="active-model-hero-card" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px 18px; margin: 14px 0 18px 0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
                         <div>

@@ -6,7 +6,7 @@ import asyncio
 import io
 import logging
 import time
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Callable, Optional
 
 try:
     import numpy as np
@@ -33,8 +33,8 @@ class LocalWhisperEngine(BaseSTTEngine):
             vad_threshold=config.audio.vad_threshold,
         )
 
-    async def initialize(self) -> bool:
-        """Load Faster-Whisper model into memory (GPU or CPU)."""
+    async def initialize(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
+        """Load Faster-Whisper model into memory (GPU or CPU) with live progress reporting."""
         try:
             from faster_whisper import WhisperModel
             import torch
@@ -47,7 +47,9 @@ class LocalWhisperEngine(BaseSTTEngine):
             if compute_type == "auto":
                 compute_type = "float16" if device == "cuda" else "int8"
 
-            model_size = self.config.local_whisper.model_size
+            model_size = self.config.local_whisper.model_size or "base.en"
+            if status_callback:
+                status_callback(f"Downloading/loading Faster-Whisper '{model_size}' model ({device}, {compute_type})...")
             logger.info(f"Loading faster-whisper model '{model_size}' on {device} ({compute_type})...")
 
             loop = asyncio.get_event_loop()
@@ -55,13 +57,21 @@ class LocalWhisperEngine(BaseSTTEngine):
                 None,
                 lambda: WhisperModel(model_size, device=device, compute_type=compute_type),
             )
+            if status_callback:
+                status_callback(f"✅ Faster-Whisper ({model_size}) ready!")
             logger.info("Faster-Whisper model loaded successfully.")
             return True
         except ImportError:
-            logger.error("faster-whisper is not installed. Install with: pip install faster-whisper")
+            err = "faster-whisper is not installed. Install with: pip install faster-whisper torch"
+            if status_callback:
+                status_callback(f"❌ {err}")
+            logger.error(err)
             return False
         except Exception as e:
-            logger.error(f"Failed to load Faster-Whisper model: {e}")
+            err = f"Failed to load Faster-Whisper model: {e}"
+            if status_callback:
+                status_callback(f"❌ {err}")
+            logger.error(err)
             return False
 
     def _transcribe_buffer(self, audio_float32: np.ndarray) -> str:

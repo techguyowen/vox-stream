@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Callable, Optional
 
 from .base import BaseSTTEngine, CaptionCallback, TranscriptEvent
 from ..config import AppConfig
@@ -22,13 +22,21 @@ class VoskEngine(BaseSTTEngine):
         self.config = config
         self.model = None
 
-    async def initialize(self) -> bool:
-        """Load or download Vosk model into memory."""
+    async def initialize(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
+        """Load or download Vosk model into memory with progress updates."""
         try:
             import vosk
 
             # Suppress noisy C-level Kaldi log spam
             vosk.SetLogLevel(-1)
+
+            model_name = (self.config.vosk.model_name or "small").strip().lower()
+            is_accurate = model_name in ("accurate", "large", "en-us-0.22", "vosk-model-en-us-0.22")
+            model_desc = "vosk-model-en-us-0.22 (1.8GB)" if is_accurate else "vosk-model-small-en-us-0.15 (40MB)"
+
+            if status_callback:
+                status_callback(f"Checking Vosk cache for {model_desc}...")
+            logger.info(f"Loading Vosk model ({model_desc})...")
 
             loop = asyncio.get_event_loop()
 
@@ -36,29 +44,49 @@ class VoskEngine(BaseSTTEngine):
                 # 1. Custom model path if specified
                 custom_path = (self.config.vosk.model_path or "").strip()
                 if custom_path and Path(custom_path).exists():
+                    if status_callback:
+                        status_callback(f"Loading custom Vosk model from: {custom_path}")
                     logger.info(f"Loading custom Vosk model from: {custom_path}")
                     return vosk.Model(model_path=custom_path)
 
                 # 2. Named model presets
-                model_name = (self.config.vosk.model_name or "small").strip().lower()
-                if model_name in ("accurate", "large", "en-us-0.22", "vosk-model-en-us-0.22"):
+                if is_accurate:
+                    acc_cache = Path.home() / ".cache" / "vosk" / "vosk-model-en-us-0.22"
+                    if acc_cache.exists():
+                        if status_callback:
+                            status_callback("Loading cached Vosk accurate model (~1.8GB)...")
+                        return vosk.Model(model_path=str(acc_cache))
+                    if status_callback:
+                        status_callback("Downloading Vosk accurate model (vosk-model-en-us-0.22, ~1.8GB, first-time setup)...")
                     logger.info("Loading accurate Vosk model (vosk-model-en-us-0.22)...")
                     return vosk.Model(model_name="vosk-model-en-us-0.22")
                 else:
-                    logger.info("Loading lightweight Vosk model (vosk-model-small-en-us-0.15)...")
                     small_cache = Path.home() / ".cache" / "vosk" / "vosk-model-small-en-us-0.15"
                     if small_cache.exists():
+                        if status_callback:
+                            status_callback("Loading cached Vosk small model (~40MB)...")
                         return vosk.Model(model_path=str(small_cache))
+                    if status_callback:
+                        status_callback("Downloading Vosk small model (vosk-model-small-en-us-0.15, ~40MB)...")
+                    logger.info("Loading lightweight Vosk model (vosk-model-small-en-us-0.15)...")
                     return vosk.Model(model_name="vosk-model-small-en-us-0.15")
 
             self.model = await loop.run_in_executor(None, _load_model)
+            if status_callback:
+                status_callback(f"✅ Vosk model loaded ready!")
             logger.info("Vosk model loaded successfully.")
             return True
         except ImportError:
-            logger.error("vosk is not installed. Install with: pip install vosk")
+            err = "vosk is not installed. Install with: pip install vosk"
+            if status_callback:
+                status_callback(f"❌ {err}")
+            logger.error(err)
             return False
         except Exception as e:
-            logger.error(f"Failed to load Vosk model: {e}")
+            err = f"Failed to load Vosk model: {e}"
+            if status_callback:
+                status_callback(f"❌ {err}")
+            logger.error(err)
             return False
 
     async def start_streaming(

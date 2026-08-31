@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Callable, Optional
 
 try:
     import speech_recognition as sr
@@ -40,7 +40,7 @@ class GoogleWebEngine(BaseSTTEngine):
         )
         self._recognizer = sr.Recognizer() if sr is not None else None
 
-    async def initialize(self) -> bool:
+    async def initialize(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
         """Zero configuration required - always ready!"""
         logger.info("Initialized Google Speech (Free / Zero-Setup) engine. No API key needed!")
         return True

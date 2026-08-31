@@ -6,7 +6,7 @@ import logging
 import os
 import time
 import urllib.parse
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Callable, Optional
 
 import websockets
 
@@ -56,7 +56,7 @@ class BandwidthEngine(BaseSTTEngine):
                         except Exception as e:
                             logger.error(f"Error flushing final transcript: {e}")
 
-    async def initialize(self) -> bool:
+    async def initialize(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
         if not self.api_key:
             logger.warning("Bandwidth API Key is not set in config.json or BANDWIDTH_API_KEY environment variable.")
             return False

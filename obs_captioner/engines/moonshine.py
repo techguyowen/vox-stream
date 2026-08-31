@@ -6,7 +6,7 @@ import asyncio
 import logging
 import os
 import time
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Callable, Optional
 
 # Force Keras to use PyTorch backend before any imports
 os.environ["KERAS_BACKEND"] = "torch"
@@ -37,34 +37,48 @@ class MoonshineEngine(BaseSTTEngine):
             vad_threshold=config.audio.vad_threshold,
         )
 
-    async def initialize(self) -> bool:
-        """Load Moonshine model into memory."""
+    async def initialize(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
+        """Load Moonshine model into memory with progress updates."""
         try:
-            import tokenizers
-            import moonshine
-
             model_name = (self.config.moonshine.model_name or "moonshine/tiny").strip()
             if not model_name.startswith("moonshine/"):
                 model_name = f"moonshine/{model_name}"
 
+            if status_callback:
+                status_callback(f"Checking Moonshine cache / downloading {model_name}...")
             logger.info(f"Loading Moonshine model '{model_name}' (PyTorch CPU/GPU)...")
+
+            import tokenizers
+            import moonshine
 
             loop = asyncio.get_event_loop()
 
             def _load():
+                if status_callback:
+                    status_callback(f"Downloading/loading neural weights for {model_name}...")
                 m = moonshine.load_model(model_name)
+                if status_callback:
+                    status_callback("Loading neural tokenizer...")
                 tok_file = moonshine.ASSETS_DIR / "tokenizer.json"
                 tok = tokenizers.Tokenizer.from_file(str(tok_file))
                 return m, tok
 
             self.model, self.tokenizer = await loop.run_in_executor(None, _load)
+            if status_callback:
+                status_callback(f"✅ Moonshine ({model_name}) ready!")
             logger.info("Moonshine model and tokenizer loaded successfully.")
             return True
         except ImportError as ie:
-            logger.error(f"useful-moonshine dependencies missing: {ie}. Install with: pip install useful-moonshine")
+            err = f"useful-moonshine dependencies missing: {ie}. Install with: pip install useful-moonshine"
+            if status_callback:
+                status_callback(f"❌ {err}")
+            logger.error(err)
             return False
         except Exception as e:
-            logger.error(f"Failed to load Moonshine model: {e}")
+            err = f"Failed to load Moonshine model: {e}"
+            if status_callback:
+                status_callback(f"❌ {err}")
+            logger.error(err)
             return False
 
     def _transcribe_buffer(self, audio_float32: np.ndarray) -> str:

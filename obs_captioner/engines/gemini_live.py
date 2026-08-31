@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import os
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Callable, Optional
 
 from .base import BaseSTTEngine, CaptionCallback, TranscriptEvent
 from ..config import AppConfig
@@ -21,7 +21,7 @@ class GeminiLiveEngine(BaseSTTEngine):
         self.api_key = config.gemini_live.api_key or os.environ.get("GEMINI_API_KEY", "")
         self.client = None
 
-    async def initialize(self) -> bool:
+    async def initialize(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
         """Validate API key and initialize Gemini Live client."""
         if not self.api_key:
             logger.warning("GEMINI_API_KEY is not set in config.json or environment variables!")

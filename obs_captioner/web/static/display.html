@@ -991,10 +991,23 @@
                 if (res.ok) {
                     const data = await res.json();
                     if (statusText && ws && ws.readyState === WebSocket.OPEN) {
-                        const shortEngine = formatEngineBadge(data.engine, data.engine_name);
-                        statusText.textContent = `LIVE • ${shortEngine}`;
-                        if (statusPill) {
-                            statusPill.title = `Active Engine: ${data.engine_name || data.engine} | Uptime: ${data.uptime_seconds || 0}s`;
+                        if (data.is_switching_engine) {
+                            statusText.textContent = `⏳ DOWNLOADING...`;
+                            if (statusPill) {
+                                statusPill.style.background = "rgba(245, 158, 11, 0.15)";
+                                statusPill.style.color = "#F59E0B";
+                                statusPill.style.borderColor = "rgba(245, 158, 11, 0.35)";
+                                statusPill.title = data.engine_switch_status || "Downloading speech recognition model...";
+                            }
+                        } else {
+                            const shortEngine = formatEngineBadge(data.engine, data.engine_name);
+                            statusText.textContent = `LIVE • ${shortEngine}`;
+                            if (statusPill) {
+                                statusPill.style.background = "rgba(16, 185, 129, 0.12)";
+                                statusPill.style.color = "var(--success)";
+                                statusPill.style.borderColor = "rgba(16, 185, 129, 0.25)";
+                                statusPill.title = `Active Engine: ${data.engine_name || data.engine} | Uptime: ${data.uptime_seconds || 0}s`;
+                            }
                         }
                     }
                 }

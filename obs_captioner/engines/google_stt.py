@@ -4,7 +4,7 @@ import asyncio
 import logging
 import os
 import time
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Callable, Optional
 
 from .base import BaseSTTEngine, CaptionCallback, TranscriptEvent
 from ..config import AppConfig
@@ -25,7 +25,7 @@ class GoogleSTTEngine(BaseSTTEngine):
         self._speech_module = None
         self._types_module = None
 
-    async def initialize(self) -> bool:
+    async def initialize(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
         """Verify credentials and create Google Speech client."""
         cred_path = self.config.google_stt.credentials_path
         if cred_path and os.path.isfile(cred_path):

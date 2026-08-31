@@ -20,6 +20,7 @@ class TranscriptEvent:
 
 
 CaptionCallback = Callable[[TranscriptEvent], Coroutine[any, any, None]]
+StatusCallback = Callable[[str], None]
 
 
 class BaseSTTEngine(ABC):
@@ -30,8 +31,8 @@ class BaseSTTEngine(ABC):
         self.is_running = False
 
     @abstractmethod
-    async def initialize(self) -> bool:
-        """Initialize models, credentials, or network clients."""
+    async def initialize(self, status_callback: Optional[StatusCallback] = None) -> bool:
+        """Initialize models, credentials, or network clients with live progress reporting."""
         pass
 
     @abstractmethod

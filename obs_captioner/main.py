@@ -95,6 +95,10 @@ async def main_async(args):
             return "Bandwidth Labs Live STT (Real-Time Cloud)"
         return eng
 
+    engine_switch_status = ""
+    engine_switch_target = ""
+    engine_switch_error = None
+
     def get_app_status():
         return {
             "is_running": not is_paused,
@@ -104,24 +108,55 @@ async def main_async(args):
             "engine_name": engine.name if engine else config.general.engine,
             "model_detail": get_model_detail(config),
             "is_switching_engine": is_switching_engine,
+            "engine_switch_status": engine_switch_status,
+            "engine_switch_target": engine_switch_target,
+            "engine_switch_error": engine_switch_error,
         }
 
     async def switch_engine_async(new_cfg: AppConfig):
-        nonlocal engine, initialized, is_switching_engine
+        nonlocal engine, initialized, is_switching_engine, engine_switch_status, engine_switch_target, engine_switch_error
         async with engine_lock:
             is_switching_engine = True
+            engine_switch_error = None
+            target_name = get_model_detail(new_cfg)
+            engine_switch_target = target_name
+            engine_switch_status = f"Preparing to load {target_name}..."
+
+            async def broadcast_status(text: str, is_err: bool = False):
+                nonlocal engine_switch_status, engine_switch_error
+                engine_switch_status = text
+                if is_err:
+                    engine_switch_error = text
+                if web_server:
+                    await web_server.broadcast_control({
+                        "type": "engine_switching_status",
+                        "is_switching": is_switching_engine,
+                        "status_text": text,
+                        "target_engine": new_cfg.general.engine,
+                        "target_name": target_name,
+                        "is_error": is_err,
+                    })
+
+            def status_callback(msg: str):
+                logger.info(f"Engine status update: {msg}")
+                asyncio.run_coroutine_threadsafe(broadcast_status(msg, is_err="❌" in msg), loop)
+
             try:
+                await broadcast_status("Stopping previous recognition engine...")
                 if engine:
                     logger.info(f"Stopping active engine: {engine.name}...")
                     await engine.stop()
                     await asyncio.sleep(0.1)
 
+                await broadcast_status(f"Initializing {target_name} (checking cache / downloading weights)...")
                 logger.info(f"Instantiating new STT engine for: {new_cfg.general.engine}...")
                 new_eng = create_engine(new_cfg)
-                init_ok = await new_eng.initialize()
+                init_ok = await new_eng.initialize(status_callback=status_callback)
                 if init_ok:
                     engine = new_eng
                     initialized = True
+                    engine_switch_error = None
+                    engine_switch_status = f"✅ {engine.name} ready!"
                     logger.info(f"✅ STT engine switched to: {engine.name} ({get_model_detail(new_cfg)})")
                     if web_server:
                         await web_server.broadcast_control({
@@ -131,11 +166,24 @@ async def main_async(args):
                             "model_detail": get_model_detail(new_cfg),
                         })
                 else:
+                    err_msg = engine_switch_error or f"Failed to initialize '{target_name}'. See server logs for details."
+                    await broadcast_status(err_msg, is_err=True)
                     logger.error(f"Failed to initialize engine '{new_eng.name}'.")
             except Exception as e:
+                err_msg = f"Error during engine switch: {e}"
+                await broadcast_status(err_msg, is_err=True)
                 logger.error(f"Error during engine switch: {e}", exc_info=True)
             finally:
                 is_switching_engine = False
+                if web_server:
+                    await web_server.broadcast_control({
+                        "type": "engine_switching_status",
+                        "is_switching": False,
+                        "status_text": engine_switch_status,
+                        "target_engine": new_cfg.general.engine,
+                        "target_name": target_name,
+                        "is_error": bool(engine_switch_error),
+                    })
 
     active_engine_type = config.general.engine
     active_vosk_model = config.vosk.model_name
