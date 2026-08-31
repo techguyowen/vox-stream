@@ -309,6 +309,10 @@ async def main_async(args):
         logger.info("Cleaning up resources...")
         if pipeline_task:
             pipeline_task.cancel()
+            try:
+                await pipeline_task
+            except asyncio.CancelledError:
+                pass
         if engine:
             await engine.stop()
         if audio_capture:

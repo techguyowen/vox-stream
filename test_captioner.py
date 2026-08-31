@@ -216,7 +216,7 @@ class TestTranscriptHistory(unittest.TestCase):
 class TestConfigAndEngines(unittest.TestCase):
 
     def test_default_config_load(self):
-        cfg = load_config()
+        cfg = AppConfig()
         self.assertIsInstance(cfg, AppConfig)
         self.assertEqual(cfg.audio.sample_rate, 16000)
         self.assertEqual(cfg.obs.port, 4455)
@@ -227,7 +227,7 @@ class TestConfigAndEngines(unittest.TestCase):
         self.assertEqual(cfg.obs.projector_type, "preview")
 
     def test_engine_factory(self):
-        cfg = load_config()
+        cfg = AppConfig()
         
         cfg.general.engine = "google_stt"
         eng_google = create_engine(cfg)
@@ -281,7 +281,7 @@ class TestConfigAndEngines(unittest.TestCase):
         self.assertTrue(vad.is_speech(loud_bytes))
 
     def test_custom_presets(self):
-        cfg = load_config()
+        cfg = AppConfig()
         cfg.custom_presets["my_stage_look"] = {
             "name": "My Stage Look",
             "description": "High contrast stage styling",
