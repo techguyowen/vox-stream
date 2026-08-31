@@ -15,6 +15,7 @@ This step-by-step guide walks you through setting up the **VoxStream Real-Time L
    - [Option C: Vosk (Ultra-Fast CPU Streaming - Zero Latency)](#option-c-vosk-kaldi-ultra-fast-cpu-streaming)
    - [Option D: Google Gemini 3.5 Transcribe Live](#option-d-google-gemini-35-transcribe-live)
    - [Option E: Local Faster-Whisper (NVIDIA GPU / CUDA)](#option-e-local-faster-whisper-nvidia-gpu)
+   - [Option F: Bandwidth Labs Live STT (Streaming Cloud)](#option-f-bandwidth-labs-live-stt-streaming-cloud)
 4. [Step 3: Setting Up OBS Studio](#-step-3-setting-up-obs-studio)
    - [Add the Control Dock](#a-add-the-in-obs-control-dock-recommended)
    - [Add the Stream Overlay](#b-add-the-stream-caption-overlay)
@@ -118,6 +119,15 @@ You can select and configure your engine directly in the **Web Control Dashboard
 ### Option E: Local Faster-Whisper (NVIDIA GPU)
 * **Best for**: Windows PCs with dedicated NVIDIA GPUs (e.g. GTX 1660, RTX 3060/4070+).
 * **Setup**: Select **Local Faster-Whisper** and click the **🎮 GTX 1660 (Recommended)** 1-click preset button.
+
+---
+
+### Option F: Bandwidth Labs Live STT (Streaming Cloud)
+* **Best for**: Ultra-fast enterprise real-time streaming over WebSocket.
+* **Setup**:
+  1. Get an API key from [Bandwidth Labs (labs.bandwidth.com)](https://labs.bandwidth.com/docs/speech-to-text).
+  2. Paste your `bwa_key_...` in the Web Dashboard under **Bandwidth Labs Settings** (or set `BANDWIDTH_API_KEY` env var).
+  3. Click **💾 Save Audio & Engine**.
 
 ---
 
