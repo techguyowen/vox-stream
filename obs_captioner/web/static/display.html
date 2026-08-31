@@ -310,6 +310,131 @@
             background: rgba(255, 255, 255, 0.15);
         }
 
+        
+        /* Full History Drawer / Modal */
+        .history-modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            z-index: 1000;
+            display: flex;
+            justify-content: flex-end;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease;
+        }
+
+        .history-modal-backdrop.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .history-drawer {
+            width: 100%;
+            max-width: 540px;
+            height: 100%;
+            background: var(--card-bg);
+            border-left: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            box-shadow: -8px 0 32px rgba(0, 0, 0, 0.5);
+            transform: translateX(100%);
+            transition: transform 0.25s ease;
+        }
+
+        .history-modal-backdrop.active .history-drawer {
+            transform: translateX(0);
+        }
+
+        .drawer-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .drawer-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-color);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .drawer-close-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 20px;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .drawer-close-btn:hover {
+            color: var(--text-color);
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .drawer-search-bar {
+            padding: 12px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            gap: 10px;
+        }
+
+        .drawer-search-input {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+            color: var(--text-color);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            outline: none;
+        }
+
+        .drawer-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .drawer-history-item {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 10px 14px;
+            font-size: 14px;
+            line-height: 1.45;
+        }
+
+        .drawer-history-time {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11.5px;
+            color: var(--accent);
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .drawer-footer {
+            padding: 14px 20px;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
         /* Mobile & Tablet Responsive Design */
         @media (max-width: 768px) {
             :root {
@@ -411,6 +536,20 @@
                 <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
             </select>
 
+            <!-- History Length / Depth Selector -->
+            <select class="theme-select" id="historySelect" title="History Length on Screen">
+                <option value="20" selected>📜 History: 20 Lines</option>
+                <option value="10">📜 History: 10 Lines</option>
+                <option value="5">📜 History: 5 Lines</option>
+                <option value="50">📜 History: 50 Lines</option>
+                <option value="100">📜 History: 100 Lines</option>
+                <option value="2">⚡ Live Only (2 Lines)</option>
+                <option value="1">✨ Live Sentence Only</option>
+            </select>
+
+            <!-- Full History Modal Drawer Button -->
+            <button class="ctrl-btn" id="btnToggleHistoryDrawer" title="Open Full Session Transcript Drawer">📜 Full History</button>
+
             <!-- Theme Selector -->
             <select class="theme-select" id="themeSelect">
                 <option value="theme-oled" selected>🌑 OLED Black</option>
@@ -440,6 +579,29 @@
         </div>
     </main>
 
+    
+    <!-- Full History Slide-Over Drawer -->
+    <div class="history-modal-backdrop" id="historyDrawerBackdrop">
+        <div class="history-drawer">
+            <div class="drawer-header">
+                <div class="drawer-title">📜 Session Transcript History</div>
+                <button class="drawer-close-btn" id="btnCloseHistoryDrawer" title="Close Drawer">✕</button>
+            </div>
+            <div class="drawer-search-bar">
+                <input type="text" class="drawer-search-input" id="drawerSearchInput" placeholder="🔍 Search transcript..." />
+                <button class="ctrl-btn" id="btnRefreshHistoryDrawer" title="Refresh Transcript">🔄</button>
+            </div>
+            <div class="drawer-body" id="drawerHistoryList">
+                <div class="empty-indicator" style="padding: 40px 0; font-size: 14px;">Loading transcript history...</div>
+            </div>
+            <div class="drawer-footer">
+                <button class="ctrl-btn" id="btnCopyFullHistory" style="flex: 1;">📋 Copy Transcript</button>
+                <a href="/api/transcript/export?format=txt" download class="ctrl-btn" style="text-decoration: none;">💾 TXT</a>
+                <a href="/api/transcript/export?format=srt" download class="ctrl-btn" style="text-decoration: none;">💾 SRT</a>
+            </div>
+        </div>
+    </div>
+
     <!-- Floating Actions -->
     <div class="floating-controls">
         <button class="float-btn" id="btnToggleHeader" title="Toggle Header Bar">⚙️</button>
@@ -451,15 +613,16 @@
         const isMobile = window.innerWidth <= 768;
         const defaultFontSize = isMobile ? 28 : 48;
         let currentFontSize = defaultFontSize;
-        const maxHistorySentences = 20;
+
+        // URL & Preference state
+        const urlParams = new URLSearchParams(window.location.search);
+        let currentLang = urlParams.get('lang') || localStorage.getItem('voxstream_display_lang') || 'en';
+        let maxHistorySentences = parseInt(urlParams.get('history') || localStorage.getItem('voxstream_display_history_depth') || '20') || 20;
+
         let finalSentences = [];
         let interimText = "";
         let ws = null;
         let autoScroll = true;
-
-        // URL Language override (e.g. /display?lang=es)
-        const urlParams = new URLSearchParams(window.location.search);
-        let currentLang = urlParams.get('lang') || localStorage.getItem('voxstream_display_lang') || 'en';
 
         // DOM Elements
         const stageContainer = document.getElementById('stageContainer');
@@ -470,7 +633,11 @@
         const fontSelect = document.getElementById('fontSelect');
         const themeSelect = document.getElementById('themeSelect');
         const langSelect = document.getElementById('langSelect');
+        const historySelect = document.getElementById('historySelect');
         const headerBar = document.getElementById('headerBar');
+        const historyDrawerBackdrop = document.getElementById('historyDrawerBackdrop');
+        const drawerHistoryList = document.getElementById('drawerHistoryList');
+        const drawerSearchInput = document.getElementById('drawerSearchInput');
 
         // Language Selector
         if (langSelect) {
@@ -567,6 +734,101 @@
             themeSelect.addEventListener('change', (e) => {
                 setTheme(e.target.value);
                 localStorage.setItem('voxstream_display_theme', e.target.value);
+            });
+        }
+
+        // History Depth Selector
+        if (historySelect) {
+            historySelect.value = String(maxHistorySentences);
+            historySelect.addEventListener('change', async (e) => {
+                maxHistorySentences = parseInt(e.target.value) || 20;
+                localStorage.setItem('voxstream_display_history_depth', maxHistorySentences);
+
+                // Fetch new depth from history API if expanding
+                if (maxHistorySentences > finalSentences.length) {
+                    await loadInitialHistory();
+                } else {
+                    while (finalSentences.length > maxHistorySentences) {
+                        finalSentences.shift();
+                    }
+                    renderCaptions();
+                }
+            });
+        }
+
+        // Full History Drawer Handlers
+        async function loadDrawerHistory(searchQuery = "") {
+            if (!drawerHistoryList) return;
+            try {
+                const res = await fetch(`/api/transcript/history?limit=250&search=${encodeURIComponent(searchQuery)}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    const entries = data.history || [];
+                    if (entries.length === 0) {
+                        drawerHistoryList.innerHTML = '<div class="empty-indicator" style="padding: 40px 0; font-size: 14px;">No transcript entries found.</div>';
+                        return;
+                    }
+                    drawerHistoryList.innerHTML = entries.map(item => `
+                        <div class="drawer-history-item">
+                            <div class="drawer-history-time">[${escapeHtml(item.relative_time || '')}]</div>
+                            <div>${escapeHtml(item.text || '')}</div>
+                        </div>
+                    `).join('');
+                }
+            } catch(e) {
+                drawerHistoryList.innerHTML = '<div class="empty-indicator" style="padding: 40px 0; font-size: 14px;">Failed to load transcript history.</div>';
+            }
+        }
+
+        const btnToggleHistoryDrawer = document.getElementById('btnToggleHistoryDrawer');
+        if (btnToggleHistoryDrawer && historyDrawerBackdrop) {
+            btnToggleHistoryDrawer.addEventListener('click', () => {
+                historyDrawerBackdrop.classList.add('active');
+                loadDrawerHistory(drawerSearchInput ? drawerSearchInput.value : '');
+            });
+        }
+
+        const btnCloseHistoryDrawer = document.getElementById('btnCloseHistoryDrawer');
+        if (btnCloseHistoryDrawer && historyDrawerBackdrop) {
+            btnCloseHistoryDrawer.addEventListener('click', () => {
+                historyDrawerBackdrop.classList.remove('active');
+            });
+        }
+
+        if (historyDrawerBackdrop) {
+            historyDrawerBackdrop.addEventListener('click', (e) => {
+                if (e.target === historyDrawerBackdrop) {
+                    historyDrawerBackdrop.classList.remove('active');
+                }
+            });
+        }
+
+        if (drawerSearchInput) {
+            drawerSearchInput.addEventListener('input', () => {
+                loadDrawerHistory(drawerSearchInput.value);
+            });
+        }
+
+        const btnRefreshHistoryDrawer = document.getElementById('btnRefreshHistoryDrawer');
+        if (btnRefreshHistoryDrawer) {
+            btnRefreshHistoryDrawer.addEventListener('click', () => {
+                loadDrawerHistory(drawerSearchInput ? drawerSearchInput.value : '');
+            });
+        }
+
+        const btnCopyFullHistory = document.getElementById('btnCopyFullHistory');
+        if (btnCopyFullHistory) {
+            btnCopyFullHistory.addEventListener('click', async () => {
+                try {
+                    const res = await fetch('/api/transcript/history?limit=500');
+                    if (res.ok) {
+                        const data = await res.json();
+                        const lines = (data.history || []).map(e => `[${e.relative_time || ''}] ${e.text || ''}`);
+                        await navigator.clipboard.writeText(lines.join('\n'));
+                        btnCopyFullHistory.textContent = '✅ Copied!';
+                        setTimeout(() => { btnCopyFullHistory.textContent = '📋 Copy Transcript'; }, 2000);
+                    }
+                } catch(e) {}
             });
         }
 
@@ -778,10 +1040,12 @@
         // Initial history loader
         async function loadInitialHistory() {
             try {
-                const res = await fetch('/api/transcript/history?limit=15');
+                const queryLimit = Math.max(15, maxHistorySentences);
+                const res = await fetch(`/api/transcript/history?limit=${queryLimit}`);
                 if (res.ok) {
                     const data = await res.json();
-                    if (data.history && data.history.length > 0 && finalSentences.length === 0) {
+                    if (data.history && data.history.length > 0) {
+                        finalSentences = [];
                         const items = [...data.history].reverse();
                         for (const item of items) {
                             const raw = (item.text || '').trim();
