@@ -172,8 +172,8 @@ For secondary displays, stage confidence monitors, or TVs in another room:
 
 ---
 
-### D. Enable Zero-Touch Auto-Start with OBS
-To automatically start and stop captions when OBS opens or when you click "Start Streaming":
+### D. Enable Zero-Touch Auto-Start with OBS (Launch when OBS Opens) 🚀
+If you want VoxStream to **automatically start running in the background the moment OBS Studio opens**, you can link the included OBS Python script:
 1. In OBS Studio, go to **Tools ➔ Scripts**.
 2. On **macOS**:
    * Under **Python Settings**, verify your Python framework path is selected (e.g. `/opt/homebrew/Frameworks/Python.framework/Versions/3.11` or `/Library/Frameworks/Python.framework/Versions/3.11`).

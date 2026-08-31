@@ -157,6 +157,15 @@ cd vox-stream
 
 ---
 
+### 4. Auto-Start VoxStream Automatically When OBS Opens 🚀
+You can have OBS Studio launch VoxStream in the background automatically whenever OBS opens:
+1. In OBS Studio, go to **Tools $\rightarrow$ Scripts**.
+2. **On macOS**: In the **Python Settings** tab, ensure your Python path is set (e.g. `/opt/homebrew/Frameworks/Python.framework/Versions/3.11` or `/Library/Frameworks/Python.framework/Versions/3.11`). On Windows, select your Python install folder.
+3. Click the **Scripts** tab, click **+ (Add Script)**, and select `obs_script/obs_live_captions.py`.
+4. Check **"Auto-start when OBS launches"** and choose your default speech engine (e.g. *Bandwidth Labs, Vosk, Moonshine, etc.*).
+
+---
+
 ## ⚡ REST & WebSocket API
 
 | Method | Endpoint | Description |
