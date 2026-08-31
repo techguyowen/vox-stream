@@ -104,7 +104,9 @@ body {
 .header-controls {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
 }
 
 /* VU Meter */
@@ -147,6 +149,7 @@ body {
     font-size: 12px;
     font-weight: 600;
     border: 1px solid var(--border-color);
+    white-space: nowrap;
 }
 
 .status-dot {
@@ -361,6 +364,7 @@ body {
 /* Buttons */
 .btn {
     padding: 8px 16px;
+    white-space: nowrap;
     border-radius: 8px;
     font-size: 13px;
     font-weight: 600;
@@ -427,6 +431,11 @@ body {
 .preview-actions {
     display: flex;
     gap: 8px;
+    width: 100%;
+}
+
+.preview-actions input {
+    flex: 1;
 }
 
 /* Caption Box */
