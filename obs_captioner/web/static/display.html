@@ -685,21 +685,37 @@
         const headerBar = document.getElementById('headerBar');
 
         // Mode Selector: Scrollable History vs Live Prompter
+        function applyDisplayMode(mode) {
+            currentMode = mode;
+            localStorage.setItem('voxstream_display_mode', currentMode);
+            if (displayModeSelect) displayModeSelect.value = currentMode;
+
+            if (currentMode === 'live') {
+                maxHistorySentences = 2;
+                while (finalSentences.length > 2) finalSentences.shift();
+
+                // Instantly prune DOM to max 2 lines
+                if (transcriptContent) {
+                    const finals = Array.from(transcriptContent.querySelectorAll('.caption-sentence:not(#liveInterimNode)'));
+                    while (finals.length > 2) {
+                        const oldNode = finals.shift();
+                        oldNode.remove();
+                    }
+                    scrollToBottom();
+                }
+            } else {
+                maxHistorySentences = 300;
+                if (transcriptContent) {
+                    transcriptContent.classList.remove('faded');
+                }
+                loadInitialHistory();
+            }
+        }
+
         if (displayModeSelect) {
             displayModeSelect.value = currentMode;
-            displayModeSelect.addEventListener('change', async (e) => {
-                currentMode = e.target.value;
-                localStorage.setItem('voxstream_display_mode', currentMode);
-
-                if (currentMode === 'live') {
-                    maxHistorySentences = 2;
-                    while (finalSentences.length > 2) finalSentences.shift();
-                    renderCaptions();
-                } else {
-                    maxHistorySentences = 300;
-                    if (transcriptContent) transcriptContent.classList.remove('faded');
-                    await loadInitialHistory();
-                }
+            displayModeSelect.addEventListener('change', (e) => {
+                applyDisplayMode(e.target.value);
             });
         }
 
@@ -1147,11 +1163,17 @@
                 if (res.ok) {
                     const data = await res.json();
                     if (data.history && data.history.length > 0) {
+                        if (transcriptContent) {
+                            const finals = transcriptContent.querySelectorAll('.caption-sentence:not(#liveInterimNode)');
+                            finals.forEach(f => f.remove());
+                        }
+                        finalSentences = [];
                         const items = [...data.history].reverse();
                         for (const item of items) {
                             const raw = (item.text || '').trim();
                             if (raw) appendFinalSentence(raw);
                         }
+                        scrollToBottom();
                     }
                 }
             } catch(e) {}
