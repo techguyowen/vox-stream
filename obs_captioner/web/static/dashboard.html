@@ -52,6 +52,9 @@
                 </div>
 
                 <button id="btn-toggle-engine" class="btn btn-danger">⏹ Stop Captions</button>
+                <button id="btn-open-features-modal" class="btn btn-secondary" title="Customize visible tabs & feature modules" style="display: inline-flex; align-items: center; gap: 5px; font-weight: 600;">
+                    <span>⚙️ Features</span>
+                </button>
                 <button id="btn-restart-app" class="btn btn-secondary" title="Cleanly restart the VoxStream backend process">🔄 Restart</button>
                 <button id="btn-shutdown-app" class="btn btn-danger" title="Shut down the VoxStream application">🛑 Quit</button>
             </div>
@@ -1212,5 +1215,135 @@
     <div id="toast-container" class="toast-container"></div>
 
     <script src="/static/dashboard.js"></script>
+
+    <!-- Feature Manager / Module Settings Modal -->
+    <div id="modal-feature-settings" class="modal-backdrop" style="display: none;">
+        <div class="modal-content">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+                <h2 style="margin: 0; font-size: 17px; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
+                    <span>⚙️ Customize Workspace Features &amp; Tabs</span>
+                </h2>
+                <button type="button" id="btn-close-features-modal" style="background: none; border: none; color: var(--text-muted); font-size: 20px; font-weight: bold; cursor: pointer; padding: 4px 8px;">✕</button>
+            </div>
+
+            <p class="subtext" style="margin-bottom: 14px; font-size: 12.5px;">
+                Enable or disable feature modules to declutter your dashboard tabs. Hidden tabs will vanish from the top navigation bar.
+            </p>
+
+            <!-- Quick Workflow Presets -->
+            <div style="margin-bottom: 16px;">
+                <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 6px;">⚡ Quick Presets:</span>
+                <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                    <button type="button" class="btn-workflow-preset btn btn-secondary btn-sm" data-preset="all">🎛️ Show All</button>
+                    <button type="button" class="btn-workflow-preset btn btn-secondary btn-sm" data-preset="church">⛪ Church / AV</button>
+                    <button type="button" class="btn-workflow-preset btn btn-secondary btn-sm" data-preset="streamer">🎮 Streamer</button>
+                    <button type="button" class="btn-workflow-preset btn btn-secondary btn-sm" data-preset="minimal">⚡ Minimalist</button>
+                </div>
+            </div>
+
+            <div class="feature-toggle-list" style="display: flex; flex-direction: column; gap: 10px;">
+                <!-- Scripture Overlay -->
+                <div class="feature-toggle-item" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px;">
+                    <div>
+                        <strong style="color: var(--text-main); display: block; font-size: 13.5px;">📖 Scripture Overlay &amp; Offline Bible</strong>
+                        <span style="font-size: 11.5px; color: var(--text-muted);">Spoken scripture detection (BSB, WEB, KJV), verse range parsing, and standalone overlay.</span>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="feat_toggle_bible" data-target-tab="bible" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <!-- Custom Glossary -->
+                <div class="feature-toggle-item" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px;">
+                    <div>
+                        <strong style="color: var(--text-main); display: block; font-size: 13.5px;">📚 Custom Glossary &amp; Vocabulary</strong>
+                        <span style="font-size: 11.5px; color: var(--text-muted);">Phonetic word replacement, proper nouns, jargon, and bulk CSV import/export.</span>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="feat_toggle_vocabulary" data-target-tab="vocabulary" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <!-- Safety Filter -->
+                <div class="feature-toggle-item" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px;">
+                    <div>
+                        <strong style="color: var(--text-main); display: block; font-size: 13.5px;">🛡️ Safety &amp; Profanity Filter</strong>
+                        <span style="font-size: 11.5px; color: var(--text-muted);">Wholesome replacement, asterisk masking, blacklist CRUD, and church whitelist.</span>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="feat_toggle_filter" data-target-tab="filter" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <!-- Translation -->
+                <div class="feature-toggle-item" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px;">
+                    <div>
+                        <strong style="color: var(--text-main); display: block; font-size: 13.5px;">🌐 Live Translation</strong>
+                        <span style="font-size: 11.5px; color: var(--text-muted);">Real-time subtitle translation into 30+ international languages.</span>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="feat_toggle_translation" data-target-tab="translation" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <!-- External Displays & Projectors -->
+                <div class="feature-toggle-item" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px;">
+                    <div>
+                        <strong style="color: var(--text-main); display: block; font-size: 13.5px;">📺 Projectors &amp; External Displays</strong>
+                        <span style="font-size: 11.5px; color: var(--text-muted);">Automated OBS full-screen projector launching and display monitor routing.</span>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="feat_toggle_projectors" data-target-tab="projectors" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <!-- Twitch Bot -->
+                <div class="feature-toggle-item" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px;">
+                    <div>
+                        <strong style="color: var(--text-main); display: block; font-size: 13.5px;">👾 Twitch Chat Caption Bot</strong>
+                        <span style="font-size: 11.5px; color: var(--text-muted);">Automated live caption broadcasting into your Twitch stream chat.</span>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="feat_toggle_twitch" data-target-tab="twitch" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <!-- Transcripts & Chapters -->
+                <div class="feature-toggle-item" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px;">
+                    <div>
+                        <strong style="color: var(--text-main); display: block; font-size: 13.5px;">📜 Transcripts &amp; YouTube Chapters</strong>
+                        <span style="font-size: 11.5px; color: var(--text-muted);">Export SRT, VTT, TXT and auto-generate YouTube description timestamps.</span>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="feat_toggle_transcript" data-target-tab="transcript" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <!-- API & Docks -->
+                <div class="feature-toggle-item" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px;">
+                    <div>
+                        <strong style="color: var(--text-main); display: block; font-size: 13.5px;">⚡ REST API &amp; In-OBS Custom Docks</strong>
+                        <span style="font-size: 11.5px; color: var(--text-muted);">API key auth, endpoints reference, and OBS Studio dock URLs.</span>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="feat_toggle_api" data-target-tab="api" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; border-top: 1px solid var(--border-color); padding-top: 14px;">
+                <button type="button" id="btn-save-feature-settings" class="btn btn-primary">✓ Done</button>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>

@@ -1,4 +1,119 @@
 
+// Feature Module Manager & Dynamic Tab Visibility
+const FEATURE_DEFAULTS = {
+    bible: true,
+    vocabulary: true,
+    filter: true,
+    translation: true,
+    projectors: true,
+    twitch: true,
+    transcript: true,
+    api: true
+};
+
+let userFeatures = { ...FEATURE_DEFAULTS };
+
+function loadFeatureSettings() {
+    try {
+        const stored = localStorage.getItem("voxstream_features");
+        if (stored) {
+            userFeatures = Object.assign({}, FEATURE_DEFAULTS, JSON.parse(stored));
+        }
+    } catch(e) {
+        userFeatures = { ...FEATURE_DEFAULTS };
+    }
+    applyFeatureToggles();
+}
+
+function saveFeatureSettings(newFeats) {
+    userFeatures = Object.assign({}, userFeatures, newFeats);
+    try {
+        localStorage.setItem("voxstream_features", JSON.stringify(userFeatures));
+    } catch(e) {}
+    applyFeatureToggles();
+}
+
+function applyFeatureToggles() {
+    for (const [tabKey, isEnabled] of Object.entries(userFeatures)) {
+        const tabBtn = document.querySelector(`.tab-btn[data-tab="${tabKey}"]`);
+        if (tabBtn) {
+            tabBtn.style.display = isEnabled ? "" : "none";
+            // If active tab was just hidden, switch back to styling (OBS Caption Overlay)
+            if (!isEnabled && tabBtn.classList.contains("active")) {
+                const defaultTab = document.querySelector('.tab-btn[data-tab="styling"]');
+                if (defaultTab) defaultTab.click();
+            }
+        }
+        const toggleInput = document.getElementById(`feat_toggle_${tabKey}`);
+        if (toggleInput) {
+            toggleInput.checked = isEnabled;
+        }
+    }
+}
+
+function initFeatureManagerHandlers() {
+    const modal = document.getElementById("modal-feature-settings");
+    const btnOpen = document.getElementById("btn-open-features-modal");
+    const btnClose = document.getElementById("btn-close-features-modal");
+    const btnDone = document.getElementById("btn-save-feature-settings");
+
+    if (btnOpen && modal) {
+        btnOpen.addEventListener("click", () => {
+            modal.style.display = "flex";
+        });
+    }
+
+    const closeModal = () => {
+        if (modal) modal.style.display = "none";
+    };
+
+    if (btnClose) btnClose.addEventListener("click", closeModal);
+    if (btnDone) btnDone.addEventListener("click", () => {
+        closeModal();
+        showToast("⚙️ Feature workspace settings saved!", "success", 2500);
+    });
+
+    // Close on backdrop click
+    if (modal) {
+        modal.addEventListener("click", (e) => {
+            if (e.target === modal) closeModal();
+        });
+    }
+
+    // Toggle input listeners
+    document.querySelectorAll(".feature-toggle-item input[type='checkbox']").forEach(input => {
+        input.addEventListener("change", (e) => {
+            const tabKey = e.target.dataset.targetTab;
+            if (tabKey) {
+                userFeatures[tabKey] = e.target.checked;
+                saveFeatureSettings({ [tabKey]: e.target.checked });
+            }
+        });
+    });
+
+    // Workflow Presets
+    document.querySelectorAll(".btn-workflow-preset").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const p = btn.dataset.preset;
+            let presetSettings = {};
+            if (p === "all") {
+                presetSettings = { bible: true, vocabulary: true, filter: true, translation: true, projectors: true, twitch: true, transcript: true, api: true };
+            } else if (p === "church") {
+                presetSettings = { bible: true, vocabulary: true, filter: true, translation: true, projectors: true, twitch: false, transcript: true, api: true };
+            } else if (p === "streamer") {
+                presetSettings = { bible: false, vocabulary: true, filter: true, translation: false, projectors: false, twitch: true, transcript: true, api: true };
+            } else if (p === "minimal") {
+                presetSettings = { bible: false, vocabulary: false, filter: false, translation: false, projectors: false, twitch: false, transcript: false, api: false };
+            }
+            saveFeatureSettings(presetSettings);
+            showToast(`⚙️ Applied ${btn.textContent.trim()} workspace preset!`, "info", 3000);
+        });
+    });
+
+    loadFeatureSettings();
+}
+
+
 // Complete Bible 66 Books & Chapter Counts for Smart Autofill
 const BIBLE_BOOKS_CHAPTERS = [
     { name: "Genesis", chapters: 50, testaments: "OT", popular: ["Genesis 1:1", "Genesis 1:26-27", "Genesis 12:1-3"] },
@@ -813,6 +928,7 @@ function renderThemeGrid(presets) {
                     showToast("🗑️ Custom preset deleted.", "info");
                     await loadThemes();
     initBibleHandlers();
+    initFeatureManagerHandlers();
                 } else {
                     const err = await res.json();
                     showToast(`⚠️ Failed to delete preset: ${err.error || "Unknown error"}`, "error");
@@ -866,6 +982,7 @@ async function applyThemePreset(themeId) {
     await loadConfig();
             await loadThemes();
     initBibleHandlers();
+    initFeatureManagerHandlers();
             showToast("🎨 Theme preset applied!", "success", 2000);
         }
     } catch (e) {
@@ -2481,6 +2598,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     await loadConfig();
     await loadThemes();
     initBibleHandlers();
+    initFeatureManagerHandlers();
     await loadAudioDevices();
     await loadObsMonitors();
     await loadVocabularyState();
