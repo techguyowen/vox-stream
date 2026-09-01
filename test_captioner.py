@@ -637,6 +637,20 @@ class TestServerEndpoints(AioHTTPTestCase):
         data = await resp.json()
         self.assertEqual(data['status'], 'canceled')
 
+    async def test_favicon_endpoint(self):
+        resp = await self.client.request('GET', '/favicon.ico')
+        self.assertEqual(resp.status, 200)
+        self.assertIn('icon', resp.content_type)
+        data = await resp.read()
+        self.assertTrue(len(data) > 0)
+
+    async def test_apple_touch_icon_endpoint(self):
+        resp = await self.client.request('GET', '/apple-touch-icon.png')
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.content_type, 'image/png')
+        data = await resp.read()
+        self.assertTrue(len(data) > 0)
+
 
 
 if __name__ == "__main__":

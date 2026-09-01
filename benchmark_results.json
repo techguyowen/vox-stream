@@ -1,0 +1,100 @@
+[
+  {
+    "name": "Google Speech Recognition (Free)",
+    "engine": "google_web",
+    "avg_wer": 88.0,
+    "avg_acc": 12.0,
+    "avg_rtf": 0.11,
+    "avg_lat_ms": 20.0,
+    "transcripts": {
+      "conversational": "",
+      "church_scripture": "",
+      "tech_broadcast": "configure the OBS browser Source overlay at 192.168 1.145 on Porte 8,765",
+      "fast_phonetics": ""
+    }
+  },
+  {
+    "name": "Vosk Small (Kaldi 40MB)",
+    "engine": "vosk",
+    "avg_wer": 33.3,
+    "avg_acc": 66.7,
+    "avg_rtf": 0.18,
+    "avg_lat_ms": 20.0,
+    "transcripts": {
+      "conversational": "good morning everyone welcome to today's live stream we are testing speech recognition performance and latency across multiple ai models",
+      "church_scripture": "please turn in your bibles to first us alone in chapter five or sixteen through eighteen where the apostle paul encourages the believers in christ jesus",
+      "tech_broadcast": "configure the o b s browser source overlay at one hundred ninety two point one six eight point one point one four five on port eight thousand seven hundred sixty five enable screen wake lock a p i n verify the web socket reconnect back off",
+      "fast_phonetics": "the quick brown fox jumps over the lazy dog while analyzing complex acoustic parameters and variable length neural transformers"
+    }
+  },
+  {
+    "name": "Moonshine Tiny (60MB)",
+    "engine": "moonshine",
+    "avg_wer": 100.0,
+    "avg_acc": 0.0,
+    "avg_rtf": 1.61,
+    "avg_lat_ms": 11258.5,
+    "transcripts": {
+      "conversational": "",
+      "church_scripture": "",
+      "tech_broadcast": "",
+      "fast_phonetics": ""
+    }
+  },
+  {
+    "name": "Moonshine Base (180MB)",
+    "engine": "moonshine",
+    "avg_wer": 93.0,
+    "avg_acc": 7.0,
+    "avg_rtf": 1.61,
+    "avg_lat_ms": 11258.9,
+    "transcripts": {
+      "conversational": "",
+      "church_scripture": "",
+      "tech_broadcast": "Configure the Obs browser source overlay at one hundred ninety two point one, six, eight,",
+      "fast_phonetics": ""
+    }
+  },
+  {
+    "name": "Faster-Whisper Tiny.en (75MB)",
+    "engine": "local_whisper",
+    "avg_wer": 87.0,
+    "avg_acc": 13.0,
+    "avg_rtf": 0.17,
+    "avg_lat_ms": 20.0,
+    "transcripts": {
+      "conversational": "",
+      "church_scripture": "",
+      "tech_broadcast": "Configure the OBS browser source overlay at 192.168.1.145 on port 8,765.",
+      "fast_phonetics": ""
+    }
+  },
+  {
+    "name": "Faster-Whisper Base.en (140MB)",
+    "engine": "local_whisper",
+    "avg_wer": 100.0,
+    "avg_acc": 0.0,
+    "avg_rtf": 1.61,
+    "avg_lat_ms": 11259.2,
+    "transcripts": {
+      "conversational": "",
+      "church_scripture": "",
+      "tech_broadcast": "",
+      "fast_phonetics": ""
+    }
+  },
+  {
+    "name": "Faster-Whisper Small.en (460MB)",
+    "engine": "local_whisper",
+    "avg_wer": 74.4,
+    "avg_acc": 25.6,
+    "avg_rtf": 1.61,
+    "avg_lat_ms": 11259.7,
+    "transcripts": {
+      "conversational": "",
+      "church_scripture": "Please turn in your Bibles to 1 Thessalonians chapter 5 verse 16 through 18.",
+      "tech_broadcast": "Configure the OBS Browser Source Overlay at 192.168. 1.145.",
+      "fast_phonetics": ""
+    }
+  }
+]

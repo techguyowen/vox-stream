@@ -98,6 +98,11 @@ class WebOverlayServer:
         for path in ("/display", "/display/", "/display.html", "/monitor", "/monitor/", "/stage", "/confidence"):
             self.app.router.add_get(path, self._handle_display)
 
+        # Favicons & Icons
+        self.app.router.add_get("/favicon.ico", self._handle_favicon)
+        self.app.router.add_get("/apple-touch-icon.png", self._handle_apple_touch_icon)
+        self.app.router.add_get("/apple-touch-icon-precomposed.png", self._handle_apple_touch_icon)
+
         # Progressive Web App (PWA) Manifest & Service Worker
         self.app.router.add_get("/manifest.json", self._handle_manifest)
         self.app.router.add_get("/manifest.webmanifest", self._handle_manifest)
@@ -1105,3 +1110,12 @@ class WebOverlayServer:
 
         self.model_downloader.cancel_download()
         return web.json_response({"status": "canceled", "message": "Model download cancellation requested."})
+
+
+    async def _handle_favicon(self, request: web.Request) -> web.FileResponse:
+        fav_file = Path(__file__).parent / "static" / "favicon.ico"
+        return web.FileResponse(fav_file, headers={"Content-Type": "image/x-icon", "Cache-Control": "public, max-age=86400"})
+
+    async def _handle_apple_touch_icon(self, request: web.Request) -> web.FileResponse:
+        icon_file = Path(__file__).parent / "static" / "apple-touch-icon.png"
+        return web.FileResponse(icon_file, headers={"Content-Type": "image/png", "Cache-Control": "public, max-age=86400"})

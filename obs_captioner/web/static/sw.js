@@ -1,8 +1,13 @@
-const CACHE_NAME = 'voxstream-cache-v2';
+const CACHE_NAME = 'voxstream-cache-v3';
 const PRECACHE_ASSETS = [
   '/display',
   '/dashboard',
   '/manifest.json',
+  '/favicon.ico',
+  '/static/favicon.ico',
+  '/static/favicon-16x16.png',
+  '/static/favicon-32x32.png',
+  '/static/apple-touch-icon.png',
   '/static/icon.svg',
   '/static/icon-192.png',
   '/static/icon-512.png',
