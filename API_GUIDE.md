@@ -150,7 +150,7 @@ Returns engine state, audio levels, active model, and uptime.
 
 ### 🎨 Theme Presets & Application
 * **List Themes**: `GET /api/presets`
-* **Apply Preset**: `POST /api/presets/apply?theme_id=cyberpunk_neon`
+* **Apply Preset**: `POST /api/presets/apply?theme_id=sanctuary_worship`
 
 ---
 

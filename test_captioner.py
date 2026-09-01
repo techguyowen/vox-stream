@@ -72,20 +72,24 @@ class TestThemes(unittest.TestCase):
 
     def test_presets_loaded(self):
         self.assertIn("modern_clean", THEME_PRESETS)
-        self.assertIn("cyberpunk_neon", THEME_PRESETS)
+        self.assertIn("broadcast_news", THEME_PRESETS)
+        self.assertIn("sanctuary_worship", THEME_PRESETS)
         self.assertIn("minimal_cinema", THEME_PRESETS)
-        self.assertIn("twitch_purple", THEME_PRESETS)
-        self.assertIn("comic_pop", THEME_PRESETS)
+        self.assertIn("stage_confidence", THEME_PRESETS)
+        self.assertIn("corporate_keynote", THEME_PRESETS)
+        self.assertIn("editorial_nordic", THEME_PRESETS)
+        self.assertIn("youtube_cc", THEME_PRESETS)
+        self.assertIn("opendyslexic", THEME_PRESETS)
 
         all_presets = get_all_presets()
-        self.assertGreaterEqual(len(all_presets), 5)
+        self.assertEqual(len(all_presets), 9)
 
     def test_apply_theme_to_overlay(self):
         ov = OverlayConfig()
-        ov.apply_theme("cyberpunk_neon")
-        self.assertEqual(ov.theme_id, "cyberpunk_neon")
-        self.assertEqual(ov.text_color, "#38BDF8")
-        self.assertEqual(ov.font_family, "'Inter', sans-serif")
+        ov.apply_theme("sanctuary_worship")
+        self.assertEqual(ov.theme_id, "sanctuary_worship")
+        self.assertEqual(ov.text_color, "#FFFBEB")
+        self.assertEqual(ov.font_family, "'Montserrat', sans-serif")
 
 
 class TestContentFilterCRUD(unittest.TestCase):
