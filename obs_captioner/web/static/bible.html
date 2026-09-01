@@ -18,6 +18,25 @@
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;700&family=Lora:ital,wght@0,600;0,700;1,400;1,600&family=Montserrat:wght@400;600;700;800;900&family=Open+Sans:wght@400;600;700;800&family=Oswald:wght@500;700&family=Poppins:wght@400;600;700;800&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     
     <style>
+
+    /* OpenDyslexic Accessibility Font */
+    @font-face {
+        font-family: 'OpenDyslexic';
+        src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Regular.woff') format('woff'),
+             url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/ttf/OpenDyslexic-Regular.ttf') format('truetype');
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+    }
+    @font-face {
+        font-family: 'OpenDyslexic';
+        src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Bold.woff') format('woff'),
+             url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/ttf/OpenDyslexic-Bold.ttf') format('truetype');
+        font-weight: 700;
+        font-style: normal;
+        font-display: swap;
+    }
+
         :root {
             --font-family: 'Lora', Georgia, serif;
             --font-size: 26px;
@@ -197,7 +216,7 @@
             color: var(--text-color);
             text-shadow: 1px 1px 4px var(--shadow-color);
             font-style: var(--font-style, normal);
-            letter-spacing: 0.01em;
+            letter-spacing: var(--letter-spacing, normal);
         }
 
         /* Auto-Dismiss Progress Bar */
@@ -231,6 +250,24 @@
             pointer-events: none;
             backdrop-filter: blur(8px);
         }
+
+        /* Accessibility (a11y): Reduced Motion Media Query */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: 0.001ms !important;
+                transition-duration: 0.001ms !important;
+            }
+            .scripture-card {
+                transition: none !important;
+                transform: none !important;
+            }
+        }
+
+        :focus-visible {
+            outline: 2.5px solid #38BDF8 !important;
+            outline-offset: 2px !important;
+        }
+
     </style>
 </head>
 <body class="theme-amber">
@@ -239,7 +276,7 @@
     </div>
 
     <div class="scripture-container">
-        <div id="scripture-card" class="scripture-card hidden">
+        <div id="scripture-card" class="scripture-card hidden" role="status" aria-live="polite" aria-label="Bible Scripture Reference">
             <div class="scripture-header">
                 <div class="scripture-badge-group">
                     <span class="scripture-badge" id="scripture-citation">📖 BIBLE PASSAGE</span>
@@ -277,6 +314,11 @@
             }
             const italics = b.use_italics ? 'italic' : 'normal';
             document.documentElement.style.setProperty('--font-style', italics);
+            document.documentElement.style.setProperty('--letter-spacing', b.letter_spacing || 'normal');
+            if (b.high_contrast_outline) {
+                document.documentElement.style.setProperty('--shadow-color', '#000000');
+                document.documentElement.style.setProperty('--glow-color', 'rgba(0,0,0,0.9)');
+            }
             
             const vAlign = b.vertical_align || 'bottom';
             const theme = b.card_theme || 'amber';

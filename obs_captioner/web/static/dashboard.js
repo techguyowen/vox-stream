@@ -1,4 +1,81 @@
 
+function setupA11yPresets() {
+    // Accessibility-first workflow preset in Features Modal
+    const btnA11yPreset = document.querySelector('.btn-workflow-preset[data-preset="a11y"]');
+    if (btnA11yPreset) {
+        btnA11yPreset.addEventListener("click", () => {
+            // Apply high-contrast accessibility parameters
+            const chkOpenDys = document.getElementById("a11y_toggle_opendyslexic");
+            if (chkOpenDys) chkOpenDys.checked = true;
+            const fontSel = document.getElementById("font_family");
+            if (fontSel) fontSel.value = "'OpenDyslexic', sans-serif";
+            const chkLetterSp = document.getElementById("a11y_toggle_letter_spacing");
+            if (chkLetterSp) chkLetterSp.checked = true;
+            const chkStroke = document.getElementById("a11y_toggle_contrast_outline");
+            if (chkStroke) chkStroke.checked = true;
+            const chkMotion = document.getElementById("a11y_toggle_reduce_motion");
+            if (chkMotion) chkMotion.checked = true;
+            const chkItal = document.getElementById("overlay_use_italics");
+            if (chkItal) chkItal.checked = false;
+            
+            // Set high contrast yellow text on black background
+            const txtCol = document.getElementById("text_color");
+            if (txtCol) txtCol.value = "#FDE047";
+            const intCol = document.getElementById("interim_color");
+            if (intCol) intCol.value = "#FEF08A";
+            const bgCol = document.getElementById("bg_color_picker");
+            if (bgCol) bgCol.value = "#000000";
+            const bgOp = document.getElementById("bg_opacity_slider");
+            if (bgOp) bgOp.value = 95;
+
+            updatePreviewStyle();
+            showToast("♿ High-Contrast Accessibility & Dyslexia configuration applied!", "success", 3500);
+        });
+    }
+}
+
+
+    // Accessibility Controls Event Listeners
+    const chkOpenDys = document.getElementById("a11y_toggle_opendyslexic");
+    if (chkOpenDys) {
+        chkOpenDys.addEventListener("change", () => {
+            const fontSel = document.getElementById("font_family");
+            if (fontSel) {
+                fontSel.value = chkOpenDys.checked ? "'OpenDyslexic', sans-serif" : "Inter, sans-serif";
+                updatePreviewStyle();
+            }
+        });
+    }
+
+    const chkLetterSp = document.getElementById("a11y_toggle_letter_spacing");
+    if (chkLetterSp) {
+        chkLetterSp.addEventListener("change", () => {
+            const box = document.getElementById("preview-caption-box");
+            if (box) box.style.letterSpacing = chkLetterSp.checked ? "0.05em" : "normal";
+        });
+    }
+
+    const chkStroke = document.getElementById("a11y_toggle_contrast_outline");
+    if (chkStroke) {
+        chkStroke.addEventListener("change", () => {
+            const box = document.getElementById("preview-caption-box");
+            if (box) {
+                box.style.webkitTextStroke = chkStroke.checked ? "3px #000000" : "1.5px #000000";
+            }
+        });
+    }
+
+    const chkMotion = document.getElementById("a11y_toggle_reduce_motion");
+    if (chkMotion) {
+        chkMotion.addEventListener("change", () => {
+            const animSel = document.getElementById("animation_style");
+            if (animSel && chkMotion.checked) {
+                animSel.value = "instant";
+            }
+        });
+    }
+
+
 // Feature Module Manager & Dynamic Tab Visibility
 const FEATURE_DEFAULTS = {
     bible: true,
@@ -535,7 +612,9 @@ function initBibleHandlers() {
                     font_size: parseInt(document.getElementById("bible_tab_font_size").value, 10) || 26,
                     card_theme: document.getElementById("bible_tab_card_theme").value,
                     vertical_align: document.getElementById("bible_tab_vertical_align").value,
-                    use_italics: document.getElementById("bible_tab_use_italics") ? document.getElementById("bible_tab_use_italics").checked : false
+                    use_italics: document.getElementById("bible_tab_use_italics") ? document.getElementById("bible_tab_use_italics").checked : false,
+                    letter_spacing: (document.getElementById("bible_tab_letter_spacing") && document.getElementById("bible_tab_letter_spacing").checked) ? "0.05em" : "normal",
+                    high_contrast_outline: document.getElementById("bible_tab_high_contrast") ? document.getElementById("bible_tab_high_contrast").checked : false
                 }
             };
             await saveConfigPayload(payload, "Scripture Studio settings saved successfully!");
@@ -945,6 +1024,7 @@ function renderThemeGrid(presets) {
                     await loadThemes();
     initBibleHandlers();
     initFeatureManagerHandlers();
+    setupA11yPresets();
                 } else {
                     const err = await res.json();
                     showToast(`⚠️ Failed to delete preset: ${err.error || "Unknown error"}`, "error");
@@ -999,6 +1079,7 @@ async function applyThemePreset(themeId) {
             await loadThemes();
     initBibleHandlers();
     initFeatureManagerHandlers();
+    setupA11yPresets();
             showToast("🎨 Theme preset applied!", "success", 2000);
         }
     } catch (e) {
@@ -2615,6 +2696,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     await loadThemes();
     initBibleHandlers();
     initFeatureManagerHandlers();
+    setupA11yPresets();
     await loadAudioDevices();
     await loadObsMonitors();
     await loadVocabularyState();

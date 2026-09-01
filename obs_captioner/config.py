@@ -118,6 +118,7 @@ class OverlayConfig:
     font_size: str = "32px"
     font_weight: str = "700"
     line_height: str = "1.35"
+    letter_spacing: str = "normal"  # "normal", "0.05em" (dyslexia tracking)
     text_color: str = "#FFFFFF"
     interim_color: str = "#90CAF9"
     highlight_color: str = "#FFD166"
@@ -127,7 +128,9 @@ class OverlayConfig:
     text_shadow: str = "2px 2px 5px rgba(0, 0, 0, 0.95)"
     text_stroke: str = "2px #000000"
     auto_hide_seconds: float = 4.0
-    use_italics: bool = False  # Set False for high-contrast accessibility / dyslexia readability
+    use_italics: bool = False  # Accessibility: False = upright text, True = italic slant
+    reduce_motion: bool = False  # Accessibility: False = animated, True = instant/no motion
+    high_contrast_outline: bool = False  # Accessibility: False = normal stroke, True = heavy 3.5px black outline
 
     def apply_theme(self, theme_id: str, custom_presets: Optional[Dict[str, dict]] = None) -> bool:
         """Apply attributes from a known theme preset or custom user preset."""
@@ -177,8 +180,11 @@ class BibleConfig:
     font_family: str = "'Lora', Georgia, serif"
     font_size: int = 26
     vertical_align: str = "bottom"  # "bottom", "top"
+    letter_spacing: str = "normal"  # "normal", "0.05em"
     card_theme: str = "amber"       # "amber", "blue", "dark", "light"
     use_italics: bool = False       # Accessibility: False = straight upright text, True = italic slant
+    reduce_motion: bool = False     # Accessibility: False = animated, True = instant
+    high_contrast_outline: bool = False  # Accessibility: False = normal, True = heavy high-contrast outline
     show_on_stream_overlay: bool = True
     show_on_stage_display: bool = True
 

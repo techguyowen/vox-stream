@@ -260,17 +260,64 @@
                             <input type="range" id="bg_opacity_slider" min="0" max="100" value="72" class="slider">
                         </div>
 
-                        <!-- Accessibility: Italics Toggle -->
-                        <div class="form-group" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 14px; margin: 14px 0;">
-                            <label class="switch-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 4px;">
-                                <input type="checkbox" id="overlay_use_italics" style="width: 18px; height: 18px; cursor: pointer;">
-                                <span style="font-size: 13.5px; color: var(--text-main); font-weight: 600;">
-                                    <em>Italicize</em> interim speech &amp; secondary subtitles
-                                </span>
-                            </label>
-                            <span class="hint" style="margin-left: 28px; display: block; font-size: 11.5px; color: #94A3B8;">
-                                ♿ <strong>Accessibility Tip:</strong> Keep unchecked for upright, high-contrast typography to enhance reading legibility for viewers with dyslexia, astigmatism, or low vision.
-                            </span>
+                        <!-- ♿ Accessibility & Dyslexia Studio Card -->
+                        <div class="panel" style="background: rgba(30, 41, 59, 0.4); border: 1.5px solid rgba(56, 189, 248, 0.4); border-radius: 10px; padding: 16px 18px; margin: 18px 0 14px 0;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+                                <h3 style="margin: 0; font-size: 14px; color: #38BDF8; display: flex; align-items: center; gap: 6px;">
+                                    <span>♿ Accessibility &amp; Reading Comfort Controls</span>
+                                </h3>
+                                <span style="font-size: 11px; background: rgba(56, 189, 248, 0.15); color: #38BDF8; padding: 2px 8px; border-radius: 4px; font-weight: 700;">WCAG 2.2 Compliant</span>
+                            </div>
+                            <p class="subtext" style="font-size: 12px; margin-bottom: 12px;">
+                                Toggle individual assistive visual features designed for viewers with dyslexia, low vision, astigmatism, or vestibular motion sensitivity.
+                            </p>
+
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px;">
+                                <!-- 1. OpenDyslexic Font -->
+                                <label class="switch-label" style="display: flex; align-items: flex-start; gap: 10px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px; cursor: pointer;">
+                                    <input type="checkbox" id="a11y_toggle_opendyslexic" style="width: 18px; height: 18px; margin-top: 2px; cursor: pointer;">
+                                    <div>
+                                        <strong style="color: var(--text-main); display: block; font-size: 13px;">📖 OpenDyslexic Font</strong>
+                                        <span style="font-size: 11.5px; color: var(--text-muted);">Bottom-heavy weighted font to prevent letter swapping.</span>
+                                    </div>
+                                </label>
+
+                                <!-- 2. Wide Letter Spacing -->
+                                <label class="switch-label" style="display: flex; align-items: flex-start; gap: 10px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px; cursor: pointer;">
+                                    <input type="checkbox" id="a11y_toggle_letter_spacing" style="width: 18px; height: 18px; margin-top: 2px; cursor: pointer;">
+                                    <div>
+                                        <strong style="color: var(--text-main); display: block; font-size: 13px;">🔤 Wide Letter Spacing</strong>
+                                        <span style="font-size: 11.5px; color: var(--text-muted);">Expands tracking (0.05em) to prevent character crowding.</span>
+                                    </div>
+                                </label>
+
+                                <!-- 3. High Contrast Outline -->
+                                <label class="switch-label" style="display: flex; align-items: flex-start; gap: 10px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px; cursor: pointer;">
+                                    <input type="checkbox" id="a11y_toggle_contrast_outline" style="width: 18px; height: 18px; margin-top: 2px; cursor: pointer;">
+                                    <div>
+                                        <strong style="color: var(--text-main); display: block; font-size: 13px;">⬛ High-Contrast Black Stroke</strong>
+                                        <span style="font-size: 11.5px; color: var(--text-muted);">Thick 3.5px black outline for bright video backgrounds.</span>
+                                    </div>
+                                </label>
+
+                                <!-- 4. Reduced Motion -->
+                                <label class="switch-label" style="display: flex; align-items: flex-start; gap: 10px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px; cursor: pointer;">
+                                    <input type="checkbox" id="a11y_toggle_reduce_motion" style="width: 18px; height: 18px; margin-top: 2px; cursor: pointer;">
+                                    <div>
+                                        <strong style="color: var(--text-main); display: block; font-size: 13px;">⚡ Reduced Motion (No Bounce)</strong>
+                                        <span style="font-size: 11.5px; color: var(--text-muted);">Suppresses rapid word-pop animations for vestibular comfort.</span>
+                                    </div>
+                                </label>
+
+                                <!-- 5. Italicize -->
+                                <label class="switch-label" style="display: flex; align-items: flex-start; gap: 10px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px; cursor: pointer;">
+                                    <input type="checkbox" id="overlay_use_italics" style="width: 18px; height: 18px; margin-top: 2px; cursor: pointer;">
+                                    <div>
+                                        <strong style="color: var(--text-main); display: block; font-size: 13px;">✍️ Italicize Secondary Text</strong>
+                                        <span style="font-size: 11.5px; color: var(--text-muted);">Unchecked = straight upright text for maximum legibility.</span>
+                                    </div>
+                                </label>
+                            </div>
                         </div>
 
                         <button id="btn-save-style" class="btn btn-primary btn-block">💾 Save OBS Overlay Settings</button>
@@ -310,7 +357,7 @@
                             </p>
                         </div>
                         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                            <button type="button" id="btn-copy-bible-overlay-url" class="btn btn-primary btn-sm" style="background: #D97706; color: #000; font-weight: 700; display: inline-flex; align-items: center; gap: 5px; padding: 7px 14px; border: none;">
+                            <button type="button" id="btn-copy-bible-overlay-url" aria-label="Copy OBS Scripture Browser Source URL" class="btn btn-primary btn-sm" style="background: #D97706; color: #000; font-weight: 700; display: inline-flex; align-items: center; gap: 5px; padding: 7px 14px; border: none;">
                                 <span>📋 Copy Scripture URL</span>
                             </button>
                             <a href="/bible" target="_blank" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 4px; text-decoration: none; padding: 7px 12px;">
@@ -442,17 +489,37 @@
                             </div>
                         </div>
 
-                        <!-- Accessibility: Scripture Italics Toggle -->
-                        <div class="form-group" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 14px; margin: 14px 0;">
-                            <label class="switch-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 4px;">
-                                <input type="checkbox" id="bible_tab_use_italics" style="width: 18px; height: 18px; cursor: pointer;">
-                                <span style="font-size: 13.5px; color: var(--text-main); font-weight: 600;">
-                                    <em>Italicize</em> scripture quote passages
-                                </span>
-                            </label>
-                            <span class="hint" style="margin-left: 28px; display: block; font-size: 11.5px; color: #94A3B8;">
-                                ♿ <strong>Accessibility Tip:</strong> Keep unchecked for clean, upright letterforms with maximum legibility on stage screens and broadcasts.
-                            </span>
+                        <!-- ♿ Accessibility & Reading Comfort Controls for Scripture -->
+                        <div class="panel" style="background: rgba(30, 41, 59, 0.4); border: 1.5px solid rgba(245, 158, 11, 0.4); border-radius: 10px; padding: 14px 16px; margin: 16px 0 14px 0;">
+                            <h3 style="margin: 0 0 10px 0; font-size: 13.5px; color: #FBBF24; display: flex; align-items: center; gap: 6px;">
+                                <span>♿ Scripture Accessibility &amp; Reading Comfort</span>
+                            </h3>
+
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px;">
+                                <label class="switch-label" style="display: flex; align-items: flex-start; gap: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; cursor: pointer;">
+                                    <input type="checkbox" id="bible_tab_letter_spacing" style="width: 16px; height: 16px; margin-top: 2px; cursor: pointer;">
+                                    <div>
+                                        <strong style="color: var(--text-main); display: block; font-size: 12.5px;">🔤 Wide Letter Spacing</strong>
+                                        <span style="font-size: 11px; color: var(--text-muted);">0.05em tracking for reading ease.</span>
+                                    </div>
+                                </label>
+
+                                <label class="switch-label" style="display: flex; align-items: flex-start; gap: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; cursor: pointer;">
+                                    <input type="checkbox" id="bible_tab_high_contrast" style="width: 16px; height: 16px; margin-top: 2px; cursor: pointer;">
+                                    <div>
+                                        <strong style="color: var(--text-main); display: block; font-size: 12.5px;">⬛ High-Contrast Shadow</strong>
+                                        <span style="font-size: 11px; color: var(--text-muted);">Deep solid black shadow backdrop.</span>
+                                    </div>
+                                </label>
+
+                                <label class="switch-label" style="display: flex; align-items: flex-start; gap: 8px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; cursor: pointer;">
+                                    <input type="checkbox" id="bible_tab_use_italics" style="width: 16px; height: 16px; margin-top: 2px; cursor: pointer;">
+                                    <div>
+                                        <strong style="color: var(--text-main); display: block; font-size: 12.5px;">✍️ Italicize Verse Text</strong>
+                                        <span style="font-size: 11px; color: var(--text-muted);">Unchecked = upright letters.</span>
+                                    </div>
+                                </label>
+                            </div>
                         </div>
 
                         <div style="margin-top: 16px;">
@@ -1252,7 +1319,7 @@
                 <h2 style="margin: 0; font-size: 17px; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
                     <span>⚙️ Customize Workspace Features &amp; Tabs</span>
                 </h2>
-                <button type="button" id="btn-close-features-modal" style="background: none; border: none; color: var(--text-muted); font-size: 20px; font-weight: bold; cursor: pointer; padding: 4px 8px;">✕</button>
+                <button type="button" id="btn-close-features-modal" aria-label="Close Feature Settings Dialog" style="background: none; border: none; color: var(--text-muted); font-size: 20px; font-weight: bold; cursor: pointer; padding: 4px 8px;">✕</button>
             </div>
 
             <p class="subtext" style="margin-bottom: 14px; font-size: 12.5px;">
@@ -1267,6 +1334,7 @@
                     <button type="button" class="btn-workflow-preset btn btn-secondary btn-sm" data-preset="church">⛪ Church / AV</button>
                     <button type="button" class="btn-workflow-preset btn btn-secondary btn-sm" data-preset="streamer">🎮 Streamer</button>
                     <button type="button" class="btn-workflow-preset btn btn-secondary btn-sm" data-preset="minimal">⚡ Minimalist</button>
+                    <button type="button" class="btn-workflow-preset btn btn-secondary btn-sm" data-preset="a11y">♿ Accessibility-First</button>
                 </div>
             </div>
 
