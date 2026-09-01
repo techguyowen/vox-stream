@@ -1,48 +1,93 @@
 
-// Bible Engine Dashboard Handlers
+// Dedicated Scripture Studio Dashboard Handlers
 function initBibleHandlers() {
-    const durSlider = document.getElementById("bible_duration_slider");
-    const durVal = document.getElementById("val-bible-duration");
+    // 1. Populate Live Scripture URL
+    const bibleUrlEl = document.getElementById("bible-overlay-live-url");
+    if (bibleUrlEl) {
+        bibleUrlEl.textContent = window.location.origin + "/bible";
+    }
+
+    // 2. Copy Scripture URL Button
+    const btnCopyBible = document.getElementById("btn-copy-bible-overlay-url");
+    if (btnCopyBible) {
+        btnCopyBible.addEventListener("click", () => {
+            const url = window.location.origin + "/bible";
+            navigator.clipboard.writeText(url).then(() => {
+                showToast("📋 Copied OBS Scripture Browser Source URL to clipboard!", "success", 3000);
+            }).catch(() => {
+                showToast(`URL: ${url}`, "info", 6000);
+            });
+        });
+    }
+
+    // 3. Duration Slider Label
+    const durSlider = document.getElementById("bible_tab_duration_slider");
+    const durVal = document.getElementById("val-bible-tab-duration");
     if (durSlider && durVal) {
         durSlider.addEventListener("input", (e) => {
             durVal.textContent = `${e.target.value}s`;
         });
     }
 
-    const btnLookup = document.getElementById("btn-bible-lookup");
-    const btnPush = document.getElementById("btn-bible-push");
-    const btnDismiss = document.getElementById("btn-bible-dismiss");
-    const testInput = document.getElementById("bible-test-input");
-    const resultBox = document.getElementById("bible-lookup-result");
-    const verSelect = document.getElementById("bible_version_select");
+    // 4. Live Verse Search & Preview
+    const searchInput = document.getElementById("bible-tab-search-input");
+    const btnSearch = document.getElementById("btn-bible-tab-search");
+    const btnPush = document.getElementById("btn-bible-tab-push");
+    const btnDismiss = document.getElementById("btn-bible-tab-dismiss");
+    const previewCard = document.getElementById("bible-tab-preview-card");
+    const previewBadge = document.getElementById("bible-tab-preview-badge");
+    const previewText = document.getElementById("bible-tab-preview-text");
+    const verSelect = document.getElementById("bible_tab_version_select");
 
-    if (btnLookup && testInput && resultBox) {
-        btnLookup.addEventListener("click", async () => {
-            const cit = testInput.value.trim();
-            if (!cit) return;
+    let lastLookedUp = null;
+
+    if (btnSearch && searchInput) {
+        btnSearch.addEventListener("click", async () => {
+            const query = searchInput.value.trim();
+            if (!query) {
+                showToast("Please enter a scripture reference (e.g. John 3:16, Romans 4:1-8).", "warning", 3000);
+                return;
+            }
             const ver = verSelect ? verSelect.value : "bsb";
             try {
-                const r = await fetch(`/api/bible/lookup?citation=${encodeURIComponent(cit)}&version=${encodeURIComponent(ver)}`);
+                const r = await fetch(`/api/bible/lookup?citation=${encodeURIComponent(query)}&version=${encodeURIComponent(ver)}`);
                 const data = await r.json();
-                if (r.ok) {
-                    resultBox.style.display = "block";
-                    resultBox.innerHTML = `<strong>📖 ${escapeHtml(data.citation)} [${escapeHtml(data.version)}]:</strong> "${escapeHtml(data.text)}"`;
+                if (r.ok && data.citation) {
+                    lastLookedUp = data;
+                    if (previewCard && previewBadge && previewText) {
+                        previewCard.style.display = "block";
+                        previewBadge.textContent = `📖 ${data.citation} • ${data.version}`;
+                        previewText.textContent = `"${data.text}"`;
+                    }
+                    showToast(`📖 Found ${data.citation} [${data.version}]`, "success", 2500);
                 } else {
-                    resultBox.style.display = "block";
-                    resultBox.innerHTML = `<span style="color: #F87171;">❌ ${escapeHtml(data.error || 'Passage not found')}</span>`;
+                    if (previewCard && previewText && previewBadge) {
+                        previewCard.style.display = "block";
+                        previewBadge.textContent = "❌ NOT FOUND";
+                        previewText.textContent = data.error || "Passage not found. Check book name and chapter/verse numbers.";
+                    }
+                    showToast(data.error || "Passage not found", "error", 3500);
                 }
             } catch(e) {
-                resultBox.style.display = "block";
-                resultBox.innerHTML = `<span style="color: #F87171;">❌ Error: ${escapeHtml(e.message)}</span>`;
+                showToast(`Search error: ${e.message}`, "error", 3500);
+            }
+        });
+
+        // Search on Enter key
+        searchInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                btnSearch.click();
             }
         });
     }
 
-    if (btnPush && testInput) {
+    // 5. Push to Stream & Stage
+    if (btnPush && searchInput) {
         btnPush.addEventListener("click", async () => {
-            const cit = testInput.value.trim();
-            if (!cit) {
-                showToast("Please type a scripture reference first.", "warning", 3000);
+            const query = searchInput.value.trim();
+            if (!query) {
+                showToast("Please enter a scripture reference first.", "warning", 3000);
                 return;
             }
             const ver = verSelect ? verSelect.value : "bsb";
@@ -51,10 +96,16 @@ function initBibleHandlers() {
                 const r = await fetch("/api/bible/display", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ citation: cit, version: ver, duration: dur })
+                    body: JSON.stringify({ citation: query, version: ver, duration: dur })
                 });
                 const data = await r.json();
-                if (r.ok) {
+                if (r.ok && data.scripture) {
+                    lastLookedUp = data.scripture;
+                    if (previewCard && previewBadge && previewText) {
+                        previewCard.style.display = "block";
+                        previewBadge.textContent = `📖 ${data.scripture.citation} • ${data.scripture.version}`;
+                        previewText.textContent = `"${data.scripture.text}"`;
+                    }
                     showToast(`📺 Pushed ${data.scripture.citation} [${data.scripture.version}] to stream & stage screens!`, "success", 4000);
                 } else {
                     showToast(`❌ ${data.error || 'Failed to display scripture'}`, "error", 4000);
@@ -65,29 +116,31 @@ function initBibleHandlers() {
         });
     }
 
+    // 6. Dismiss On-Screen Card
     if (btnDismiss) {
         btnDismiss.addEventListener("click", async () => {
             try {
                 await fetch("/api/bible/dismiss", { method: "POST" });
-                showToast("Scripture pop-up dismissed.", "info", 3000);
+                showToast("Scripture pop-up dismissed from all screens.", "info", 3000);
             } catch(e) {
                 console.error(e);
             }
         });
     }
 
-    const btnSaveBible = document.getElementById("btn-save-bible-settings");
+    // 7. Save Settings Button
+    const btnSaveBible = document.getElementById("btn-save-bible-tab-settings");
     if (btnSaveBible) {
         btnSaveBible.addEventListener("click", async () => {
             const payload = {
                 bible: {
-                    enabled: document.getElementById("bible_enabled").checked,
-                    default_version: document.getElementById("bible_version_select").value,
-                    display_mode: document.getElementById("bible_display_mode").value,
-                    display_duration_seconds: parseFloat(document.getElementById("bible_duration_slider").value) || 14.0
+                    enabled: document.getElementById("bible_tab_enabled").checked,
+                    default_version: document.getElementById("bible_tab_version_select").value,
+                    display_mode: document.getElementById("bible_tab_display_mode").value,
+                    display_duration_seconds: parseFloat(document.getElementById("bible_tab_duration_slider").value) || 14.0
                 }
             };
-            await saveConfigPayload(payload, "Bible settings saved successfully!");
+            await saveConfigPayload(payload, "Scripture Studio settings saved successfully!");
         });
     }
 }
