@@ -202,12 +202,12 @@ To send viewer-toggleable closed captions directly into your YouTube and Twitch 
 
 ---
 
-## 📱 Step 4: DHH Live Accessibility Reader & Stage Confidence Monitor
+## 📱 Step 4: Live Read-Along Display & Multi-Device Accessibility
 
-VoxStream includes a dedicated **Progressive Web App (PWA)** at `/display` built specifically as a **Live Accessibility Reader for Deaf and Hard of Hearing (DHH)** attendees, personal phone/iPad monitors, auditorium screens, podiums, and overflow rooms.
+VoxStream includes a dedicated **Progressive Web App (PWA)** at `/display` built as a **Universal Live Read-Along Display** for anyone following spoken speech in real-time — including individuals who are deaf or hard of hearing, people with visual impairments or low vision, auditorium audiences, podium presenters, and overflow rooms.
 
 ### 1. Accessing on Local Wi-Fi / Network (Zero Internet Required)
-VoxStream automatically binds to `0.0.0.0:8765`, allowing any DHH audience member, student, or congregant to follow along on their personal phone or tablet over local Wi-Fi:
+VoxStream automatically binds to `0.0.0.0:8765`, allowing any attendee, student, or congregant to read along on their personal phone, tablet, or laptop over local Wi-Fi:
 * **On Main Computer**: `http://127.0.0.1:8765/display`
 * **On Any Personal Phone, iPad, or Tablet**: `http://<YOUR_COMPUTER_IP>:8765/display` *(e.g. `http://192.168.1.145:8765/display`)*
 

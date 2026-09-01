@@ -1,7 +1,7 @@
 {
-  "name": "VoxStream Live Reader (DHH)",
-  "short_name": "Live Reader",
-  "description": "Real-Time AI Accessibility Captions & Live Reader for Deaf & Hard of Hearing",
+  "name": "VoxStream Live Read-Along",
+  "short_name": "Read-Along",
+  "description": "Real-Time Speech Read-Along & Accessibility Display for Stage & Personal Devices",
   "start_url": "/display",
   "scope": "/display",
   "display": "standalone",

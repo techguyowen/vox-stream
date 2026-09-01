@@ -152,9 +152,9 @@ http://127.0.0.1:8765/
 
 ---
 
-### B. DHH Live Accessibility Reader & Confidence Monitor (`/display`)
-- **Designed for**: Deaf & Hard of Hearing (DHH) attendees, personal phone/iPad readers, stage monitors, overflow rooms, choir screens.
-- **DHH Audience Experience**: Any attendee on local Wi-Fi can open `http://<IP>:8765/display` on their personal smartphone or tablet to follow spoken sermons, lectures, or presentations in real-time with zero lag.
+### B. Live Read-Along Display & Accessibility Monitor (`/display`)
+- **Designed for**: Universal read-along for anyone following speech in real-time — including individuals who are deaf or hard of hearing (DHH), people with visual impairments or low vision, auditorium screens, personal phone/tablet monitors, podiums, and overflow rooms.
+- **Audience Read-Along Experience**: Any attendee on local Wi-Fi can open `http://<IP>:8765/display` on their personal smartphone, tablet, or laptop to read along with live sermons, lectures, or presentations in real-time with zero lag.
 - **PWA Ready**: Installable as a standalone app on iOS/iPadOS and Android; features **Screen Wake Lock API** to keep screens on continuously.
 - **Display Modes**:
   - **Scrollable History**: Retains up to 300 sentences for scrolling back, with smart "⬇️ Jump to Live" button.
