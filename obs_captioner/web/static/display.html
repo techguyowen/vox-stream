@@ -304,6 +304,8 @@
             opacity: 0;
         }
 
+
+        /* Smooth Word Flow Animation for Reading Ease */
         .caption-sentence {
             font-size: var(--font-size);
             line-height: var(--line-height);
@@ -312,11 +314,12 @@
             text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
             opacity: 0.95;
             word-wrap: break-word;
-            transition: opacity 0.2s ease;
+            transition: opacity 0.3s ease, color 0.3s ease;
+            margin-bottom: 12px;
         }
 
         .caption-sentence.previous {
-            opacity: 0.45;
+            opacity: 0.38;
             font-weight: 600;
         }
 
@@ -333,6 +336,12 @@
             animation: blink 0.9s infinite;
             color: var(--interim-color);
         }
+
+        /* Slow Flow Mode: Smooth word entry */
+        .slow-flow-mode .caption-sentence {
+            transition: all 0.4s ease;
+        }
+
 
         @keyframes blink {
             0%, 100% { opacity: 1; }
@@ -931,67 +940,28 @@
             }
         }
 
-        // Render Captions
-        function renderCaptions() {
-            if (!transcriptContent) return;
 
-            if (finalSentences.length === 0 && !interimText) {
-                transcriptContent.innerHTML = '<div class="empty-indicator">Listening for speech... Captions will appear here in real-time.</div>';
-                return;
-            }
+        // -------------------------------------------------------------
+        // 🛡️ Rock-Solid Incremental Caption Rendering Engine
+        // -------------------------------------------------------------
+        let isPacedReadingEnabled = false;
+        let pacerTimeout = null;
 
-            const emptyEl = transcriptContent.querySelector('.empty-indicator');
-            if (emptyEl) {
-                transcriptContent.innerHTML = '';
-            }
+        const chkDisplayPacing = document.getElementById("chkDisplayPacing");
 
-            const existingFinals = transcriptContent.querySelectorAll('.caption-sentence:not(.interim)');
-            if (existingFinals.length !== finalSentences.length) {
-                let html = '';
-                const count = finalSentences.length;
-                finalSentences.forEach((sentence, idx) => {
-                    const isRecent = idx >= count - 2;
-                    const cls = isRecent ? 'caption-sentence' : 'caption-sentence previous';
-                    html += `<div class="${cls}">${escapeHtml(sentence)}</div>`;
-                });
-                
-                const interimNode = transcriptContent.querySelector('.interim');
-                transcriptContent.innerHTML = html;
-                if (interimNode) {
-                    transcriptContent.appendChild(interimNode);
-                }
-            } else {
-                const count = finalSentences.length;
-                existingFinals.forEach((el, idx) => {
-                    if (el.textContent !== finalSentences[idx]) {
-                        el.textContent = finalSentences[idx];
-                    }
-                    const isRecent = idx >= count - 2;
-                    const expectedCls = isRecent ? 'caption-sentence' : 'caption-sentence previous';
-                    if (el.className !== expectedCls) {
-                        el.className = expectedCls;
-                    }
-                });
+        // Helper to get or create persistent live interim container
+        function getInterimNode() {
+            let node = document.getElementById("liveInterimNode");
+            if (!node && transcriptContent) {
+                node = document.createElement("div");
+                node.id = "liveInterimNode";
+                node.className = "caption-sentence interim";
+                node.style.display = "none";
+                transcriptContent.appendChild(node);
             }
-
-            let interimNode = transcriptContent.querySelector('.interim');
-            if (interimText) {
-                if (!interimNode) {
-                    interimNode = document.createElement('div');
-                    interimNode.className = 'caption-sentence interim';
-                    transcriptContent.appendChild(interimNode);
-                }
-                if (interimNode.textContent !== interimText) {
-                    interimNode.textContent = interimText;
-                }
-            } else if (interimNode) {
-                interimNode.remove();
-            }
-
-            if (autoScroll) {
-                scrollToBottom();
-            }
+            return node;
         }
+
 
         function scrollToBottom() {
             if (stageContainer) {
@@ -1005,100 +975,100 @@
             return div.innerHTML;
         }
 
-        if (stageContainer) {
-            stageContainer.addEventListener('scroll', () => {
-                const dist = stageContainer.scrollHeight - stageContainer.scrollTop - stageContainer.clientHeight;
-                autoScroll = dist < 60;
-                updateFloatingButtons();
-            }, { passive: true });
+        function removeEmptyIndicator() {
+            const emptyEl = transcriptContent ? transcriptContent.querySelector('.empty-indicator') : null;
+            if (emptyEl) emptyEl.remove();
         }
 
-
-        // 🐢 Slow Down Text / Paced Reading Governor (Cap presentation to steady 135 WPM & 10s hold)
-        let isPacedReadingEnabled = false;
-        let paceQueue = [];
-        let pacingTimer = null;
-        let activePacedText = "";
-
-        const chkDisplayPacing = document.getElementById("chkDisplayPacing");
-
-        function processPacingQueue() {
-            if (paceQueue.length === 0) {
-                pacingTimer = null;
-                if (activePacedText.trim()) {
-                    finalSentences.push(activePacedText.trim());
-                    while (finalSentences.length > maxHistorySentences) finalSentences.shift();
-                    activePacedText = "";
-                    interimText = "";
-                    renderCaptions();
-                    triggerSilenceTimer(10000); // 10 seconds generous reading hold
-                }
-                return;
-            }
-
-            const item = paceQueue.shift();
-            if (item === "___SENTENCE_BREAK___") {
-                if (activePacedText.trim()) {
-                    finalSentences.push(activePacedText.trim());
-                    while (finalSentences.length > maxHistorySentences) finalSentences.shift();
-                    activePacedText = "";
-                    interimText = "";
-                    renderCaptions();
-                    triggerSilenceTimer(10000);
-                }
-                // Short natural pause between sentences (600ms)
-                pacingTimer = setTimeout(processPacingQueue, 600);
-                return;
-            }
+        function appendFinalSentence(text) {
+            if (!text || !transcriptContent) return;
+            removeEmptyIndicator();
 
             wakeLiveDisplay();
-            activePacedText = activePacedText ? `${activePacedText} ${item}` : item;
-            interimText = activePacedText;
-            renderCaptions();
 
-            // 135 WPM = ~440ms per word
-            pacingTimer = setTimeout(processPacingQueue, 440);
-        }
+            // Create new final sentence element
+            const el = document.createElement('div');
+            el.className = 'caption-sentence';
+            el.textContent = text;
 
-        function queuePacedText(sentence) {
-            const words = sentence.trim().split(/\s+/).filter(Boolean);
-            if (words.length === 0) return;
-            paceQueue.push(...words, "___SENTENCE_BREAK___");
-            if (!pacingTimer) {
-                processPacingQueue();
+            // Mark older sentences as dimmed (.previous)
+            const existing = transcriptContent.querySelectorAll('.caption-sentence:not(#liveInterimNode)');
+            existing.forEach((node, idx) => {
+                if (idx < existing.length - 1) {
+                    node.classList.add('previous');
+                }
+            });
+
+            // Insert before interim node
+            const interimNode = getInterimNode();
+            transcriptContent.insertBefore(el, interimNode);
+
+            // Prune excess lines to prevent memory leaks
+            const allFinals = transcriptContent.querySelectorAll('.caption-sentence:not(#liveInterimNode)');
+            if (allFinals.length > maxHistorySentences) {
+                allFinals[0].remove();
             }
+
+            finalSentences.push(text);
+            while (finalSentences.length > maxHistorySentences) finalSentences.shift();
+
+            // Hide interim node until new speech begins
+            if (interimNode) {
+                interimNode.textContent = '';
+                interimNode.style.display = 'none';
+            }
+
+            if (autoScroll) scrollToBottom();
+
+            triggerSilenceTimer(isPacedReadingEnabled ? 12000 : 4000);
         }
 
+        function updateInterimSpeech(text) {
+            if (!transcriptContent) return;
+            removeEmptyIndicator();
+            wakeLiveDisplay();
+
+            const interimNode = getInterimNode();
+            if (text) {
+                interimNode.textContent = text;
+                interimNode.style.display = 'block';
+            } else {
+                interimNode.textContent = '';
+                interimNode.style.display = 'none';
+            }
+
+            if (autoScroll) scrollToBottom();
+        }
+
+        function clearAllCaptions() {
+            finalSentences = [];
+            if (transcriptContent) {
+                transcriptContent.innerHTML = '<div class="empty-indicator">Listening for speech... Captions will appear here in real-time.</div>';
+            }
+            getInterimNode();
+        }
+
+        // 🐢 Slow Down Text / Paced Mode Setup
         if (chkDisplayPacing) {
             try {
                 const savedPacing = localStorage.getItem("voxstream_display_pacing") === "true";
                 if (savedPacing) {
                     chkDisplayPacing.checked = true;
                     isPacedReadingEnabled = true;
+                    document.body.classList.add("slow-flow-mode");
                 }
             } catch(e) {}
 
             chkDisplayPacing.addEventListener("change", (e) => {
                 isPacedReadingEnabled = e.target.checked;
+                if (isPacedReadingEnabled) {
+                    document.body.classList.add("slow-flow-mode");
+                } else {
+                    document.body.classList.remove("slow-flow-mode");
+                }
                 try {
                     localStorage.setItem("voxstream_display_pacing", isPacedReadingEnabled ? "true" : "false");
                 } catch(e) {}
-                if (!isPacedReadingEnabled) {
-                    // Flush immediately
-                    if (pacingTimer) clearTimeout(pacingTimer);
-                    pacingTimer = null;
-                    if (activePacedText.trim()) {
-                        finalSentences.push(activePacedText.trim());
-                        activePacedText = "";
-                    }
-                    const remainingWords = paceQueue.filter(w => w !== "___SENTENCE_BREAK___").join(" ");
-                    if (remainingWords.trim()) {
-                        finalSentences.push(remainingWords.trim());
-                    }
-                    paceQueue = [];
-                    interimText = "";
-                    renderCaptions();
-                }
             });
         }
 
@@ -1145,15 +1115,11 @@
 
         function handleCaptionEvent(data) {
             if (data.type === 'snapshot') {
-                if (data.lines && data.lines.length > 0) {
-                    finalSentences = [];
-                    interimText = "";
+                if (data.lines && data.lines.length > 0 && finalSentences.length === 0) {
                     for (const line of data.lines) {
                         const t = (line.text || '').trim();
-                        if (t) finalSentences.push(t);
+                        if (t) appendFinalSentence(t);
                     }
-                    while (finalSentences.length > maxHistorySentences) finalSentences.shift();
-                    renderCaptions();
                 }
                 return;
             }
@@ -1162,49 +1128,30 @@
 
             if (data.is_final) {
                 if (text) {
-                    wakeLiveDisplay();
-                    if (isPacedReadingEnabled) {
-                        queuePacedText(text);
-                    } else {
-                        finalSentences.push(text);
-                        while (finalSentences.length > maxHistorySentences) {
-                            finalSentences.shift();
-                        }
-                        interimText = "";
-                        renderCaptions();
-                        triggerSilenceTimer();
-                    }
+                    appendFinalSentence(text);
                 } else {
                     if (currentMode === 'live') {
                         if (transcriptContent) transcriptContent.classList.add('faded');
                     }
                 }
             } else {
-                // In normal mode, show live interim speech. In paced reading mode, let the governor pace the completed thoughts smoothly.
-                if (!isPacedReadingEnabled) {
-                    if (text) wakeLiveDisplay();
-                    interimText = text;
-                    renderCaptions();
-                }
+                updateInterimSpeech(text);
             }
         }
 
         // Initial history loader
         async function loadInitialHistory() {
             try {
-                const limit = (currentMode === 'live') ? 2 : 100;
+                const limit = (currentMode === 'live') ? 2 : 50;
                 const res = await fetch(`/api/transcript/history?limit=${limit}`);
                 if (res.ok) {
                     const data = await res.json();
                     if (data.history && data.history.length > 0) {
-                        finalSentences = [];
                         const items = [...data.history].reverse();
                         for (const item of items) {
                             const raw = (item.text || '').trim();
-                            if (raw) finalSentences.push(raw);
+                            if (raw) appendFinalSentence(raw);
                         }
-                        while (finalSentences.length > maxHistorySentences) finalSentences.shift();
-                        renderCaptions();
                     }
                 }
             } catch(e) {}
