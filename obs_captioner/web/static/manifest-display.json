@@ -1,7 +1,7 @@
 {
-  "name": "VoxStream Stage Display",
-  "short_name": "Stage Display",
-  "description": "Real-Time AI Captions & Confidence Monitor for Stage & Broadcast",
+  "name": "VoxStream Live Reader (DHH)",
+  "short_name": "Live Reader",
+  "description": "Real-Time AI Accessibility Captions & Live Reader for Deaf & Hard of Hearing",
   "start_url": "/display",
   "scope": "/display",
   "display": "standalone",

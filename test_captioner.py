@@ -580,7 +580,7 @@ class TestServerEndpoints(AioHTTPTestCase):
         self.assertEqual(resp.status, 200)
         self.assertEqual(resp.content_type, 'application/manifest+json')
         manifest = await resp.json()
-        self.assertEqual(manifest['name'], 'VoxStream Stage Display')
+        self.assertEqual(manifest['name'], 'VoxStream Live Reader (DHH)')
         self.assertEqual(manifest['start_url'], '/display')
 
     async def test_sw_endpoint(self):

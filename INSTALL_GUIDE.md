@@ -202,14 +202,14 @@ To send viewer-toggleable closed captions directly into your YouTube and Twitch 
 
 ---
 
-## 📱 Step 4: PWA Stage Confidence Monitor & Multi-Device Setup
+## 📱 Step 4: DHH Live Accessibility Reader & Stage Confidence Monitor
 
-VoxStream includes a dedicated **Progressive Web App (PWA)** confidence monitor at `/display` built for stage monitors, podium iPads, overflow rooms, and choir screens.
+VoxStream includes a dedicated **Progressive Web App (PWA)** at `/display` built specifically as a **Live Accessibility Reader for Deaf and Hard of Hearing (DHH)** attendees, personal phone/iPad monitors, auditorium screens, podiums, and overflow rooms.
 
-### 1. Accessing on Local Wi-Fi / Network
-VoxStream automatically binds to `0.0.0.0:8765`, making it accessible to any device on the same local network:
+### 1. Accessing on Local Wi-Fi / Network (Zero Internet Required)
+VoxStream automatically binds to `0.0.0.0:8765`, allowing any DHH audience member, student, or congregant to follow along on their personal phone or tablet over local Wi-Fi:
 * **On Main Computer**: `http://127.0.0.1:8765/display`
-* **On Any iPad, Phone, or Stage TV**: `http://<YOUR_COMPUTER_IP>:8765/display` *(e.g. `http://192.168.1.145:8765/display`)*
+* **On Any Personal Phone, iPad, or Tablet**: `http://<YOUR_COMPUTER_IP>:8765/display` *(e.g. `http://192.168.1.145:8765/display`)*
 
 ---
 

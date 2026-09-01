@@ -152,8 +152,9 @@ http://127.0.0.1:8765/
 
 ---
 
-### B. Multi-Device Stage Confidence Monitor (`/display`)
-- **Designed for**: Stage TVs, podium iPads, confidence monitors, overflow rooms, choir monitors.
+### B. DHH Live Accessibility Reader & Confidence Monitor (`/display`)
+- **Designed for**: Deaf & Hard of Hearing (DHH) attendees, personal phone/iPad readers, stage monitors, overflow rooms, choir screens.
+- **DHH Audience Experience**: Any attendee on local Wi-Fi can open `http://<IP>:8765/display` on their personal smartphone or tablet to follow spoken sermons, lectures, or presentations in real-time with zero lag.
 - **PWA Ready**: Installable as a standalone app on iOS/iPadOS and Android; features **Screen Wake Lock API** to keep screens on continuously.
 - **Display Modes**:
   - **Scrollable History**: Retains up to 300 sentences for scrolling back, with smart "⬇️ Jump to Live" button.
