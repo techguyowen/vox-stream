@@ -301,16 +301,15 @@ class ChurchLexiconFormatter:
 
     @classmethod
     def _number_phrase_regex(cls) -> str:
-        """Regex fragment matching a spoken or digit number phrase.
+        """Regex matching an atomic English number (1-999 or digits).
+        Prevents improper splitting of compound numbers like 'twenty three'."""
+        units_pat = r"(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)"
+        tens_pat = r"(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)"
+        unit_digit_pat = r"(?:one|two|three|four|five|six|seven|eight|nine)"
+        strict_tens = rf"{tens_pat}(?!\s+{unit_digit_pat}\b)"
+        compound_tens_unit = rf"{tens_pat}[\s\-]+{unit_digit_pat}"
+        return rf"(?:(?:{unit_digit_pat}\s+hundred(?:\s+and)?\s+)?(?:{compound_tens_unit}|{strict_tens}|{units_pat})|\d+)"
 
-        Restricted to number vocabulary so citation patterns can match greedily
-        without swallowing (or truncating) surrounding non-number words.
-        'and' is only allowed directly after 'hundred' ("one hundred and nineteen"),
-        so "verse four and five" keeps its second half intact.
-        """
-        words = sorted(list(cls.UNITS.keys()) + list(cls.TENS.keys()) + ["hundred"], key=len, reverse=True)
-        num = rf"(?:{'|'.join(words)}|\d+)"
-        return rf"{num}(?:[\s\-]+{num}|(?<=hundred)[\s\-]+and[\s\-]+{num})*"
 
     def format_church_text(self, text: str) -> str:
         """Apply church terminology capitalization and scripture reference formatting."""
@@ -330,17 +329,18 @@ class ChurchLexiconFormatter:
         """
         Detects spoken scripture references and formats them into standard chapter:verse:
         e.g.
-        'John 3 16' -> 'John 3:16'
-        'John 3:16' -> 'John 3:16'
-        'Romans 8 28' -> 'Romans 8:28'
-        '1 Corinthians 13 4 through 7' -> '1 Corinthians 13:4-7'
+        'romans four one to eight' -> 'Romans 4:1-8'
+        'romans four one through eight' -> 'Romans 4:1-8'
+        'john three sixteen' -> 'John 3:16'
+        'first thessalonians five sixteen to eighteen' -> '1 Thessalonians 5:16-18'
+        'first corinthians 13 4 through 7' -> '1 Corinthians 13:4-7'
         'Psalm 23' -> 'Psalm 23'
         """
-        # 1. Format digit citations: Book + digit + digit (e.g. "John 3 16", "Romans 8 28")
         books_sorted = sorted(self.BOOKS_OF_BIBLE.keys(), key=len, reverse=True)
         books_regex = "|".join([re.escape(b) for b in books_sorted])
+        num_phrase = self._number_phrase_regex()
 
-        # Digit pattern: Book (chapter_num) (verse_num) [optional through verse_num]
+        # 1. Format digit citations: Book + digit + digit (e.g. "John 3 16", "Romans 8 28")
         digit_pattern = re.compile(
             rf"\b(?P<book>{books_regex})\s+(?P<chap>\d+)(?:[:\s]|,\s*verse\s+)(?P<verse>\d+)(?:\s*(?:through|thru|to|-)\s*(?P<end_verse>\d+))?\b",
             re.IGNORECASE,
@@ -359,32 +359,42 @@ class ChurchLexiconFormatter:
 
         text = digit_pattern.sub(replace_digits, text)
 
-        # 2. Chapter / Verse spoken pattern: "Book chapter X verse Y" or "Book X verse Y".
-        # Number groups only match number vocabulary, so "verse twenty three" is
-        # captured fully and trailing non-number words ("...through 30 today") survive.
-        num_phrase = self._number_phrase_regex()
-        spoken_cv_pattern = re.compile(
-            rf"\b(?P<book>{books_regex})\s+(?:chapter\s+)?(?P<chap>{num_phrase})\s+(?:verse|verses)\s+(?P<verse>{num_phrase})(?:\s*(?:through|thru|to|-)\s*(?P<end_verse>{num_phrase}))?\b",
+        # 2. Spoken Verse Range: e.g. "romans four one to eight", "first thessalonians five sixteen through eighteen"
+        spoken_range_pattern = re.compile(
+            rf"\b(?P<book>{books_regex})\s+(?:chapter\s+)?(?P<chap>{num_phrase})\s+(?:verse\s+|verses\s+)?(?P<verse>{num_phrase})\s+(?:through|thru|to|-)\s+(?:verse\s+)?(?P<end_verse>{num_phrase})\b",
             re.IGNORECASE,
         )
 
-        def replace_spoken_cv(m):
+        def replace_spoken_range(m):
+            raw_book = m.group("book").lower()
+            canon_book = self.BOOKS_OF_BIBLE.get(raw_book, raw_book.capitalize())
+            c_num = self._words_to_number(m.group("chap"))
+            v1_num = self._words_to_number(m.group("verse"))
+            v2_num = self._words_to_number(m.group("end_verse"))
+            if c_num <= 0 or v1_num <= 0 or v2_num <= 0:
+                return m.group(0)
+            return f"{canon_book} {c_num}:{v1_num}-{v2_num}"
+
+        text = spoken_range_pattern.sub(replace_spoken_range, text)
+
+        # 3. Spoken Single Citation: e.g. "john three sixteen", "romans eight twenty eight", "genesis one one"
+        spoken_single_pattern = re.compile(
+            rf"\b(?P<book>{books_regex})\s+(?:chapter\s+)?(?P<chap>{num_phrase})\s+(?:verse\s+)?(?P<verse>{num_phrase})\b",
+            re.IGNORECASE,
+        )
+
+        def replace_spoken_single(m):
             raw_book = m.group("book").lower()
             canon_book = self.BOOKS_OF_BIBLE.get(raw_book, raw_book.capitalize())
             c_num = self._words_to_number(m.group("chap"))
             v_num = self._words_to_number(m.group("verse"))
             if c_num <= 0 or v_num <= 0:
                 return m.group(0)
-            res = f"{canon_book} {c_num}:{v_num}"
-            if m.group("end_verse"):
-                end_num = self._words_to_number(m.group("end_verse"))
-                if end_num > 0:
-                    res += f"-{end_num}"
-            return res
+            return f"{canon_book} {c_num}:{v_num}"
 
-        text = spoken_cv_pattern.sub(replace_spoken_cv, text)
+        text = spoken_single_pattern.sub(replace_spoken_single, text)
 
-        # 3. Psalm pattern: "Psalm twenty three" -> "Psalm 23", "psalm one hundred nineteen" -> "Psalm 119"
+        # 4. Psalm pattern: "Psalm twenty three" -> "Psalm 23", "psalm one hundred nineteen" -> "Psalm 119"
         psalm_pattern = re.compile(
             rf"\b(?P<psalm>psalms?)\s+(?P<num>{num_phrase})\b",
             re.IGNORECASE,

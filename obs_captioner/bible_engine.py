@@ -253,4 +253,12 @@ class BibleEngine:
                 v_end = int(match.group(4)) if match.group(4) else None
                 results.append((canonical, ch, v_start, v_end))
 
+        # Check for Psalm chapter references (e.g. "Psalm 23")
+        if not results:
+            psalm_match = re.search(r"\b(psalms?)\s+(\d+)\b", formatted, re.IGNORECASE)
+            if psalm_match:
+                ch = int(psalm_match.group(2))
+                if 1 <= ch <= 150:
+                    results.append(("Psalms", ch, 1, None))
+
         return results
