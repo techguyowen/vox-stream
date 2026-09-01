@@ -1,4 +1,54 @@
 
+// 🐢 OBS Overlay Paced Reading Governor
+let overlayPaceQueue = [];
+let overlayPacingTimer = null;
+let overlayPacedText = "";
+
+function processOverlayPacingQueue() {
+    if (overlayPaceQueue.length === 0) {
+        overlayPacingTimer = null;
+        if (overlayPacedText.trim()) {
+            finalLines.push(overlayPacedText.trim());
+            while (finalLines.length > config.max_lines) finalLines.shift();
+            overlayPacedText = "";
+            renderFinalLines(false);
+            renderInterim("");
+            showBox();
+        }
+        return;
+    }
+
+    const word = overlayPaceQueue.shift();
+    if (word === "___SENTENCE_BREAK___") {
+        if (overlayPacedText.trim()) {
+            finalLines.push(overlayPacedText.trim());
+            while (finalLines.length > config.max_lines) finalLines.shift();
+            overlayPacedText = "";
+            renderFinalLines(false);
+            renderInterim("");
+            showBox();
+        }
+        overlayPacingTimer = setTimeout(processOverlayPacingQueue, 500);
+        return;
+    }
+
+    showBox();
+    overlayPacedText = overlayPacedText ? `${overlayPacedText} ${word}` : word;
+    renderInterim(overlayPacedText);
+
+    overlayPacingTimer = setTimeout(processOverlayPacingQueue, 440);
+}
+
+function queueOverlayPacedText(text) {
+    const words = text.trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return;
+    overlayPaceQueue.push(...words, "___SENTENCE_BREAK___");
+    if (!overlayPacingTimer) {
+        processOverlayPacingQueue();
+    }
+}
+
+
 // Scripture Verse Card Management
 let scriptureTimer = null;
 const scriptureCard = document.getElementById("scripture-card");

@@ -610,10 +610,10 @@
                 <span>👁️ Visual Aid</span>
             </label>
 
-            <!-- 1-Click Paced Reading (Slow Down Text) Toggle -->
-            <label class="ctrl-btn-label" title="Paced Reading: Smoothly paces text to a comfortable ~140 WPM reading speed to prevent rapid text jumps" style="background: rgba(245, 158, 11, 0.14); border-color: rgba(245, 158, 11, 0.5); color: #FBBF24;">
-                <input type="checkbox" id="chkDisplayPacing">
-                <span>⏱️ Paced Flow (Slow)</span>
+            <!-- 1-Click Slow Down Text / Paced Reading Toggle -->
+            <label class="ctrl-btn-label" id="lblDisplayPacing" title="Slow Down Text: Smooths fast speech into a steady 140 WPM reading pace and holds text on screen 3x longer for easy reading" style="cursor: pointer; background: rgba(245, 158, 11, 0.14); border: 1px solid rgba(245, 158, 11, 0.5); color: #FBBF24; display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 6px; font-size: 12px; font-weight: 700; user-select: none;">
+                <input type="checkbox" id="chkDisplayPacing" style="cursor: pointer; width: 15px; height: 15px;">
+                <span>🐢 Slow Down Text</span>
             </label>
         </div>
     </header>
@@ -1014,38 +1014,50 @@
         }
 
 
-        // ⏱️ Paced Reading Flow (Slow Down Text to Comfortable ~140 WPM)
+        // 🐢 Slow Down Text / Paced Reading Governor (Cap presentation to steady 135 WPM & 10s hold)
         let isPacedReadingEnabled = false;
         let paceQueue = [];
         let pacingTimer = null;
-        let currentPacedSentence = "";
+        let activePacedText = "";
 
         const chkDisplayPacing = document.getElementById("chkDisplayPacing");
 
         function processPacingQueue() {
             if (paceQueue.length === 0) {
                 pacingTimer = null;
+                if (activePacedText.trim()) {
+                    finalSentences.push(activePacedText.trim());
+                    while (finalSentences.length > maxHistorySentences) finalSentences.shift();
+                    activePacedText = "";
+                    interimText = "";
+                    renderCaptions();
+                    triggerSilenceTimer(10000); // 10 seconds generous reading hold
+                }
                 return;
             }
 
-            const nextWord = paceQueue.shift();
-            if (nextWord === "___SENTENCE_BREAK___") {
-                if (currentPacedSentence.trim()) {
-                    finalSentences.push(currentPacedSentence.trim());
+            const item = paceQueue.shift();
+            if (item === "___SENTENCE_BREAK___") {
+                if (activePacedText.trim()) {
+                    finalSentences.push(activePacedText.trim());
                     while (finalSentences.length > maxHistorySentences) finalSentences.shift();
-                    currentPacedSentence = "";
+                    activePacedText = "";
                     interimText = "";
                     renderCaptions();
-                    triggerSilenceTimer();
+                    triggerSilenceTimer(10000);
                 }
-            } else {
-                currentPacedSentence = currentPacedSentence ? `${currentPacedSentence} ${nextWord}` : nextWord;
-                interimText = currentPacedSentence;
-                renderCaptions();
+                // Short natural pause between sentences (600ms)
+                pacingTimer = setTimeout(processPacingQueue, 600);
+                return;
             }
 
-            // Comfortable 140 WPM pace = 400ms per word
-            pacingTimer = setTimeout(processPacingQueue, 390);
+            wakeLiveDisplay();
+            activePacedText = activePacedText ? `${activePacedText} ${item}` : item;
+            interimText = activePacedText;
+            renderCaptions();
+
+            // 135 WPM = ~440ms per word
+            pacingTimer = setTimeout(processPacingQueue, 440);
         }
 
         function queuePacedText(sentence) {
@@ -1072,12 +1084,12 @@
                     localStorage.setItem("voxstream_display_pacing", isPacedReadingEnabled ? "true" : "false");
                 } catch(e) {}
                 if (!isPacedReadingEnabled) {
-                    // Flush pending queue immediately
+                    // Flush immediately
                     if (pacingTimer) clearTimeout(pacingTimer);
                     pacingTimer = null;
-                    if (currentPacedSentence.trim()) {
-                        finalSentences.push(currentPacedSentence.trim());
-                        currentPacedSentence = "";
+                    if (activePacedText.trim()) {
+                        finalSentences.push(activePacedText.trim());
+                        activePacedText = "";
                     }
                     const remainingWords = paceQueue.filter(w => w !== "___SENTENCE_BREAK___").join(" ");
                     if (remainingWords.trim()) {
@@ -1158,6 +1170,8 @@
                         while (finalSentences.length > maxHistorySentences) {
                             finalSentences.shift();
                         }
+                        interimText = "";
+                        renderCaptions();
                         triggerSilenceTimer();
                     }
                 } else {
@@ -1165,17 +1179,14 @@
                         if (transcriptContent) transcriptContent.classList.add('faded');
                     }
                 }
-                if (!isPacedReadingEnabled) {
-                    interimText = "";
-                }
             } else {
-                if (text) {
-                    wakeLiveDisplay();
+                // In normal mode, show live interim speech. In paced reading mode, let the governor pace the completed thoughts smoothly.
+                if (!isPacedReadingEnabled) {
+                    if (text) wakeLiveDisplay();
+                    interimText = text;
+                    renderCaptions();
                 }
-                interimText = text;
             }
-
-            renderCaptions();
         }
 
         // Initial history loader
