@@ -165,6 +165,16 @@ class MoonshineEngine(BaseSTTEngine):
                     buffer.clear()
                     silence_start_time = None
 
+        # Flush remaining buffer at stream end
+        if len(buffer) >= min_bytes:
+            even_len = len(buffer) & ~1
+            audio_i16 = np.frombuffer(buffer[:even_len], dtype=np.int16)
+            audio_f32 = audio_i16.astype(np.float32) / 32768.0
+            text = await loop.run_in_executor(None, self._transcribe_buffer, audio_f32)
+            if text and text.strip():
+                await on_transcript(TranscriptEvent(text=text.strip(), is_final=True))
+            buffer.clear()
+
     async def stop(self) -> None:
         """Stop Moonshine engine."""
         self.is_running = False
