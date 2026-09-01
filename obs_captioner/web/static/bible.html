@@ -196,7 +196,7 @@
             line-height: 1.45;
             color: var(--text-color);
             text-shadow: 1px 1px 4px var(--shadow-color);
-            font-style: italic;
+            font-style: var(--font-style, normal);
             letter-spacing: 0.01em;
         }
 
@@ -275,6 +275,8 @@
             if (b.font_size) {
                 document.documentElement.style.setProperty('--font-size', `${b.font_size}px`);
             }
+            const italics = b.use_italics ? 'italic' : 'normal';
+            document.documentElement.style.setProperty('--font-style', italics);
             
             const vAlign = b.vertical_align || 'bottom';
             const theme = b.card_theme || 'amber';

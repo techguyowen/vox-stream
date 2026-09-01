@@ -127,6 +127,7 @@ class OverlayConfig:
     text_shadow: str = "2px 2px 5px rgba(0, 0, 0, 0.95)"
     text_stroke: str = "2px #000000"
     auto_hide_seconds: float = 4.0
+    use_italics: bool = False  # Set False for high-contrast accessibility / dyslexia readability
 
     def apply_theme(self, theme_id: str, custom_presets: Optional[Dict[str, dict]] = None) -> bool:
         """Apply attributes from a known theme preset or custom user preset."""
@@ -177,6 +178,7 @@ class BibleConfig:
     font_size: int = 26
     vertical_align: str = "bottom"  # "bottom", "top"
     card_theme: str = "amber"       # "amber", "blue", "dark", "light"
+    use_italics: bool = False       # Accessibility: False = straight upright text, True = italic slant
     show_on_stream_overlay: bool = True
     show_on_stage_display: bool = True
 

@@ -326,10 +326,12 @@ function updateBibleTabPreviewStyling() {
     const fontFam = document.getElementById("bible_tab_font_family");
     const fontSz = document.getElementById("bible_tab_font_size");
     const themeSel = document.getElementById("bible_tab_card_theme");
+    const useItal = document.getElementById("bible_tab_use_italics");
 
-    if (previewText && fontFam && fontSz) {
-        previewText.style.fontFamily = fontFam.value;
-        previewText.style.fontSize = `${Math.max(14, (parseInt(fontSz.value, 10) || 26) * 0.75)}px`;
+    if (previewText) {
+        if (fontFam) previewText.style.fontFamily = fontFam.value;
+        if (fontSz) previewText.style.fontSize = `${Math.max(14, (parseInt(fontSz.value, 10) || 26) * 0.75)}px`;
+        previewText.style.fontStyle = (useItal && useItal.checked) ? "italic" : "normal";
     }
 
     if (previewCard && themeSel && previewBadge) {
@@ -405,6 +407,19 @@ function initBibleHandlers() {
     const cardThemeSel = document.getElementById("bible_tab_card_theme");
     if (cardThemeSel) {
         cardThemeSel.addEventListener("change", updateBibleTabPreviewStyling);
+    }
+
+    
+    const overlayItal = document.getElementById("overlay_use_italics");
+    if (overlayItal) {
+        overlayItal.addEventListener("change", updatePreviewStyle);
+        overlayItal.addEventListener("click", updatePreviewStyle);
+    }
+
+    const bibleItal = document.getElementById("bible_tab_use_italics");
+    if (bibleItal) {
+        bibleItal.addEventListener("change", updateBibleTabPreviewStyling);
+        bibleItal.addEventListener("click", updateBibleTabPreviewStyling);
     }
 
     // 4. Live Verse Search & Preview
@@ -519,7 +534,8 @@ function initBibleHandlers() {
                     font_family: document.getElementById("bible_tab_font_family").value,
                     font_size: parseInt(document.getElementById("bible_tab_font_size").value, 10) || 26,
                     card_theme: document.getElementById("bible_tab_card_theme").value,
-                    vertical_align: document.getElementById("bible_tab_vertical_align").value
+                    vertical_align: document.getElementById("bible_tab_vertical_align").value,
+                    use_italics: document.getElementById("bible_tab_use_italics") ? document.getElementById("bible_tab_use_italics").checked : false
                 }
             };
             await saveConfigPayload(payload, "Scripture Studio settings saved successfully!");

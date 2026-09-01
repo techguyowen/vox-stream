@@ -24,7 +24,7 @@
     src: url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/woff/OpenDyslexic-Italic.woff') format('woff'),
          url('https://cdn.jsdelivr.net/npm/open-dyslexic@1.0.3/ttf/OpenDyslexic-Italic.ttf') format('truetype');
     font-weight: normal;
-    font-style: italic;
+    font-style: var(--font-style, normal);
     font-display: swap;
 }
 
@@ -125,7 +125,7 @@ body.align-top .caption-box.hidden {
 .translated-subtitle {
     font-size: calc(var(--font-size) * 0.82);
     color: var(--interim-color);
-    font-style: italic;
+    font-style: var(--font-style, normal);
     opacity: 0.92;
     line-height: 1.25;
     margin-top: 2px;
@@ -140,7 +140,7 @@ body.align-top .caption-box.hidden {
     -webkit-text-stroke: var(--text-stroke);
     paint-order: stroke fill;
     word-break: break-word;
-    font-style: italic;
+    font-style: var(--font-style, normal);
 }
 
 /* Animations */
@@ -229,5 +229,5 @@ body.align-top .scripture-card.hidden {
     line-height: 1.45;
     color: #FFFBEB;
     text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.9);
-    font-style: italic;
+    font-style: var(--font-style, normal);
 }

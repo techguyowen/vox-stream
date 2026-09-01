@@ -260,6 +260,19 @@
                             <input type="range" id="bg_opacity_slider" min="0" max="100" value="72" class="slider">
                         </div>
 
+                        <!-- Accessibility: Italics Toggle -->
+                        <div class="form-group" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 14px; margin: 14px 0;">
+                            <label class="switch-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 4px;">
+                                <input type="checkbox" id="overlay_use_italics" style="width: 18px; height: 18px; cursor: pointer;">
+                                <span style="font-size: 13.5px; color: var(--text-main); font-weight: 600;">
+                                    <em>Italicize</em> interim speech &amp; secondary subtitles
+                                </span>
+                            </label>
+                            <span class="hint" style="margin-left: 28px; display: block; font-size: 11.5px; color: #94A3B8;">
+                                ♿ <strong>Accessibility Tip:</strong> Keep unchecked for upright, high-contrast typography to enhance reading legibility for viewers with dyslexia, astigmatism, or low vision.
+                            </span>
+                        </div>
+
                         <button id="btn-save-style" class="btn btn-primary btn-block">💾 Save OBS Overlay Settings</button>
                     </div>
 
@@ -426,6 +439,19 @@
                             </div>
                         </div>
 
+                        <!-- Accessibility: Scripture Italics Toggle -->
+                        <div class="form-group" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 14px; margin: 14px 0;">
+                            <label class="switch-label" style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 4px;">
+                                <input type="checkbox" id="bible_tab_use_italics" style="width: 18px; height: 18px; cursor: pointer;">
+                                <span style="font-size: 13.5px; color: var(--text-main); font-weight: 600;">
+                                    <em>Italicize</em> scripture quote passages
+                                </span>
+                            </label>
+                            <span class="hint" style="margin-left: 28px; display: block; font-size: 11.5px; color: #94A3B8;">
+                                ♿ <strong>Accessibility Tip:</strong> Keep unchecked for clean, upright letterforms with maximum legibility on stage screens and broadcasts.
+                            </span>
+                        </div>
+
                         <div style="margin-top: 16px;">
                             <button type="button" id="btn-save-bible-tab-settings" class="btn btn-primary" style="background: #F59E0B; color: #000; font-weight: 700; border: none;">💾 Save Scripture Settings</button>
                         </div>
@@ -460,7 +486,7 @@
                                 <span id="bible-tab-preview-badge" style="background: #F59E0B; color: #000; font-size: 12px; font-weight: 800; padding: 2px 8px; border-radius: 4px; text-transform: uppercase;">📖 JOHN 3:16 • BSB</span>
                                 <span style="font-size: 11px; color: var(--text-muted);">Preview</span>
                             </div>
-                            <div id="bible-tab-preview-text" style="font-size: 14px; font-weight: 600; color: #FEF3C7; line-height: 1.45; font-style: italic;">
+                            <div id="bible-tab-preview-text" style="font-size: 14px; font-weight: 600; color: #FEF3C7; line-height: 1.45; font-style: normal;">
                                 "For God so loved the world that He gave His one and only Son, that everyone who believes in Him shall not perish but have eternal life."
                             </div>
                         </div>
