@@ -280,6 +280,140 @@
                 </div>
             </div>
 
+            <!-- TAB 2: SCRIPTURE & OFFLINE BIBLE STUDIO -->
+            <div id="tab-bible" class="tab-pane">
+                <!-- Dedicated OBS Scripture Browser Source Hub Card -->
+                <div class="panel" style="background: rgba(30, 41, 59, 0.45); border: 1px solid rgba(245, 158, 11, 0.45); border-radius: 8px; padding: 18px 20px; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
+                        <div>
+                            <h2 style="margin: 0; font-size: 16.5px; color: #FBBF24; display: flex; align-items: center; gap: 8px;">
+                                <span>📖 Dedicated OBS Scripture Browser Source</span>
+                            </h2>
+                            <p class="subtext" style="margin: 4px 0 0 0; font-size: 12.5px;">
+                                Add this URL as a dedicated <strong>Browser Source</strong> in OBS Studio, vMix, or ProPresenter to display live, animated scripture lower-thirds and passage cards on your broadcast.
+                            </p>
+                        </div>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button type="button" id="btn-copy-bible-overlay-url" class="btn btn-primary btn-sm" style="background: #D97706; color: #000; font-weight: 700; display: inline-flex; align-items: center; gap: 5px; padding: 7px 14px; border: none;">
+                                <span>📋 Copy Scripture URL</span>
+                            </button>
+                            <a href="/bible" target="_blank" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 4px; text-decoration: none; padding: 7px 12px;">
+                                <span>↗️ Open Scripture Overlay</span>
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Live URL Pill & Recommended Dimensions -->
+                    <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center; background: #0F172A; border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 14px; font-size: 12.5px; margin-bottom: 12px;">
+                        <div style="flex: 1; min-width: 260px; font-family: 'JetBrains Mono', monospace; color: #FBBF24; word-break: break-all;">
+                            <span style="color: var(--text-muted); font-size: 10.5px; text-transform: uppercase; display: block; margin-bottom: 2px; font-weight: 700;">Scripture Overlay URL:</span>
+                            <span id="bible-overlay-live-url" style="font-weight: 600; font-size: 13px;">http://127.0.0.1:8765/bible</span>
+                        </div>
+                        <div style="display: flex; gap: 14px; font-size: 11.5px; color: #CBD5E1; border-left: 1px solid var(--border-color); padding-left: 14px; flex-wrap: wrap;">
+                            <div>📐 <strong>Width:</strong> 1920</div>
+                            <div>📐 <strong>Height:</strong> 1080</div>
+                            <div>⚡ <strong>FPS:</strong> 60</div>
+                            <div>🎨 <strong>Background:</strong> Transparent (Alpha)</div>
+                        </div>
+                    </div>
+
+                    <!-- Quick 3-Step Setup Guide -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px;">
+                        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px; font-size: 12px;">
+                            <strong style="color: var(--text-main); display: block; margin-bottom: 3px;">1. Add Browser Source</strong>
+                            <span style="color: var(--text-muted);">In OBS, click <code style="color: #FBBF24;">+</code> under Sources &rarr; select <strong>Browser</strong>.</span>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px; font-size: 12px;">
+                            <strong style="color: var(--text-main); display: block; margin-bottom: 3px;">2. Paste URL &amp; Resolution</strong>
+                            <span style="color: var(--text-muted);">Paste the copied URL, set Width to <strong>1920</strong>, Height to <strong>1080</strong>.</span>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px; font-size: 12px;">
+                            <strong style="color: var(--text-main); display: block; margin-bottom: 3px;">3. Instant Auto-Detection</strong>
+                            <span style="color: var(--text-muted);">When a speaker quotes scripture or when you click <em>Push to Stream</em>, verses pop up automatically!</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="two-col-layout">
+                    <!-- Left: Engine Settings & Controls -->
+                    <div class="panel" style="border-left: 4px solid #F59E0B;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <div>
+                                <h2 style="margin: 0; color: #F59E0B;">⚙️ Offline Bible Engine Configuration</h2>
+                                <p class="subtext" style="margin: 4px 0 0 0;">Control live speech recognition triggers and default translations.</p>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="bible_tab_enabled" checked>
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+
+                        <div class="form-row" style="margin-top: 14px;">
+                            <div class="form-group">
+                                <label for="bible_tab_version_select">Default Offline Translation</label>
+                                <select id="bible_tab_version_select" class="form-control">
+                                    <option value="bsb" selected>BSB — Berean Standard Bible (Modern / ESV Equivalent)</option>
+                                    <option value="web">WEB — World English Bible (Modern / NIV Equivalent)</option>
+                                    <option value="kjv">KJV — King James Version (Traditional Classic)</option>
+                                </select>
+                                <span class="hint">100% offline database with 105,000+ indexed verses across 66 books.</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="bible_tab_display_mode">Display Trigger Mode</label>
+                                <select id="bible_tab_display_mode" class="form-control">
+                                    <option value="auto" selected>⚡ Instant Auto-Pop (Display immediately when spoken)</option>
+                                    <option value="manual">👁️ AV Operator Cue Mode (Preview &amp; push manually)</option>
+                                </select>
+                                <span class="hint">Auto-pop instantly displays recognized verses on stream &amp; stage.</span>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="bible_tab_duration_slider">On-Screen Display Duration (<span id="val-bible-tab-duration">14s</span>)</label>
+                                <input type="range" id="bible_tab_duration_slider" min="5" max="30" step="1" value="14" class="slider">
+                                <span class="hint">How long the scripture card remains visible before smoothly fading out.</span>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 16px;">
+                            <button type="button" id="btn-save-bible-tab-settings" class="btn btn-primary" style="background: #F59E0B; color: #000; font-weight: 700; border: none;">💾 Save Scripture Settings</button>
+                        </div>
+                    </div>
+
+                    <!-- Right: Live Verse Search & Manual Cue Broadcaster -->
+                    <div class="panel" style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(245, 158, 11, 0.3);">
+                        <h2 style="color: #FBBF24; margin-bottom: 6px;">🔍 Live Scripture Search &amp; Manual Cue</h2>
+                        <p class="subtext" style="margin-bottom: 14px;">Look up any verse or range across translations, test live speech substitutions, or push passages directly to stream &amp; stage screens.</p>
+
+                        <div class="form-group">
+                            <label for="bible-tab-search-input">Scripture Reference / Spoken Phrase</label>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <input type="text" id="bible-tab-search-input" value="John 3:16" placeholder="e.g. John 3:16, Romans 4:1-8, romans eight twenty eight, Psalm 23..." class="form-control" style="flex: 1; min-width: 220px; font-weight: 600;">
+                                <button type="button" id="btn-bible-tab-search" class="btn btn-secondary" style="font-weight: 600;">🔍 Search</button>
+                            </div>
+                            <span class="hint">Works with standard citations (<em>John 3:16</em>) and spelled-out phrases (<em>romans four one to eight</em>).</span>
+                        </div>
+
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px;">
+                            <button type="button" id="btn-bible-tab-push" class="btn btn-primary" style="background: #F59E0B; color: #000; font-weight: 700; border: none; flex: 1;">📺 Push to Stream &amp; Stage</button>
+                            <button type="button" id="btn-bible-tab-dismiss" class="btn btn-danger" style="font-weight: 600;">✕ Dismiss On-Screen Card</button>
+                        </div>
+
+                        <!-- Live Scripture Preview Card -->
+                        <div id="bible-tab-preview-card" style="margin-top: 16px; background: rgba(15, 23, 42, 0.94); border: 1.5px solid #F59E0B; border-radius: 10px; padding: 14px 18px; box-shadow: 0 8px 25px rgba(0,0,0,0.5); display: block;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <span id="bible-tab-preview-badge" style="background: #F59E0B; color: #000; font-size: 12px; font-weight: 800; padding: 2px 8px; border-radius: 4px; text-transform: uppercase;">📖 JOHN 3:16 • BSB</span>
+                                <span style="font-size: 11px; color: var(--text-muted);">Preview</span>
+                            </div>
+                            <div id="bible-tab-preview-text" style="font-size: 14px; font-weight: 600; color: #FEF3C7; line-height: 1.45; font-style: italic;">
+                                "For God so loved the world that He gave His one and only Son, that everyone who believes in Him shall not perish but have eternal life."
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- TAB: CUSTOM GLOSSARY & VOCABULARY -->
             <div id="tab-vocabulary" class="tab-pane">
                 <div class="panel">

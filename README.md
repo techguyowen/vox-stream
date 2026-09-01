@@ -64,6 +64,8 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Po
   * **Stage Confidence Monitor**: Floating prompter box pinned to stage confidence screens and podium iPads.
   * **Interactive Dashboard Cue Tool**: Search, preview, and manually push or dismiss verses with 1 click.
 
+<p align="center"><img src="docs/screenshots/scripture_studio.png" alt="VoxStream Scripture Studio Dashboard and 1-Click Browser Source Hub" width="850" style="border-radius: 8px;"></p>
+
 ---
 
 ### ⛪ 5. Church, Worship & Biblical Lexicon

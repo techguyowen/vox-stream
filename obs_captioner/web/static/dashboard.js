@@ -545,6 +545,7 @@ function renderThemeGrid(presets) {
                 if (res.ok) {
                     showToast("🗑️ Custom preset deleted.", "info");
                     await loadThemes();
+    initBibleHandlers();
                 } else {
                     const err = await res.json();
                     showToast(`⚠️ Failed to delete preset: ${err.error || "Unknown error"}`, "error");
@@ -597,6 +598,7 @@ async function applyThemePreset(themeId) {
 
     await loadConfig();
             await loadThemes();
+    initBibleHandlers();
             showToast("🎨 Theme preset applied!", "success", 2000);
         }
     } catch (e) {
@@ -2211,6 +2213,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
     await loadConfig();
     await loadThemes();
+    initBibleHandlers();
     await loadAudioDevices();
     await loadObsMonitors();
     await loadVocabularyState();

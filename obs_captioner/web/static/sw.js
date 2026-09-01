@@ -1,7 +1,8 @@
-const CACHE_NAME = 'voxstream-cache-v5';
+const CACHE_NAME = 'voxstream-cache-v6';
 const PRECACHE_ASSETS = [
   '/display',
   '/dashboard',
+  '/bible',
   '/manifest.json',
   '/favicon.ico',
   '/static/favicon.ico',
