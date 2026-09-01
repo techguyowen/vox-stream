@@ -766,6 +766,42 @@ class TestServerEndpoints(AioHTTPTestCase):
         dm_data = await dm_resp.json()
         self.assertEqual(dm_data['status'], 'success')
 
+
+    async def test_accessibility_config_fields(self):
+        # Test saving and reading accessibility configuration parameters
+        post_resp = await self.client.request('POST', '/api/config', json={
+            'overlay': {
+                'letter_spacing': '0.05em',
+                'use_italics': False,
+                'high_contrast_outline': True,
+                'reduce_motion': True
+            },
+            'bible': {
+                'letter_spacing': '0.05em',
+                'use_italics': False,
+                'high_contrast_outline': True,
+                'card_theme': 'amber'
+            }
+        })
+        self.assertEqual(post_resp.status, 200)
+
+        get_resp = await self.client.request('GET', '/api/config')
+        self.assertEqual(get_resp.status, 200)
+        cfg_data = await get_resp.json()
+        self.assertEqual(cfg_data['overlay']['letter_spacing'], '0.05em')
+        self.assertEqual(cfg_data['overlay']['use_italics'], False)
+        self.assertEqual(cfg_data['overlay']['high_contrast_outline'], True)
+        self.assertEqual(cfg_data['overlay']['reduce_motion'], True)
+        self.assertEqual(cfg_data['bible']['letter_spacing'], '0.05em')
+        self.assertEqual(cfg_data['bible']['use_italics'], False)
+
+    async def test_bible_route_variants(self):
+        # Verify /bible, /bible/, and /bible.html all resolve correctly
+        for path in ['/bible', '/bible/', '/bible.html']:
+            resp = await self.client.request('GET', path)
+            self.assertEqual(resp.status, 200)
+            self.assertEqual(resp.content_type, 'text/html')
+
         # 6. Dedicated /bible HTML page
         page_resp = await self.client.request('GET', '/bible')
         self.assertEqual(page_resp.status, 200)

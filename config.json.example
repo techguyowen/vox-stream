@@ -141,11 +141,31 @@
     "box_padding": "14px 26px",
     "text_shadow": "2px 2px 5px rgba(0, 0, 0, 0.95)",
     "text_stroke": "2px #000000",
-    "auto_hide_seconds": 4.0
+    "auto_hide_seconds": 4.0,
+    "letter_spacing": "normal",
+    "use_italics": false,
+    "reduce_motion": false,
+    "high_contrast_outline": false
   },
   "api": {
     "enabled": true,
     "api_key": ""
   },
-  "custom_presets": {}
+  "custom_presets": {},
+  "bible": {
+    "enabled": true,
+    "default_version": "bsb",
+    "display_mode": "auto",
+    "display_duration_seconds": 14.0,
+    "font_family": "'Lora', Georgia, serif",
+    "font_size": 26,
+    "letter_spacing": "normal",
+    "vertical_align": "bottom",
+    "card_theme": "amber",
+    "use_italics": false,
+    "reduce_motion": false,
+    "high_contrast_outline": false,
+    "show_on_stream_overlay": true,
+    "show_on_stage_display": true
+  }
 }

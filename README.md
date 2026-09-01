@@ -82,6 +82,15 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Po
 
 ---
 
+
+### ♿ 7. Visual Aid & Dyslexia Accessibility Suite (WCAG 2.2 AAA Ready)
+* **`👁️ Visual Aid Mode`**: 1-click toggle on the Stage Monitor (`/display`) that expands letter tracking (`0.06em`), word spacing (`0.15em`), and line height (`1.65x`) while preserving your chosen font and color theme.
+* **`🐢 Slow Down Text (Paced Reading)`**: Intelligently buffers rapid speech bursts and reveals words at a calm, readable pace of **~135 WPM**, holding completed sentences on screen for **10.0 seconds** to eliminate reading fatigue.
+* **`📖 OpenDyslexic Typography`**: Full bottom-weighted font option loaded across OBS stream overlays, Scripture Studio, and stage confidence monitors to eliminate character flipping and crowding.
+* **`⚡ Reduced Motion Support`**: Automatically respects OS motion reduction preferences and suppresses bouncing word-pop animations for viewers with vestibular sensitivities.
+* **`🔊 ARIA Live Regions`**: Screen reader compliant (`role="region" aria-live="polite" aria-atomic="false"`) so blind and low-vision operators hear live transcriptions and scriptures via VoiceOver, NVDA, and TalkBack.
+* **`⚙️ Feature Manager Modal`**: Click the `⚙️ Features` button in the top bar to toggle workspace tabs on/off or activate 1-click presets (*Church / AV, Streamer, Minimalist, High-Visibility*).
+
 ### 🔤 5. Intelligent Capitalization & Punctuation Engine
 * **Sentence Capitalization**: Capitalizes sentence beginnings, standalone pronoun `I`, tech brands & acronyms (`OBS`, `GPU`, `CPU`, `HDMI`, `YouTube`, `Twitch`, `Discord`), and common contractions (`I'm`, `don't`, `can't`, `that's`).
 * **Smart Punctuation**: Restores question marks (`?`), exclamation marks (`!`), periods (`.`), and natural comma pauses before coordinating conjunctions.
