@@ -1,4 +1,209 @@
 
+// Complete Bible 66 Books & Chapter Counts for Smart Autofill
+const BIBLE_BOOKS_CHAPTERS = [
+    { name: "Genesis", chapters: 50, testaments: "OT", popular: ["Genesis 1:1", "Genesis 1:26-27", "Genesis 12:1-3"] },
+    { name: "Exodus", chapters: 40, testaments: "OT", popular: ["Exodus 14:14", "Exodus 20:1-17"] },
+    { name: "Leviticus", chapters: 27, testaments: "OT", popular: ["Leviticus 19:18"] },
+    { name: "Numbers", chapters: 36, testaments: "OT", popular: ["Numbers 6:24-26"] },
+    { name: "Deuteronomy", chapters: 34, testaments: "OT", popular: ["Deuteronomy 6:4-5", "Deuteronomy 31:6"] },
+    { name: "Joshua", chapters: 24, testaments: "OT", popular: ["Joshua 1:9", "Joshua 24:15"] },
+    { name: "Judges", chapters: 21, testaments: "OT" },
+    { name: "Ruth", chapters: 4, testaments: "OT", popular: ["Ruth 1:16-17"] },
+    { name: "1 Samuel", chapters: 31, testaments: "OT", popular: ["1 Samuel 16:7"] },
+    { name: "2 Samuel", chapters: 24, testaments: "OT", popular: ["2 Samuel 22:2-4"] },
+    { name: "1 Kings", chapters: 22, testaments: "OT", popular: ["1 Kings 19:11-12"] },
+    { name: "2 Kings", chapters: 25, testaments: "OT", popular: ["2 Kings 6:16-17"] },
+    { name: "1 Chronicles", chapters: 29, testaments: "OT", popular: ["1 Chronicles 16:34"] },
+    { name: "2 Chronicles", chapters: 36, testaments: "OT", popular: ["2 Chronicles 7:14"] },
+    { name: "Ezra", chapters: 10, testaments: "OT" },
+    { name: "Nehemiah", chapters: 13, testaments: "OT", popular: ["Nehemiah 8:10"] },
+    { name: "Esther", chapters: 10, testaments: "OT", popular: ["Esther 4:14"] },
+    { name: "Job", chapters: 42, testaments: "OT", popular: ["Job 19:25"] },
+    { name: "Psalms", chapters: 150, testaments: "OT", popular: ["Psalm 23", "Psalm 91", "Psalm 119", "Psalm 121", "Psalm 46:1", "Psalm 100"] },
+    { name: "Proverbs", chapters: 31, testaments: "OT", popular: ["Proverbs 3:5-6", "Proverbs 4:23", "Proverbs 18:10"] },
+    { name: "Ecclesiastes", chapters: 12, testaments: "OT", popular: ["Ecclesiastes 3:1-8"] },
+    { name: "Song of Solomon", chapters: 8, testaments: "OT" },
+    { name: "Isaiah", chapters: 66, testaments: "OT", popular: ["Isaiah 9:6", "Isaiah 40:31", "Isaiah 41:10", "Isaiah 53:5"] },
+    { name: "Jeremiah", chapters: 52, testaments: "OT", popular: ["Jeremiah 29:11", "Jeremiah 33:3"] },
+    { name: "Lamentations", chapters: 5, testaments: "OT", popular: ["Lamentations 3:22-23"] },
+    { name: "Ezekiel", chapters: 48, testaments: "OT", popular: ["Ezekiel 36:26"] },
+    { name: "Daniel", chapters: 12, testaments: "OT", popular: ["Daniel 3:17-18", "Daniel 6:26-27"] },
+    { name: "Hosea", chapters: 14, testaments: "OT" },
+    { name: "Joel", chapters: 3, testaments: "OT", popular: ["Joel 2:28"] },
+    { name: "Amos", chapters: 9, testaments: "OT", popular: ["Amos 5:24"] },
+    { name: "Obadiah", chapters: 1, testaments: "OT" },
+    { name: "Jonah", chapters: 4, testaments: "OT" },
+    { name: "Micah", chapters: 7, testaments: "OT", popular: ["Micah 6:8"] },
+    { name: "Nahum", chapters: 3, testaments: "OT", popular: ["Nahum 1:7"] },
+    { name: "Habakkuk", chapters: 3, testaments: "OT", popular: ["Habakkuk 3:17-19"] },
+    { name: "Zephaniah", chapters: 3, testaments: "OT", popular: ["Zephaniah 3:17"] },
+    { name: "Haggai", chapters: 2, testaments: "OT" },
+    { name: "Zechariah", chapters: 14, testaments: "OT", popular: ["Zechariah 4:6"] },
+    { name: "Malachi", chapters: 4, testaments: "OT", popular: ["Malachi 3:10"] },
+    { name: "Matthew", chapters: 28, testaments: "NT", popular: ["Matthew 5:3-12", "Matthew 6:9-13", "Matthew 6:33", "Matthew 11:28-30", "Matthew 28:19-20"] },
+    { name: "Mark", chapters: 16, testaments: "NT", popular: ["Mark 10:45", "Mark 11:24"] },
+    { name: "Luke", chapters: 24, testaments: "NT", popular: ["Luke 1:37", "Luke 2:10-11", "Luke 19:10"] },
+    { name: "John", chapters: 21, testaments: "NT", popular: ["John 1:1-5", "John 3:16", "John 10:10", "John 14:6", "John 15:5"] },
+    { name: "Acts", chapters: 28, testaments: "NT", popular: ["Acts 1:8", "Acts 2:38", "Acts 4:12"] },
+    { name: "Romans", chapters: 16, testaments: "NT", popular: ["Romans 3:23", "Romans 4:1-8", "Romans 5:8", "Romans 6:23", "Romans 8:1", "Romans 8:28", "Romans 10:9-10", "Romans 12:1-2"] },
+    { name: "1 Corinthians", chapters: 16, testaments: "NT", popular: ["1 Corinthians 10:13", "1 Corinthians 13:4-8", "1 Corinthians 15:55-57"] },
+    { name: "2 Corinthians", chapters: 13, testaments: "NT", popular: ["2 Corinthians 5:17", "2 Corinthians 12:9"] },
+    { name: "Galatians", chapters: 6, testaments: "NT", popular: ["Galatians 2:20", "Galatians 5:22-23"] },
+    { name: "Ephesians", chapters: 6, testaments: "NT", popular: ["Ephesians 2:8-10", "Ephesians 3:20", "Ephesians 6:10-18"] },
+    { name: "Philippians", chapters: 4, testaments: "NT", popular: ["Philippians 4:6-7", "Philippians 4:13", "Philippians 4:19"] },
+    { name: "Colossians", chapters: 4, testaments: "NT", popular: ["Colossians 3:1-4", "Colossians 3:23"] },
+    { name: "1 Thessalonians", chapters: 5, testaments: "NT", popular: ["1 Thessalonians 5:16-18", "1 Thessalonians 4:16-18"] },
+    { name: "2 Thessalonians", chapters: 3, testaments: "NT", popular: ["2 Thessalonians 3:3"] },
+    { name: "1 Timothy", chapters: 6, testaments: "NT", popular: ["1 Timothy 4:12", "1 Timothy 6:12"] },
+    { name: "2 Timothy", chapters: 4, testaments: "NT", popular: ["2 Timothy 1:7", "2 Timothy 3:16-17"] },
+    { name: "Titus", chapters: 3, testaments: "NT", popular: ["Titus 2:11-14"] },
+    { name: "Philemon", chapters: 1, testaments: "NT" },
+    { name: "Hebrews", chapters: 13, testaments: "NT", popular: ["Hebrews 4:12", "Hebrews 11:1", "Hebrews 12:1-2", "Hebrews 13:8"] },
+    { name: "James", chapters: 5, testaments: "NT", popular: ["James 1:2-4", "James 1:5", "James 4:7-8"] },
+    { name: "1 Peter", chapters: 5, testaments: "NT", popular: ["1 Peter 2:9", "1 Peter 5:7"] },
+    { name: "2 Peter", chapters: 3, testaments: "NT", popular: ["2 Peter 3:9"] },
+    { name: "1 John", chapters: 5, testaments: "NT", popular: ["1 John 1:9", "1 John 4:7-8", "1 John 4:19"] },
+    { name: "2 John", chapters: 1, testaments: "NT" },
+    { name: "3 John", chapters: 1, testaments: "NT" },
+    { name: "Jude", chapters: 1, testaments: "NT", popular: ["Jude 1:24-25"] },
+    { name: "Revelation", chapters: 22, testaments: "NT", popular: ["Revelation 1:8", "Revelation 21:4", "Revelation 22:20"] }
+];
+
+function setupBibleAutofill() {
+    const input = document.getElementById("bible-tab-search-input");
+    const dropdown = document.getElementById("bible-autocomplete-dropdown");
+    const btnSearch = document.getElementById("btn-bible-tab-search");
+    if (!input || !dropdown) return;
+
+    let selectedIndex = -1;
+
+    function renderSuggestions(query) {
+        query = query.trim().toLowerCase();
+        if (!query) {
+            dropdown.style.display = "none";
+            return;
+        }
+
+        const items = [];
+
+        // Match books
+        for (const book of BIBLE_BOOKS_CHAPTERS) {
+            const bLower = book.name.toLowerCase();
+            const bClean = bLower.replace(/^[1-3]\s+/, "");
+            
+            if (bLower.startsWith(query) || bClean.startsWith(query)) {
+                // Add popular passages first
+                if (book.popular) {
+                    for (const pop of book.popular) {
+                        items.push({ text: pop, type: "verse", badge: "Passage" });
+                    }
+                }
+                // Add chapters
+                const maxChToShow = Math.min(book.chapters, 12);
+                for (let ch = 1; ch <= maxChToShow; ch++) {
+                    items.push({ text: `${book.name} ${ch}`, type: "chapter", badge: `Ch 1-${book.chapters}` });
+                }
+            } else if (query.startsWith(bLower + " ") || query.startsWith(bClean + " ")) {
+                // User typed book name and is typing chapter
+                const remainder = query.replace(bLower, "").replace(bClean, "").trim();
+                if (book.popular) {
+                    for (const pop of book.popular) {
+                        if (pop.toLowerCase().includes(query)) {
+                            items.push({ text: pop, type: "verse", badge: "Passage" });
+                        }
+                    }
+                }
+                for (let ch = 1; ch <= book.chapters; ch++) {
+                    const candidate = `${book.name} ${ch}`;
+                    if (candidate.toLowerCase().startsWith(query)) {
+                        items.push({ text: candidate, type: "chapter", badge: `Chapter ${ch}` });
+                    }
+                }
+            }
+        }
+
+        if (items.length === 0) {
+            dropdown.style.display = "none";
+            return;
+        }
+
+        selectedIndex = -1;
+        const displayItems = items.slice(0, 15);
+        dropdown.innerHTML = displayItems.map((it, idx) => `
+            <div class="bible-autocomplete-item" data-idx="${idx}" data-val="${escapeHtml(it.text)}">
+                <span>📖 <strong>${escapeHtml(it.text)}</strong></span>
+                <span style="font-size: 10.5px; opacity: 0.7; background: rgba(255,255,255,0.1); padding: 1px 6px; border-radius: 3px;">${escapeHtml(it.badge)}</span>
+            </div>
+        `).join("");
+
+        dropdown.style.display = "block";
+
+        // Click listeners on items
+        dropdown.querySelectorAll(".bible-autocomplete-item").forEach(el => {
+            el.addEventListener("click", () => {
+                input.value = el.dataset.val;
+                dropdown.style.display = "none";
+                if (btnSearch) btnSearch.click();
+            });
+        });
+    }
+
+    input.addEventListener("input", (e) => {
+        renderSuggestions(e.target.value);
+    });
+
+    input.addEventListener("keydown", (e) => {
+        const items = dropdown.querySelectorAll(".bible-autocomplete-item");
+        if (dropdown.style.display === "block" && items.length > 0) {
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                selectedIndex = (selectedIndex + 1) % items.length;
+                updateSelection(items);
+            } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                selectedIndex = (selectedIndex - 1 + items.length) % items.length;
+                updateSelection(items);
+            } else if (e.key === "Enter" && selectedIndex >= 0) {
+                e.preventDefault();
+                items[selectedIndex].click();
+            } else if (e.key === "Escape") {
+                dropdown.style.display = "none";
+            }
+        }
+    });
+
+    function updateSelection(items) {
+        items.forEach((it, idx) => {
+            if (idx === selectedIndex) {
+                it.classList.add("selected");
+                it.scrollIntoView({ block: "nearest" });
+            } else {
+                it.classList.remove("selected");
+            }
+        });
+    }
+
+    // Hide dropdown when clicking outside
+    document.addEventListener("click", (e) => {
+        if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+            dropdown.style.display = "none";
+        }
+    });
+
+    // 1-Click Fast Scripture Pills
+    document.querySelectorAll(".btn-scripture-pill").forEach(pill => {
+        pill.addEventListener("click", () => {
+            const ref = pill.dataset.ref;
+            if (ref) {
+                input.value = ref;
+                dropdown.style.display = "none";
+                if (btnSearch) btnSearch.click();
+            }
+        });
+    });
+}
+
+
 function updateBibleTabPreviewStyling() {
     const previewText = document.getElementById("bible-tab-preview-text");
     const previewCard = document.getElementById("bible-tab-preview-card");
@@ -37,6 +242,7 @@ function updateBibleTabPreviewStyling() {
 
 // Dedicated Scripture Studio Dashboard Handlers
 function initBibleHandlers() {
+    setupBibleAutofill();
     // 1. Populate Live Scripture URL
     const bibleUrlEl = document.getElementById("bible-overlay-live-url");
     if (bibleUrlEl) {

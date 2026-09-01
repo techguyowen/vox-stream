@@ -433,13 +433,34 @@
                         <h2 style="color: #FBBF24; margin-bottom: 6px;">🔍 Live Scripture Search &amp; Manual Cue</h2>
                         <p class="subtext" style="margin-bottom: 14px;">Look up any verse or range across translations, test live speech substitutions, or push passages directly to stream &amp; stage screens.</p>
 
-                        <div class="form-group">
+                        <div class="form-group" style="position: relative;">
                             <label for="bible-tab-search-input">Scripture Reference / Spoken Phrase</label>
-                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                <input type="text" id="bible-tab-search-input" value="John 3:16" placeholder="e.g. John 3:16, Romans 4:1-8, romans eight twenty eight, Psalm 23..." class="form-control" style="flex: 1; min-width: 220px; font-weight: 600;">
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap; position: relative;">
+                                <div style="position: relative; flex: 1; min-width: 220px;">
+                                    <input type="text" id="bible-tab-search-input" value="John 3:16" placeholder="Type book or chapter (e.g. Rom, John 3, 1 Cor 13, Ps 23)..." class="form-control" style="width: 100%; font-weight: 600;" autocomplete="off">
+                                    <!-- Floating Autofill / Suggestion Dropdown -->
+                                    <div id="bible-autocomplete-dropdown" style="position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 240px; overflow-y: auto; background: #0F172A; border: 1.5px solid #F59E0B; border-radius: 8px; box-shadow: 0 12px 35px rgba(0,0,0,0.85); z-index: 1000; display: none;"></div>
+                                </div>
                                 <button type="button" id="btn-bible-tab-search" class="btn btn-secondary" style="font-weight: 600;">🔍 Search</button>
                             </div>
-                            <span class="hint">Works with standard citations (<em>John 3:16</em>) and spelled-out phrases (<em>romans four one to eight</em>).</span>
+                            <span class="hint">⚡ <strong>Smart Autofill Enabled</strong>: Start typing any book name to autocomplete chapters and verses.</span>
+
+                            <!-- 1-Click Popular Passage & Chapter Fast-Pills -->
+                            <div style="margin-top: 10px;">
+                                <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 4px;">⚡ Quick-Select Popular Passages:</span>
+                                <div class="bible-quick-pills" style="display: flex; gap: 6px; flex-wrap: wrap;">
+                                    <button type="button" class="btn-scripture-pill" data-ref="John 3:16">John 3:16</button>
+                                    <button type="button" class="btn-scripture-pill" data-ref="Romans 4:1-8">Romans 4:1-8</button>
+                                    <button type="button" class="btn-scripture-pill" data-ref="Romans 8:28">Romans 8:28</button>
+                                    <button type="button" class="btn-scripture-pill" data-ref="Psalm 23">Psalm 23</button>
+                                    <button type="button" class="btn-scripture-pill" data-ref="1 Corinthians 13:4-7">1 Cor 13:4-7</button>
+                                    <button type="button" class="btn-scripture-pill" data-ref="Ephesians 2:8-9">Ephesians 2:8-9</button>
+                                    <button type="button" class="btn-scripture-pill" data-ref="Philippians 4:6-7">Phil 4:6-7</button>
+                                    <button type="button" class="btn-scripture-pill" data-ref="Proverbs 3:5-6">Prov 3:5-6</button>
+                                    <button type="button" class="btn-scripture-pill" data-ref="Matthew 5:3-12">Matt 5:3-12</button>
+                                    <button type="button" class="btn-scripture-pill" data-ref="1 Thessalonians 5:16-18">1 Thess 5:16-18</button>
+                                </div>
+                            </div>
                         </div>
 
                         <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px;">
