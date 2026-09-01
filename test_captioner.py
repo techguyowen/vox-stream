@@ -651,6 +651,12 @@ class TestServerEndpoints(AioHTTPTestCase):
         data = await resp.read()
         self.assertTrue(len(data) > 0)
 
+    async def test_delete_model_api(self):
+        resp = await self.client.request('POST', '/api/models/delete', json={'model_id': 'invalid_model_id'})
+        self.assertEqual(resp.status, 400)
+        data = await resp.json()
+        self.assertEqual(data['status'], 'error')
+
 
 
 if __name__ == "__main__":

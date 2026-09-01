@@ -169,6 +169,8 @@ class WebOverlayServer:
         self.app.router.add_get("/api/models/status", self._handle_get_models_status)
         self.app.router.add_post("/api/models/download", self._handle_download_model)
         self.app.router.add_post("/api/models/cancel", self._handle_cancel_download_model)
+        self.app.router.add_post("/api/models/delete", self._handle_delete_model)
+        self.app.router.add_delete("/api/models", self._handle_delete_model)
 
         # Static Assets
         self.app.router.add_static("/static/", path=str(static_dir), name="static")
@@ -1119,3 +1121,35 @@ class WebOverlayServer:
     async def _handle_apple_touch_icon(self, request: web.Request) -> web.FileResponse:
         icon_file = Path(__file__).parent / "static" / "apple-touch-icon.png"
         return web.FileResponse(icon_file, headers={"Content-Type": "image/png", "Cache-Control": "public, max-age=86400"})
+
+
+    async def _handle_delete_model(self, request: web.Request) -> web.Response:
+        """Delete one or all offline speech recognition models from disk cache."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+
+        model_id = sanitize_text(data.get("model_id", "")).strip()
+        if not model_id:
+            return web.json_response({"error": "Missing 'model_id' parameter."}, status=400)
+
+        ok, msg, freed_mb = self.model_downloader.delete_model(model_id)
+        if ok:
+            await self.broadcast_control({
+                "type": "model_cache_updated",
+                "model_id": model_id,
+                "freed_mb": freed_mb,
+                "message": msg,
+            })
+            return web.json_response({
+                "status": "success",
+                "message": msg,
+                "freed_mb": freed_mb,
+                "model_id": model_id,
+            })
+        else:
+            return web.json_response({"status": "error", "message": msg}, status=400)

@@ -1,4 +1,24 @@
 
+async function triggerModelDelete(modelId, modelName = "") {
+    try {
+        const res = await fetch("/api/models/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ model_id: modelId })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            showToast(`🗑️ ${data.message || 'Model deleted from disk.'}`, "success", 4000);
+            await loadModelsStatus();
+        } else {
+            showToast(`❌ Error deleting model: ${data.message || 'Unknown error'}`, "error", 5000);
+        }
+    } catch (e) {
+        showToast(`❌ Error deleting model: ${e}`, "error", 5000);
+    }
+}
+
+
 // --- Offline Models Pre-Downloader Management --------------------------------
 let isModelsDownloading = false;
 
@@ -48,7 +68,7 @@ function renderModelsStatus(data) {
 
         if (m.is_cached) {
             badgeHtml = `<span style="background: rgba(16, 185, 129, 0.15); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.3); padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">✅ Cached (${m.size_mb} MB)</span>`;
-            actionBtnHtml = `<span style="font-size: 12px; color: #10B981; font-weight: 600;">Ready</span>`;
+            actionBtnHtml = `<button type="button" class="btn btn-secondary btn-sm btn-delete-single-model" data-model-id="${m.id}" data-model-name="${escapeHtml(m.name)}" data-model-size="${m.size_mb}" title="Delete model from disk" style="padding: 4px 8px; font-size: 11px; border: 1px solid rgba(239, 68, 68, 0.35); background: rgba(239, 68, 68, 0.1); color: #F87171; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">🗑️ Delete</button>`;
         } else if (m.status === "downloading" || (data.is_downloading && data.current_download_id === m.id)) {
             badgeHtml = `<span style="background: rgba(59, 130, 246, 0.2); color: #60A5FA; border: 1px solid rgba(59, 130, 246, 0.4); padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">⏳ Downloading...</span>`;
             actionBtnHtml = `<span style="font-size: 12px; color: #60A5FA; font-weight: 600;">In Progress</span>`;
@@ -85,6 +105,18 @@ function renderModelsStatus(data) {
             const mId = e.currentTarget.getAttribute("data-model-id");
             if (mId) {
                 await triggerModelDownload(mId);
+            }
+        });
+    });
+
+    // Attach click listeners to single delete buttons
+    container.querySelectorAll(".btn-delete-single-model").forEach(btn => {
+        btn.addEventListener("click", async (e) => {
+            const mId = e.currentTarget.getAttribute("data-model-id");
+            const mName = e.currentTarget.getAttribute("data-model-name") || mId;
+            const mSize = e.currentTarget.getAttribute("data-model-size") || "";
+            if (confirm(`Delete '${mName}' (~${mSize} MB) from local disk cache?`)) {
+                await triggerModelDelete(mId, mName);
             }
         });
     });
@@ -368,6 +400,15 @@ async function applyThemePreset(themeId) {
         if (res.ok) {
             activeThemeId = themeId;
             // Initialize Models Status
+    const btnDeleteAll = document.getElementById("btn-delete-all-models");
+    if (btnDeleteAll) {
+        btnDeleteAll.addEventListener("click", async () => {
+            if (confirm("Are you sure you want to delete ALL cached offline AI models from disk to free storage space?")) {
+                await triggerModelDelete("all", "All Models");
+            }
+        });
+    }
+
     const btnDlAll = document.getElementById("btn-download-all-models");
     if (btnDlAll) {
         btnDlAll.addEventListener("click", () => triggerModelDownload("all"));
@@ -1434,6 +1475,15 @@ async function saveConfigPayload(payload, successMsg) {
                 showToast(successMsg, "success");
             }
             // Initialize Models Status
+    const btnDeleteAll = document.getElementById("btn-delete-all-models");
+    if (btnDeleteAll) {
+        btnDeleteAll.addEventListener("click", async () => {
+            if (confirm("Are you sure you want to delete ALL cached offline AI models from disk to free storage space?")) {
+                await triggerModelDelete("all", "All Models");
+            }
+        });
+    }
+
     const btnDlAll = document.getElementById("btn-download-all-models");
     if (btnDlAll) {
         btnDlAll.addEventListener("click", () => triggerModelDownload("all"));
@@ -1787,6 +1837,8 @@ function connectControlWs() {
                 const db = (typeof msg.level_db === "number") ? msg.level_db : -100;
                 const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
                 vuBar.style.width = `${pct}%`;
+            } else if (msg.type === "model_cache_updated") {
+                loadModelsStatus();
             } else if (msg.type === "model_download_progress") {
                 handleModelDownloadProgressEvent(msg);
             } else if (msg.type === "engine_switching_status") {
@@ -1961,6 +2013,15 @@ function escapeHtml(str) {
 // Initialize on page load
 window.addEventListener("DOMContentLoaded", async () => {
     // Initialize Models Status
+    const btnDeleteAll = document.getElementById("btn-delete-all-models");
+    if (btnDeleteAll) {
+        btnDeleteAll.addEventListener("click", async () => {
+            if (confirm("Are you sure you want to delete ALL cached offline AI models from disk to free storage space?")) {
+                await triggerModelDelete("all", "All Models");
+            }
+        });
+    }
+
     const btnDlAll = document.getElementById("btn-download-all-models");
     if (btnDlAll) {
         btnDlAll.addEventListener("click", () => triggerModelDownload("all"));

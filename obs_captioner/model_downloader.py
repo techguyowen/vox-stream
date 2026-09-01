@@ -309,3 +309,65 @@ class ModelDownloadManager:
         """Signal cancellation for ongoing batch downloads."""
         self._cancel_requested = True
         logger.info("Cancellation requested for model downloads.")
+
+    def delete_model(self, model_id: str) -> Tuple[bool, str, int]:
+        """Delete a single cached model or all models from disk cache to free storage space.
+        
+        Returns (success: bool, message: str, freed_mb: int)
+        """
+        import shutil
+
+        if model_id.lower() == "all":
+            total_freed = 0
+            deleted_names = []
+            for item in MODEL_CATALOG:
+                cached, path = self.check_model_cached(item)
+                if cached:
+                    ok, msg, freed = self._delete_single_item(item)
+                    if ok:
+                        total_freed += freed
+                        deleted_names.append(item.name)
+            return True, f"Deleted {len(deleted_names)} models from local cache (freed ~{total_freed} MB).", total_freed
+
+        for item in MODEL_CATALOG:
+            if item.id == model_id:
+                return self._delete_single_item(item)
+
+        return False, f"Model ID '{model_id}' not found in catalog.", 0
+
+    def _delete_single_item(self, item: ModelCatalogItem) -> Tuple[bool, str, int]:
+        import shutil
+        freed_mb = item.size_mb
+
+        try:
+            if item.engine == "vosk":
+                vosk_dir = Path.home() / ".cache" / "vosk" / item.model_key
+                zip_path = Path.home() / ".cache" / "vosk" / f"{item.model_key}.zip"
+                deleted = False
+                if vosk_dir.exists():
+                    shutil.rmtree(vosk_dir, ignore_errors=True)
+                    deleted = True
+                if zip_path.exists():
+                    zip_path.unlink(missing_ok=True)
+                    deleted = True
+                logger.info(f"Deleted Vosk model '{item.name}' from {vosk_dir}")
+                return True, f"Deleted {item.name} from local cache (freed ~{freed_mb} MB).", freed_mb
+
+            elif item.engine == "local_whisper":
+                hf_dir = Path.home() / ".cache" / "huggingface" / "hub" / f"models--Systran--faster-whisper-{item.model_key}"
+                if hf_dir.exists():
+                    shutil.rmtree(hf_dir, ignore_errors=True)
+                logger.info(f"Deleted Faster-Whisper model '{item.name}' from {hf_dir}")
+                return True, f"Deleted {item.name} from local cache (freed ~{freed_mb} MB).", freed_mb
+
+            elif item.engine == "moonshine":
+                hf_dir = Path.home() / ".cache" / "huggingface" / "hub" / "models--UsefulSensors--moonshine"
+                if hf_dir.exists():
+                    shutil.rmtree(hf_dir, ignore_errors=True)
+                logger.info(f"Deleted Moonshine model '{item.name}' from {hf_dir}")
+                return True, f"Deleted {item.name} from local cache (freed ~{freed_mb} MB).", freed_mb
+
+            return False, f"Unsupported engine '{item.engine}' for deletion.", 0
+        except Exception as e:
+            logger.error(f"Error deleting model {item.name}: {e}", exc_info=True)
+            return False, f"Error deleting model: {e}", 0
