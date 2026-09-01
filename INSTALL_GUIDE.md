@@ -149,8 +149,8 @@ This puts the live control dashboard, microphone VU meter, and status controls d
 
 ---
 
-### B. Add the Transparent Stream Overlay
-This adds transparent, beautifully styled captions over your broadcast video:
+
+### B. Add the Transparent Stream Overlay (Live Captions)
 1. In your active OBS Scene, under **Sources**, click **+ ➔ Browser**.
 2. Name the source: `Captions Overlay`.
 3. Set the properties:
@@ -163,7 +163,23 @@ This adds transparent, beautifully styled captions over your broadcast video:
 
 ---
 
-### C. Enable YouTube & Twitch Closed Captions (Native [CC] Button) 📺
+### C. Add the Dedicated Scripture Overlay (Pure Bible Passages) 📖
+If you want an isolated lower-third specifically for **Bible Passages & Scripture Verses** (with zero speech captions appearing on it):
+1. In OBS Studio, under **Sources**, click **+ ➔ Browser**.
+2. Name the source: `Scripture Overlay`.
+3. Set the properties:
+   * **URL**: `http://127.0.0.1:8765/bible`
+   * **Width**: `1920`
+   * **Height**: `1080`
+   * ✅ Check: **"Shutdown source when not visible"**
+   * ✅ Check: **"Refresh browser when scene becomes active"**
+4. Click **OK**.
+*(This overlay exclusively renders beautiful gold-badged scripture lower-thirds whenever a Bible verse is spoken or cued via the dashboard!)*
+
+
+---
+
+### D. Enable YouTube & Twitch Closed Captions (Native [CC] Button) 📺
 To send viewer-toggleable closed captions directly into your YouTube and Twitch video player:
 1. **In OBS Studio**:
    * Go to **Tools ➔ WebSocket Server Settings**.
@@ -178,7 +194,7 @@ To send viewer-toggleable closed captions directly into your YouTube and Twitch 
 
 ---
 
-### D. Enable Zero-Touch Auto-Start with OBS (Launch when OBS Opens) 🚀
+### E. Enable Zero-Touch Auto-Start with OBS (Launch when OBS Opens) 🚀
 1. In OBS Studio, go to **Tools ➔ Scripts**.
 2. Under **Python Settings**, select your Python path.
 3. Click the **Scripts** tab, click **+ (Add Script)**, and choose `obs_script/obs_live_captions.py`.
@@ -218,6 +234,12 @@ The display bar includes two dedicated modes:
 ---
 
 ### 4. Automatic Screen Wake Lock
+### 5. 👁️ Visual Aid & Reading Comfort Controls
+On the Stage Display toolbar:
+* **`[ ] 👁️ Visual Aid Mode`**: 1-click toggle that expands character tracking (`0.06em`), word spacing (`0.15em`), and line height (`1.65x`) while keeping your custom font and theme active.
+* **`[ ] 🐢 Slow Down Text`**: Intelligently paces fast speech bursts to a calm **135 WPM** flow and holds completed sentences on screen for **10.0 seconds** to eliminate reading fatigue.
+* **`⬇️ Jump to Live` Button**: When scrolling up to review earlier notes, auto-scroll pauses so your view stays undisturbed. A floating button appears at the bottom right to smoothly glide back to the live words.
+
 The display monitor automatically invokes the **Screen Wake Lock API**, preventing tablets and phones on podiums or stage stands from dimming or falling asleep during live speech.
 
 ---
