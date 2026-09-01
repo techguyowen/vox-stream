@@ -60,7 +60,7 @@
         <div class="main-content">
             <!-- Navigation Tabs -->
             <nav class="nav-tabs">
-                <button class="tab-btn active" data-tab="styling">🎨 Style &amp; Themes</button>
+                <button class="tab-btn active" data-tab="styling">🎬 OBS Stream Overlay</button>
                 <button class="tab-btn" data-tab="vocabulary">📖 Custom Glossary</button>
                 <button class="tab-btn" data-tab="filter">🛡️ Safety Filter</button>
                 <button class="tab-btn" data-tab="translation">🌐 Live Translation</button>
@@ -71,8 +71,60 @@
                 <button class="tab-btn" data-tab="api">⚡ REST API &amp; Docks</button>
             </nav>
 
-            <!-- TAB 1: STYLING & THEMES -->
+            <!-- TAB 1: OBS STREAM OVERLAY SETTINGS & STUDIO -->
             <div id="tab-styling" class="tab-pane active">
+                <!-- Dedicated OBS Overlay Browser Source Hub Card -->
+                <div class="panel" style="background: rgba(30, 41, 59, 0.45); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 8px; padding: 18px 20px; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
+                        <div>
+                            <h2 style="margin: 0; font-size: 16.5px; color: #60A5FA; display: flex; align-items: center; gap: 8px;">
+                                <span>🎬 OBS Browser Source Overlay</span>
+                            </h2>
+                            <p class="subtext" style="margin: 4px 0 0 0; font-size: 12.5px;">
+                                Add this live URL as a <strong>Browser Source</strong> in OBS Studio, vMix, or Streamlabs to render transparent, animated live captions directly on your video stream.
+                            </p>
+                        </div>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button type="button" id="btn-copy-obs-overlay-url" class="btn btn-primary btn-sm" style="background: #2563EB; font-weight: 700; display: inline-flex; align-items: center; gap: 5px; padding: 7px 14px;">
+                                <span>📋 Copy OBS URL</span>
+                            </button>
+                            <a href="/" target="_blank" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 4px; text-decoration: none; padding: 7px 12px;">
+                                <span>↗️ Open Overlay</span>
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Live URL Pill & Recommended Dimensions -->
+                    <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center; background: #0F172A; border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 14px; font-size: 12.5px; margin-bottom: 12px;">
+                        <div style="flex: 1; min-width: 260px; font-family: 'JetBrains Mono', monospace; color: #38BDF8; word-break: break-all;">
+                            <span style="color: var(--text-muted); font-size: 10.5px; text-transform: uppercase; display: block; margin-bottom: 2px; font-weight: 700;">Browser Source Target URL:</span>
+                            <span id="obs-overlay-live-url" style="font-weight: 600; font-size: 13px;">http://127.0.0.1:8765/</span>
+                        </div>
+                        <div style="display: flex; gap: 14px; font-size: 11.5px; color: #CBD5E1; border-left: 1px solid var(--border-color); padding-left: 14px; flex-wrap: wrap;">
+                            <div>📐 <strong>Width:</strong> 1920</div>
+                            <div>📐 <strong>Height:</strong> 1080</div>
+                            <div>⚡ <strong>FPS:</strong> 60</div>
+                            <div>🎨 <strong>Background:</strong> Transparent (Alpha)</div>
+                        </div>
+                    </div>
+
+                    <!-- Quick 3-Step Setup Guide -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px;">
+                        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px; font-size: 12px;">
+                            <strong style="color: var(--text-main); display: block; margin-bottom: 3px;">1. Add Browser Source</strong>
+                            <span style="color: var(--text-muted);">In OBS, click <code style="color: #93C5FD;">+</code> under Sources &rarr; select <strong>Browser</strong>.</span>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px; font-size: 12px;">
+                            <strong style="color: var(--text-main); display: block; margin-bottom: 3px;">2. Paste URL &amp; Size</strong>
+                            <span style="color: var(--text-muted);">Set URL to the above link, Width to <strong>1920</strong>, Height to <strong>1080</strong>.</span>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px; font-size: 12px;">
+                            <strong style="color: var(--text-main); display: block; margin-bottom: 3px;">3. Instant Live Sync</strong>
+                            <span style="color: var(--text-muted);">Adjust positioning and styles below &mdash; changes reflect in OBS instantly!</span>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Theme Presets Gallery -->
                 <div class="panel theme-gallery-panel">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
@@ -99,7 +151,25 @@
                 <div class="two-col-layout">
                     <!-- Left: Custom Sliders & Pickers -->
                     <div class="panel">
-                        <h2>Fine-Tune Typography</h2>
+                        <h2>On-Screen Placement &amp; Typography</h2>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="vertical_align">Vertical Screen Position</label>
+                                <select id="vertical_align" class="form-control">
+                                    <option value="bottom" selected>🔻 Bottom (Lower-Third Subtitles)</option>
+                                    <option value="top">🔺 Top (News Ticker / Stream Header)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="text_align">Text Alignment</label>
+                                <select id="text_align" class="form-control">
+                                    <option value="center" selected>Center</option>
+                                    <option value="left">Left</option>
+                                    <option value="right">Right</option>
+                                </select>
+                            </div>
+                        </div>
                         
                         <div class="form-group">
                             <label for="font_family">Google / System Font</label>
@@ -146,17 +216,6 @@
                                 </select>
                             </div>
                             <div class="form-group">
-                                <label for="text_align">Text Alignment</label>
-                                <select id="text_align" class="form-control">
-                                    <option value="center" selected>Center</option>
-                                    <option value="left">Left</option>
-                                    <option value="right">Right</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
                                 <label for="animation_style">Animation Style</label>
                                 <select id="animation_style" class="form-control">
                                     <option value="word_pop" selected>Word Pop (Bouncy)</option>
@@ -165,11 +224,12 @@
                                     <option value="instant">Instant (No Animation)</option>
                                 </select>
                             </div>
-                            <div class="form-group">
-                                <label for="auto_hide_slider">Auto-Hide on Silence (<span id="val-auto-hide">4s</span>)</label>
-                                <input type="range" id="auto_hide_slider" min="0" max="15" step="0.5" value="4" class="slider">
-                                <span class="hint">Fades out captions when speech pauses (0s = stay visible).</span>
-                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="auto_hide_slider">Auto-Hide on Silence (<span id="val-auto-hide">4s</span>)</label>
+                            <input type="range" id="auto_hide_slider" min="0" max="15" step="0.5" value="4" class="slider">
+                            <span class="hint">Fades out captions when speech pauses (0s = stay visible continuously).</span>
                         </div>
 
                         <div class="form-row colors-grid">
@@ -196,7 +256,7 @@
                             <input type="range" id="bg_opacity_slider" min="0" max="100" value="72" class="slider">
                         </div>
 
-                        <button id="btn-save-style" class="btn btn-primary btn-block">💾 Save Custom Styling</button>
+                        <button id="btn-save-style" class="btn btn-primary btn-block">💾 Save OBS Overlay Settings</button>
                     </div>
 
                     <!-- Right: Live Interactive Preview -->

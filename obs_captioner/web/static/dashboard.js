@@ -1,4 +1,23 @@
 
+    // Copy OBS Overlay URL Button
+    const btnCopyOverlay = document.getElementById("btn-copy-obs-overlay-url");
+    if (btnCopyOverlay) {
+        btnCopyOverlay.addEventListener("click", () => {
+            const url = window.location.origin + "/";
+            navigator.clipboard.writeText(url).then(() => {
+                showToast("📋 Copied OBS Browser Source URL to clipboard!", "success", 3000);
+            }).catch(() => {
+                showToast(`URL: ${url}`, "info", 6000);
+            });
+        });
+    }
+
+    const vertSelect = document.getElementById("vertical_align");
+    if (vertSelect) {
+        vertSelect.addEventListener("change", autoSyncStyleChanges);
+    }
+
+
 async function triggerModelDelete(modelId, modelName = "") {
     try {
         const res = await fetch("/api/models/delete", {
@@ -716,6 +735,7 @@ function buildOverlayStylePayload() {
         max_width: `${document.getElementById("max_width_slider").value}%`,
         max_lines: parseInt(document.getElementById("max_lines").value, 10) || 2,
         text_align: document.getElementById("text_align").value,
+        vertical_align: document.getElementById("vertical_align") ? document.getElementById("vertical_align").value : "bottom",
         animation_style: document.getElementById("animation_style").value,
         auto_hide_seconds: parseFloat(document.getElementById("auto_hide_slider").value) || 0,
         text_color: document.getElementById("text_color").value,
