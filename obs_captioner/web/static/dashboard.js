@@ -1,4 +1,40 @@
 
+function updateBibleTabPreviewStyling() {
+    const previewText = document.getElementById("bible-tab-preview-text");
+    const previewCard = document.getElementById("bible-tab-preview-card");
+    const previewBadge = document.getElementById("bible-tab-preview-badge");
+    const fontFam = document.getElementById("bible_tab_font_family");
+    const fontSz = document.getElementById("bible_tab_font_size");
+    const themeSel = document.getElementById("bible_tab_card_theme");
+
+    if (previewText && fontFam && fontSz) {
+        previewText.style.fontFamily = fontFam.value;
+        previewText.style.fontSize = `${Math.max(14, (parseInt(fontSz.value, 10) || 26) * 0.75)}px`;
+    }
+
+    if (previewCard && themeSel && previewBadge) {
+        const t = themeSel.value;
+        if (t === "blue") {
+            previewCard.style.borderColor = "#38BDF8";
+            previewBadge.style.background = "#2563EB";
+            previewBadge.style.color = "#FFFFFF";
+        } else if (t === "dark") {
+            previewCard.style.borderColor = "#71717A";
+            previewBadge.style.background = "#FFFFFF";
+            previewBadge.style.color = "#000000";
+        } else if (t === "light") {
+            previewCard.style.borderColor = "#D97706";
+            previewBadge.style.background = "#D97706";
+            previewBadge.style.color = "#FFFFFF";
+        } else {
+            previewCard.style.borderColor = "#F59E0B";
+            previewBadge.style.background = "#F59E0B";
+            previewBadge.style.color = "#000000";
+        }
+    }
+}
+
+
 // Dedicated Scripture Studio Dashboard Handlers
 function initBibleHandlers() {
     // 1. Populate Live Scripture URL
@@ -27,6 +63,27 @@ function initBibleHandlers() {
         durSlider.addEventListener("input", (e) => {
             durVal.textContent = `${e.target.value}s`;
         });
+    }
+
+    
+    // Font Size Slider Label & Live Preview
+    const fsSlider = document.getElementById("bible_tab_font_size");
+    const fsVal = document.getElementById("val-bible-tab-font-size");
+    if (fsSlider && fsVal) {
+        fsSlider.addEventListener("input", (e) => {
+            fsVal.textContent = `${e.target.value}px`;
+            updateBibleTabPreviewStyling();
+        });
+    }
+
+    const fontFamilySel = document.getElementById("bible_tab_font_family");
+    if (fontFamilySel) {
+        fontFamilySel.addEventListener("change", updateBibleTabPreviewStyling);
+    }
+
+    const cardThemeSel = document.getElementById("bible_tab_card_theme");
+    if (cardThemeSel) {
+        cardThemeSel.addEventListener("change", updateBibleTabPreviewStyling);
     }
 
     // 4. Live Verse Search & Preview
@@ -137,7 +194,11 @@ function initBibleHandlers() {
                     enabled: document.getElementById("bible_tab_enabled").checked,
                     default_version: document.getElementById("bible_tab_version_select").value,
                     display_mode: document.getElementById("bible_tab_display_mode").value,
-                    display_duration_seconds: parseFloat(document.getElementById("bible_tab_duration_slider").value) || 14.0
+                    display_duration_seconds: parseFloat(document.getElementById("bible_tab_duration_slider").value) || 14.0,
+                    font_family: document.getElementById("bible_tab_font_family").value,
+                    font_size: parseInt(document.getElementById("bible_tab_font_size").value, 10) || 26,
+                    card_theme: document.getElementById("bible_tab_card_theme").value,
+                    vertical_align: document.getElementById("bible_tab_vertical_align").value
                 }
             };
             await saveConfigPayload(payload, "Scripture Studio settings saved successfully!");

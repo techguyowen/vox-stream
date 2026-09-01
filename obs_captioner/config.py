@@ -173,6 +173,10 @@ class BibleConfig:
     default_version: str = "bsb"  # "bsb" (Berean Standard / ESV-style), "web" (World English / NIV-style), "kjv" (King James)
     display_mode: str = "auto"   # "auto" (instant auto-pop on stream & display), "manual" (cue via dashboard)
     display_duration_seconds: float = 14.0
+    font_family: str = "'Lora', Georgia, serif"
+    font_size: int = 26
+    vertical_align: str = "bottom"  # "bottom", "top"
+    card_theme: str = "amber"       # "amber", "blue", "dark", "light"
     show_on_stream_overlay: bool = True
     show_on_stage_display: bool = True
 

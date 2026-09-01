@@ -376,6 +376,53 @@
                             </div>
                         </div>
 
+                        <!-- Typography & Placement -->
+                        <h3 style="font-size: 13.5px; margin: 18px 0 8px 0; color: #FBBF24; display: flex; align-items: center; gap: 6px;">
+                            <span>🎨 Typography, Placement &amp; Theme</span>
+                        </h3>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="bible_tab_font_family">Scripture Font Family</label>
+                                <select id="bible_tab_font_family" class="form-control">
+                                    <option value="'Lora', Georgia, serif" selected>Lora (Editorial Serif - Traditional Bible)</option>
+                                    <option value="'Inter', sans-serif">Inter (Modern Clean Sans)</option>
+                                    <option value="'OpenDyslexic', sans-serif">📖 OpenDyslexic (Reading Aid)</option>
+                                    <option value="'Montserrat', sans-serif">Montserrat (Bold &amp; Modern)</option>
+                                    <option value="'Poppins', sans-serif">Poppins (Smooth Rounded)</option>
+                                    <option value="'Bebas Neue', sans-serif">Bebas Neue (Stream Headline)</option>
+                                    <option value="'Oswald', sans-serif">Oswald (Tall Condensed)</option>
+                                    <option value="'Roboto', sans-serif">Roboto (Neutral Clean)</option>
+                                    <option value="'Open Sans', sans-serif">Open Sans (High Legibility)</option>
+                                    <option value="'JetBrains Mono', monospace">JetBrains Mono (Monospace)</option>
+                                    <option value="'Segoe UI', sans-serif">Segoe UI (System Default)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="bible_tab_font_size">Font Size (<span id="val-bible-tab-font-size">26px</span>)</label>
+                                <input type="range" id="bible_tab_font_size" min="18" max="48" step="1" value="26" class="slider">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="bible_tab_card_theme">Scripture Card Theme</label>
+                                <select id="bible_tab_card_theme" class="form-control">
+                                    <option value="amber" selected>🌟 Classic Amber Gold (Worship &amp; Sanctuary)</option>
+                                    <option value="blue">💎 Royal Blue &amp; Cyan (Broadcast Pro)</option>
+                                    <option value="dark">🖤 OLED Cinema Black (Minimalist Dark)</option>
+                                    <option value="light">🤍 Slate Light &amp; Amber (Clean Contrast)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="bible_tab_vertical_align">Vertical Screen Position</label>
+                                <select id="bible_tab_vertical_align" class="form-control">
+                                    <option value="bottom" selected>🔻 Bottom (Lower-Third Banner)</option>
+                                    <option value="top">🔺 Top (Header Banner)</option>
+                                </select>
+                            </div>
+                        </div>
+
                         <div style="margin-top: 16px;">
                             <button type="button" id="btn-save-bible-tab-settings" class="btn btn-primary" style="background: #F59E0B; color: #000; font-weight: 700; border: none;">💾 Save Scripture Settings</button>
                         </div>

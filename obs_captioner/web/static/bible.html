@@ -15,9 +15,66 @@
     <!-- Google Fonts for High-End Broadcast Typography -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700;800;900&family=Lora:ital,wght@0,600;0,700;1,400;1,600&family=Montserrat:wght@400;600;700;800;900&family=Open+Sans:wght@400;600;700&family=Oswald:wght@500;700&family=Poppins:wght@400;600;700;800&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;700&family=Lora:ital,wght@0,600;0,700;1,400;1,600&family=Montserrat:wght@400;600;700;800;900&family=Open+Sans:wght@400;600;700;800&family=Oswald:wght@500;700&family=Poppins:wght@400;600;700;800&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     
     <style>
+        :root {
+            --font-family: 'Lora', Georgia, serif;
+            --font-size: 26px;
+            --card-bg: rgba(15, 23, 42, 0.94);
+            --border-color: rgba(245, 158, 11, 0.8);
+            --accent-bar: linear-gradient(90deg, #F59E0B, #FBBF24, #D97706);
+            --badge-bg: linear-gradient(135deg, #F59E0B, #D97706);
+            --badge-text: #000000;
+            --version-tag-bg: rgba(255, 255, 255, 0.12);
+            --version-tag-color: #FBBF24;
+            --text-color: #FFFBEB;
+            --shadow-color: rgba(0, 0, 0, 0.75);
+            --glow-color: rgba(245, 158, 11, 0.3);
+            --progress-color: #F59E0B;
+        }
+
+        /* Card Themes */
+        body.theme-blue {
+            --card-bg: rgba(15, 23, 42, 0.95);
+            --border-color: rgba(59, 130, 246, 0.85);
+            --accent-bar: linear-gradient(90deg, #2563EB, #38BDF8, #60A5FA);
+            --badge-bg: linear-gradient(135deg, #2563EB, #0284C7);
+            --badge-text: #FFFFFF;
+            --version-tag-bg: rgba(56, 189, 248, 0.18);
+            --version-tag-color: #38BDF8;
+            --text-color: #F0F9FF;
+            --glow-color: rgba(56, 189, 248, 0.3);
+            --progress-color: #38BDF8;
+        }
+
+        body.theme-dark {
+            --card-bg: rgba(0, 0, 0, 0.96);
+            --border-color: rgba(255, 255, 255, 0.35);
+            --accent-bar: linear-gradient(90deg, #52525B, #A1A1AA, #52525B);
+            --badge-bg: #FFFFFF;
+            --badge-text: #000000;
+            --version-tag-bg: rgba(255, 255, 255, 0.15);
+            --version-tag-color: #E4E4E7;
+            --text-color: #FFFFFF;
+            --glow-color: rgba(0, 0, 0, 0.8);
+            --progress-color: #FFFFFF;
+        }
+
+        body.theme-light {
+            --card-bg: rgba(255, 255, 255, 0.95);
+            --border-color: rgba(217, 119, 6, 0.7);
+            --accent-bar: linear-gradient(90deg, #D97706, #F59E0B, #B45309);
+            --badge-bg: linear-gradient(135deg, #D97706, #B45309);
+            --badge-text: #FFFFFF;
+            --version-tag-bg: rgba(0, 0, 0, 0.08);
+            --version-tag-color: #B45309;
+            --text-color: #1E293B;
+            --shadow-color: rgba(0, 0, 0, 0.25);
+            --glow-color: rgba(217, 119, 6, 0.2);
+            --progress-color: #D97706;
+        }
+
         * {
             box-sizing: border-box;
             margin: 0;
@@ -29,12 +86,13 @@
             height: 100vh;
             background: transparent !important;
             overflow: hidden;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            color: #FFFFFF;
+            font-family: var(--font-family);
+            color: var(--text-color);
             display: flex;
             justify-content: center;
             align-items: flex-end;
             padding-bottom: 40px;
+            transition: all 0.3s ease;
         }
 
         body.align-top {
@@ -54,11 +112,11 @@
         }
 
         .scripture-card {
-            background: rgba(15, 23, 42, 0.94);
-            border: 2px solid rgba(245, 158, 11, 0.8);
+            background: var(--card-bg);
+            border: 2px solid var(--border-color);
             border-radius: 14px;
             padding: 20px 30px;
-            box-shadow: 0 16px 45px rgba(0, 0, 0, 0.75), 0 0 30px rgba(245, 158, 11, 0.3);
+            box-shadow: 0 16px 45px var(--shadow-color), 0 0 30px var(--glow-color);
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
             opacity: 1;
@@ -79,7 +137,7 @@
             transform: translateY(-30px) scale(0.97);
         }
 
-        /* Top Gold Accent Bar */
+        /* Top Accent Bar */
         .scripture-card::before {
             content: '';
             position: absolute;
@@ -87,7 +145,7 @@
             left: 0;
             right: 0;
             height: 3.5px;
-            background: linear-gradient(90deg, #F59E0B, #FBBF24, #D97706);
+            background: var(--accent-bar);
         }
 
         .scripture-header {
@@ -105,38 +163,40 @@
         }
 
         .scripture-badge {
-            background: linear-gradient(135deg, #F59E0B, #D97706);
-            color: #000000;
+            background: var(--badge-bg);
+            color: var(--badge-text);
             font-size: 14px;
             font-weight: 900;
             letter-spacing: 0.06em;
             text-transform: uppercase;
             padding: 4px 12px;
             border-radius: 6px;
-            box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
             display: inline-flex;
             align-items: center;
             gap: 6px;
+            font-family: 'Inter', sans-serif;
         }
 
         .scripture-version-tag {
-            background: rgba(255, 255, 255, 0.12);
-            color: #FBBF24;
+            background: var(--version-tag-bg);
+            color: var(--version-tag-color);
             font-size: 12px;
             font-weight: 700;
             padding: 3px 8px;
             border-radius: 4px;
-            border: 1px solid rgba(245, 158, 11, 0.3);
+            border: 1px solid var(--border-color);
+            font-family: 'Inter', sans-serif;
         }
 
         .scripture-text {
-            font-size: 26px;
+            font-family: var(--font-family);
+            font-size: var(--font-size);
             font-weight: 600;
             line-height: 1.45;
-            color: #FFFBEB;
-            text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.9);
+            color: var(--text-color);
+            text-shadow: 1px 1px 4px var(--shadow-color);
             font-style: italic;
-            font-family: 'Lora', Georgia, serif;
             letter-spacing: 0.01em;
         }
 
@@ -146,35 +206,34 @@
             bottom: 0;
             left: 0;
             right: 0;
-            height: 3px;
-            background: rgba(255, 255, 255, 0.1);
+            height: 3.5px;
+            background: rgba(255, 255, 255, 0.08);
         }
 
         .progress-bar-fill {
             height: 100%;
-            background: #F59E0B;
+            background: var(--progress-color);
             width: 100%;
             transform-origin: left;
         }
 
-        /* Initial Preview / Welcome Card for standalone browser visits */
         .welcome-hint {
             position: fixed;
             top: 20px;
             right: 20px;
             background: rgba(15, 23, 42, 0.85);
-            border: 1px solid rgba(245, 158, 11, 0.4);
+            border: 1px solid var(--border-color);
             border-radius: 8px;
             padding: 8px 14px;
             font-size: 12px;
-            color: #FBBF24;
+            color: var(--version-tag-color);
             z-index: 10;
             pointer-events: none;
             backdrop-filter: blur(8px);
         }
     </style>
 </head>
-<body>
+<body class="theme-amber">
     <div class="welcome-hint" id="welcomeHint" style="display: none;">
         📡 OBS Scripture Source Active (Waiting for passage...)
     </div>
@@ -204,6 +263,37 @@
 
         let scriptureTimer = null;
         let progressAnim = null;
+
+        // Apply dynamic typography and theme settings
+        function applyBibleStyles(cfg) {
+            if (!cfg) return;
+            const b = cfg.bible || {};
+            
+            if (b.font_family) {
+                document.documentElement.style.setProperty('--font-family', b.font_family);
+            }
+            if (b.font_size) {
+                document.documentElement.style.setProperty('--font-size', `${b.font_size}px`);
+            }
+            
+            const vAlign = b.vertical_align || 'bottom';
+            const theme = b.card_theme || 'amber';
+            document.body.className = `${vAlign === 'top' ? 'align-top ' : ''}theme-${theme}`;
+        }
+
+        // Fetch initial config
+        async function fetchConfig() {
+            try {
+                const res = await fetch("/api/config");
+                if (res.ok) {
+                    const cfg = await res.json();
+                    applyBibleStyles(cfg);
+                }
+            } catch (e) {
+                console.warn("Could not fetch config:", e);
+            }
+        }
+        fetchConfig();
 
         // Show welcome indicator if opened directly in browser tab (outside OBS)
         const isObs = window.obsStudio !== undefined || navigator.userAgent.includes("OBS");
@@ -274,11 +364,12 @@
             ws.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
-                    // ONLY handle scripture events — ignore all regular speech caption text!
                     if (data.type === "scripture_verse") {
                         showScriptureVerse(data);
                     } else if (data.type === "scripture_dismiss") {
                         dismissScriptureVerse();
+                    } else if (data.type === "config_update") {
+                        applyBibleStyles(data.config);
                     }
                 } catch (e) {
                     console.error("Error parsing WebSocket message:", e);
