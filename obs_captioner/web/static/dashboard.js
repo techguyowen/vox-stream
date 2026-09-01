@@ -36,16 +36,7 @@ function setupA11yPresets() {
 
 
     // Accessibility Controls Event Listeners
-    const chkOpenDys = document.getElementById("a11y_toggle_opendyslexic");
-    if (chkOpenDys) {
-        chkOpenDys.addEventListener("change", () => {
-            const fontSel = document.getElementById("font_family");
-            if (fontSel) {
-                fontSel.value = chkOpenDys.checked ? "'OpenDyslexic', sans-serif" : "Inter, sans-serif";
-                updatePreviewStyle();
-            }
-        });
-    }
+
 
     const chkLetterSp = document.getElementById("a11y_toggle_letter_spacing");
     if (chkLetterSp) {
