@@ -609,6 +609,12 @@
                 <input type="checkbox" id="chkDisplayA11y">
                 <span>👁️ Visual Aid</span>
             </label>
+
+            <!-- 1-Click Paced Reading (Slow Down Text) Toggle -->
+            <label class="ctrl-btn-label" title="Paced Reading: Smoothly paces text to a comfortable ~140 WPM reading speed to prevent rapid text jumps" style="background: rgba(245, 158, 11, 0.14); border-color: rgba(245, 158, 11, 0.5); color: #FBBF24;">
+                <input type="checkbox" id="chkDisplayPacing">
+                <span>⏱️ Paced Flow (Slow)</span>
+            </label>
         </div>
     </header>
 
@@ -1007,6 +1013,83 @@
             }, { passive: true });
         }
 
+
+        // ⏱️ Paced Reading Flow (Slow Down Text to Comfortable ~140 WPM)
+        let isPacedReadingEnabled = false;
+        let paceQueue = [];
+        let pacingTimer = null;
+        let currentPacedSentence = "";
+
+        const chkDisplayPacing = document.getElementById("chkDisplayPacing");
+
+        function processPacingQueue() {
+            if (paceQueue.length === 0) {
+                pacingTimer = null;
+                return;
+            }
+
+            const nextWord = paceQueue.shift();
+            if (nextWord === "___SENTENCE_BREAK___") {
+                if (currentPacedSentence.trim()) {
+                    finalSentences.push(currentPacedSentence.trim());
+                    while (finalSentences.length > maxHistorySentences) finalSentences.shift();
+                    currentPacedSentence = "";
+                    interimText = "";
+                    renderCaptions();
+                    triggerSilenceTimer();
+                }
+            } else {
+                currentPacedSentence = currentPacedSentence ? `${currentPacedSentence} ${nextWord}` : nextWord;
+                interimText = currentPacedSentence;
+                renderCaptions();
+            }
+
+            // Comfortable 140 WPM pace = 400ms per word
+            pacingTimer = setTimeout(processPacingQueue, 390);
+        }
+
+        function queuePacedText(sentence) {
+            const words = sentence.trim().split(/\s+/).filter(Boolean);
+            if (words.length === 0) return;
+            paceQueue.push(...words, "___SENTENCE_BREAK___");
+            if (!pacingTimer) {
+                processPacingQueue();
+            }
+        }
+
+        if (chkDisplayPacing) {
+            try {
+                const savedPacing = localStorage.getItem("voxstream_display_pacing") === "true";
+                if (savedPacing) {
+                    chkDisplayPacing.checked = true;
+                    isPacedReadingEnabled = true;
+                }
+            } catch(e) {}
+
+            chkDisplayPacing.addEventListener("change", (e) => {
+                isPacedReadingEnabled = e.target.checked;
+                try {
+                    localStorage.setItem("voxstream_display_pacing", isPacedReadingEnabled ? "true" : "false");
+                } catch(e) {}
+                if (!isPacedReadingEnabled) {
+                    // Flush pending queue immediately
+                    if (pacingTimer) clearTimeout(pacingTimer);
+                    pacingTimer = null;
+                    if (currentPacedSentence.trim()) {
+                        finalSentences.push(currentPacedSentence.trim());
+                        currentPacedSentence = "";
+                    }
+                    const remainingWords = paceQueue.filter(w => w !== "___SENTENCE_BREAK___").join(" ");
+                    if (remainingWords.trim()) {
+                        finalSentences.push(remainingWords.trim());
+                    }
+                    paceQueue = [];
+                    interimText = "";
+                    renderCaptions();
+                }
+            });
+        }
+
         // WebSocket Connection
         let reconnectAttempts = 0;
         function connectWebSocket() {
@@ -1068,17 +1151,23 @@
             if (data.is_final) {
                 if (text) {
                     wakeLiveDisplay();
-                    finalSentences.push(text);
-                    while (finalSentences.length > maxHistorySentences) {
-                        finalSentences.shift();
+                    if (isPacedReadingEnabled) {
+                        queuePacedText(text);
+                    } else {
+                        finalSentences.push(text);
+                        while (finalSentences.length > maxHistorySentences) {
+                            finalSentences.shift();
+                        }
+                        triggerSilenceTimer();
                     }
-                    triggerSilenceTimer();
                 } else {
                     if (currentMode === 'live') {
                         if (transcriptContent) transcriptContent.classList.add('faded');
                     }
                 }
-                interimText = "";
+                if (!isPacedReadingEnabled) {
+                    interimText = "";
+                }
             } else {
                 if (text) {
                     wakeLiveDisplay();
