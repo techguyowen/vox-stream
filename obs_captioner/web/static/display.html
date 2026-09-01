@@ -94,6 +94,9 @@
             color: var(--text-color);
             font-family: var(--font-family);
             letter-spacing: var(--letter-spacing, normal);
+            word-spacing: var(--word-spacing, normal);
+            line-height: var(--line-height, 1.45);
+            font-style: var(--font-style, normal);
             overflow: hidden;
             user-select: none;
             display: flex;
@@ -529,7 +532,7 @@
                 </select>
 
                 <!-- 1-Click Accessibility & Dyslexia Mode Toggle -->
-                <label class="ctrl-btn-label" title="Toggle Visual Aid Mode: OpenDyslexic font, 0.05em wide letter spacing, high contrast yellow on black, upright text" style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; background: rgba(56, 189, 248, 0.14); border: 1px solid rgba(56, 189, 248, 0.5); border-radius: 6px; padding: 4px 10px; font-size: 12.5px; font-weight: 700; color: #38BDF8; white-space: nowrap; user-select: none;">
+                <label class="ctrl-btn-label" title="Toggle Visual Aid Spacing: Expanded letter tracking (0.06em), word spacing (0.15em), and line height (1.65x) for reading ease" style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; background: rgba(56, 189, 248, 0.14); border: 1px solid rgba(56, 189, 248, 0.5); border-radius: 6px; padding: 4px 10px; font-size: 12.5px; font-weight: 700; color: #38BDF8; white-space: nowrap; user-select: none;">
                     <input type="checkbox" id="chkDisplayA11y" style="cursor: pointer; width: 16px; height: 16px;">
                     <span>👁️ Visual Aid Mode</span>
                 </label>
@@ -732,15 +735,15 @@
 
         function applyDisplayA11yMode(enabled) {
             if (enabled) {
-                setFontFamily("'OpenDyslexic', sans-serif");
-                setTheme("theme-amber");
-                document.documentElement.style.setProperty("--letter-spacing", "0.05em");
-                document.documentElement.style.setProperty("--line-height", "1.6");
+                document.documentElement.style.setProperty("--letter-spacing", "0.06em");
+                document.documentElement.style.setProperty("--word-spacing", "0.15em");
+                document.documentElement.style.setProperty("--line-height", "1.65");
+                document.documentElement.style.setProperty("--font-style", "normal");
             } else {
-                setFontFamily("'Inter', system-ui, -apple-system, sans-serif");
-                setTheme("theme-oled");
                 document.documentElement.style.setProperty("--letter-spacing", "normal");
+                document.documentElement.style.setProperty("--word-spacing", "normal");
                 document.documentElement.style.setProperty("--line-height", "1.45");
+                document.documentElement.style.setProperty("--font-style", "normal");
             }
             try {
                 localStorage.setItem("voxstream_display_a11y", enabled ? "true" : "false");
