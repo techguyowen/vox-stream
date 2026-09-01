@@ -661,6 +661,72 @@ class TestServerEndpoints(AioHTTPTestCase):
         data = await resp.json()
         self.assertEqual(data['status'], 'error')
 
+    async def test_custom_preset_lifecycle_api(self):
+        # 1. Save custom preset
+        save_resp = await self.client.request('POST', '/api/presets/save', json={
+            'id': 'test_custom_preset_123',
+            'name': 'Test Custom Theme',
+            'description': 'A custom preset for testing',
+            'font_family': 'Inter, sans-serif',
+            'font_size': '36px',
+            'font_weight': '700',
+            'line_height': '1.35',
+            'text_color': '#FFFFFF',
+            'interim_color': '#90CAF9',
+            'highlight_color': '#FFD166',
+            'background_box_color': 'rgba(15, 15, 20, 0.72)',
+            'border_radius': '12px',
+            'box_padding': '14px 26px',
+            'text_shadow': '2px 2px 5px rgba(0, 0, 0, 0.95)',
+            'text_stroke': '2px #000000',
+            'animation_style': 'word_pop'
+        })
+        self.assertEqual(save_resp.status, 200)
+        save_data = await save_resp.json()
+        self.assertEqual(save_data['status'], 'success')
+
+        # 2. Get presets
+        list_resp = await self.client.request('GET', '/api/presets')
+        self.assertEqual(list_resp.status, 200)
+        list_data = await list_resp.json()
+        presets = list_data.get('presets', list_data)
+        self.assertTrue(any(p.get('id') == 'test_custom_preset_123' for p in presets))
+
+        # 3. Apply preset
+        apply_resp = await self.client.request('POST', '/api/presets/apply', json={'theme_id': 'test_custom_preset_123'})
+        self.assertEqual(apply_resp.status, 200)
+
+        # 4. Delete custom preset
+        del_resp = await self.client.request('POST', '/api/presets/delete', json={'preset_id': 'test_custom_preset_123'})
+        self.assertEqual(del_resp.status, 200)
+        del_data = await del_resp.json()
+        self.assertEqual(del_data['status'], 'success')
+
+    async def test_chapters_endpoint(self):
+        resp = await self.client.request('GET', '/api/transcript/chapters')
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertIn('chapters', data)
+        self.assertIn('formatted', data)
+
+    async def test_vocabulary_test_and_clear_api(self):
+        # Test vocabulary sandbox
+        test_resp = await self.client.request('POST', '/api/vocabulary/test', json={'text': 'hello world'})
+        self.assertEqual(test_resp.status, 200)
+        test_data = await test_resp.json()
+        self.assertIn('modified', test_data)
+
+        # Clear vocabulary
+        clear_resp = await self.client.request('POST', '/api/vocabulary/clear')
+        self.assertEqual(clear_resp.status, 200)
+        clear_data = await clear_resp.json()
+        self.assertEqual(clear_data['status'], 'success')
+
+    async def test_dock_endpoint(self):
+        resp = await self.client.request('GET', '/dock')
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.content_type, 'text/html')
+
 
 
 if __name__ == "__main__":

@@ -74,7 +74,26 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Po
 
 ---
 
-### 🎛️ 7. Elgato Stream Deck & Bitfocus Companion Integration
+### 🤖 7. 1-Click Offline AI Model Downloader & Storage Cache Manager
+* **Pre-Download Offline Models**: 1-click batch or individual download for all 7 offline speech recognition models (*Vosk Small/Large, Faster-Whisper Tiny/Base/Small, Moonshine Tiny/Base*).
+* **Storage Management**: Visual disk cache inspector with single-model deletion and full cache clearance (`/api/models/delete`).
+* **Offline Readiness**: Prepares production systems for zero-internet environments with live download progress bars.
+
+---
+
+### 🎛️ 8. Complete REST & WebSocket API & Stream Deck / Companion Integration
+* Full REST API control for hardware broadcast switchers, Stream Decks, and custom webhooks.
+* **1-Button Panic Drop**: Instantly wipe visible captions across all broadcast screens and overlays (`POST /api/control/panic`).
+* **1-Button Toggle**: Start or pause speech recognition on demand (`POST /api/control/toggle`).
+* **1-Button Theme Switching**: Apply themes on the fly (`POST /api/presets/apply`).
+* Complete documentation in [**`API_GUIDE.md`**](API_GUIDE.md) and [**`integrations/streamdeck_companion.md`**](integrations/streamdeck_companion.md).
+
+---
+
+### 📑 9. Custom Vocabulary & Bulk CSV/TSV Glossary Manager
+* **Phonetic Replacement Engine**: Automatically replaces misheard slang, proper nouns, brand names, and church jargon in < 0.1ms.
+* **Bulk Import & Export**: Import CSV or TSV files, copy/paste multiple terms, or download your entire glossary with 1 click (`/api/vocabulary/export`).
+* **Live Sandbox Tester**: Test substitutions in real time before going live.
 * Full REST API control for hardware broadcast switchers and Stream Decks.
 * **1-Button Panic Drop**: Instantly wipe visible captions across all broadcast screens and overlays (`POST /api/control/panic`).
 * **1-Button Toggle**: Start or pause speech recognition on demand (`POST /api/control/toggle`).
@@ -83,21 +102,21 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Po
 
 ---
 
-### 📑 8. Automated YouTube Video Chapters & Subtitle Export
+### 📑 10. Automated YouTube Video Chapters & Subtitle Export
 * **Intelligent YouTube Chapters**: Automatically detects scripture readings (*e.g. John 3:16, Romans 8:28*), sermon topic shifts, prayers, and liturgical milestones into timestamped chapter markers.
 * **1-Click Copy**: Copy ready-to-paste video descriptions for YouTube uploads directly from the Transcripts tab.
 * **Subtitle Export**: 1-click export to **`.SRT`**, **`.VTT`**, and **`.TXT`** with millisecond timecodes.
 
 ---
 
-### 🎨 9. 1-Click Theme Gallery & Typography Customizer
+### 🎨 11. Curated Broadcast Theme Gallery & Typography Customizer
 * **Pre-Built Themes**: *Modern Clean, Broadcast News Lower-Third, Sanctuary & Worship, Corporate Keynote & Tech, Minimalist Cinema, High-Contrast Stage Confidence, Editorial & Talk Show, Classic Broadcast CEA-708, OpenDyslexic (Accessibility)*.
 * **Custom Typography**: Google Fonts (*Inter, Roboto, Montserrat, Oswald, Lora, Poppins, OpenDyslexic*) + custom system fonts.
 * **Custom Layouts**: Font Size (16px–96px), Max Box Width (% slider), Max Lines (1–4), Text Alignment, Line Height, and Box Background Opacity.
 
 ---
 
-### 🛡️ 10. 3-Tier Content Filtering & Wholesome Replacements
+### 🛡️ 12. 3-Tier Content Filtering & Wholesome Replacements
 * **Tier 1 (Standard Profanities)**: Filters vulgarities and offensive words.
 * **Tier 2 (Harsh Vulgarities & Blasphemies)**: Filters harsh expletives while safely protecting sacred names and scriptural citations. When **Church Mode** is on, ordinary theological vocabulary (e.g. *hell*, *damned* in sermon contexts) is exempt from this tier so scripture readings display verbatim.
 * **Tier 3 (Crude Terms)**: Filters crude slang and inappropriate phrases.
@@ -140,7 +159,8 @@ cd vox-stream
 ## 🖥️ OBS Studio Setup
 
 ### 1. Add the In-OBS Control Dock (Recommended)
-1. In OBS Studio, go to the top menu: **Docks $ightarrow$ Custom Browser Docks...**
+1. In OBS Studio, go to the top menu: **Docks $
+ightarrow$ Custom Browser Docks...**
 2. **Dock Name**: `Live Captions`
 3. **URL**: `http://127.0.0.1:8765/dashboard`
 4. Click **Apply** and dock the panel anywhere in your OBS workspace.
@@ -148,7 +168,8 @@ cd vox-stream
 ---
 
 ### 2. Add the Transparent Stream Overlay
-1. In your OBS Scene, click **+ (Add Source) $ightarrow$ Browser**.
+1. In your OBS Scene, click **+ (Add Source) $
+ightarrow$ Browser**.
 2. **URL**: `http://127.0.0.1:8765/`
 3. **Width**: `1920`, **Height**: `1080` (or match your canvas resolution).
 4. Check **"Shutdown source when not visible"** and **"Refresh browser when scene becomes active"**.
@@ -156,7 +177,8 @@ cd vox-stream
 ---
 
 ### 3. Native Closed Captions (YouTube & Twitch [CC] Button) 📺
-1. **In OBS Studio**: Go to **Tools $ightarrow$ WebSocket Server Settings** and check **"Enable WebSocket server"** (Port `4455`).
+1. **In OBS Studio**: Go to **Tools $
+ightarrow$ WebSocket Server Settings** and check **"Enable WebSocket server"** (Port `4455`).
 2. **For YouTube Livestreams**:
    * Open your stream in **YouTube Studio** (Live Control Room).
    * In **Stream Settings**, toggle **Closed Captions** to **ON**.
@@ -169,7 +191,8 @@ cd vox-stream
 
 ### 4. Auto-Start VoxStream Automatically When OBS Opens 🚀
 You can have OBS Studio launch VoxStream in the background automatically whenever OBS opens:
-1. In OBS Studio, go to **Tools $ightarrow$ Scripts**.
+1. In OBS Studio, go to **Tools $
+ightarrow$ Scripts**.
 2. **On macOS**: In the **Python Settings** tab, ensure your Python path is set (e.g. `/opt/homebrew/Frameworks/Python.framework/Versions/3.11` or `/Library/Frameworks/Python.framework/Versions/3.11`). On Windows, select your Python install folder.
 3. Click the **Scripts** tab, click **+ (Add Script)**, and select `obs_script/obs_live_captions.py`.
 4. Check **"Auto-start when OBS launches"** and choose your default speech engine (e.g. *Vosk, Moonshine, Bandwidth Labs, etc.*).

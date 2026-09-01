@@ -372,7 +372,7 @@ class WebOverlayServer:
             return web.json_response({"error": "Unauthorized"}, status=401)
         try:
             data = await request.json()
-            preset_id = sanitize_text(data.get("id", "").strip())
+            preset_id = sanitize_text((data.get("id") or data.get("preset_id") or "").strip())
             if preset_id in THEME_PRESETS:
                 return web.json_response({"error": "Cannot delete built-in theme presets."}, status=400)
 
