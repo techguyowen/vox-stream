@@ -28,7 +28,7 @@ function setupA11yPresets() {
             const bgOp = document.getElementById("bg_opacity_slider");
             if (bgOp) bgOp.value = 95;
 
-            updatePreviewStyle();
+            updatePreviewStyles();
             showToast("👁️ High-Visibility Visual Aid configuration applied!", "success", 3500);
         });
     }
@@ -480,8 +480,8 @@ function initBibleHandlers() {
     
     const overlayItal = document.getElementById("overlay_use_italics");
     if (overlayItal) {
-        overlayItal.addEventListener("change", updatePreviewStyle);
-        overlayItal.addEventListener("click", updatePreviewStyle);
+        overlayItal.addEventListener("change", updatePreviewStyles);
+        overlayItal.addEventListener("click", updatePreviewStyles);
     }
 
     const bibleItal = document.getElementById("bible_tab_use_italics");
