@@ -12,6 +12,11 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Po
 
 ---
 
+
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" alt="VoxStream Pro Dashboard and OBS Stream Overlay Studio" width="900" style="border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+</p>
+
 ## ✨ Key Features Overview
 
 ### ⚡ 1. 7 Multi-Tier Speech Recognition Engines (Hot-Switchable)
@@ -33,6 +38,8 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Po
   * **`📜 Scrollable History` (Default)**: Full persistent, bi-directional scrollable transcript of the service. Presenters can scroll up with touch or mouse wheel to review earlier points or scripture verses.
   * **`⚡ Live Prompter (Auto-Fade)`**: Displays only the active 2 lines on screen and automatically fades out on silence for clean broadcast teleprompting.
 * **Fully Responsive UI**: Fluidly adapts across 4K displays, ultrawide monitors, iPads, and mobile phones with touch-friendly controls and responsive typography.
+
+<p align="center"><img src="docs/screenshots/stage_monitor.png" alt="VoxStream Stage and Room Confidence Monitor PWA" width="850" style="border-radius: 8px;"></p>
 
 ---
 
@@ -72,12 +79,16 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Po
 * **Viewer Toggleable [CC]**: Viewers on YouTube Live and Twitch can toggle captions on/off right on the video player without permanently burning text into video pixels.
 * **Twitch Chat Caption Broadcaster**: Automatically sends live captions into Twitch chat for mobile and hearing-impaired viewers.
 
+<p align="center"><img src="docs/screenshots/stream_overlay.png" alt="OBS Transparent Animated Stream Overlay" width="850" style="border-radius: 8px;"></p>
+
 ---
 
 ### 🤖 7. 1-Click Offline AI Model Downloader & Storage Cache Manager
 * **Pre-Download Offline Models**: 1-click batch or individual download for all 7 offline speech recognition models (*Vosk Small/Large, Faster-Whisper Tiny/Base/Small, Moonshine Tiny/Base*).
 * **Storage Management**: Visual disk cache inspector with single-model deletion and full cache clearance (`/api/models/delete`).
 * **Offline Readiness**: Prepares production systems for zero-internet environments with live download progress bars.
+
+<p align="center"><img src="docs/screenshots/dashboard_engine.png" alt="Offline AI Speech-to-Text Models Downloader and Cache Manager" width="850" style="border-radius: 8px;"></p>
 
 ---
 
@@ -94,6 +105,8 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Po
 * **Phonetic Replacement Engine**: Automatically replaces misheard slang, proper nouns, brand names, and church jargon in < 0.1ms.
 * **Bulk Import & Export**: Import CSV or TSV files, copy/paste multiple terms, or download your entire glossary with 1 click (`/api/vocabulary/export`).
 * **Live Sandbox Tester**: Test substitutions in real time before going live.
+
+<p align="center"><img src="docs/screenshots/glossary_csv.png" alt="Custom Vocabulary & Bulk CSV Import/Export" width="850" style="border-radius: 8px;"></p>
 * Full REST API control for hardware broadcast switchers and Stream Decks.
 * **1-Button Panic Drop**: Instantly wipe visible captions across all broadcast screens and overlays (`POST /api/control/panic`).
 * **1-Button Toggle**: Start or pause speech recognition on demand (`POST /api/control/toggle`).
