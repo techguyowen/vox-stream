@@ -93,6 +93,7 @@
             background-color: var(--bg-color);
             color: var(--text-color);
             font-family: var(--font-family);
+            letter-spacing: var(--letter-spacing, normal);
             overflow: hidden;
             user-select: none;
             display: flex;
@@ -527,6 +528,12 @@
                     <option value="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">System Default</option>
                 </select>
 
+                <!-- 1-Click Accessibility & Dyslexia Mode Toggle -->
+                <label class="ctrl-btn-label" title="Toggle Accessibility Mode: OpenDyslexic font, 0.05em wide letter spacing, high contrast yellow on black, upright text" style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; background: rgba(56, 189, 248, 0.14); border: 1px solid rgba(56, 189, 248, 0.5); border-radius: 6px; padding: 4px 10px; font-size: 12.5px; font-weight: 700; color: #38BDF8; white-space: nowrap; user-select: none;">
+                    <input type="checkbox" id="chkDisplayA11y" style="cursor: pointer; width: 16px; height: 16px;">
+                    <span>♿ A11y Mode</span>
+                </label>
+
                 <!-- Theme Selector -->
                 <select class="theme-select" id="themeSelect">
                     <option value="theme-oled" selected>🌑 Dark</option>
@@ -717,6 +724,40 @@
             themeSelect.addEventListener('change', (e) => {
                 setTheme(e.target.value);
                 localStorage.setItem('voxstream_display_theme', e.target.value);
+            });
+        }
+
+        // 1-Click Accessibility & Dyslexia Mode Toggle Handler
+        const chkDisplayA11y = document.getElementById("chkDisplayA11y");
+
+        function applyDisplayA11yMode(enabled) {
+            if (enabled) {
+                setFontFamily("'OpenDyslexic', sans-serif");
+                setTheme("theme-amber");
+                document.documentElement.style.setProperty("--letter-spacing", "0.05em");
+                document.documentElement.style.setProperty("--line-height", "1.6");
+            } else {
+                setFontFamily("'Inter', system-ui, -apple-system, sans-serif");
+                setTheme("theme-oled");
+                document.documentElement.style.setProperty("--letter-spacing", "normal");
+                document.documentElement.style.setProperty("--line-height", "1.45");
+            }
+            try {
+                localStorage.setItem("voxstream_display_a11y", enabled ? "true" : "false");
+            } catch(e) {}
+        }
+
+        if (chkDisplayA11y) {
+            try {
+                const savedA11y = localStorage.getItem("voxstream_display_a11y") === "true";
+                if (savedA11y) {
+                    chkDisplayA11y.checked = true;
+                    applyDisplayA11yMode(true);
+                }
+            } catch(e) {}
+
+            chkDisplayA11y.addEventListener("change", (e) => {
+                applyDisplayA11yMode(e.target.checked);
             });
         }
 

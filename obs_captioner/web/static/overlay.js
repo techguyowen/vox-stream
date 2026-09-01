@@ -66,6 +66,15 @@ function applyStyles(ov) {
     setVar("--box-padding", ov.box_padding);
     setVar("--text-shadow", ov.text_shadow);
     setVar("--text-stroke", ov.text_stroke);
+    setVar("--letter-spacing", ov.letter_spacing || "normal");
+
+    const italics = ov.use_italics ? "italic" : "normal";
+    setVar("--font-style", italics);
+
+    if (ov.high_contrast_outline) {
+        setVar("--text-stroke", "3.5px #000000");
+        setVar("--text-shadow", "0 0 8px #000000, 2px 2px 6px #000000");
+    }
 
     if (ov.vertical_align === "top") {
         document.body.classList.add("align-top");
@@ -74,7 +83,11 @@ function applyStyles(ov) {
     }
 
     if (ov.max_lines) config.max_lines = parseInt(ov.max_lines) || 2;
-    if (ov.animation_style) config.animation_style = ov.animation_style;
+    if (ov.reduce_motion) {
+        config.animation_style = "instant";
+    } else if (ov.animation_style) {
+        config.animation_style = ov.animation_style;
+    }
     if (ov.auto_hide_seconds !== undefined) {
         const newHide = parseFloat(ov.auto_hide_seconds) || 0;
         if (newHide !== config.auto_hide_seconds) {
