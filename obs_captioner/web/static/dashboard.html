@@ -3,6 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="/manifest-dashboard.json">
+    <meta name="theme-color" content="#0F172A">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="VoxStream Dashboard">
+    <link rel="apple-touch-icon" href="/static/icon-192.png">
         <title>OBS Live Captions — Pro Dashboard &amp; Dock</title>
     <!-- Favicons & App Icons -->
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
@@ -52,11 +59,9 @@
                 </div>
 
                 <button id="btn-toggle-engine" class="btn btn-danger">⏹ Stop Captions</button>
-                <button id="btn-open-features-modal" class="btn btn-secondary" title="Customize visible tabs & feature modules" style="display: inline-flex; align-items: center; gap: 5px; font-weight: 600;">
-                    <span>⚙️ Features</span>
+                <button id="btn-open-features-modal" class="btn btn-secondary" title="Advanced Settings & Features" style="display: inline-flex; align-items: center; gap: 5px; font-weight: 600;">
+                    <span>⚙️ Advanced Settings</span>
                 </button>
-                <button id="btn-restart-app" class="btn btn-secondary" title="Cleanly restart the VoxStream backend process">🔄 Restart</button>
-                <button id="btn-shutdown-app" class="btn btn-danger" title="Shut down the VoxStream application">🛑 Quit</button>
             </div>
         </header>
 
@@ -1319,7 +1324,7 @@
         <div class="modal-content">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
                 <h2 style="margin: 0; font-size: 17px; color: var(--text-main); display: flex; align-items: center; gap: 8px;">
-                    <span>⚙️ Customize Workspace Features &amp; Tabs</span>
+                    <span>⚙️ Advanced Settings &amp; Modules</span>
                 </h2>
                 <button type="button" id="btn-close-features-modal" aria-label="Close Feature Settings Dialog" style="background: none; border: none; color: var(--text-muted); font-size: 20px; font-weight: bold; cursor: pointer; padding: 4px 8px;">✕</button>
             </div>
@@ -1438,11 +1443,27 @@
                 </div>
             </div>
 
-            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; border-top: 1px solid var(--border-color); padding-top: 14px;">
-                <button type="button" id="btn-save-feature-settings" class="btn btn-primary">✓ Done</button>
+            <div style="margin-top: 18px; border-top: 1px solid var(--border-color); padding-top: 14px;">
+                <span style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 8px; font-weight: 600;">System Controls</span>
+                <div style="display: flex; justify-content: space-between; gap: 10px;">
+                    <div style="display: flex; gap: 10px;">
+                        <button id="btn-restart-app" class="btn btn-secondary" title="Cleanly restart the VoxStream backend process">🔄 Restart Server</button>
+                        <button id="btn-shutdown-app" class="btn btn-danger" title="Shut down the VoxStream application">🛑 Quit Server</button>
+                    </div>
+                    <button type="button" id="btn-save-feature-settings" class="btn btn-primary">✓ Save & Close</button>
+                </div>
             </div>
         </div>
     </div>
 
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js').catch(err => {
+                    console.error('ServiceWorker registration failed: ', err);
+                });
+            });
+        }
+    </script>
 </body>
 </html>

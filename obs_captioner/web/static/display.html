@@ -5,19 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>VoxStream - Room Confidence Monitor</title>
     <!-- Progressive Web App (PWA) Meta & Icons -->
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="/manifest-display.json">
     <meta name="theme-color" content="#000000">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="VoxStream">
+    <meta name="apple-mobile-web-app-title" content="Stage Display">
     <!-- Favicons & App Icons -->
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
-    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
-    <link rel="icon" type="image/svg+xml" href="/static/icon.svg">
-    <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
-    <link rel="apple-touch-icon" href="/static/icon-192.png">
+    <link rel="icon" type="image/svg+xml" href="/static/icon-display.svg">
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/icon-display-192.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon-display.png">
+    <link rel="apple-touch-icon" href="/static/icon-display-192.png">
     <link rel="shortcut icon" href="/favicon.ico">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -80,16 +79,58 @@
             --card-bg: rgba(255, 255, 255, 0.95);
             --border: #E2E8F0;
         }
-
+        body.theme-high-vis {
+            --bg-color: #000000;
+            --text-color: #FFFF00;
+            --interim-color: #FEF08A;
+            --text-muted: #A3A3A3;
+            --card-bg: #111111;
+            --border: #FFFF00;
+        }
+        body.theme-pro-green {
+            --bg-color: #051A14;
+            --text-color: #34D399;
+            --interim-color: #6EE7B7;
+            --text-muted: #065F46;
+            --border: #047857;
+        }
+        body.theme-hacker {
+            --bg-color: #000000;
+            --text-color: #00FF66;
+            --interim-color: #66FF99;
+            --text-muted: #008833;
+            --border: #00AA44;
+            --font-family: 'JetBrains Mono', monospace;
+        }
+        body.theme-dark {
+            --bg-color: #0D1117;
+            --text-color: #C9D1D9;
+            --interim-color: #58A6FF;
+            --text-muted: #8B949E;
+            --card-bg: #161B22;
+            --border: #30363D;
+        }
+        /* Base Reset & Fullscreen Layout */
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
         }
 
-        html, body {
-            width: 100vw;
-            height: 100vh;
+        /* FIX: html must also clamp to viewport to prevent gray sidebar bleed */
+        html {
+            width: 100%;
+            max-width: 100vw;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        body {
+            width: 100%;
+            max-width: 100vw;
+            height: 100%;
+            margin: 0;
+            padding: 0;
             background-color: var(--bg-color);
             color: var(--text-color);
             font-family: var(--font-family);
@@ -104,24 +145,28 @@
             transition: background-color 0.25s ease, color 0.25s ease;
         }
 
-        /* Fully Responsive Top Header Bar */
+        /* -------------------------------------------------------------
+           Header Navigation Bar (Rock-Solid Multi-Resolution Layout)
+           ------------------------------------------------------------- */
         .header-bar {
-            flex-shrink: 0;
-            width: 100%;
-            background: var(--card-bg);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border-bottom: 1px solid var(--border);
             display: flex;
             flex-direction: column;
-            padding: 8px 14px;
             gap: 8px;
+            background: rgba(15, 23, 42, 0.95);
+            border-bottom: 1px solid var(--border);
+            padding: 8px 16px;
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            position: sticky;
+            top: 0;
             z-index: 100;
+            width: 100%;
+            flex-shrink: 0;
             transition: transform 0.25s ease, opacity 0.25s ease;
         }
 
         .header-bar.hidden {
-            display: none;
+            display: none !important;
         }
 
         .header-main-row {
@@ -129,7 +174,7 @@
             align-items: center;
             justify-content: space-between;
             width: 100%;
-            gap: 10px;
+            gap: 12px;
         }
 
         .header-left {
@@ -180,51 +225,57 @@
             width: 7px;
             height: 7px;
             border-radius: 50%;
-            background-color: currentColor;
+            background: var(--success);
+            box-shadow: 0 0 8px var(--success);
+        }
+
+        .status-pill.offline .status-dot {
+            background: #EF4444;
+            box-shadow: 0 0 8px #EF4444;
         }
 
         .clock-display {
+            font-size: 13.5px;
+            font-weight: 800;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 15px;
-            font-weight: 700;
-            color: var(--text-color);
-            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            letter-spacing: 1px;
             white-space: nowrap;
         }
 
         .header-quick-actions {
             display: flex;
             align-items: center;
-            gap: 5px;
+            gap: 6px;
             flex-shrink: 0;
         }
 
         .ctrl-btn {
-            background: rgba(255, 255, 255, 0.06);
+            background: rgba(255, 255, 255, 0.08);
             color: var(--text-color);
             border: 1px solid var(--border);
             padding: 5px 9px;
             border-radius: 6px;
             font-size: 12px;
-            font-weight: 600;
+            font-weight: 700;
             cursor: pointer;
+            transition: all 0.15s ease;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             gap: 4px;
-            white-space: nowrap;
-            transition: all 0.15s ease;
         }
 
         .ctrl-btn:hover {
-            background: rgba(255, 255, 255, 0.14);
+            background: rgba(255, 255, 255, 0.16);
+            border-color: rgba(255, 255, 255, 0.3);
+            transform: translateY(-1px);
         }
 
         .header-controls-row {
-            display: flex;
-            align-items: center;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
             gap: 8px;
-            flex-wrap: wrap;
             width: 100%;
         }
 
@@ -232,82 +283,115 @@
             background: #161B22;
             color: #F0F3F6;
             border: 1px solid var(--border);
-            padding: 5px 8px;
+            padding: 6px 10px;
             border-radius: 6px;
-            font-size: 12px;
+            font-size: 12.5px;
             font-weight: 600;
             cursor: pointer;
             outline: none;
-            flex: 1 1 120px;
-            min-width: 100px;
+            width: 100%;
+            box-sizing: border-box;
         }
 
-        .ctrl-btn-label {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            cursor: pointer;
-            background: rgba(56, 189, 248, 0.14);
-            border: 1px solid rgba(56, 189, 248, 0.5);
-            border-radius: 6px;
-            padding: 4px 9px;
-            font-size: 12px;
-            font-weight: 700;
-            color: #38BDF8;
-            white-space: nowrap;
-            user-select: none;
+        .theme-select:focus {
+            border-color: #38BDF8;
+        }
+
+        /* Wide screens (>= 1150px): Place dropdowns cleanly inline */
+        @media (min-width: 1150px) {
+            .header-bar {
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-between;
+                padding: 8px 18px;
+                gap: 16px;
+            }
+            .header-main-row {
+                width: auto;
+                justify-content: flex-start;
+                gap: 16px;
+            }
+            .header-controls-row {
+                width: auto;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .theme-select {
+                width: auto;
+                min-width: 160px;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .brand-sub {
+                display: none;
+            }
+            .clock-display {
+                display: none;
+            }
+            .header-controls-row {
+                grid-template-columns: 1fr 1fr;
+                gap: 6px;
+            }
+            .theme-select {
+                font-size: 11.5px;
+                padding: 5px 6px;
+            }
+        }
+
+        /* FIX: Scripture prompter card must not grow/squash the main caption area */
+        #scripturePrompterCard {
             flex-shrink: 0;
         }
 
-        .theme-select option {
-            background: #161B22;
-            color: #F0F3F6;
-        }
-
-        /* Main Scrolling Container with generous top/bottom safe padding */
+        /* -------------------------------------------------------------
+           Stage Caption Container & Typography
+           ------------------------------------------------------------- */
         .stage-container {
-            flex: 1 1 auto;
-            height: 100%;
-            width: 100%;
-            overflow-y: scroll;
+            flex: 1 1 0;
+            min-height: 0;
+            overflow-y: auto;
             overflow-x: hidden;
-            -webkit-overflow-scrolling: touch;
-            padding: 24px 28px calc(110px + env(safe-area-inset-bottom, 0px)) 28px;
-            overscroll-behavior-y: contain;
-            position: relative;
-            box-sizing: border-box;
-        }
-
-        .stage-container::-webkit-scrollbar {
-            width: 8px;
-        }
-        .stage-container::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 4px;
-        }
-
-        .transcript-content {
-            min-height: 100%;
             display: flex;
             flex-direction: column;
             justify-content: flex-start;
-            gap: 16px;
-            max-width: 1500px;
-            margin: 0 auto;
-            width: 100%;
-            padding-bottom: 70px;
-            transition: opacity 0.3s ease;
+            padding: 32px 40px calc(48px + env(safe-area-inset-bottom, 0px)) 40px;
+            scroll-behavior: smooth;
             box-sizing: border-box;
+            width: 100%;
+            position: relative;
         }
 
-        body.mode-live .transcript-content {
+        .transcript-content {
+            display: flex;
+            flex-direction: column;
             justify-content: flex-end;
+            min-height: 100%;
+            width: 100%;
+            box-sizing: border-box;
+            transition: opacity 0.35s ease;
         }
 
         .transcript-content.faded {
             opacity: 0;
         }
 
+        /* ⚡ Bionic Reading / Saccadic Word Fixation */
+        .bionic-fixation {
+            font-weight: 900;
+            color: #FFFFFF;
+            letter-spacing: -0.01em;
+        }
+        body.theme-light .bionic-fixation {
+            color: #000000;
+        }
+        body.theme-high-vis .bionic-fixation {
+            color: #FFFF00;
+        }
+        body.theme-amber .bionic-fixation {
+            color: #F59E0B;
+        }
 
         /* Smooth Word Flow Animation for Reading Ease */
         .caption-sentence {
@@ -318,8 +402,9 @@
             text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
             opacity: 0.95;
             word-wrap: break-word;
+            overflow-wrap: break-word;
             transition: opacity 0.3s ease, color 0.3s ease;
-            margin-bottom: 12px;
+            margin-bottom: 16px;
         }
 
         .caption-sentence.previous {
@@ -346,7 +431,6 @@
             transition: all 0.4s ease;
         }
 
-
         @keyframes blink {
             0%, 100% { opacity: 1; }
             50% { opacity: 0; }
@@ -360,7 +444,7 @@
             padding: 60px 0;
         }
 
-        /* Floating Controls & Non-Obtrusive Action Triggers */
+        /* Floating Controls */
         .top-toggle-btn {
             position: fixed;
             top: 12px;
@@ -372,7 +456,7 @@
             width: 40px;
             height: 40px;
             border-radius: 50%;
-            display: none; /* Only shown when header is hidden */
+            display: none;
             align-items: center;
             justify-content: center;
             font-size: 18px;
@@ -392,7 +476,6 @@
             background: rgba(30, 41, 59, 0.95);
         }
 
-        /* Floating 'Jump to Live' indicator - ONLY shown when scrolled up */
         .jump-live-btn {
             position: fixed;
             bottom: calc(20px + env(safe-area-inset-bottom, 0px));
@@ -428,95 +511,6 @@
             transform: scale(1.04);
         }
 
-        /* 📱 Responsive Desktop, Tablet & Mobile Layouts */
-        @media (min-width: 1100px) {
-            .header-bar {
-                flex-direction: row;
-                align-items: center;
-                justify-content: space-between;
-                padding: 8px 18px;
-            }
-            .header-main-row {
-                width: auto;
-                justify-content: flex-start;
-                gap: 16px;
-            }
-            .header-controls-row {
-                width: auto;
-                justify-content: flex-end;
-                flex-wrap: nowrap;
-            }
-            .theme-select {
-                flex: 0 0 auto;
-                min-width: auto;
-            }
-        }
-
-        @media (max-width: 1099px) and (min-width: 769px) {
-            .header-controls-row {
-                display: flex;
-                flex-wrap: wrap;
-            }
-            .theme-select {
-                flex: 1 1 140px;
-            }
-        }
-
-        @media (max-width: 768px) {
-            :root {
-                --font-size: 32px;
-            }
-            .header-bar {
-                padding: 6px 10px;
-                gap: 6px;
-            }
-            .brand-sub {
-                display: none;
-            }
-            .clock-display {
-                font-size: 13px;
-            }
-            .header-controls-row {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 5px;
-            }
-            .theme-select {
-                width: 100%;
-                font-size: 11.5px;
-                padding: 5px 6px;
-            }
-            .ctrl-btn-label {
-                grid-column: span 2;
-                justify-content: center;
-                padding: 5px 8px;
-            }
-            .stage-container {
-                padding: 14px 14px calc(110px + env(safe-area-inset-bottom, 0px)) 14px;
-            }
-            .transcript-content {
-                padding-bottom: 50px;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .clock-display {
-                display: none;
-            }
-            .brand-badge {
-                font-size: 12.5px;
-            }
-            .status-pill {
-                font-size: 10px;
-                padding: 2px 6px;
-                max-width: 110px;
-            }
-            .ctrl-btn {
-                padding: 4px 7px;
-                font-size: 11px;
-            }
-        }
-
         /* Accessibility (a11y): Reduced Motion Media Query */
         @media (prefers-reduced-motion: reduce) {
             *, *::before, *::after {
@@ -533,7 +527,6 @@
             outline: 2.5px solid #38BDF8 !important;
             outline-offset: 2px !important;
         }
-
     </style>
 </head>
 <body class="theme-oled">
@@ -556,12 +549,14 @@
             <div class="clock-display" id="clockDisplay">12:00:00 PM</div>
 
             <div class="header-quick-actions">
+                <button class="ctrl-btn" id="btnOpenSettings" title="Display &amp; Reading Settings (S)" aria-label="Settings" style="background: rgba(56, 189, 248, 0.18); border-color: rgba(56, 189, 248, 0.45); color: #38BDF8;">
+                    ⚙️ <span class="settings-label" style="font-size: 11.5px; margin-left: 2px;">Settings</span>
+                </button>
                 <button class="ctrl-btn" id="btnFontDec" title="Decrease font size (-)" aria-label="Decrease Font Size">A-</button>
                 <button class="ctrl-btn" id="btnFontInc" title="Increase font size (+)" aria-label="Increase Font Size">A+</button>
-                <button class="ctrl-btn" id="btnInstallPwa" style="display: none;" title="Install App" aria-label="Install App">📲</button>
                 <button class="ctrl-btn" id="btnFullscreen" title="Toggle Fullscreen (F11)" aria-label="Toggle Fullscreen">⛶</button>
-                <button class="ctrl-btn" id="btnClear" title="Clear History" aria-label="Clear History">🗑️</button>
-                <button class="ctrl-btn" id="btnCollapseHeader" title="Hide Header Bar (H)" aria-label="Hide Header Bar">▲</button>
+                <button class="ctrl-btn" id="btnClear" title="Clear History (C)" aria-label="Clear History">🗑️</button>
+                <button class="ctrl-btn" id="btnCollapseHeader" title="Hide Header Bar (H)" aria-label="Hide Header Bar">↑</button>
             </div>
         </div>
 
@@ -593,45 +588,105 @@
                 <option value="uk">Українська</option>
                 <option value="vi">Tiếng Việt</option>
             </select>
-
-            <!-- Typography Selector -->
-            <select class="theme-select" id="fontSelect" title="Typography / Font Family" aria-label="Typography">
-                <option value="'Inter', system-ui, -apple-system, sans-serif" selected>Inter (Sans)</option>
-                <option value="'OpenDyslexic', sans-serif">📖 OpenDyslexic</option>
-                <option value="'Montserrat', sans-serif">Montserrat</option>
-                <option value="'Poppins', sans-serif">Poppins</option>
-                <option value="'Oswald', sans-serif">Oswald</option>
-                <option value="'Roboto', sans-serif">Roboto</option>
-                <option value="'Open Sans', sans-serif">Open Sans</option>
-                <option value="'Bebas Neue', sans-serif">Bebas Neue</option>
-                <option value="'Lora', Georgia, serif">Lora (Serif)</option>
-                <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
-                <option value="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">System Default</option>
-            </select>
-
-            <!-- Theme Selector -->
-            <select class="theme-select" id="themeSelect" aria-label="Color Theme">
-                <option value="theme-oled" selected>🌑 Dark</option>
-                <option value="theme-amber">🟡 Amber</option>
-                <option value="theme-slate">🌌 Slate</option>
-                <option value="theme-light">☀️ Light</option>
-            </select>
-
-            <!-- 1-Click Visual Aid Toggle -->
-            <label class="ctrl-btn-label" title="Toggle Visual Aid Spacing: Expanded letter tracking (0.06em), word spacing (0.15em), and line height (1.65x) for reading ease">
-                <input type="checkbox" id="chkDisplayA11y">
-                <span>👁️ Visual Aid</span>
-            </label>
-
-            <!-- 1-Click Slow Down Text / Paced Reading Toggle -->
-            <label class="ctrl-btn-label" id="lblDisplayPacing" title="Slow Down Text: Smooths fast speech into a steady 140 WPM reading pace and holds text on screen 3x longer for easy reading" style="cursor: pointer; background: rgba(245, 158, 11, 0.14); border: 1px solid rgba(245, 158, 11, 0.5); color: #FBBF24; display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 6px; font-size: 12px; font-weight: 700; user-select: none;">
-                <input type="checkbox" id="chkDisplayPacing" style="cursor: pointer; width: 15px; height: 15px;">
-                <span>🐢 Slow Down Text</span>
-            </label>
         </div>
     </header>
 
-    <!-- Live Scripture Prompter Card (Stage & Confidence Monitor) -->
+    <!-- Settings Modal (Full Reading Comfort, Typography & Theme Control) -->
+    <div id="settingsModal" class="modal-backdrop" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);">
+        <div class="modal-content" style="background: #111827; border: 1px solid rgba(255,255,255,0.18); border-radius: 16px; padding: 22px 24px; width: 92%; max-width: 460px; box-shadow: 0 24px 48px rgba(0,0,0,0.9); color: #F9FAFB; max-height: 90vh; overflow-y: auto;">
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.12); padding-bottom: 14px; margin-bottom: 16px;">
+                <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
+                    <span>⚙️ Display &amp; Reading Settings</span>
+                </h3>
+                <button id="btnCloseSettings" style="background: none; border: none; color: #9CA3AF; font-size: 24px; font-weight: bold; cursor: pointer; padding: 0 6px; line-height: 1;">✕</button>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                
+                <!-- SECTION 1: Visual Aid & Reading Comfort -->
+                <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px;">
+                    <div style="font-size: 11.5px; font-weight: 800; color: #93C5FD; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 10px;">
+                        👁️ Reading Comfort &amp; Visual Aids
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <!-- Visual Aid Mode -->
+                        <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.35); padding: 10px 12px; border-radius: 8px;">
+                            <div>
+                                <span style="font-size: 13.5px; font-weight: 700; color: #38BDF8; display: block;">👁️ Visual Aid Mode</span>
+                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Expanded letter spacing (0.06em), word spacing (0.15em), line height (1.65x)</span>
+                            </div>
+                            <input type="checkbox" id="chkDisplayA11y" style="width: 20px; height: 20px; cursor: pointer; accent-color: #38BDF8;">
+                        </label>
+
+                        <!-- Slow Down Text Mode -->
+                        <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.35); padding: 10px 12px; border-radius: 8px;">
+                            <div>
+                                <span style="font-size: 13.5px; font-weight: 700; color: #FBBF24; display: block;">🐢 Slow Down Text</span>
+                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Paces words steadily at 140 WPM and holds text on screen 3x longer</span>
+                            </div>
+                            <input type="checkbox" id="chkDisplayPacing" style="width: 20px; height: 20px; cursor: pointer; accent-color: #F59E0B;">
+                        </label>
+
+                        <!-- Bionic Reading Mode -->
+                        <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.35); padding: 10px 12px; border-radius: 8px;">
+                            <div>
+                                <span style="font-size: 13.5px; font-weight: 700; color: #C084FC; display: block;">⚡ Bionic Reading (Guided Word Focus)</span>
+                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Bolds initial letters of each word for rapid eye fixation and ADHD focus</span>
+                            </div>
+                            <input type="checkbox" id="chkDisplayBionic" style="width: 20px; height: 20px; cursor: pointer; accent-color: #A855F7;">
+                        </label>
+                    </div>
+                </div>
+
+                <!-- SECTION 2: Typography -->
+                <div>
+                    <label for="fontSelect" style="display: block; font-size: 12px; margin-bottom: 5px; color: #94A3B8; font-weight: 700;">🔤 Typography / Font Family</label>
+                    <select class="theme-select" id="fontSelect" style="width: 100%; padding: 9px 12px; font-size: 13.5px;">
+                        <option value="'Inter', system-ui, -apple-system, sans-serif" selected>Inter (Modern Sans)</option>
+                        <option value="'OpenDyslexic', sans-serif">📖 OpenDyslexic (Dyslexia Aid)</option>
+                        <option value="'Lexend', sans-serif">📖 Lexend (Readability)</option>
+                        <option value="'Roboto', sans-serif">Roboto</option>
+                        <option value="'Bebas Neue', sans-serif">Bebas Neue (Condensed Stage)</option>
+                        <option value="'Oswald', sans-serif">Oswald (Bold Impact)</option>
+                        <option value="'Montserrat', sans-serif">Montserrat (Geometric)</option>
+                        <option value="'Poppins', sans-serif">Poppins (Rounded)</option>
+                        <option value="'Lora', serif">Lora (Editorial Serif)</option>
+                        <option value="'JetBrains Mono', monospace">JetBrains Mono (Monospace)</option>
+                        <option value="'Open Sans', sans-serif">Open Sans</option>
+                    </select>
+                </div>
+
+                <!-- SECTION 3: Color Theme -->
+                <div>
+                    <label for="themeSelect" style="display: block; font-size: 12px; margin-bottom: 5px; color: #94A3B8; font-weight: 700;">🎨 Color Theme</label>
+                    <select class="theme-select" id="themeSelect" style="width: 100%; padding: 9px 12px; font-size: 13.5px;">
+                        <option value="theme-oled" selected>🌙 OLED Black (High Contrast)</option>
+                        <option value="theme-dark">🌑 Classic Dark Slate</option>
+                        <option value="theme-high-vis">🟨 High Vis (Yellow on Black)</option>
+                        <option value="theme-amber">🟡 Stage Amber</option>
+                        <option value="theme-slate">🌌 Dark Slate</option>
+                        <option value="theme-light">☀️ Clean Light</option>
+                        <option value="theme-pro-green">🟢 Pro Green</option>
+                        <option value="theme-hacker">💻 Hacker Terminal</option>
+                    </select>
+                </div>
+
+                <!-- Install PWA Button inside Settings -->
+                <button id="btnInstallPwa" class="ctrl-btn" style="display: none; padding: 10px; font-weight: 700; width: 100%; justify-content: center; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #60A5FA; font-size: 13px; border-radius: 8px; cursor: pointer;">
+                    📲 Install Stage Display PWA
+                </button>
+
+                <div style="margin-top: 6px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.12); display: flex; justify-content: flex-end;">
+                    <button id="btnDoneSettings" class="ctrl-btn" style="padding: 10px 20px; font-weight: 700; width: 100%; justify-content: center; background: #2563EB; color: #FFFFFF; border: none; font-size: 14.5px; border-radius: 8px; cursor: pointer;">
+                        ✓ Done
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="scripturePrompterCard" style="display: none; background: rgba(245, 158, 11, 0.12); border: 2px solid #F59E0B; border-radius: 10px; padding: 16px 20px; margin: 12px 24px; box-shadow: 0 8px 30px rgba(0,0,0,0.5); backdrop-filter: blur(8px);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
             <span style="background: #F59E0B; color: #000; font-size: 13px; font-weight: 800; padding: 3px 10px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.04em;" id="stageScriptureCitation">📖 SCRIPTURE PASSAGE</span>
@@ -675,6 +730,8 @@
         let ws = null;
         let autoScroll = true;
         let silenceHideTimer = null;
+                let isPacedReadingEnabled = false;
+        let isBionicReadingEnabled = false;
 
         // DOM Elements
         const stageContainer = document.getElementById('stageContainer');
@@ -687,6 +744,15 @@
         const fontSelect = document.getElementById('fontSelect');
         const themeSelect = document.getElementById('themeSelect');
         const headerBar = document.getElementById('headerBar');
+
+        const chkDisplayA11y = document.getElementById('chkDisplayA11y');
+        const chkDisplayPacing = document.getElementById('chkDisplayPacing');
+        const chkDisplayBionic = document.getElementById('chkDisplayBionic');
+
+        const btnOpenSettings = document.getElementById('btnOpenSettings');
+        const btnCloseSettings = document.getElementById('btnCloseSettings');
+        const btnDoneSettings = document.getElementById('btnDoneSettings');
+        const settingsModal = document.getElementById('settingsModal');
 
         // Mode Selector: Scrollable History vs Live Prompter
         function applyDisplayMode(mode) {
@@ -714,7 +780,6 @@
                 if (transcriptContent) {
                     transcriptContent.classList.remove('faded');
                 }
-                applyDisplayMode(currentMode);
             }
         }
 
@@ -794,23 +859,28 @@
         const savedFont = localStorage.getItem('voxstream_display_font');
         if (savedFont) setFontFamily(savedFont);
 
-        function setTheme(theme) {
-            if (!theme || !/^theme-[a-z]+$/.test(theme)) return;
-            document.body.classList.forEach(c => {
-                if (c.startsWith('theme-')) document.body.classList.remove(c);
+        if (fontSelect) {
+            fontSelect.addEventListener('change', (e) => {
+                setFontFamily(e.target.value);
             });
+        }
+
+        // Color Theme
+        // FIX: Collect theme classes into array first, then remove — avoids
+        // classList iterator mutation bug where classes can be skipped.
+        function setTheme(theme) {
+            if (!theme || !/^theme-[a-z0-9\-]+$/.test(theme)) return;
+            const toRemove = [];
+            document.body.classList.forEach(c => {
+                if (c.startsWith('theme-')) toRemove.push(c);
+            });
+            toRemove.forEach(c => document.body.classList.remove(c));
             document.body.classList.add(theme);
             if (themeSelect) themeSelect.value = theme;
         }
 
         const savedTheme = localStorage.getItem('voxstream_display_theme');
         if (savedTheme) setTheme(savedTheme);
-
-        if (fontSelect) {
-            fontSelect.addEventListener('change', (e) => {
-                setFontFamily(e.target.value);
-            });
-        }
 
         if (themeSelect) {
             themeSelect.addEventListener('change', (e) => {
@@ -819,9 +889,7 @@
             });
         }
 
-        // 1-Click Accessibility & Dyslexia Mode Toggle Handler
-        const chkDisplayA11y = document.getElementById("chkDisplayA11y");
-
+        // 1-Click Accessibility / Visual Aid Mode Handler
         function applyDisplayA11yMode(enabled) {
             if (enabled) {
                 document.documentElement.style.setProperty("--letter-spacing", "0.06em");
@@ -834,22 +902,115 @@
                 document.documentElement.style.setProperty("--line-height", "1.45");
                 document.documentElement.style.setProperty("--font-style", "normal");
             }
+            if (chkDisplayA11y) chkDisplayA11y.checked = enabled;
             try {
                 localStorage.setItem("voxstream_display_a11y", enabled ? "true" : "false");
             } catch(e) {}
         }
 
-        if (chkDisplayA11y) {
-            try {
-                const savedA11y = localStorage.getItem("voxstream_display_a11y") === "true";
-                if (savedA11y) {
-                    chkDisplayA11y.checked = true;
-                    applyDisplayA11yMode(true);
-                }
-            } catch(e) {}
+        try {
+            const savedA11y = localStorage.getItem("voxstream_display_a11y") === "true";
+            if (savedA11y) applyDisplayA11yMode(true);
+        } catch(e) {}
 
-            chkDisplayA11y.addEventListener("change", (e) => {
-                applyDisplayA11yMode(e.target.checked);
+        if (chkDisplayA11y) {
+            chkDisplayA11y.addEventListener("change", (e) => applyDisplayA11yMode(e.target.checked));
+        }
+
+                // ⚡ Bionic Reading (Saccadic Word Fixation)
+        function formatBionicReading(text) {
+            if (!text) return '';
+            if (!isBionicReadingEnabled) {
+                return escapeHtml(text);
+            }
+
+            return text.split(/(\s+)/).map(part => {
+                if (/^\s+$/.test(part)) return part;
+                
+                const match = part.match(/^([^a-zA-Z0-9\u00C0-\u024F\u1E00-\u1EFF]*)([a-zA-Z0-9\u00C0-\u024F\u1E00-\u1EFF]+)(.*)$/);
+                if (!match) return escapeHtml(part);
+
+                const leadingPunct = escapeHtml(match[1]);
+                const word = match[2];
+                const trailingPunct = escapeHtml(match[3]);
+
+                const len = word.length;
+                let boldLen = 1;
+                if (len === 1) boldLen = 1;
+                else if (len <= 3) boldLen = 1;
+                else if (len <= 5) boldLen = 2;
+                else if (len <= 8) boldLen = 3;
+                else boldLen = Math.ceil(len * 0.45);
+
+                const boldPart = escapeHtml(word.slice(0, boldLen));
+                const restPart = escapeHtml(word.slice(boldLen));
+
+                return `${leadingPunct}<b class="bionic-fixation">${boldPart}</b>${restPart}${trailingPunct}`;
+            }).join('');
+        }
+
+        function applyDisplayBionicMode(enabled) {
+            isBionicReadingEnabled = enabled;
+            if (chkDisplayBionic) chkDisplayBionic.checked = enabled;
+            try {
+                localStorage.setItem("voxstream_display_bionic", enabled ? "true" : "false");
+            } catch(e) {}
+            renderCaptions();
+        }
+
+        try {
+            const savedBionic = localStorage.getItem("voxstream_display_bionic") === "true";
+            if (savedBionic) applyDisplayBionicMode(true);
+        } catch(e) {}
+
+        if (chkDisplayBionic) {
+            chkDisplayBionic.addEventListener("change", (e) => applyDisplayBionicMode(e.target.checked));
+        }
+
+        // 🐢 Slow Down Text / Paced Mode Handler
+        function applyDisplayPacingMode(enabled) {
+            isPacedReadingEnabled = enabled;
+            if (enabled) {
+                document.body.classList.add("slow-flow-mode");
+            } else {
+                document.body.classList.remove("slow-flow-mode");
+            }
+            if (chkDisplayPacing) chkDisplayPacing.checked = enabled;
+            try {
+                localStorage.setItem("voxstream_display_pacing", enabled ? "true" : "false");
+            } catch(e) {}
+        }
+
+        try {
+            const savedPacing = localStorage.getItem("voxstream_display_pacing") === "true";
+            if (savedPacing) applyDisplayPacingMode(true);
+        } catch(e) {}
+
+        if (chkDisplayPacing) {
+            chkDisplayPacing.addEventListener("change", (e) => applyDisplayPacingMode(e.target.checked));
+        }
+
+        // Settings Modal Open/Close Logic
+        if (btnOpenSettings && settingsModal) {
+            btnOpenSettings.addEventListener('click', () => {
+                settingsModal.style.display = 'flex';
+            });
+        }
+        if (btnCloseSettings && settingsModal) {
+            btnCloseSettings.addEventListener('click', () => {
+                settingsModal.style.display = 'none';
+            });
+        }
+        if (btnDoneSettings && settingsModal) {
+            btnDoneSettings.addEventListener('click', () => {
+                settingsModal.style.display = 'none';
+            });
+        }
+        if (settingsModal) {
+            settingsModal.addEventListener('click', (e) => {
+                if (e.target === settingsModal) {
+                    settingsModal.style.display = 'none';
+                }
             });
         }
 
@@ -863,19 +1024,29 @@
         const btnClear = document.getElementById('btnClear');
         if (btnClear) {
             btnClear.addEventListener('click', () => {
-                finalSentences = [];
-                interimText = "";
-                renderCaptions();
+                clearAllCaptions();
             });
         }
 
+        // FIX: Add webkit prefix fallback — requestFullscreen() silently fails
+        // in Safari without webkitRequestFullscreen().
         const btnFullscreen = document.getElementById('btnFullscreen');
         if (btnFullscreen) {
             btnFullscreen.addEventListener('click', () => {
-                if (!document.fullscreenElement) {
-                    document.documentElement.requestFullscreen().catch(() => {});
+                const el = document.documentElement;
+                const isFullscreen = document.fullscreenElement || document.webkitFullscreenElement;
+                if (!isFullscreen) {
+                    if (el.requestFullscreen) {
+                        el.requestFullscreen().catch(() => {});
+                    } else if (el.webkitRequestFullscreen) {
+                        el.webkitRequestFullscreen();
+                    }
                 } else {
-                    document.exitFullscreen().catch(() => {});
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen().catch(() => {});
+                    } else if (document.webkitExitFullscreen) {
+                        document.webkitExitFullscreen();
+                    }
                 }
             });
         }
@@ -932,23 +1103,26 @@
             if (['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(tag)) return;
             if (e.key === '+' || e.key === '=') setFontSize(currentFontSize + 4);
             if (e.key === '-' || e.key === '_') setFontSize(currentFontSize - 4);
+            if (e.key === 's' || e.key === 'S') {
+                if (settingsModal) {
+                    settingsModal.style.display = settingsModal.style.display === 'flex' ? 'none' : 'flex';
+                }
+            }
             if (e.key === 'h' || e.key === 'H') {
                 if (headerBar) { headerBar.classList.toggle('hidden'); updateFloatingButtons(); }
             }
             if (e.key === 'c' || e.key === 'C') {
-                finalSentences = [];
-                interimText = "";
-                renderCaptions();
+                clearAllCaptions();
             }
         });
 
         // Silence Timer handling for Live Prompter mode
-        function triggerSilenceTimer() {
+        function triggerSilenceTimer(timeoutMs = 4000) {
             if (silenceHideTimer) clearTimeout(silenceHideTimer);
             if (currentMode === 'live') {
                 silenceHideTimer = setTimeout(() => {
                     if (transcriptContent) transcriptContent.classList.add('faded');
-                }, 4000);
+                }, timeoutMs);
             }
         }
 
@@ -962,16 +1136,9 @@
             }
         }
 
-
         // -------------------------------------------------------------
-        // 🛡️ Rock-Solid Incremental Caption Rendering Engine
+        // 🛡️ Incremental Caption Rendering Engine
         // -------------------------------------------------------------
-        let isPacedReadingEnabled = false;
-        let pacerTimeout = null;
-
-        const chkDisplayPacing = document.getElementById("chkDisplayPacing");
-
-        // Helper to get or create persistent live interim container
         function getInterimNode() {
             let node = document.getElementById("liveInterimNode");
             if (!node && transcriptContent) {
@@ -984,7 +1151,6 @@
             return node;
         }
 
-
         function scrollToBottom() {
             if (stageContainer) {
                 stageContainer.scrollTop = stageContainer.scrollHeight;
@@ -996,7 +1162,6 @@
             div.textContent = text || '';
             return div.innerHTML;
         }
-
 
         if (stageContainer) {
             stageContainer.addEventListener('scroll', () => {
@@ -1014,15 +1179,12 @@
         function appendFinalSentence(text) {
             if (!text || !transcriptContent) return;
             removeEmptyIndicator();
-
             wakeLiveDisplay();
 
-            // Create new final sentence element
             const el = document.createElement('div');
             el.className = 'caption-sentence';
-            el.textContent = text;
+            el.innerHTML = formatBionicReading(text);
 
-            // Mark older sentences as dimmed (.previous)
             const existing = transcriptContent.querySelectorAll('.caption-sentence:not(#liveInterimNode)');
             existing.forEach((node, idx) => {
                 if (idx < existing.length - 1) {
@@ -1030,11 +1192,9 @@
                 }
             });
 
-            // Insert before interim node
             const interimNode = getInterimNode();
             transcriptContent.insertBefore(el, interimNode);
 
-            // Prune excess lines to prevent memory leaks
             const allFinals = transcriptContent.querySelectorAll('.caption-sentence:not(#liveInterimNode)');
             if (allFinals.length > maxHistorySentences) {
                 allFinals[0].remove();
@@ -1043,7 +1203,6 @@
             finalSentences.push(text);
             while (finalSentences.length > maxHistorySentences) finalSentences.shift();
 
-            // Hide interim node until new speech begins
             if (interimNode) {
                 interimNode.textContent = '';
                 interimNode.style.display = 'none';
@@ -1061,7 +1220,7 @@
 
             const interimNode = getInterimNode();
             if (text) {
-                interimNode.textContent = text;
+                interimNode.innerHTML = formatBionicReading(text);
                 interimNode.style.display = 'block';
             } else {
                 interimNode.textContent = '';
@@ -1073,70 +1232,111 @@
 
         function clearAllCaptions() {
             finalSentences = [];
+            interimText = "";
             if (transcriptContent) {
                 transcriptContent.innerHTML = '<div class="empty-indicator">Listening for speech... Captions will appear here in real-time.</div>';
             }
             getInterimNode();
         }
 
-        // 🐢 Slow Down Text / Paced Mode Setup
-        if (chkDisplayPacing) {
-            try {
-                const savedPacing = localStorage.getItem("voxstream_display_pacing") === "true";
-                if (savedPacing) {
-                    chkDisplayPacing.checked = true;
-                    isPacedReadingEnabled = true;
-                    document.body.classList.add("slow-flow-mode");
-                }
-            } catch(e) {}
+        function renderCaptions() {
+            if (!transcriptContent) return;
+            transcriptContent.innerHTML = '';
+            if (finalSentences.length === 0 && !interimText) {
+                transcriptContent.innerHTML = '<div class="empty-indicator">Listening for speech... Captions will appear here in real-time.</div>';
+                getInterimNode();
+                return;
+            }
 
-            chkDisplayPacing.addEventListener("change", (e) => {
-                isPacedReadingEnabled = e.target.checked;
-                if (isPacedReadingEnabled) {
-                    document.body.classList.add("slow-flow-mode");
-                } else {
-                    document.body.classList.remove("slow-flow-mode");
-                }
-                try {
-                    localStorage.setItem("voxstream_display_pacing", isPacedReadingEnabled ? "true" : "false");
-                } catch(e) {}
+            finalSentences.forEach((sentence, idx) => {
+                const el = document.createElement('div');
+                el.className = 'caption-sentence';
+                if (idx < finalSentences.length - 1) el.classList.add('previous');
+                el.innerHTML = formatBionicReading(sentence);
+                transcriptContent.appendChild(el);
             });
+
+            const interimNode = getInterimNode();
+            if (interimText) {
+                interimNode.innerHTML = formatBionicReading(interimText);
+                interimNode.style.display = 'block';
+            } else {
+                interimNode.textContent = '';
+                interimNode.style.display = 'none';
+            }
+
+            if (autoScroll) scrollToBottom();
         }
 
-        // WebSocket Connection
-        let reconnectAttempts = 0;
+        // -------------------------------------------------------------
+        // 🌐 WebSocket Connection Pipeline
+        // -------------------------------------------------------------
         function connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws?lang=${encodeURIComponent(currentLang || 'en')}`;
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
 
             ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
-                reconnectAttempts = 0;
-                if (statusPill) statusPill.classList.remove('offline');
-                if (statusText) statusText.textContent = 'LIVE';
+                if (statusText) statusText.textContent = "LIVE";
+                if (statusPill) {
+                    statusPill.classList.remove('offline');
+                    statusPill.title = "Connected to Live Caption Stream";
+                }
             };
 
-            ws.onmessage = (event) => {
+            ws.onmessage = async (event) => {
                 try {
                     const data = JSON.parse(event.data);
-                    if (data.type === "scripture_verse") {
+
+                    if (data.type === 'scripture' && data.action === 'show') {
                         showStageScripture(data);
                         return;
-                    } else if (data.type === "scripture_dismiss") {
+                    }
+                    if (data.type === 'scripture' && data.action === 'dismiss') {
                         dismissStageScripture();
                         return;
                     }
-                    handleCaptionEvent(data);
+
+                    if (data.type === 'clear') {
+                        clearAllCaptions();
+                        return;
+                    }
+
+                    if (data.type === 'caption' || data.text !== undefined) {
+                        let text = (data.text || '').trim();
+                        if (!text) return;
+
+                        if (currentLang !== 'en') {
+                            try {
+                                const res = await fetch(`/api/translate?text=${encodeURIComponent(text)}&target=${encodeURIComponent(currentLang)}`);
+                                if (res.ok) {
+                                    const tData = await res.json();
+                                    text = tData.translated || text;
+                                }
+                            } catch (e) {}
+                        }
+
+                        if (data.is_final) {
+                            interimText = "";
+                            appendFinalSentence(text);
+                        } else {
+                            interimText = text;
+                            updateInterimSpeech(text);
+                        }
+                    }
                 } catch (err) {
-                    console.error('Error parsing caption event:', err);
+                    console.error("WS Parse Error:", err);
                 }
             };
 
             ws.onclose = () => {
-                if (statusPill) statusPill.classList.add('offline');
-                if (statusText) statusText.textContent = 'RECONNECTING';
-                setTimeout(connectWebSocket, Math.min(10000, (++reconnectAttempts) * 1500));
+                if (statusText) statusText.textContent = "DISCONNECTED";
+                if (statusPill) {
+                    statusPill.classList.add('offline');
+                    statusPill.title = "Connection Lost. Reconnecting in 2s...";
+                }
+                setTimeout(connectWebSocket, 2000);
             };
 
             ws.onerror = () => {
@@ -1144,63 +1344,11 @@
             };
         }
 
-        function handleCaptionEvent(data) {
-            if (data.type === 'snapshot') {
-                if (data.lines && data.lines.length > 0 && finalSentences.length === 0) {
-                    for (const line of data.lines) {
-                        const t = (line.text || '').trim();
-                        if (t) appendFinalSentence(t);
-                    }
-                }
-                return;
-            }
-
-            const text = (data.text || '').trim();
-
-            if (data.is_final) {
-                if (text) {
-                    appendFinalSentence(text);
-                } else {
-                    if (currentMode === 'live') {
-                        if (transcriptContent) transcriptContent.classList.add('faded');
-                    }
-                }
-            } else {
-                updateInterimSpeech(text);
-            }
-        }
-
-        // Initial history loader
-        async function loadInitialHistory() {
-            try {
-                const limit = (currentMode === 'live') ? 2 : 50;
-                const res = await fetch(`/api/transcript/history?limit=${limit}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.history && data.history.length > 0) {
-                        if (transcriptContent) {
-                            const finals = transcriptContent.querySelectorAll('.caption-sentence:not(#liveInterimNode)');
-                            finals.forEach(f => f.remove());
-                        }
-                        finalSentences = [];
-                        const items = [...data.history].reverse();
-                        for (const item of items) {
-                            const raw = (item.text || '').trim();
-                            if (raw) appendFinalSentence(raw);
-                        }
-                        scrollToBottom();
-                    }
-                }
-            } catch(e) {}
-        }
-
         connectWebSocket();
         applyDisplayMode(currentMode);
 
         function formatEngineBadge(engine, engineName) {
             const raw = (engineName || engine || '').toLowerCase();
-            if (raw.includes('google_web') || raw.includes('google speech') || raw.includes('free')) return 'Google';
-            if (raw.includes('google_stt') || raw.includes('google cloud')) return 'Cloud STT';
             if (raw.includes('gemini')) return 'Gemini';
             if (raw.includes('moonshine')) return 'Moonshine';
             if (raw.includes('whisper')) return 'Whisper';
@@ -1260,7 +1408,7 @@
                 wakeLock = await navigator.wakeLock.request('screen');
                 wakeLock.addEventListener('release', () => { wakeLock = null; });
             } catch (err) {
-                // Ignore silent wake lock rejections on inactive tabs
+                // Ignore silent wake lock rejections
             } finally {
                 isRequestingWakeLock = false;
             }
@@ -1298,7 +1446,6 @@
             if (btnInstallPwa) btnInstallPwa.style.display = 'none';
         });
 
-
         // Scripture Prompter Card Logic
         const scripturePrompterCard = document.getElementById("scripturePrompterCard");
         const stageScriptureCitation = document.getElementById("stageScriptureCitation");
@@ -1329,7 +1476,7 @@
         if (btnDismissStageScripture) {
             btnDismissStageScripture.addEventListener("click", dismissStageScripture);
         }
-
+    
     </script>
 </body>
 </html>

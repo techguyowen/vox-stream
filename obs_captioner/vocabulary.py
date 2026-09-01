@@ -121,33 +121,23 @@ class VocabularyReplacer:
         return output.getvalue()
 
     def import_csv(self, content: str, replace_all: bool = False) -> int:
-        """
-        Parse and import glossary terms from CSV, TSV, or delimited text lines.
-        Handles standard CSV/TSV, arrows ('->', '=>'), and equals ('=').
-        Supports quoted strings and preserves colons inside citations (e.g. John 3:16).
-        Returns number of successfully imported/updated terms.
-        """
+        """Import glossary from CSV or custom format."""
         if replace_all:
             self.config.terms.clear()
 
         imported_count = 0
-        raw_text = content.strip()
-        if not raw_text:
-            return 0
-
-        # Attempt CSV reader first with tab or comma
-        delim = "\t" if "\t" in raw_text and "," not in raw_text else ","
         try:
-            reader = csv.reader(io.StringIO(raw_text), delimiter=delim)
+            import io
+            import csv
+            reader = csv.reader(io.StringIO(content.strip()))
             for line_num, row in enumerate(reader):
                 if not row or all(not cell.strip() for cell in row):
                     continue
-
                 orig, rep = None, None
                 if len(row) >= 2:
                     orig, rep = row[0].strip(), row[1].strip()
                 elif len(row) == 1:
-                    line = row[0].strip()
+                    line = row[0]
                     for sep in ("->", "=>", "="):
                         if sep in line:
                             parts = line.split(sep, 1)
@@ -156,9 +146,7 @@ class VocabularyReplacer:
 
                 if not orig or not rep or orig.startswith("#"):
                     continue
-
-                # Skip header row if present
-                if line_num == 0 and orig.lower() in ("misheard phrase", "original", "source", "misheard", "from", "word") and rep.lower() in ("correct replacement", "replacement", "target", "correct", "to", "spelling"):
+                if line_num == 0 and orig.lower() in ("misheard phrase", "original", "source"):
                     continue
 
                 if self.add_term(orig, rep):

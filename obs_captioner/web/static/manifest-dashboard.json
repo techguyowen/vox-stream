@@ -1,13 +1,13 @@
 {
-  "name": "VoxStream Stage Display",
+  "name": "VoxStream Control Dashboard",
   "short_name": "VoxStream",
-  "description": "Real-Time AI Captions & Confidence Monitor for Stage & Broadcast",
-  "start_url": "/display",
-  "scope": "/",
+  "description": "Live Captions Control Center & A/V Broadcast Management Dock",
+  "start_url": "/dashboard",
+  "scope": "/dashboard",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#000000",
-  "theme_color": "#000000",
+  "background_color": "#0F172A",
+  "theme_color": "#0F172A",
   "icons": [
     {
       "src": "/static/icon.svg",
@@ -48,14 +48,19 @@
   ],
   "shortcuts": [
     {
-      "name": "Stage Display",
-      "url": "/display",
-      "description": "Open Confidence Monitor"
+      "name": "Scripture Overlay",
+      "url": "/dashboard#bible",
+      "description": "Quick jump to Scripture Settings"
     },
     {
-      "name": "Web Dashboard",
-      "url": "/dashboard",
-      "description": "Open Control Dashboard"
+      "name": "Audio & Engine",
+      "url": "/dashboard#audio",
+      "description": "Speech Engine & Microphone Settings"
+    },
+    {
+      "name": "Glossary & Lexicon",
+      "url": "/dashboard#vocabulary",
+      "description": "Church Vocabulary & Word Replacer"
     }
   ],
   "categories": [
@@ -63,5 +68,5 @@
     "productivity",
     "multimedia"
   ],
-  "id": "/display"
+  "id": "voxstream-control-dashboard"
 }

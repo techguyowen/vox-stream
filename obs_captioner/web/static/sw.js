@@ -1,9 +1,12 @@
-const CACHE_NAME = 'voxstream-cache-v6';
+const CACHE_NAME = 'voxstream-cache-v15';
 const PRECACHE_ASSETS = [
+  'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;700&family=Montserrat:wght@700;800&family=Poppins:wght@600;700&display=swap',
   '/display',
   '/dashboard',
   '/bible',
   '/manifest.json',
+  '/manifest-display.json',
+  '/manifest-dashboard.json',
   '/favicon.ico',
   '/static/favicon.ico',
   '/static/favicon-16x16.png',
@@ -12,6 +15,10 @@ const PRECACHE_ASSETS = [
   '/static/icon.svg',
   '/static/icon-192.png',
   '/static/icon-512.png',
+  '/static/icon-display.svg',
+  '/static/icon-display-192.png',
+  '/static/icon-display-512.png',
+  '/static/apple-touch-icon-display.png',
   '/static/dashboard.css',
   '/static/dashboard.js',
   '/static/style.css',
@@ -40,6 +47,8 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+
   const url = new URL(event.request.url);
 
   // Always bypass cache for WebSockets and live REST API data

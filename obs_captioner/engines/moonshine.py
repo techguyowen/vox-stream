@@ -176,6 +176,11 @@ class MoonshineEngine(BaseSTTEngine):
             buffer.clear()
 
     async def stop(self) -> None:
-        """Stop Moonshine engine."""
+        """Stop STT engine and free memory."""
         self.is_running = False
-        logger.info("Moonshine STT engine stopped.")
+        self.model = None
+        if hasattr(self, 'tokenizer'):
+            self.tokenizer = None
+        if hasattr(self, 'processor'):
+            self.processor = None
+        logger.info(f"STT engine stopped and memory freed.")

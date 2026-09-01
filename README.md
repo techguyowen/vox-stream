@@ -83,22 +83,28 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Po
 ---
 
 
-### ♿ 7. Visual Aid & Dyslexia Accessibility Suite (WCAG 2.2 AAA Ready)
-* **`👁️ Visual Aid Mode`**: 1-click toggle on the Stage Monitor (`/display`) that expands letter tracking (`0.06em`), word spacing (`0.15em`), and line height (`1.65x`) while preserving your chosen font and color theme.
-* **`🐢 Slow Down Text (Paced Reading)`**: Intelligently buffers rapid speech bursts and reveals words at a calm, readable pace of **~135 WPM**, holding completed sentences on screen for **10.0 seconds** to eliminate reading fatigue.
-* **`📖 OpenDyslexic Typography`**: Full bottom-weighted font option loaded across OBS stream overlays, Scripture Studio, and stage confidence monitors to eliminate character flipping and crowding.
-* **`⚡ Reduced Motion Support`**: Automatically respects OS motion reduction preferences and suppresses bouncing word-pop animations for viewers with vestibular sensitivities.
-* **`🔊 ARIA Live Regions`**: Screen reader compliant (`role="region" aria-live="polite" aria-atomic="false"`) so blind and low-vision operators hear live transcriptions and scriptures via VoiceOver, NVDA, and TalkBack.
-* **`⚙️ Feature Manager Modal`**: Click the `⚙️ Features` button in the top bar to toggle workspace tabs on/off or activate 1-click presets (*Church / AV, Streamer, Minimalist, High-Visibility*).
+### ♿ 6. Visual Aid, Neurodivergent & Accessibility Suite (WCAG 2.2 AAA Ready)
+* **`⚡ Bionic Reading (Guided Word Focus)`**: 1-click option on the Stage Monitor (`/display`) that dynamically bolds the initial 2–3 letters of each word (`<b>Wel</b>come <b>t</b>o <b>chur</b>ch`). Creates artificial visual fixation anchors that dramatically accelerate reading speed and comprehension for individuals with **ADHD**, **dyslexia**, or fast-moving speech.
+* **`👁️ Visual Aid Mode`**: 1-click toggle that expands letter tracking (`0.06em`), word spacing (`0.15em`), and line height (`1.65x`) to eliminate character crowding while preserving chosen font and theme.
+* **`🐢 Slow Down Text (Paced Reading)`**: Speech speed governor that buffers rapid speech bursts and delivers words at a steady, comfortable pace of **~135 WPM**, holding completed sentences on screen for **10.0 seconds** to prevent reading fatigue.
+* **`📖 OpenDyslexic & Lexend Typography`**: Bottom-weighted and readability-engineered fonts loaded across overlays, Scripture Studio, and stage confidence monitors to prevent character flipping.
+* **`🎨 High-Contrast & OLED Palettes`**: Ultra-high-contrast themes (*OLED Obsidian, High-Vis Yellow on Black, Stage Amber, Clean Light*) designed for maximum visibility in bright sanctuaries, dark auditoriums, and for viewers with low vision.
+* **`🔊 WAI-ARIA Screen Reader Live Regions`**: Screen reader compliant (`role="region" aria-live="polite" aria-atomic="false"`) so blind and low-vision operators hear live speech transcriptions and scriptures via VoiceOver, NVDA, and TalkBack.
+* **`🔋 Screen Wake Lock API`**: Automatically keeps confidence screens and podium tablets awake during services without requiring manual OS display sleep setting overrides.
+* **`⌨️ Complete Keyboard & Shortcut Control`**: Full hands-free hotkeys (`S` for Settings, `H` for Hide Header, `C` for Clear, `+`/`-` for Font Size Scaling) with accessible focus indicators and modal focus management.
+* **`⚡ Reduced Motion Mode`**: Automatically respects OS motion reduction preferences and suppresses word-pop animations for viewers with vestibular sensitivities.
+* **`⚙️ Custom Workspace Presets`**: 1-click feature presets (*Church / AV, Streamer, Minimalist, High-Visibility*) to eliminate interface clutter for focused operations.
 
-### 🔤 5. Intelligent Capitalization & Punctuation Engine
+---
+
+### 🔤 7. Intelligent Capitalization & Punctuation Engine
 * **Sentence Capitalization**: Capitalizes sentence beginnings, standalone pronoun `I`, tech brands & acronyms (`OBS`, `GPU`, `CPU`, `HDMI`, `YouTube`, `Twitch`, `Discord`), and common contractions (`I'm`, `don't`, `can't`, `that's`).
 * **Smart Punctuation**: Restores question marks (`?`), exclamation marks (`!`), periods (`.`), and natural comma pauses before coordinating conjunctions.
 * **Ultra-Fast Single-Pass Pipeline**: Unified master Trie regex lookup executes in **< 0.08ms** per audio frame with zero perceptible latency.
 
 ---
 
-### 📺 6. YouTube Livestream & Twitch Closed Captions (Native [CC] Button)
+### 📺 8. YouTube Livestream & Twitch Closed Captions (Native [CC] Button)
 * **Embedded CEA-608 / CEA-708**: Injects native closed caption packets directly into OBS H.264 stream output headers via OBS WebSocket v5 (`SendStreamCaption`).
 * **Viewer Toggleable [CC]**: Viewers on YouTube Live and Twitch can toggle captions on/off right on the video player without permanently burning text into video pixels.
 * **Twitch Chat Caption Broadcaster**: Automatically sends live captions into Twitch chat for mobile and hearing-impaired viewers.
@@ -107,7 +113,7 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Po
 
 ---
 
-### 🤖 7. 1-Click Offline AI Model Downloader & Storage Cache Manager
+### 🤖 9. 1-Click Offline AI Model Downloader & Storage Cache Manager
 * **Pre-Download Offline Models**: 1-click batch or individual download for all 7 offline speech recognition models (*Vosk Small/Large, Faster-Whisper Tiny/Base/Small, Moonshine Tiny/Base*).
 * **Storage Management**: Visual disk cache inspector with single-model deletion and full cache clearance (`/api/models/delete`).
 * **Offline Readiness**: Prepares production systems for zero-internet environments with live download progress bars.
@@ -116,7 +122,7 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Po
 
 ---
 
-### 🎛️ 8. Complete REST & WebSocket API & Stream Deck / Companion Integration
+### 🎛️ 10. Complete REST & WebSocket API & Stream Deck / Companion Integration
 * Full REST API control for hardware broadcast switchers, Stream Decks, and custom webhooks.
 * **1-Button Panic Drop**: Instantly wipe visible captions across all broadcast screens and overlays (`POST /api/control/panic`).
 * **1-Button Toggle**: Start or pause speech recognition on demand (`POST /api/control/toggle`).
@@ -125,35 +131,30 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Po
 
 ---
 
-### 📑 9. Custom Vocabulary & Bulk CSV/TSV Glossary Manager
+### 📑 11. Custom Vocabulary & Bulk CSV/TSV Glossary Manager
 * **Phonetic Replacement Engine**: Automatically replaces misheard slang, proper nouns, brand names, and church jargon in < 0.1ms.
 * **Bulk Import & Export**: Import CSV or TSV files, copy/paste multiple terms, or download your entire glossary with 1 click (`/api/vocabulary/export`).
 * **Live Sandbox Tester**: Test substitutions in real time before going live.
 
 <p align="center"><img src="docs/screenshots/glossary_csv.png" alt="Custom Vocabulary & Bulk CSV Import/Export" width="850" style="border-radius: 8px;"></p>
-* Full REST API control for hardware broadcast switchers and Stream Decks.
-* **1-Button Panic Drop**: Instantly wipe visible captions across all broadcast screens and overlays (`POST /api/control/panic`).
-* **1-Button Toggle**: Start or pause speech recognition on demand (`POST /api/control/toggle`).
-* **1-Button Theme Switching**: Apply themes on the fly (`POST /api/presets/apply`).
-* Complete guide and JSON profiles available in [**`integrations/streamdeck_companion.md`**](integrations/streamdeck_companion.md).
 
 ---
 
-### 📑 10. Automated YouTube Video Chapters & Subtitle Export
+### 📑 12. Automated YouTube Video Chapters & Subtitle Export
 * **Intelligent YouTube Chapters**: Automatically detects scripture readings (*e.g. John 3:16, Romans 8:28*), sermon topic shifts, prayers, and liturgical milestones into timestamped chapter markers.
 * **1-Click Copy**: Copy ready-to-paste video descriptions for YouTube uploads directly from the Transcripts tab.
 * **Subtitle Export**: 1-click export to **`.SRT`**, **`.VTT`**, and **`.TXT`** with millisecond timecodes.
 
 ---
 
-### 🎨 11. Curated Broadcast Theme Gallery & Typography Customizer
+### 🎨 13. Curated Broadcast Theme Gallery & Typography Customizer
 * **Pre-Built Themes**: *Modern Clean, Broadcast News Lower-Third, Sanctuary & Worship, Corporate Keynote & Tech, Minimalist Cinema, High-Contrast Stage Confidence, Editorial & Talk Show, Classic Broadcast CEA-708, OpenDyslexic (Accessibility)*.
-* **Custom Typography**: Google Fonts (*Inter, Roboto, Montserrat, Oswald, Lora, Poppins, OpenDyslexic*) + custom system fonts.
+* **Custom Typography**: Google Fonts (*Inter, Roboto, Montserrat, Oswald, Lora, Poppins, OpenDyslexic, Lexend*) + custom system fonts.
 * **Custom Layouts**: Font Size (16px–96px), Max Box Width (% slider), Max Lines (1–4), Text Alignment, Line Height, and Box Background Opacity.
 
 ---
 
-### 🛡️ 12. 3-Tier Content Filtering & Wholesome Replacements
+### 🛡️ 14. 3-Tier Content Filtering & Wholesome Replacements
 * **Tier 1 (Standard Profanities)**: Filters vulgarities and offensive words.
 * **Tier 2 (Harsh Vulgarities & Blasphemies)**: Filters harsh expletives while safely protecting sacred names and scriptural citations. When **Church Mode** is on, ordinary theological vocabulary (e.g. *hell*, *damned* in sermon contexts) is exempt from this tier so scripture readings display verbatim.
 * **Tier 3 (Crude Terms)**: Filters crude slang and inappropriate phrases.

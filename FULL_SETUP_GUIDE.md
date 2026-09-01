@@ -22,6 +22,7 @@ Welcome! This suite offers **two different ways** to run live captions in OBS St
 - Captures raw audio instantly from the OBS audio pipeline with absolute zero latency.
 - Uses native Windows/Qt pop-up menus for settings instead of a web browser.
 - **Note**: Because heavy AI libraries (like Python/CTranslate2) are massive, this native plugin acts as a fast front-end that still routes audio to the Python backend for heavy lifting.
+- ⚠️ **Developer Warning for macOS/Linux**: The bundled `obs-sdk` headers in this repository are incomplete mock files. **This plugin will fail to compile on macOS/Linux out-of-the-box.** To build it outside of Windows, you must manually clone the full official `obs-studio` repository and link against the real `libobs` headers. See `obs_native_plugin/README.md` for details.
 
 ---
 

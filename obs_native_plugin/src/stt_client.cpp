@@ -4,6 +4,8 @@
 #include <cmath>
 #include <chrono>
 
+#include <httplib.h>
+
 namespace ObsCaptions {
 
 SttWorkerClient::SttWorkerClient(AudioRingBuffer &ring_buffer, CensorEngine &censor, CaptionOutputSink &sink)
@@ -94,9 +96,20 @@ void SttWorkerClient::workerLoop()
 
                 // Voice Activity Check
                 if (db >= config_.noise_gate_db) {
-                    // Audio active -> Process chunk with streaming STT pipeline
-                    // For example, when running with the embedded/local engine:
-                    // (Interim & final words are passed through censor and dispatched to sink)
+                    // Send HTTP POST chunk to backend
+                    // Note: In production C++, we'd parse the URL. For safety, httplib::Client takes the full URL.
+                    httplib::Client cli(config_.backend_url.c_str());
+                    cli.set_connection_timeout(0, 500000); // 500ms
+                    cli.set_read_timeout(1, 0); // 1s
+                    
+                    httplib::Headers headers = {
+                        {"Authorization", "Bearer " + config_.api_key}
+                    };
+                    
+                    auto res = cli.Post("/api/audio/chunk", headers, reinterpret_cast<const char*>(chunk_buffer.data()), read_count * sizeof(int16_t), "application/octet-stream");
+                    if (!res || res->status != 200) {
+                        blog(LOG_WARNING, "[Live Captions] Failed to send audio chunk to backend.");
+                    }
                 }
             }
         }

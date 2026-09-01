@@ -29,6 +29,7 @@ bin/
 *.pdb
 *.obj
 *.exe
+*.zip
 
 # OS generated files
 .DS_Store

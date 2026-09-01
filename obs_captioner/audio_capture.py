@@ -269,15 +269,25 @@ class AudioCapture:
         self.current_rms_db = -100.0
         logger.info("Audio capture stream stopped.")
 
+    class AudioStreamError(Exception):
+        pass
+
     async def stream_generator(self) -> AsyncGenerator[bytes, None]:
         """Asynchronously yield audio chunks as raw 16kHz 16-bit PCM bytes."""
         loop = asyncio.get_event_loop()
+        empty_strikes = 0
         while self._running:
             try:
                 chunk = await loop.run_in_executor(None, self._queue.get, True, 0.2)
+                empty_strikes = 0
                 if chunk:
                     yield chunk
             except queue.Empty:
+                empty_strikes += 1
+                if empty_strikes > 25:  # 25 * 0.2 = 5 seconds of absolute silence from callback
+                    logger.error("Audio stream callback starved for 5 seconds. Device likely disconnected or driver crashed.")
+                    self.stop()
+                    raise self.AudioStreamError("Audio device disconnected.")
                 await asyncio.sleep(0.01)
             except Exception as e:
                 if self._running:

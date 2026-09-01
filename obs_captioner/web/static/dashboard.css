@@ -851,3 +851,18 @@ body {
         padding: 14px;
     }
 }
+
+.nav-tabs::-webkit-scrollbar {
+    height: 6px;
+}
+.nav-tabs::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+}
+.nav-tabs::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+.nav-tabs::-webkit-scrollbar-thumb:hover {
+    background: var(--accent);
+}

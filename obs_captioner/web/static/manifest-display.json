@@ -1,46 +1,46 @@
 {
   "name": "VoxStream Stage Display",
-  "short_name": "VoxStream",
+  "short_name": "Stage Display",
   "description": "Real-Time AI Captions & Confidence Monitor for Stage & Broadcast",
   "start_url": "/display",
-  "scope": "/",
+  "scope": "/display",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#000000",
   "theme_color": "#000000",
   "icons": [
     {
-      "src": "/static/icon.svg",
+      "src": "/static/icon-display.svg",
       "sizes": "192x192 512x512",
       "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "/static/icon.svg",
+      "src": "/static/icon-display.svg",
       "sizes": "192x192 512x512",
       "type": "image/svg+xml",
       "purpose": "maskable"
     },
     {
-      "src": "/static/icon-192.png",
+      "src": "/static/icon-display-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/static/icon-192.png",
+      "src": "/static/icon-display-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/static/icon-512.png",
+      "src": "/static/icon-display-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/static/icon-512.png",
+      "src": "/static/icon-display-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
@@ -48,14 +48,14 @@
   ],
   "shortcuts": [
     {
-      "name": "Stage Display",
-      "url": "/display",
-      "description": "Open Confidence Monitor"
+      "name": "Live Prompter Mode",
+      "url": "/display?mode=live",
+      "description": "Open in Live Prompter Mode"
     },
     {
-      "name": "Web Dashboard",
-      "url": "/dashboard",
-      "description": "Open Control Dashboard"
+      "name": "Scrollable History Mode",
+      "url": "/display?mode=scrollable",
+      "description": "Open in Scrollable History Mode"
     }
   ],
   "categories": [
@@ -63,5 +63,5 @@
     "productivity",
     "multimedia"
   ],
-  "id": "/display"
+  "id": "voxstream-stage-display"
 }

@@ -80,6 +80,16 @@ class WebOverlayServer:
 
         self._setup_routes()
 
+    def _get_masked_config(self) -> dict:
+        from dataclasses import asdict
+        data = asdict(self.config)
+        if data.get("general"):
+            if "openai_api_key" in data["general"] and data["general"]["openai_api_key"]:
+                data["general"]["openai_api_key"] = "********"
+            if "password" in data["general"] and data["general"]["password"]:
+                data["general"]["password"] = "********"
+        return data
+
     def _check_auth(self, request: web.Request) -> bool:
         auth_func = require_api_auth(self.config.api.api_key)
         return auth_func(request)
@@ -111,6 +121,8 @@ class WebOverlayServer:
         # Progressive Web App (PWA) Manifest & Service Worker
         self.app.router.add_get("/manifest.json", self._handle_manifest)
         self.app.router.add_get("/manifest.webmanifest", self._handle_manifest)
+        self.app.router.add_get("/manifest-display.json", self._handle_manifest_display)
+        self.app.router.add_get("/manifest-dashboard.json", self._handle_manifest_dashboard)
         self.app.router.add_get("/sw.js", self._handle_service_worker)
         
         # WebSockets
@@ -203,7 +215,15 @@ class WebOverlayServer:
         return web.FileResponse(display_file)
 
     async def _handle_manifest(self, request: web.Request) -> web.FileResponse:
-        manifest_file = Path(__file__).parent / "static" / "manifest.json"
+        manifest_file = Path(__file__).parent / "static" / "manifest-display.json"
+        return web.FileResponse(manifest_file, headers={"Content-Type": "application/manifest+json"})
+
+    async def _handle_manifest_display(self, request: web.Request) -> web.FileResponse:
+        manifest_file = Path(__file__).parent / "static" / "manifest-display.json"
+        return web.FileResponse(manifest_file, headers={"Content-Type": "application/manifest+json"})
+
+    async def _handle_manifest_dashboard(self, request: web.Request) -> web.FileResponse:
+        manifest_file = Path(__file__).parent / "static" / "manifest-dashboard.json"
         return web.FileResponse(manifest_file, headers={"Content-Type": "application/manifest+json"})
 
     async def _handle_service_worker(self, request: web.Request) -> web.FileResponse:
@@ -946,7 +966,7 @@ class WebOverlayServer:
     async def _handle_audio_stream_ws(self, request: web.Request) -> web.WebSocketResponse:
         """WebSocket intake for raw 16kHz linear PCM audio bytes (e.g. streamed directly from OBS)."""
         if not self._check_auth(request):
-            ws = web.WebSocketResponse()
+            ws = web.WebSocketResponse(heartbeat=25.0)
             await ws.prepare(request)
             await ws.close(code=web.WSCloseCode.POLICY_VIOLATION, message=b"Unauthorized")
             return ws
@@ -966,7 +986,6 @@ class WebOverlayServer:
         return ws
 
     async def _handle_audio_chunk_post(self, request: web.Request) -> web.Response:
-        """HTTP POST intake for raw PCM audio chunks."""
         if not self._check_auth(request):
             return web.json_response({"error": "Unauthorized"}, status=401)
         data = await request.read()

@@ -305,23 +305,29 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
 
 
 def save_config(cfg: AppConfig, config_path: Optional[str] = None) -> bool:
-    """Serialize and atomically save configuration back to config.json."""
-    target_path = Path(config_path or get_config_path())
-    if target_path.name == "config.json.example":
-        global _current_config_path
-        target_path = target_path.parent / "config.json"
-        _current_config_path = str(target_path)
+    """Save configuration to JSON atomically."""
+    path = Path(config_path or get_config_path())
+    if path.name == "config.json.example":
+        path = path.parent / "config.json"
 
-    tmp_path = target_path.with_suffix(".tmp")
+    tmp_path = path.with_suffix(".tmp")
     try:
         data = asdict(cfg)
         with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
-        tmp_path.replace(target_path)
-        logger.info(f"Saved configuration atomically to: {target_path}")
+        
+        # Ensure secure permissions for secrets
+        import os
+        try:
+            os.chmod(tmp_path, 0o600)
+        except Exception:
+            pass
+            
+        tmp_path.replace(path)
+        logger.info(f"Saved configuration to: {path}")
         return True
     except Exception as e:
-        logger.error(f"Failed to save configuration to {target_path}: {e}")
+        logger.error(f"Failed to save configuration to {path}: {e}")
         if tmp_path.is_file():
             try:
                 tmp_path.unlink()

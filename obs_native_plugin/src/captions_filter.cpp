@@ -85,47 +85,9 @@ static obs_properties_t *captions_filter_properties(void *data)
 
     obs_properties_add_bool(props, "enabled", "Enable Speech Captioning");
 
-    // Engine selector
-    obs_property_t *engines = obs_properties_add_list(
-        props, "engine", "Speech Engine", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING
-    );
-    obs_property_list_add_string(engines, "Google Speech Recognition (Free / Zero-Setup - No Key)", "google_web");
-    obs_property_list_add_string(engines, "Gemini 3.5 Transcribe Live (Google AI Studio)", "gemini_live");
-    obs_property_list_add_string(engines, "Google Cloud Speech-to-Text (v1 / Chirp)", "google_stt");
-    obs_property_list_add_string(engines, "Local Faster-Whisper (Offline)", "local_whisper");
+    obs_properties_add_text(props, "server_url", "Backend URL (e.g. http://127.0.0.1:8765)", OBS_TEXT_DEFAULT);
+    obs_properties_add_text(props, "api_key", "API Key (if required)", OBS_TEXT_PASSWORD);
 
-    // Language selector
-    obs_property_t *langs = obs_properties_add_list(
-        props, "language", "Spoken Language", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING
-    );
-    obs_property_list_add_string(langs, "English (US)", "en-US");
-    obs_property_list_add_string(langs, "English (UK)", "en-GB");
-    obs_property_list_add_string(langs, "Spanish", "es-ES");
-    obs_property_list_add_string(langs, "French", "fr-FR");
-    obs_property_list_add_string(langs, "German", "de-DE");
-    obs_property_list_add_string(langs, "Japanese", "ja-JP");
-
-    // Target Text Source
-    obs_property_t *text_sources = obs_properties_add_list(
-        props, "text_source", "Target OBS Text Source", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING
-    );
-    obs_property_list_add_string(text_sources, "(None / Web Overlay Only)", "");
-    obs_enum_sources(add_sources_to_list, text_sources);
-
-    // Closed captions
-    obs_properties_add_bool(props, "send_cea608", "Inject Twitch/YouTube Closed Captions (CEA-608)");
-
-    // Content Filter Mode
-    obs_property_t *censor_modes = obs_properties_add_list(
-        props, "censor_mode", "Church & Safety Filter", OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING
-    );
-    obs_property_list_add_string(censor_modes, "Wholesome Word Replacement ('damn' -> 'darn')", "replacement");
-    obs_property_list_add_string(censor_modes, "Asterisk Masking ('f***')", "asterisk");
-    obs_property_list_add_string(censor_modes, "[CENSORED] Tag", "censored_tag");
-    obs_property_list_add_string(censor_modes, "Drop Sentence (Mute line on bad words)", "drop_sentence");
-    obs_property_list_add_string(censor_modes, "Disabled", "disabled");
-
-    // Noise gate and silence timeout
     obs_properties_add_float_slider(props, "noise_gate_db", "Noise Gate Threshold (dB)", -80.0, -10.0, 1.0);
     obs_properties_add_float_slider(props, "auto_clear_seconds", "Auto-Clear Silence Timeout (s)", 0.0, 15.0, 0.5);
 
@@ -135,8 +97,8 @@ static obs_properties_t *captions_filter_properties(void *data)
 static void captions_filter_defaults(obs_data_t *settings)
 {
     obs_data_set_default_bool(settings, "enabled", true);
-    obs_data_set_default_string(settings, "engine", "google_stt");
-    obs_data_set_default_string(settings, "language", "en-US");
+    obs_data_set_default_string(settings, "server_url", "http://127.0.0.1:8765");
+    obs_data_set_default_string(settings, "api_key", "");
     obs_data_set_default_string(settings, "text_source", "Live Captions");
     obs_data_set_default_bool(settings, "send_cea608", true);
     obs_data_set_default_string(settings, "censor_mode", "replacement");
@@ -179,7 +141,8 @@ static void captions_filter_update(void *data, obs_data_t *settings)
     // Update STT Client
     if (ctx->stt_client) {
         SttClientConfig stt_cfg = ctx->stt_client->getConfig();
-        stt_cfg.language_code = obs_data_get_string(settings, "language");
+        stt_cfg.backend_url = obs_data_get_string(settings, "server_url");
+        stt_cfg.api_key = obs_data_get_string(settings, "api_key");
         stt_cfg.noise_gate_db = static_cast<float>(obs_data_get_double(settings, "noise_gate_db"));
         ctx->stt_client->setConfig(stt_cfg);
     }

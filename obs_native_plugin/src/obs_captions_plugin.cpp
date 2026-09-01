@@ -19,6 +19,7 @@ struct captions_filter_data {
     bool enabled;
     std::string text_source_name;
     std::string server_url;
+    std::string api_key;
     std::mutex audio_mutex;
     std::vector<float> audio_buffer;
 };
@@ -36,6 +37,7 @@ static void *captions_filter_create(obs_data_t *settings, obs_source_t *source)
     filter->enabled = obs_data_get_bool(settings, "enabled");
     filter->text_source_name = obs_data_get_string(settings, "text_source_name");
     filter->server_url = obs_data_get_string(settings, "server_url");
+    filter->api_key = obs_data_get_string(settings, "api_key");
 
     blog(LOG_INFO, "[Live Captions Plugin] Filter created on source '%s'", obs_source_get_name(source));
     return filter;
@@ -79,6 +81,7 @@ static obs_properties_t *captions_filter_properties(void *data)
     obs_properties_add_bool(props, "enabled", "Enable Live Captioning");
     obs_properties_add_text(props, "text_source_name", "Target Text Source Name", OBS_TEXT_DEFAULT);
     obs_properties_add_text(props, "server_url", "Captioner Backend URL (e.g. http://127.0.0.1:8765)", OBS_TEXT_DEFAULT);
+    obs_properties_add_text(props, "api_key", "API Key (if configured)", OBS_TEXT_PASSWORD);
 
     return props;
 }
@@ -88,6 +91,7 @@ static void captions_filter_defaults(obs_data_t *settings)
     obs_data_set_default_bool(settings, "enabled", true);
     obs_data_set_default_string(settings, "text_source_name", "Live Captions");
     obs_data_set_default_string(settings, "server_url", "http://127.0.0.1:8765");
+    obs_data_set_default_string(settings, "api_key", "");
 }
 
 static void captions_filter_update(void *data, obs_data_t *settings)
@@ -98,6 +102,7 @@ static void captions_filter_update(void *data, obs_data_t *settings)
     filter->enabled = obs_data_get_bool(settings, "enabled");
     filter->text_source_name = obs_data_get_string(settings, "text_source_name");
     filter->server_url = obs_data_get_string(settings, "server_url");
+    filter->api_key = obs_data_get_string(settings, "api_key");
 }
 
 static struct obs_source_info captions_filter_info = {

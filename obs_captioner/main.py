@@ -344,7 +344,13 @@ async def main_async(args):
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                if not is_switching_engine:
+                if getattr(e, "__class__", None).__name__ == "AudioStreamError":
+                    logger.error("Audio device lost. Attempting to re-initialize audio capture in 3 seconds...")
+                    audio_capture.stop()
+                    await asyncio.sleep(3.0)
+                    if not audio_capture.start(loop=loop):
+                        logger.error("Failed to recover audio capture stream. Will retry.")
+                elif not is_switching_engine:
                     logger.error(f"Pipeline error: {e}", exc_info=True)
                 await asyncio.sleep(1.0)
 
@@ -359,10 +365,8 @@ async def main_async(args):
         logger.info("Cleaning up resources...")
         if pipeline_task:
             pipeline_task.cancel()
-            try:
-                await pipeline_task
-            except asyncio.CancelledError:
-                pass
+        if 'obs_reconnect_task' in locals():
+            obs_reconnect_task.cancel()
         if engine:
             await engine.stop()
         if audio_capture:

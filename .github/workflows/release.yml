@@ -1,0 +1,27 @@
+name: Build and Upload Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build Release Zip
+        run: |
+          chmod +x build_release.sh
+          ./build_release.sh
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: voxstream-v*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

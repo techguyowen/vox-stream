@@ -120,3 +120,12 @@ EXPORT_API size_t obs_property_list_add_int(obs_property_t *p, const char *name,
 #ifdef __cplusplus
 }
 #endif
+
+
+#ifndef MODULE_EXPORT
+#define MODULE_EXPORT extern "C" __attribute__((visibility("default")))
+#endif
+
+EXPORT_API const char *obs_source_get_name(const obs_source_t *source);
+EXPORT_API const char *obs_source_get_id(const obs_source_t *source);
+EXPORT_API obs_property_t *obs_properties_add_float_slider(obs_properties_t *props, const char *name, const char *description, double min, double max, double step);

@@ -52,6 +52,7 @@ add_library(obs-live-captions MODULE ${PLUGIN_SOURCES})
 target_include_directories(obs-live-captions PRIVATE
     src
     ${CMAKE_CURRENT_SOURCE_DIR}/deps/obs-sdk/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/httplib
 )
 
 if(HAVE_QT)
@@ -75,6 +76,11 @@ set_target_properties(obs-live-captions PROPERTIES
     OUTPUT_NAME "obs-live-captions"
 )
 
+if(APPLE AND NOT TARGET OBS::libobs)
+    set_target_properties(obs-live-captions PROPERTIES LINK_FLAGS "-undefined dynamic_lookup")
+endif()
+
+
 # Installation into OBS Studio plugins folder
 if(WIN32)
     install(TARGETS obs-live-captions
@@ -89,4 +95,8 @@ else()
     install(TARGETS obs-live-captions
         LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}/obs-plugins"
     )
+endif()
+
+if(WIN32)
+    target_link_libraries(obs-live-captions PRIVATE ws2_32 crypt32)
 endif()
