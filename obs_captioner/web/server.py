@@ -20,6 +20,7 @@ from ..themes import THEME_PRESETS, get_all_presets
 from ..translator import SUPPORTED_LANGUAGES, SubtitleTranslator
 from ..vocabulary import VocabularyReplacer
 from ..model_downloader import ModelDownloadManager
+from ..bible_engine import BibleEngine, ScriptureLookupResult
 from ..security import (
     SimpleRateLimiter,
     escape_html,
@@ -65,6 +66,7 @@ class WebOverlayServer:
         # polling from the same IP must not starve each other into 429s.
         self.rate_limiter = SimpleRateLimiter(max_requests=300, window_seconds=60.0)
         self.model_downloader = ModelDownloadManager()
+        self.bible_engine = BibleEngine()
         # Rolling snapshot of recent final caption payloads, replayed to newly
         # connected /ws clients so refreshed views aren't blank until the next utterance.
         self._recent_finals: list = []
@@ -89,7 +91,7 @@ class WebOverlayServer:
         static_dir = Path(__file__).parent / "static"
         
         # HTML Pages with comprehensive aliases
-        for path in ("/", "/index", "/index.html", "/overlay", "/overlay.html"):
+        for path in ("/", "/index", "/index.html", "/overlay", "/overlay.html", "/bible", "/bible/", "/bible.html"):
             self.app.router.add_get(path, self._handle_index)
         
         for path in ("/dashboard", "/dashboard/", "/dashboard.html", "/dock", "/dock/", "/settings", "/settings/", "/control"):
@@ -171,6 +173,12 @@ class WebOverlayServer:
         self.app.router.add_post("/api/models/cancel", self._handle_cancel_download_model)
         self.app.router.add_post("/api/models/delete", self._handle_delete_model)
         self.app.router.add_delete("/api/models", self._handle_delete_model)
+
+        # Offline Bible & Scripture Engine
+        self.app.router.add_get("/api/bible/versions", self._handle_bible_versions)
+        self.app.router.add_get("/api/bible/lookup", self._handle_bible_lookup)
+        self.app.router.add_post("/api/bible/display", self._handle_bible_display)
+        self.app.router.add_post("/api/bible/dismiss", self._handle_bible_dismiss)
 
         # Static Assets
         self.app.router.add_static("/static/", path=str(static_dir), name="static")
@@ -1153,3 +1161,120 @@ class WebOverlayServer:
             })
         else:
             return web.json_response({"status": "error", "message": msg}, status=400)
+
+
+    async def _handle_bible_versions(self, request: web.Request) -> web.Response:
+        """Return all available offline Bible translations."""
+        versions = self.bible_engine.get_available_versions()
+        return web.json_response({"versions": versions})
+
+    async def _handle_bible_lookup(self, request: web.Request) -> web.Response:
+        """Lookup a Bible verse or citation string offline."""
+        citation = request.query.get("citation", "").strip()
+        version = request.query.get("version", getattr(self.config.bible, "default_version", "bsb")).strip()
+        
+        if not citation:
+            return web.json_response({"error": "Missing 'citation' parameter."}, status=400)
+            
+        res = self.bible_engine.parse_and_lookup_first(citation, version=version)
+        if not res:
+            return web.json_response({"error": f"Scripture citation '{citation}' not found."}, status=404)
+            
+        return web.json_response(res.to_dict())
+
+    async def _handle_bible_display(self, request: web.Request) -> web.Response:
+        """Manually trigger display of a scripture passage across OBS overlays and stage monitors."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+            
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+            
+        citation = sanitize_text(data.get("citation", "")).strip()
+        version = sanitize_text(data.get("version", getattr(self.config.bible, "default_version", "bsb"))).strip()
+        duration = float(data.get("duration", getattr(self.config.bible, "display_duration_seconds", 14.0)))
+        
+        if not citation:
+            return web.json_response({"error": "Missing 'citation' parameter."}, status=400)
+            
+        res = self.bible_engine.parse_and_lookup_first(citation, version=version)
+        if not res:
+            return web.json_response({"error": f"Scripture citation '{citation}' not found."}, status=404)
+            
+        await self.broadcast_scripture(res, duration_seconds=duration)
+        return web.json_response({
+            "status": "success",
+            "message": f"Displayed {res.citation} [{res.version}] on stream and stage monitors.",
+            "scripture": res.to_dict(),
+        })
+
+    async def _handle_bible_dismiss(self, request: web.Request) -> web.Response:
+        """Dismiss any active scripture popup on stream and stage screens."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+            
+        await self.dismiss_scripture()
+        return web.json_response({"status": "success", "message": "Scripture card dismissed."})
+
+    async def trigger_scripture_lookup(self, text: str):
+        """Auto-lookup scripture citation from finalized transcript and broadcast if found."""
+        if not getattr(self.config, "bible", None) or not self.config.bible.enabled:
+            return
+            
+        version = getattr(self.config.bible, "default_version", "bsb")
+        res = self.bible_engine.parse_and_lookup_first(text, version=version)
+        if res:
+            logger.info(f"📖 [BIBLE AUTO-LOOKUP] Found {res.citation} [{res.version}]: {res.text[:60]}...")
+            await self.broadcast_scripture(res, duration_seconds=getattr(self.config.bible, "display_duration_seconds", 14.0))
+
+    async def broadcast_scripture(self, res: ScriptureLookupResult, duration_seconds: float = 14.0):
+        """Broadcast scripture passage payload to all connected caption overlays and control dashboards."""
+        msg = {
+            "type": "scripture_verse",
+            "citation": res.citation,
+            "book": res.book,
+            "chapter": res.chapter,
+            "verse_start": res.verse_start,
+            "verse_end": res.verse_end,
+            "text": res.text,
+            "version": res.version,
+            "version_name": res.version_name,
+            "duration_seconds": duration_seconds,
+            "timestamp": time.time(),
+        }
+        
+        # Broadcast to stream overlay WebSockets (/ws)
+        dead_caps = []
+        for ws in self.caption_sockets:
+            try:
+                await ws.send_json(msg)
+            except Exception:
+                dead_caps.append(ws)
+        for ws in dead_caps:
+            self.caption_sockets.pop(ws, None)
+            
+        # Broadcast to control dashboards & docks (/api/control/ws)
+        dead_ctrls = []
+        for ws in self.control_sockets:
+            try:
+                await ws.send_json(msg)
+            except Exception:
+                dead_ctrls.append(ws)
+        for ws in dead_ctrls:
+            self.control_sockets.discard(ws)
+
+    async def dismiss_scripture(self):
+        """Dismiss active scripture popup."""
+        msg = {"type": "scripture_dismiss", "timestamp": time.time()}
+        for ws in list(self.caption_sockets.keys()):
+            try:
+                await ws.send_json(msg)
+            except Exception:
+                pass
+        for ws in list(self.control_sockets):
+            try:
+                await ws.send_json(msg)
+            except Exception:
+                pass

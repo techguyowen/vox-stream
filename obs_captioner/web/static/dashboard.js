@@ -1,4 +1,98 @@
 
+// Bible Engine Dashboard Handlers
+function initBibleHandlers() {
+    const durSlider = document.getElementById("bible_duration_slider");
+    const durVal = document.getElementById("val-bible-duration");
+    if (durSlider && durVal) {
+        durSlider.addEventListener("input", (e) => {
+            durVal.textContent = `${e.target.value}s`;
+        });
+    }
+
+    const btnLookup = document.getElementById("btn-bible-lookup");
+    const btnPush = document.getElementById("btn-bible-push");
+    const btnDismiss = document.getElementById("btn-bible-dismiss");
+    const testInput = document.getElementById("bible-test-input");
+    const resultBox = document.getElementById("bible-lookup-result");
+    const verSelect = document.getElementById("bible_version_select");
+
+    if (btnLookup && testInput && resultBox) {
+        btnLookup.addEventListener("click", async () => {
+            const cit = testInput.value.trim();
+            if (!cit) return;
+            const ver = verSelect ? verSelect.value : "bsb";
+            try {
+                const r = await fetch(`/api/bible/lookup?citation=${encodeURIComponent(cit)}&version=${encodeURIComponent(ver)}`);
+                const data = await r.json();
+                if (r.ok) {
+                    resultBox.style.display = "block";
+                    resultBox.innerHTML = `<strong>📖 ${escapeHtml(data.citation)} [${escapeHtml(data.version)}]:</strong> "${escapeHtml(data.text)}"`;
+                } else {
+                    resultBox.style.display = "block";
+                    resultBox.innerHTML = `<span style="color: #F87171;">❌ ${escapeHtml(data.error || 'Passage not found')}</span>`;
+                }
+            } catch(e) {
+                resultBox.style.display = "block";
+                resultBox.innerHTML = `<span style="color: #F87171;">❌ Error: ${escapeHtml(e.message)}</span>`;
+            }
+        });
+    }
+
+    if (btnPush && testInput) {
+        btnPush.addEventListener("click", async () => {
+            const cit = testInput.value.trim();
+            if (!cit) {
+                showToast("Please type a scripture reference first.", "warning", 3000);
+                return;
+            }
+            const ver = verSelect ? verSelect.value : "bsb";
+            const dur = durSlider ? parseFloat(durSlider.value) : 14.0;
+            try {
+                const r = await fetch("/api/bible/display", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ citation: cit, version: ver, duration: dur })
+                });
+                const data = await r.json();
+                if (r.ok) {
+                    showToast(`📺 Pushed ${data.scripture.citation} [${data.scripture.version}] to stream & stage screens!`, "success", 4000);
+                } else {
+                    showToast(`❌ ${data.error || 'Failed to display scripture'}`, "error", 4000);
+                }
+            } catch(e) {
+                showToast(`❌ Error: ${e.message}`, "error", 4000);
+            }
+        });
+    }
+
+    if (btnDismiss) {
+        btnDismiss.addEventListener("click", async () => {
+            try {
+                await fetch("/api/bible/dismiss", { method: "POST" });
+                showToast("Scripture pop-up dismissed.", "info", 3000);
+            } catch(e) {
+                console.error(e);
+            }
+        });
+    }
+
+    const btnSaveBible = document.getElementById("btn-save-bible-settings");
+    if (btnSaveBible) {
+        btnSaveBible.addEventListener("click", async () => {
+            const payload = {
+                bible: {
+                    enabled: document.getElementById("bible_enabled").checked,
+                    default_version: document.getElementById("bible_version_select").value,
+                    display_mode: document.getElementById("bible_display_mode").value,
+                    display_duration_seconds: parseFloat(document.getElementById("bible_duration_slider").value) || 14.0
+                }
+            };
+            await saveConfigPayload(payload, "Bible settings saved successfully!");
+        });
+    }
+}
+
+
     // Copy OBS Overlay URL Button
     const btnCopyOverlay = document.getElementById("btn-copy-obs-overlay-url");
     if (btnCopyOverlay) {

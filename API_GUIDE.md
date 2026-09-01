@@ -308,7 +308,79 @@ Custom phonetics and proper noun replacement engine.
 
 ---
 
-## 6. 🎨 Visual Themes & Custom Presets API
+## 6. 📖 Instant Scripture & Offline Bible Auto-Lookup API
+
+VoxStream automatically parses spoken scripture references (e.g. *"John 3:16"*, *"1 Corinthians 13:4-7"*, *"Romans 8:28"*) and looks up the full passage across built-in offline Bible translations (**BSB**, **WEB**, **KJV**) in < 0.1ms.
+
+### 📚 List Available Offline Translations
+* **Endpoint**: `GET /api/bible/versions`
+* **Response (200 OK)**:
+  ```json
+  {
+    "versions": [
+      { "code": "bsb", "name": "Berean Standard Bible", "style": "Modern / ESV Equivalent" },
+      { "code": "web", "name": "World English Bible", "style": "Modern / NIV Equivalent" },
+      { "code": "kjv", "name": "King James Version", "style": "Traditional Classic" }
+    ]
+  }
+  ```
+
+---
+
+### 🔍 Lookup Verse or Range (Offline)
+* **Endpoint**: `GET /api/bible/lookup?citation=1+Thessalonians+5:16-18&version=bsb`
+* **Response (200 OK)**:
+  ```json
+  {
+    "citation": "1 Thessalonians 5:16-18",
+    "book": "1 Thessalonians",
+    "chapter": 5,
+    "verse_start": 16,
+    "verse_end": 18,
+    "text": "Rejoice at all times. Pray without ceasing. Give thanks in every circumstance, for this is God’s will for you in Christ Jesus.",
+    "version": "BSB",
+    "version_name": "Berean Standard Bible"
+  }
+  ```
+
+---
+
+### 📺 Push Scripture Passage to Stream & Stage Screens
+Manually displays a passage or cued verse on the OBS Stream Overlay and Stage Confidence Monitors.
+* **Endpoint**: `POST /api/bible/display`
+* **Request Body**:
+  ```json
+  {
+    "citation": "Romans 8:28",
+    "version": "bsb",
+    "duration": 15.0
+  }
+  ```
+* **Response (200 OK)**:
+  ```json
+  {
+    "status": "success",
+    "message": "Displayed Romans 8:28 [BSB] on stream and stage monitors.",
+    "scripture": {
+      "citation": "Romans 8:28",
+      "text": "We know that all things work together for good for those who love God, to those who are called according to his purpose.",
+      "version": "BSB"
+    }
+  }
+  ```
+
+---
+
+### ✕ Dismiss Active Scripture Card
+* **Endpoint**: `POST /api/bible/dismiss`
+* **Response (200 OK)**:
+  ```json
+  { "status": "success", "message": "Scripture card dismissed." }
+  ```
+
+---
+
+## 7. 🎨 Visual Themes & Custom Presets API
 
 ### 🎨 List Themes & Presets
 * **Endpoint**: `GET /api/presets`
@@ -372,7 +444,7 @@ Custom phonetics and proper noun replacement engine.
 
 ---
 
-## 7. 📜 Transcripts, Exports & YouTube Chapters
+## 8. 📜 Transcripts, Exports & YouTube Chapters
 
 ### 📥 Export Subtitles (.SRT / .VTT / .TXT)
 * **Endpoint**: `GET /api/transcript/export?format=srt`
@@ -409,7 +481,7 @@ Automatically detects scripture passages, prayer moments, and sermon points with
 
 ---
 
-## 8. 🌐 Live Translation API
+## 9. 🌐 Live Translation API
 
 ### 🌐 Translate Text On-Demand
 * **Endpoint**: `GET /api/translate?text=Hello+world&target_lang=es`
@@ -430,7 +502,7 @@ Automatically detects scripture passages, prayer moments, and sermon points with
 
 ---
 
-## 9. 📺 OBS Projector, Monitors & External Screen Automation
+## 10. 📺 OBS Projector, Monitors & External Screen Automation
 
 ### 🚨 Emergency 1-Click Screen Re-Open
 Re-launches OBS fullscreen projector to secondary screen (LONTIUM / Monitor 1) and ensures captioning is active.
@@ -457,7 +529,7 @@ Re-launches OBS fullscreen projector to secondary screen (LONTIUM / Monitor 1) a
 
 ---
 
-## 10. 🔊 Live Audio Distribution & Stream API
+## 11. 🔊 Live Audio Distribution & Stream API
 
 Broadcasts low-latency audio for hearing assistance devices and mobile web listeners.
 
@@ -466,7 +538,7 @@ Broadcasts low-latency audio for hearing assistance devices and mobile web liste
 
 ---
 
-## 11. 🌐 WebSocket Streaming APIs
+## 12. 🌐 WebSocket Streaming APIs
 
 ### A. Live Subtitles Stream (`/ws`)
 Connect web browsers, OBS browser sources, or stage monitors.

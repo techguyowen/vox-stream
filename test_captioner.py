@@ -727,6 +727,45 @@ class TestServerEndpoints(AioHTTPTestCase):
         self.assertEqual(resp.status, 200)
         self.assertEqual(resp.content_type, 'text/html')
 
+    async def test_bible_api_endpoints(self):
+        # 1. Versions list
+        v_resp = await self.client.request('GET', '/api/bible/versions')
+        self.assertEqual(v_resp.status, 200)
+        v_data = await v_resp.json()
+        self.assertIn('versions', v_data)
+        self.assertTrue(len(v_data['versions']) >= 3)
+
+        # 2. Lookup single verse
+        l_resp = await self.client.request('GET', '/api/bible/lookup?citation=John+3:16&version=bsb')
+        self.assertEqual(l_resp.status, 200)
+        l_data = await l_resp.json()
+        self.assertEqual(l_data['citation'], 'John 3:16')
+        self.assertIn('loved the world', l_data['text'])
+
+        # 3. Lookup verse range
+        lr_resp = await self.client.request('GET', '/api/bible/lookup?citation=1+Thessalonians+5:16-18&version=bsb')
+        self.assertEqual(lr_resp.status, 200)
+        lr_data = await lr_resp.json()
+        self.assertEqual(lr_data['citation'], '1 Thessalonians 5:16-18')
+        self.assertIn('Rejoice', lr_data['text'])
+
+        # 4. Display scripture on stream & stage
+        d_resp = await self.client.request('POST', '/api/bible/display', json={
+            'citation': 'Romans 8:28',
+            'version': 'web',
+            'duration': 10.0
+        })
+        self.assertEqual(d_resp.status, 200)
+        d_data = await d_resp.json()
+        self.assertEqual(d_data['status'], 'success')
+        self.assertIn('scripture', d_data)
+
+        # 5. Dismiss scripture
+        dm_resp = await self.client.request('POST', '/api/bible/dismiss')
+        self.assertEqual(dm_resp.status, 200)
+        dm_data = await dm_resp.json()
+        self.assertEqual(dm_data['status'], 'success')
+
 
 
 if __name__ == "__main__":

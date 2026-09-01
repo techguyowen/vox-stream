@@ -1,3 +1,32 @@
+
+// Scripture Verse Card Management
+let scriptureTimer = null;
+const scriptureCard = document.getElementById("scripture-card");
+const scriptureCitationEl = document.getElementById("scripture-citation");
+const scriptureTextEl = document.getElementById("scripture-text");
+
+function showScriptureVerse(data) {
+    if (!scriptureCard || !scriptureCitationEl || !scriptureTextEl) return;
+    if (scriptureTimer) clearTimeout(scriptureTimer);
+
+    scriptureCitationEl.textContent = `📖 ${data.citation || ''} • ${data.version || 'BSB'}`;
+    scriptureTextEl.textContent = `"${data.text || ''}"`;
+    scriptureCard.classList.remove("hidden");
+
+    const dur = (parseFloat(data.duration_seconds) || 14.0) * 1000;
+    scriptureTimer = setTimeout(() => {
+        dismissScriptureVerse();
+    }, dur);
+}
+
+function dismissScriptureVerse() {
+    if (scriptureTimer) clearTimeout(scriptureTimer);
+    scriptureTimer = null;
+    if (scriptureCard) {
+        scriptureCard.classList.add("hidden");
+    }
+}
+
 // OBS Live Captions WebSocket Overlay Client (Multi-Theme & Translation Support)
 
 let config = {
@@ -220,6 +249,13 @@ function connectCaptionWebSocket() {
     ws.onmessage = (event) => {
         try {
             const data = JSON.parse(event.data);
+            if (data.type === "scripture_verse") {
+                showScriptureVerse(data);
+                return;
+            } else if (data.type === "scripture_dismiss") {
+                dismissScriptureVerse();
+                return;
+            }
             handleCaption(data);
         } catch (e) {
             console.error("Error parsing caption event:", e);

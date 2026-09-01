@@ -532,6 +532,15 @@
         </div>
     </header>
 
+    <!-- Live Scripture Prompter Card (Stage & Confidence Monitor) -->
+    <div id="scripturePrompterCard" style="display: none; background: rgba(245, 158, 11, 0.12); border: 2px solid #F59E0B; border-radius: 10px; padding: 16px 20px; margin: 12px 24px; box-shadow: 0 8px 30px rgba(0,0,0,0.5); backdrop-filter: blur(8px);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="background: #F59E0B; color: #000; font-size: 13px; font-weight: 800; padding: 3px 10px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.04em;" id="stageScriptureCitation">📖 SCRIPTURE PASSAGE</span>
+            <button type="button" id="btnDismissStageScripture" style="background: none; border: none; color: #F59E0B; font-size: 18px; font-weight: bold; cursor: pointer; padding: 0 6px;" title="Dismiss Scripture Card">✕</button>
+        </div>
+        <div style="font-size: 26px; font-weight: 700; color: #FEF3C7; line-height: 1.45; font-style: italic;" id="stageScriptureText">...</div>
+    </div>
+
     <!-- Main Scrolling Area -->
     <main class="stage-container" id="stageContainer">
         <div class="transcript-content" id="transcriptContent">
@@ -901,6 +910,13 @@
             ws.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
+                    if (data.type === "scripture_verse") {
+                        showStageScripture(data);
+                        return;
+                    } else if (data.type === "scripture_dismiss") {
+                        dismissStageScripture();
+                        return;
+                    }
                     handleCaptionEvent(data);
                 } catch (err) {
                     console.error('Error parsing caption event:', err);
@@ -1083,6 +1099,38 @@
         window.addEventListener('appinstalled', () => {
             if (btnInstallPwa) btnInstallPwa.style.display = 'none';
         });
+
+
+        // Scripture Prompter Card Logic
+        const scripturePrompterCard = document.getElementById("scripturePrompterCard");
+        const stageScriptureCitation = document.getElementById("stageScriptureCitation");
+        const stageScriptureText = document.getElementById("stageScriptureText");
+        const btnDismissStageScripture = document.getElementById("btnDismissStageScripture");
+        let stageScriptureTimer = null;
+
+        function showStageScripture(data) {
+            if (!scripturePrompterCard) return;
+            if (stageScriptureTimer) clearTimeout(stageScriptureTimer);
+            
+            stageScriptureCitation.textContent = `📖 ${data.citation || ''} • ${data.version || 'BSB'}`;
+            stageScriptureText.textContent = `"${data.text || ''}"`;
+            scripturePrompterCard.style.display = "block";
+            
+            const dur = (parseFloat(data.duration_seconds) || 16.0) * 1000;
+            stageScriptureTimer = setTimeout(() => {
+                dismissStageScripture();
+            }, dur);
+        }
+
+        function dismissStageScripture() {
+            if (stageScriptureTimer) clearTimeout(stageScriptureTimer);
+            stageScriptureTimer = null;
+            if (scripturePrompterCard) scripturePrompterCard.style.display = "none";
+        }
+
+        if (btnDismissStageScripture) {
+            btnDismissStageScripture.addEventListener("click", dismissStageScripture);
+        }
 
     </script>
 </body>

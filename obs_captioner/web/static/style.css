@@ -165,3 +165,69 @@ body.align-top .caption-box.hidden {
         transform: scale(1) translateY(0);
     }
 }
+
+
+/* ==============================================================================
+   Scripture Verse Lower-Third Card (Live Auto-Lookup)
+   ============================================================================== */
+.scripture-card {
+    position: fixed;
+    bottom: 36px;
+    left: 50%;
+    transform: translateX(-50%) translateY(0);
+    max-width: min(1200px, 88vw);
+    background: rgba(15, 23, 42, 0.94);
+    border: 1.5px solid rgba(245, 158, 11, 0.7);
+    border-radius: 12px;
+    padding: 16px 26px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7), 0 0 25px rgba(245, 158, 11, 0.25);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 1;
+    text-align: left;
+}
+
+body.align-top .scripture-card {
+    bottom: auto;
+    top: 36px;
+}
+
+.scripture-card.hidden {
+    opacity: 0;
+    transform: translateX(-50%) translateY(24px);
+}
+
+body.align-top .scripture-card.hidden {
+    transform: translateX(-50%) translateY(-24px);
+}
+
+.scripture-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.scripture-badge {
+    background: linear-gradient(135deg, #F59E0B, #D97706);
+    color: #000000;
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 10px;
+    border-radius: 4px;
+}
+
+.scripture-text {
+    font-family: var(--font-family);
+    font-size: calc(var(--font-size) * 0.88);
+    font-weight: 600;
+    line-height: 1.45;
+    color: #FFFBEB;
+    text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.9);
+    font-style: italic;
+}

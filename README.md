@@ -53,7 +53,20 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Po
 
 ---
 
-### ⛪ 4. Church, Worship & Biblical Lexicon
+### 📖 4. Instant Scripture Verse Auto-Lookup & Offline Bible Engine
+* **Spoken Citation Auto-Detection**: Recognizes spoken scripture passages in real time across all 66 books (*"John 3:16"*, *"1 Corinthians 13:4-7"*, *"Romans 8:28"*).
+* **100% Offline Multi-Translation Database**: Instant (< 0.1ms) verse retrieval from bundled SQLite database:
+  * **BSB (Berean Standard Bible)**: Modern, highly accurate translation reading virtually identically to the **ESV**.
+  * **WEB (World English Bible)**: Modern clean English equivalent to the **NIV/NLT**.
+  * **KJV (King James Version)**: Traditional classic authorized text.
+* **Dual-Channel Visual Broadcast**:
+  * **OBS Stream Overlay**: Broadcast lower-third card with gold amber badge and smooth animated entry.
+  * **Stage Confidence Monitor**: Floating prompter box pinned to stage confidence screens and podium iPads.
+  * **Interactive Dashboard Cue Tool**: Search, preview, and manually push or dismiss verses with 1 click.
+
+---
+
+### ⛪ 5. Church, Worship & Biblical Lexicon
 * **Sacred Names & Titles of Deity**: Automatically capitalizes and truecases:
   * `God`, `God's`, `Lord`, `Lord's`, `Jesus`, `Jesus Christ`, `Christ`, `Holy Spirit`, `Holy Ghost`, `Heavenly Father`, `Almighty God`, `King of Kings`, `Lord of Lords`, `Son of God`, `Prince of Peace`, `Lamb of God`, `Messiah`, `Savior`, `Yahweh`, `Jehovah`, `Emmanuel`.
 * **Spoken Scripture Reference Parser**: Automatically detects and formats spoken Bible references into standard chapter:verse citations:

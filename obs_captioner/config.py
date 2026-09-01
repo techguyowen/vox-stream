@@ -168,6 +168,16 @@ class OverlayConfig:
 
 
 @dataclass
+class BibleConfig:
+    enabled: bool = True
+    default_version: str = "bsb"  # "bsb" (Berean Standard / ESV-style), "web" (World English / NIV-style), "kjv" (King James)
+    display_mode: str = "auto"   # "auto" (instant auto-pop on stream & display), "manual" (cue via dashboard)
+    display_duration_seconds: float = 14.0
+    show_on_stream_overlay: bool = True
+    show_on_stage_display: bool = True
+
+
+@dataclass
 class APIConfig:
     enabled: bool = True
     api_key: str = ""
@@ -190,6 +200,7 @@ class AppConfig:
     bandwidth: BandwidthConfig = field(default_factory=BandwidthConfig)
     obs: OBSConfig = field(default_factory=OBSConfig)
     overlay: OverlayConfig = field(default_factory=OverlayConfig)
+    bible: BibleConfig = field(default_factory=BibleConfig)
     api: APIConfig = field(default_factory=APIConfig)
 
 
@@ -257,6 +268,7 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         bandwidth=_safe_dataclass_load(BandwidthConfig, data.get("bandwidth")),
         obs=_safe_dataclass_load(OBSConfig, data.get("obs")),
         overlay=_safe_dataclass_load(OverlayConfig, data.get("overlay")),
+        bible=_safe_dataclass_load(BibleConfig, data.get("bible")),
         api=_safe_dataclass_load(APIConfig, data.get("api")),
 
     )

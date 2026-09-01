@@ -129,6 +129,11 @@ class CaptionSink:
             self._utterance_active = False
             self._sentence_start_time = time.time()
 
+            # Auto Scripture Lookup & Broadcast Trigger
+            if self.web_server and getattr(self.config, "bible", None) and self.config.bible.enabled:
+                if self.config.bible.display_mode == "auto":
+                    asyncio.create_task(self.web_server.trigger_scripture_lookup(clean_text))
+
             # Broadcast to Twitch Chat if enabled
             if self.twitch_bot and self.twitch_bot.is_connected:
                 await self.twitch_bot.send_caption(clean_text)
