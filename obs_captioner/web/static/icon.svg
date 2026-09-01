@@ -1,43 +1,47 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#0F172A"/>
-      <stop offset="100%" stop-color="#000000"/>
-    </linearGradient>
-    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="50%" stop-color="#2563EB"/>
       <stop offset="100%" stop-color="#1D4ED8"/>
     </linearGradient>
-    <linearGradient id="mic" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#60A5FA"/>
-      <stop offset="100%" stop-color="#2563EB"/>
+    <linearGradient id="micHead" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F1F5F9"/>
     </linearGradient>
+    <filter id="dropShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.3"/>
+    </filter>
   </defs>
+
+  <!-- Background Squircle with high-contrast vibrant blue -->
+  <rect x="20" y="20" width="472" height="472" rx="112" fill="url(#bgGrad)" filter="url(#dropShadow)"/>
+  <rect x="20" y="20" width="472" height="472" rx="112" fill="none" stroke="rgba(255, 255, 255, 0.3)" stroke-width="8"/>
+
+  <!-- Left Broadcast Waves -->
+  <path d="M 125 185 A 95 95 0 0 0 125 295" fill="none" stroke="#BAE6FD" stroke-width="26" stroke-linecap="round"/>
+  <path d="M 80 145 A 155 155 0 0 0 80 335" fill="none" stroke="#E0F2FE" stroke-width="22" stroke-linecap="round" opacity="0.75"/>
+
+  <!-- Right Broadcast Waves -->
+  <path d="M 387 185 A 95 95 0 0 1 387 295" fill="none" stroke="#BAE6FD" stroke-width="26" stroke-linecap="round"/>
+  <path d="M 432 145 A 155 155 0 0 1 432 335" fill="none" stroke="#E0F2FE" stroke-width="22" stroke-linecap="round" opacity="0.75"/>
+
+  <!-- Studio Microphone Capsule -->
+  <rect x="206" y="105" width="100" height="165" rx="50" fill="url(#micHead)"/>
+  <!-- Grille Accent Line -->
+  <line x1="218" y1="165" x2="294" y2="165" stroke="#CBD5E1" stroke-width="8" stroke-linecap="round"/>
+  <line x1="224" y1="195" x2="288" y2="195" stroke="#CBD5E1" stroke-width="8" stroke-linecap="round"/>
+
+  <!-- Microphone Cradle U-Arc -->
+  <path d="M 166 210 C 166 315, 346 315, 346 210" fill="none" stroke="#FFFFFF" stroke-width="28" stroke-linecap="round"/>
   
-  <!-- Background Rounded Squircle -->
-  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
-  <rect x="8" y="8" width="496" height="496" rx="104" fill="none" stroke="#1E293B" stroke-width="4"/>
-
-  <!-- Live Pulse Waves -->
-  <circle cx="256" cy="220" r="140" fill="none" stroke="#3B82F6" stroke-width="6" opacity="0.25"/>
-  <circle cx="256" cy="220" r="180" fill="none" stroke="#3B82F6" stroke-width="4" opacity="0.15"/>
-
-  <!-- Microphone Head -->
-  <rect x="206" y="120" width="100" height="180" rx="50" fill="url(#mic)" />
+  <!-- Stand Stem -->
+  <line x1="256" y1="310" x2="256" y2="385" stroke="#FFFFFF" stroke-width="28" stroke-linecap="round"/>
   
-  <!-- Microphone Stand / Pickup Arc -->
-  <path d="M 166 220 C 166 295, 346 295, 346 220" fill="none" stroke="#FFFFFF" stroke-width="20" stroke-linecap="round"/>
-  <line x1="256" y1="295" x2="256" y2="360" stroke="#FFFFFF" stroke-width="20" stroke-linecap="round"/>
-  <line x1="196" y1="360" x2="316" y2="360" stroke="#FFFFFF" stroke-width="20" stroke-linecap="round"/>
+  <!-- Stand Base -->
+  <line x1="186" y1="385" x2="326" y2="385" stroke="#FFFFFF" stroke-width="28" stroke-linecap="round"/>
 
-  <!-- Soundwave Indicator -->
-  <rect x="110" y="410" width="16" height="30" rx="8" fill="#60A5FA" opacity="0.8"/>
-  <rect x="146" y="395" width="16" height="60" rx="8" fill="#3B82F6"/>
-  <rect x="182" y="380" width="16" height="90" rx="8" fill="#60A5FA"/>
-  <rect x="218" y="420" width="16" height="10" rx="5" fill="#93C5FD"/>
-  <rect x="254" y="405" width="16" height="40" rx="8" fill="#3B82F6"/>
-  <rect x="290" y="375" width="16" height="100" rx="8" fill="#60A5FA"/>
-  <rect x="326" y="390" width="16" height="70" rx="8" fill="#3B82F6"/>
-  <rect x="362" y="405" width="16" height="40" rx="8" fill="#60A5FA"/>
-  <rect x="398" y="415" width="16" height="20" rx="8" fill="#93C5FD"/>
+  <!-- Green Live Indicator Dot -->
+  <circle cx="410" cy="95" r="22" fill="#22C55E"/>
+  <circle cx="410" cy="95" r="30" fill="none" stroke="#86EFAC" stroke-width="6" opacity="0.7"/>
 </svg>

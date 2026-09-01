@@ -1,4 +1,4 @@
-const CACHE_NAME = 'voxstream-cache-v4';
+const CACHE_NAME = 'voxstream-cache-v5';
 const PRECACHE_ASSETS = [
   '/display',
   '/dashboard',
