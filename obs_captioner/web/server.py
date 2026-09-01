@@ -91,8 +91,11 @@ class WebOverlayServer:
         static_dir = Path(__file__).parent / "static"
         
         # HTML Pages with comprehensive aliases
-        for path in ("/", "/index", "/index.html", "/overlay", "/overlay.html", "/bible", "/bible/", "/bible.html"):
+        for path in ("/", "/index", "/index.html", "/overlay", "/overlay.html"):
             self.app.router.add_get(path, self._handle_index)
+
+        for path in ("/bible", "/bible/", "/bible.html"):
+            self.app.router.add_get(path, self._handle_bible_page)
         
         for path in ("/dashboard", "/dashboard/", "/dashboard.html", "/dock", "/dock/", "/settings", "/settings/", "/control"):
             self.app.router.add_get(path, self._handle_dashboard)
@@ -186,6 +189,10 @@ class WebOverlayServer:
     async def _handle_index(self, request: web.Request) -> web.FileResponse:
         index_file = Path(__file__).parent / "static" / "index.html"
         return web.FileResponse(index_file)
+
+    async def _handle_bible_page(self, request: web.Request) -> web.FileResponse:
+        bible_file = Path(__file__).parent / "static" / "bible.html"
+        return web.FileResponse(bible_file)
 
     async def _handle_dashboard(self, request: web.Request) -> web.FileResponse:
         dash_file = Path(__file__).parent / "static" / "dashboard.html"

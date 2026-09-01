@@ -766,6 +766,12 @@ class TestServerEndpoints(AioHTTPTestCase):
         dm_data = await dm_resp.json()
         self.assertEqual(dm_data['status'], 'success')
 
+        # 6. Dedicated /bible HTML page
+        page_resp = await self.client.request('GET', '/bible')
+        self.assertEqual(page_resp.status, 200)
+        page_text = await page_resp.text()
+        self.assertIn('OBS Dedicated Scripture Overlay', page_text)
+
 
 
 if __name__ == "__main__":
