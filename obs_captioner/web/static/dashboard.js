@@ -29,7 +29,7 @@ function setupA11yPresets() {
             if (bgOp) bgOp.value = 95;
 
             updatePreviewStyle();
-            showToast("♿ High-Contrast Accessibility & Dyslexia configuration applied!", "success", 3500);
+            showToast("👁️ High-Visibility Visual Aid configuration applied!", "success", 3500);
         });
     }
 }
