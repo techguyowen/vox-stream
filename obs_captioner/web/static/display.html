@@ -290,14 +290,18 @@
             min-height: 100%;
             display: flex;
             flex-direction: column;
-            justify-content: flex-end;
-            gap: 20px;
+            justify-content: flex-start;
+            gap: 16px;
             max-width: 1500px;
             margin: 0 auto;
             width: 100%;
-            padding-bottom: 50px;
+            padding-bottom: 70px;
             transition: opacity 0.3s ease;
             box-sizing: border-box;
+        }
+
+        body.mode-live .transcript-content {
+            justify-content: flex-end;
         }
 
         .transcript-content.faded {
@@ -691,6 +695,7 @@
             if (displayModeSelect) displayModeSelect.value = currentMode;
 
             if (currentMode === 'live') {
+                document.body.classList.add('mode-live');
                 maxHistorySentences = 2;
                 while (finalSentences.length > 2) finalSentences.shift();
 
@@ -704,11 +709,12 @@
                     scrollToBottom();
                 }
             } else {
+                document.body.classList.remove('mode-live');
                 maxHistorySentences = 300;
                 if (transcriptContent) {
                     transcriptContent.classList.remove('faded');
                 }
-                loadInitialHistory();
+                applyDisplayMode(currentMode);
             }
         }
 
@@ -991,6 +997,15 @@
             return div.innerHTML;
         }
 
+
+        if (stageContainer) {
+            stageContainer.addEventListener('scroll', () => {
+                const dist = stageContainer.scrollHeight - stageContainer.scrollTop - stageContainer.clientHeight;
+                autoScroll = dist < 80;
+                updateFloatingButtons();
+            }, { passive: true });
+        }
+
         function removeEmptyIndicator() {
             const emptyEl = transcriptContent ? transcriptContent.querySelector('.empty-indicator') : null;
             if (emptyEl) emptyEl.remove();
@@ -1180,7 +1195,7 @@
         }
 
         connectWebSocket();
-        loadInitialHistory();
+        applyDisplayMode(currentMode);
 
         function formatEngineBadge(engine, engineName) {
             const raw = (engineName || engine || '').toLowerCase();
