@@ -1,4 +1,4 @@
-const CACHE_NAME = 'voxstream-cache-v3';
+const CACHE_NAME = 'voxstream-cache-v4';
 const PRECACHE_ASSETS = [
   '/display',
   '/dashboard',
@@ -15,7 +15,7 @@ const PRECACHE_ASSETS = [
   '/static/dashboard.js',
   '/static/style.css',
   '/static/overlay.js',
-  'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;700&family=Montserrat:wght@700;800&family=Poppins:wght@600;700&display=swap'
+  'https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;700&family=Lora:ital,wght@0,600;0,700;1,400&family=Montserrat:wght@600;700;800;900&family=Open+Sans:wght@400;600;700;800&family=Oswald:wght@500;600;700&family=Poppins:wght@600;700;800&family=Roboto:wght@400;500;700;900&display=swap'
 ];
 
 self.addEventListener('install', (event) => {
