@@ -113,22 +113,29 @@
             -webkit-backdrop-filter: blur(12px);
             border-bottom: 1px solid var(--border);
             display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 8px 16px;
-            gap: 12px;
+            flex-direction: column;
+            padding: 8px 14px;
+            gap: 8px;
             z-index: 100;
-            transition: transform 0.25s ease, opacity 0.25s ease, margin-top 0.25s ease;
+            transition: transform 0.25s ease, opacity 0.25s ease;
         }
 
         .header-bar.hidden {
             display: none;
         }
 
+        .header-main-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            gap: 10px;
+        }
+
         .header-left {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
             flex-shrink: 0;
         }
 
@@ -178,28 +185,27 @@
 
         .clock-display {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 16px;
+            font-size: 15px;
             font-weight: 700;
             color: var(--text-color);
             letter-spacing: 0.5px;
             white-space: nowrap;
         }
 
-        .header-right {
+        .header-quick-actions {
             display: flex;
             align-items: center;
-            gap: 8px;
-            flex-wrap: wrap;
-            justify-content: flex-end;
+            gap: 5px;
+            flex-shrink: 0;
         }
 
         .ctrl-btn {
             background: rgba(255, 255, 255, 0.06);
             color: var(--text-color);
             border: 1px solid var(--border);
-            padding: 6px 10px;
+            padding: 5px 9px;
             border-radius: 6px;
-            font-size: 12.5px;
+            font-size: 12px;
             font-weight: 600;
             cursor: pointer;
             display: inline-flex;
@@ -214,17 +220,43 @@
             background: rgba(255, 255, 255, 0.14);
         }
 
+        .header-controls-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+
         .theme-select {
             background: #161B22;
             color: #F0F3F6;
             border: 1px solid var(--border);
-            padding: 6px 8px;
+            padding: 5px 8px;
             border-radius: 6px;
             font-size: 12px;
             font-weight: 600;
             cursor: pointer;
             outline: none;
-            max-width: 100%;
+            flex: 1 1 120px;
+            min-width: 100px;
+        }
+
+        .ctrl-btn-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            background: rgba(56, 189, 248, 0.14);
+            border: 1px solid rgba(56, 189, 248, 0.5);
+            border-radius: 6px;
+            padding: 4px 9px;
+            font-size: 12px;
+            font-weight: 700;
+            color: #38BDF8;
+            white-space: nowrap;
+            user-select: none;
+            flex-shrink: 0;
         }
 
         .theme-select option {
@@ -383,68 +415,92 @@
             transform: scale(1.04);
         }
 
-        /* 📱 Responsive Tablet & Mobile Layouts */
-        @media (max-width: 1050px) {
-            .clock-display {
-                display: none;
+        /* 📱 Responsive Desktop, Tablet & Mobile Layouts */
+        @media (min-width: 1100px) {
+            .header-bar {
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-between;
+                padding: 8px 18px;
+            }
+            .header-main-row {
+                width: auto;
+                justify-content: flex-start;
+                gap: 16px;
+            }
+            .header-controls-row {
+                width: auto;
+                justify-content: flex-end;
+                flex-wrap: nowrap;
+            }
+            .theme-select {
+                flex: 0 0 auto;
+                min-width: auto;
             }
         }
 
-        @media (max-width: 820px) {
+        @media (max-width: 1099px) and (min-width: 769px) {
+            .header-controls-row {
+                display: flex;
+                flex-wrap: wrap;
+            }
+            .theme-select {
+                flex: 1 1 140px;
+            }
+        }
+
+        @media (max-width: 768px) {
             :root {
-                --font-size: 28px;
+                --font-size: 32px;
             }
-
             .header-bar {
-                flex-direction: column;
-                align-items: stretch;
-                padding: 8px 12px;
-                gap: 8px;
+                padding: 6px 10px;
+                gap: 6px;
             }
-
-            .header-left {
-                width: 100%;
-                justify-content: space-between;
-                align-items: center;
-                gap: 8px;
+            .brand-sub {
+                display: none;
             }
-
-            @media (max-width: 520px) {
-                .brand-sub {
-                    display: none;
-                }
-                .status-pill {
-                    max-width: 140px;
-                    font-size: 10.5px;
-                    padding: 2px 6px;
-                }
+            .clock-display {
+                font-size: 13px;
             }
-
-            .header-right {
-                width: 100%;
+            .header-controls-row {
                 display: grid;
                 grid-template-columns: 1fr 1fr;
-                gap: 6px;
+                gap: 5px;
             }
-
-            .header-controls-row {
+            .theme-select {
+                width: 100%;
+                font-size: 11.5px;
+                padding: 5px 6px;
+            }
+            .ctrl-btn-label {
                 grid-column: span 2;
-                display: flex;
-                gap: 6px;
-                justify-content: space-between;
+                justify-content: center;
+                padding: 5px 8px;
             }
-
-            .header-controls-row .ctrl-btn,
-            .header-controls-row .theme-select {
-                flex: 1;
-            }
-
             .stage-container {
-                padding: 16px 16px calc(120px + env(safe-area-inset-bottom, 0px)) 16px;
+                padding: 14px 14px calc(110px + env(safe-area-inset-bottom, 0px)) 14px;
             }
-
             .transcript-content {
-                padding-bottom: 60px;
+                padding-bottom: 50px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .clock-display {
+                display: none;
+            }
+            .brand-badge {
+                font-size: 12.5px;
+            }
+            .status-pill {
+                font-size: 10px;
+                padding: 2px 6px;
+                max-width: 110px;
+            }
+            .ctrl-btn {
+                padding: 4px 7px;
+                font-size: 11px;
             }
         }
 
@@ -471,92 +527,88 @@
 
     <!-- Header Navigation Bar -->
     <header class="header-bar" id="headerBar">
-        <div class="header-left">
-            <div class="brand-badge">
-                <span>🎙️ VoxStream</span>
-                <span class="brand-sub" style="opacity: 0.4;">|</span>
-                <span class="brand-sub" style="font-weight: 600; color: var(--text-muted);">Stage Display</span>
+        <div class="header-main-row">
+            <div class="header-left">
+                <div class="brand-badge">
+                    <span>🎙️ VoxStream</span>
+                    <span class="brand-sub" style="opacity: 0.4;">|</span>
+                    <span class="brand-sub" style="font-weight: 600; color: var(--text-muted);">Stage Display</span>
+                </div>
+                <div class="status-pill" id="statusPill">
+                    <span class="status-dot"></span>
+                    <span id="statusText">LIVE</span>
+                </div>
             </div>
-            <div class="status-pill" id="statusPill">
-                <span class="status-dot"></span>
-                <span id="statusText">LIVE</span>
+
+            <div class="clock-display" id="clockDisplay">12:00:00 PM</div>
+
+            <div class="header-quick-actions">
+                <button class="ctrl-btn" id="btnFontDec" title="Decrease font size (-)" aria-label="Decrease Font Size">A-</button>
+                <button class="ctrl-btn" id="btnFontInc" title="Increase font size (+)" aria-label="Increase Font Size">A+</button>
+                <button class="ctrl-btn" id="btnInstallPwa" style="display: none;" title="Install App" aria-label="Install App">📲</button>
+                <button class="ctrl-btn" id="btnFullscreen" title="Toggle Fullscreen (F11)" aria-label="Toggle Fullscreen">⛶</button>
+                <button class="ctrl-btn" id="btnClear" title="Clear History" aria-label="Clear History">🗑️</button>
+                <button class="ctrl-btn" id="btnCollapseHeader" title="Hide Header Bar (H)" aria-label="Hide Header Bar">▲</button>
             </div>
         </div>
 
-        <div class="clock-display" id="clockDisplay">12:00:00 PM</div>
-
-        <div class="header-right">
-            <!-- Mode Selector: Scrollable History vs Live Prompter -->
-            <select class="theme-select" id="displayModeSelect" title="Display Mode">
+        <div class="header-controls-row">
+            <!-- Mode Selector -->
+            <select class="theme-select" id="displayModeSelect" title="Display Mode" aria-label="Display Mode">
                 <option value="scrollable" selected>📜 Scrollable History</option>
-                <option value="live">⚡ Live Prompter (Auto-Fade)</option>
+                <option value="live">⚡ Live Prompter</option>
             </select>
 
-            <!-- Language Track Selector -->
-            <select class="theme-select" id="langSelect" title="Language Track">
-                <option value="en" selected>🌐 English (Original)</option>
-                <option value="es">🇪🇸 Spanish (Español)</option>
-                <option value="fr">🇫🇷 French (Français)</option>
-                <option value="de">🇩🇪 German (Deutsch)</option>
-                <option value="pt">🇧🇷 Portuguese (Português)</option>
-                <option value="it">🇮🇹 Italian (Italiano)</option>
-                <option value="zh">🇨🇳 Chinese (中文)</option>
-                <option value="ja">🇯🇵 Japanese (日本語)</option>
-                <option value="ko">🇰🇷 Korean (한국어)</option>
-                <option value="ru">🇷🇺 Russian (Русский)</option>
-                <option value="ar">🇸🇦 Arabic (العربية)</option>
-                <option value="hi">🇮🇳 Hindi (हिन्दी)</option>
-                <option value="nl">🇳🇱 Dutch (Nederlands)</option>
-                <option value="pl">🇵🇱 Polish (Polski)</option>
-                <option value="sv">🇸🇪 Swedish (Svenska)</option>
-                <option value="tr">🇹🇷 Turkish (Türkçe)</option>
-                <option value="uk">🇺🇦 Ukrainian (Українська)</option>
-                <option value="vi">🇻🇳 Vietnamese (Tiếng Việt)</option>
+            <!-- Language Selector -->
+            <select class="theme-select" id="langSelect" title="Language Track" aria-label="Language Track">
+                <option value="en" selected>🌐 English</option>
+                <option value="es">🇪🇸 Spanish</option>
+                <option value="fr">🇫🇷 French</option>
+                <option value="de">🇩🇪 German</option>
+                <option value="pt">🇧🇷 Portuguese</option>
+                <option value="it">🇮🇹 Italian</option>
+                <option value="zh">🇨🇳 Chinese</option>
+                <option value="ja">🇯🇵 Japanese</option>
+                <option value="ko">🇰🇷 Korean</option>
+                <option value="ru">Русский</option>
+                <option value="ar">العربية</option>
+                <option value="hi">हिन्दी</option>
+                <option value="nl">Nederlands</option>
+                <option value="pl">Polski</option>
+                <option value="sv">Svenska</option>
+                <option value="tr">Türkçe</option>
+                <option value="uk">Українська</option>
+                <option value="vi">Tiếng Việt</option>
             </select>
 
-            <!-- Compact Secondary Controls Row (Adapts cleanly on mobile) -->
-            <div class="header-controls-row">
-                <!-- Typography Selector -->
-                <select class="theme-select" id="fontSelect" title="Typography / Font Family">
-                    <option value="'Inter', system-ui, -apple-system, sans-serif" selected>Inter (Modern Sans)</option>
-                    <option value="'OpenDyslexic', sans-serif">📖 OpenDyslexic (Accessibility)</option>
-                    <option value="'Montserrat', sans-serif">Montserrat (Bold Clean)</option>
-                    <option value="'Poppins', sans-serif">Poppins (Smooth Rounded)</option>
-                    <option value="'Oswald', sans-serif">Oswald (Tall Condensed)</option>
-                    <option value="'Roboto', sans-serif">Roboto (Neutral Clean)</option>
-                    <option value="'Open Sans', sans-serif">Open Sans (High Legibility)</option>
-                    <option value="'Bebas Neue', sans-serif">Bebas Neue (Stage Headline)</option>
-                    <option value="'Lora', Georgia, serif">Lora (Editorial Serif)</option>
-                    <option value="'JetBrains Mono', monospace">JetBrains Mono (Monospace)</option>
-                    <option value="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">System Default</option>
-                </select>
+            <!-- Typography Selector -->
+            <select class="theme-select" id="fontSelect" title="Typography / Font Family" aria-label="Typography">
+                <option value="'Inter', system-ui, -apple-system, sans-serif" selected>Inter (Sans)</option>
+                <option value="'OpenDyslexic', sans-serif">📖 OpenDyslexic</option>
+                <option value="'Montserrat', sans-serif">Montserrat</option>
+                <option value="'Poppins', sans-serif">Poppins</option>
+                <option value="'Oswald', sans-serif">Oswald</option>
+                <option value="'Roboto', sans-serif">Roboto</option>
+                <option value="'Open Sans', sans-serif">Open Sans</option>
+                <option value="'Bebas Neue', sans-serif">Bebas Neue</option>
+                <option value="'Lora', Georgia, serif">Lora (Serif)</option>
+                <option value="'JetBrains Mono', monospace">JetBrains Mono</option>
+                <option value="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">System Default</option>
+            </select>
 
-                <!-- 1-Click Accessibility & Dyslexia Mode Toggle -->
-                <label class="ctrl-btn-label" title="Toggle Visual Aid Spacing: Expanded letter tracking (0.06em), word spacing (0.15em), and line height (1.65x) for reading ease" style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; background: rgba(56, 189, 248, 0.14); border: 1px solid rgba(56, 189, 248, 0.5); border-radius: 6px; padding: 4px 10px; font-size: 12.5px; font-weight: 700; color: #38BDF8; white-space: nowrap; user-select: none;">
-                    <input type="checkbox" id="chkDisplayA11y" style="cursor: pointer; width: 16px; height: 16px;">
-                    <span>👁️ Visual Aid Mode</span>
-                </label>
+            <!-- Theme Selector -->
+            <select class="theme-select" id="themeSelect" aria-label="Color Theme">
+                <option value="theme-oled" selected>🌑 Dark</option>
+                <option value="theme-amber">🟡 Amber</option>
+                <option value="theme-slate">🌌 Slate</option>
+                <option value="theme-light">☀️ Light</option>
+            </select>
 
-                <!-- Theme Selector -->
-                <select class="theme-select" id="themeSelect">
-                    <option value="theme-oled" selected>🌑 Dark</option>
-                    <option value="theme-amber">🟡 Amber</option>
-                    <option value="theme-slate">🌌 Slate</option>
-                    <option value="theme-light">☀️ Light</option>
-                </select>
-
-                <!-- Font Size Controls -->
-                <button class="ctrl-btn" id="btnFontDec" title="Decrease font size (-)">A-</button>
-                <button class="ctrl-btn" id="btnFontInc" title="Increase font size (+)">A+</button>
-
-                <!-- Fullscreen -->
-                <button class="ctrl-btn" id="btnInstallPwa" style="display: none;" title="Install VoxStream as Standalone App">📲 Install</button>
-                <button class="ctrl-btn" id="btnFullscreen" title="Toggle Fullscreen (F11)">⛶</button>
-
-                <!-- Clear Screen -->
-                <button class="ctrl-btn" id="btnClear" title="Clear Screen History">🗑️</button>
-                <button class="ctrl-btn" id="btnCollapseHeader" title="Hide Header Bar (H)">▲</button>
-            </div>
+            <!-- 1-Click Visual Aid Toggle -->
+            <label class="ctrl-btn-label" title="Toggle Visual Aid Spacing: Expanded letter tracking (0.06em), word spacing (0.15em), and line height (1.65x) for reading ease">
+                <input type="checkbox" id="chkDisplayA11y">
+                <span>👁️ Visual Aid</span>
+            </label>
         </div>
     </header>
 
