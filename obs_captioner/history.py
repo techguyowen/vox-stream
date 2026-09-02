@@ -81,6 +81,59 @@ class TranscriptHistory:
         self._counter = 1
         self.session_start_time = time.time()
 
+    def get_stats(self) -> dict:
+        """Calculate live Words Per Minute (WPM), session WPM, total words, and active speaking time."""
+        now = time.time()
+        total_words = sum(len(e.text.split()) for e in self.entries)
+        active_speaking_seconds = sum(e.duration_seconds() for e in self.entries)
+
+        # 1. Session Average WPM (Total words / total speaking minutes)
+        if active_speaking_seconds >= 2.0 and total_words > 0:
+            session_wpm = round(total_words / (active_speaking_seconds / 60.0), 1)
+        else:
+            session_wpm = 0.0
+
+        # 2. Live / Current Speaking Pace (Last 45-second window)
+        recent_window_seconds = 45.0
+        recent_entries = [e for e in self.entries if e.end_time >= (now - recent_window_seconds)]
+        
+        current_wpm = 0.0
+        if recent_entries:
+            # Check if user spoke within the last 12 seconds (otherwise speaker is currently silent/idle)
+            time_since_last_speech = now - recent_entries[-1].end_time
+            if time_since_last_speech <= 12.0:
+                recent_words = sum(len(e.text.split()) for e in recent_entries)
+                recent_speech_duration = sum(e.duration_seconds() for e in recent_entries)
+                if recent_speech_duration >= 0.8:
+                    current_wpm = round(recent_words / (recent_speech_duration / 60.0), 1)
+
+        # 3. Speaking Pace Rating
+        if current_wpm <= 0:
+            pace_rating = "Idle"
+            pace_color = "#94A3B8"
+        elif current_wpm < 100:
+            pace_rating = "Slow & Clear"
+            pace_color = "#38BDF8"
+        elif current_wpm <= 150:
+            pace_rating = "Optimal (110–150 WPM)"
+            pace_color = "#10B981"
+        elif current_wpm <= 180:
+            pace_rating = "Brisk (Fast)"
+            pace_color = "#F59E0B"
+        else:
+            pace_rating = "Very Rapid (>180 WPM)"
+            pace_color = "#EF4444"
+
+        return {
+            "current_wpm": current_wpm,
+            "session_wpm": session_wpm,
+            "total_words": total_words,
+            "active_speaking_seconds": round(active_speaking_seconds, 1),
+            "total_lines": len(self.entries),
+            "pace_rating": pace_rating,
+            "pace_color": pace_color,
+        }
+
     def _format_time_srt(self, seconds: float) -> str:
         """Format seconds to SRT timecode: HH:MM:SS,mmm"""
         seconds = max(0.0, seconds)

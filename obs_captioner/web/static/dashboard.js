@@ -2453,10 +2453,64 @@ async function refreshEngineStatus() {
                     heroBadge.style.borderColor = "rgba(16, 185, 129, 0.4)";
                     heroBadge.innerHTML = `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#10B981;"></span> LIVE IN MEMORY`;
                 }
+            // Update WPM & Speaking Analytics
+            if (data.current_wpm !== undefined || data.session_wpm !== undefined) {
+                updateWpmUI(data);
             }
         }
     } catch (e) {
         console.debug("Status poll error:", e);
+    }
+}
+
+function updateWpmUI(stats) {
+    if (!stats) return;
+    const currentWpm = Math.round(stats.current_wpm || 0);
+    const sessionWpm = Math.round(stats.session_wpm || 0);
+    const totalWords = stats.total_words || 0;
+    const speakingSecs = Math.round(stats.active_speaking_seconds || 0);
+    const paceRating = stats.pace_rating || (currentWpm > 0 ? "Active" : "Idle");
+    const paceColor = stats.pace_color || (currentWpm > 0 ? "#10B981" : "#94A3B8");
+
+    // Format active speaking time (MM:SS or HH:MM:SS)
+    const mins = Math.floor(speakingSecs / 60);
+    const secs = speakingSecs % 60;
+    const timeStr = mins >= 60 
+        ? `${Math.floor(mins / 60)}h ${mins % 60}m` 
+        : `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+
+    // 1. Header WPM Pill
+    const liveWpmText = document.getElementById("live-wpm-badge-text");
+    const wpmDot = document.getElementById("wpm-dot");
+    if (liveWpmText) {
+        if (currentWpm > 0) {
+            liveWpmText.textContent = `⚡ ${currentWpm} WPM (${paceRating.split(' ')[0]})`;
+        } else if (sessionWpm > 0) {
+            liveWpmText.textContent = `⚡ ${sessionWpm} Avg WPM`;
+        } else {
+            liveWpmText.textContent = `⚡ 0 WPM (Idle)`;
+        }
+    }
+    if (wpmDot) {
+        wpmDot.style.background = currentWpm > 0 ? paceColor : (sessionWpm > 0 ? "#38BDF8" : "#94A3B8");
+    }
+
+    // 2. Transcript Tab WPM Analytics Card
+    const currentValEl = document.getElementById("wpm-current-val");
+    const sessionValEl = document.getElementById("wpm-session-val");
+    const totalWordsEl = document.getElementById("wpm-total-words");
+    const speakingTimeEl = document.getElementById("wpm-speaking-time");
+    const paceBadgeEl = document.getElementById("wpm-pace-rating-badge");
+
+    if (currentValEl) currentValEl.innerHTML = `${currentWpm} <span style="font-size: 14px; font-weight: 600; color: var(--text-muted);">WPM</span>`;
+    if (sessionValEl) sessionValEl.innerHTML = `${sessionWpm} <span style="font-size: 14px; font-weight: 600; color: var(--text-muted);">WPM</span>`;
+    if (totalWordsEl) totalWordsEl.textContent = Number(totalWords).toLocaleString();
+    if (speakingTimeEl) speakingTimeEl.textContent = timeStr;
+    if (paceBadgeEl) {
+        paceBadgeEl.textContent = paceRating;
+        paceBadgeEl.style.color = paceColor;
+        paceBadgeEl.style.borderColor = paceColor;
+        paceBadgeEl.style.background = `${paceColor}22`;
     }
 }
 
@@ -2478,6 +2532,8 @@ function connectControlWs() {
                 const db = (typeof msg.level_db === "number") ? msg.level_db : -100;
                 const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
                 vuBar.style.width = `${pct}%`;
+            } else if (msg.type === "stats_update") {
+                updateWpmUI(msg);
             } else if (msg.type === "model_cache_updated") {
                 loadModelsStatus();
             } else if (msg.type === "model_download_progress") {

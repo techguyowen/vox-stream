@@ -53,6 +53,12 @@
                     <span id="active-engine-badge-text">Engine: Loading...</span>
                 </div>
 
+                <!-- Live Speaking Pace (WPM) Badge -->
+                <div class="wpm-pill" id="live-wpm-pill" title="Current Speaking Pace (Words Per Minute)" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--text-main); white-space: nowrap;">
+                    <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #94A3B8;" id="wpm-dot"></span>
+                    <span id="live-wpm-badge-text">⚡ 0 WPM (Idle)</span>
+                </div>
+
                 <div class="status-pill" id="status-pill">
                     <span class="status-dot online"></span>
                     <span id="status-text">Active</span>
@@ -1207,6 +1213,53 @@
 
             <!-- TAB 6: TRANSCRIPTS & EXPORT -->
             <div id="tab-transcript" class="tab-pane">
+                <!-- Live Speaking Pace & WPM Analytics Card -->
+                <div class="panel" style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 8px; padding: 16px 20px; margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;">
+                        <div>
+                            <h2 style="margin: 0; font-size: 16px; color: #38BDF8; display: flex; align-items: center; gap: 8px;">
+                                <span>⚡ Live Speaking Pace &amp; Words Per Minute (WPM)</span>
+                            </h2>
+                            <p class="subtext" style="margin: 3px 0 0 0; font-size: 12px;">Real-time speaking rate calculations for sermon pacing, broadcast clarity, and DHH reading comfort.</p>
+                        </div>
+                        <div id="wpm-pace-rating-badge" style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); color: #10B981; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">
+                            Optimal (110–150 WPM)
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
+                        <div style="background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; text-align: center;">
+                            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; margin-bottom: 4px;">Current Pace (Live Window)</div>
+                            <div id="wpm-current-val" style="font-size: 32px; font-weight: 900; font-family: 'JetBrains Mono', monospace; color: #38BDF8;">0 <span style="font-size: 14px; font-weight: 600; color: var(--text-muted);">WPM</span></div>
+                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Active 45-second speech window</div>
+                        </div>
+
+                        <div style="background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; text-align: center;">
+                            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; margin-bottom: 4px;">Session Average Pace</div>
+                            <div id="wpm-session-val" style="font-size: 32px; font-weight: 900; font-family: 'JetBrains Mono', monospace; color: #F8FAFC;">0 <span style="font-size: 14px; font-weight: 600; color: var(--text-muted);">WPM</span></div>
+                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Total words &divide; speaking minutes</div>
+                        </div>
+
+                        <div style="background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; text-align: center;">
+                            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; margin-bottom: 4px;">Total Words Spoken</div>
+                            <div id="wpm-total-words" style="font-size: 32px; font-weight: 900; font-family: 'JetBrains Mono', monospace; color: #34D399;">0</div>
+                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Transcribed verbatim word count</div>
+                        </div>
+
+                        <div style="background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; text-align: center;">
+                            <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; margin-bottom: 4px;">Active Speaking Time</div>
+                            <div id="wpm-speaking-time" style="font-size: 32px; font-weight: 900; font-family: 'JetBrains Mono', monospace; color: #FBBF24;">00:00</div>
+                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Excludes pauses and silence</div>
+                        </div>
+                    </div>
+
+                    <!-- Pacing Guidelines Reference -->
+                    <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 11.5px; color: var(--text-muted);">
+                        <div>🎯 <strong>Pacing Targets:</strong> &lt;100 WPM (Slow/Clear) &bull; <span style="color: #10B981; font-weight: 700;">110–150 WPM (Optimal for Broadcast &amp; Church)</span> &bull; 151–180 WPM (Brisk) &bull; &gt;180 WPM (Fast)</div>
+                        <div style="font-family: 'JetBrains Mono', monospace; color: #94A3B8;">Formula: WPM = (Words &divide; Active Seconds) &times; 60</div>
+                    </div>
+                </div>
+
                 <div class="panel" style="margin-bottom: 20px;">
                     <div class="transcript-header">
                         <h2>Session Transcripts</h2>

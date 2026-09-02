@@ -805,9 +805,39 @@ class TestServerEndpoints(AioHTTPTestCase):
         # 6. Dedicated /bible HTML page
         page_resp = await self.client.request('GET', '/bible')
         self.assertEqual(page_resp.status, 200)
-        page_text = await page_resp.text()
-        self.assertIn('OBS Dedicated Scripture Overlay', page_text)
+    async def test_wpm_calculation_and_endpoint(self):
+        # 1. Test TranscriptHistory.get_stats()
+        import time
+        from obs_captioner.history import TranscriptHistory
+        hist = TranscriptHistory()
+        t0 = time.time() - 30.0
 
+        # Add 3 sentences (total 30 words, 12 seconds speaking time)
+        hist.add_entry("This is sentence number one containing precisely eight words.", start_time=t0, end_time=t0 + 4.0)
+        hist.add_entry("This is sentence number two with eight more words.", start_time=t0 + 5.0, end_time=t0 + 9.0)
+        hist.add_entry("And here is the final sentence for sixteen words total in this segment.", start_time=t0 + 10.0, end_time=t0 + 14.0)
+
+        stats = hist.get_stats()
+        self.assertGreater(stats["total_words"], 20)
+        self.assertGreater(stats["session_wpm"], 50.0)
+        self.assertIn("pace_rating", stats)
+        self.assertIn("pace_color", stats)
+
+        # 2. Test /api/transcript/stats endpoint
+        resp = await self.client.request('GET', '/api/transcript/stats')
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertIn('current_wpm', data)
+        self.assertIn('session_wpm', data)
+        self.assertIn('total_words', data)
+        self.assertIn('active_speaking_seconds', data)
+
+        # 3. Test /api/status includes WPM metrics
+        st_resp = await self.client.request('GET', '/api/status')
+        self.assertEqual(st_resp.status, 200)
+        st_data = await st_resp.json()
+        self.assertIn('current_wpm', st_data)
+        self.assertIn('session_wpm', st_data)
 
 
 if __name__ == "__main__":

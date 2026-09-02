@@ -158,6 +158,7 @@ class WebOverlayServer:
         
         # Transcript, Chapters, Translation & Export
         self.app.router.add_get("/api/transcript/history", self._handle_get_history)
+        self.app.router.add_get("/api/transcript/stats", self._handle_get_transcript_stats)
         self.app.router.add_get("/api/transcript/chapters", self._handle_get_chapters)
         self.app.router.add_get("/api/transcript/export", self._handle_export_transcript)
         self.app.router.add_post("/api/transcript/clear", self._handle_clear_history)
@@ -251,6 +252,8 @@ class WebOverlayServer:
             "server_start_time": self.server_start_time,
             "uptime_seconds": round(time.time() - self.server_start_time, 1),
         }
+        if self.history:
+            status_info.update(self.history.get_stats())
         if self.get_app_status:
             try:
                 status_info.update(self.get_app_status())
@@ -259,6 +262,10 @@ class WebOverlayServer:
         # Never report "running" unless the app-status hook confirmed it
         status_info.setdefault("is_running", False)
         return web.json_response(status_info)
+
+    async def _handle_get_transcript_stats(self, request: web.Request) -> web.Response:
+        """Return live Words Per Minute (WPM), total words, and speaking session statistics."""
+        return web.json_response(self.history.get_stats())
 
     # Sentinel used in place of secret values in GET /api/config responses.
     # POSTing the sentinel back leaves the stored secret unchanged.
@@ -1033,6 +1040,13 @@ class WebOverlayServer:
                 stale.append(ws)
         for ws in stale:
             self.caption_sockets.pop(ws, None)
+
+        if is_final and self.control_sockets and self.history:
+            try:
+                stats = self.history.get_stats()
+                asyncio.create_task(self.broadcast_control({"type": "stats_update", **stats}))
+            except Exception:
+                pass
 
     async def broadcast_control(self, payload: dict):
         """Broadcast telemetry/config events to dashboard control websockets."""
