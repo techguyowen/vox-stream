@@ -81,7 +81,9 @@ class LocalWhisperEngine(BaseSTTEngine):
                 audio_float32,
                 language=self.config.local_whisper.language or "en",
                 beam_size=self.config.local_whisper.beam_size,
-                vad_filter=True,
+                vad_filter=False,
+                condition_on_previous_text=False,
+                temperature=0.0,
                 without_timestamps=True,
             )
             text = " ".join(s.text.strip() for s in segments if s.text.strip())
