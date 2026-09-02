@@ -2453,6 +2453,8 @@ async function refreshEngineStatus() {
                     heroBadge.style.borderColor = "rgba(16, 185, 129, 0.4)";
                     heroBadge.innerHTML = `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#10B981;"></span> LIVE IN MEMORY`;
                 }
+            }
+
             // Update WPM & Speaking Analytics
             if (data.current_wpm !== undefined || data.session_wpm !== undefined) {
                 updateWpmUI(data);
