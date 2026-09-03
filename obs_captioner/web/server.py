@@ -141,6 +141,7 @@ class WebOverlayServer:
         self.app.router.add_post("/api/presets/save", self._handle_save_preset)
         self.app.router.add_post("/api/presets/delete", self._handle_delete_preset)
         self.app.router.add_get("/api/languages", self._handle_get_languages)
+        self.app.router.add_get("/api/engine/benchmark", self._handle_get_benchmark)
         
         # Control Endpoints
         self.app.router.add_post("/api/control/start", self._handle_control_start)
@@ -266,6 +267,18 @@ class WebOverlayServer:
     async def _handle_get_transcript_stats(self, request: web.Request) -> web.Response:
         """Return live Words Per Minute (WPM), total words, and speaking session statistics."""
         return web.json_response(self.history.get_stats())
+
+    async def _handle_get_benchmark(self, request: web.Request) -> web.Response:
+        """Return church sermon benchmark rankings and evaluation metrics."""
+        rankings_file = Path(__file__).resolve().parent / "static" / "engine_rankings.json"
+        if rankings_file.exists():
+            try:
+                with open(rankings_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                return web.json_response(data)
+            except Exception as e:
+                logger.error(f"Error reading engine_rankings.json: {e}")
+        return web.json_response({"error": "Benchmark rankings not found", "rankings": []}, status=404)
 
     # Sentinel used in place of secret values in GET /api/config responses.
     # POSTing the sentinel back leaves the stored secret unchanged.

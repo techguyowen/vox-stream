@@ -839,6 +839,22 @@ class TestServerEndpoints(AioHTTPTestCase):
         self.assertIn('current_wpm', st_data)
         self.assertIn('session_wpm', st_data)
 
+    async def test_engine_benchmark_endpoint(self):
+        """Verify /api/engine/benchmark returns structured church sermon rankings."""
+        resp = await self.client.request('GET', '/api/engine/benchmark')
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertIn('rankings', data)
+        self.assertGreaterEqual(len(data['rankings']), 3)
+        # Verify rank 1 has required benchmark metrics
+        top_rank = data['rankings'][0]
+        self.assertEqual(top_rank['rank'], 1)
+        self.assertIn('engine_name', top_rank)
+        self.assertIn('overall_accuracy_pct', top_rank)
+        self.assertIn('avg_latency_ms', top_rank)
+        self.assertIn('composite_score', top_rank)
+        self.assertIn('church_fit_summary', top_rank)
+
 
 if __name__ == "__main__":
     unittest.main()

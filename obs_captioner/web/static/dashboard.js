@@ -2455,6 +2455,10 @@ async function refreshEngineStatus() {
                 }
             }
 
+            if (cachedBenchmarkData && data.engine) {
+                renderBenchmarkRankings(cachedBenchmarkData, data.engine);
+            }
+
             // Update WPM & Speaking Analytics
             if (data.current_wpm !== undefined || data.session_wpm !== undefined) {
                 updateWpmUI(data);
@@ -2709,6 +2713,113 @@ function escapeHtml(str) {
         .replace(/'/g, "&#039;");
 }
 
+// --- Speech Engine Benchmark & Rankings (Church Sermon Stress Test) ---
+let cachedBenchmarkData = null;
+
+async function loadBenchmarkRankings() {
+    const tbody = document.getElementById("benchmark-rankings-tbody");
+    if (!tbody) return;
+
+    try {
+        const resp = await fetch("/api/engine/benchmark");
+        if (!resp.ok) {
+            tbody.innerHTML = '<tr><td colspan="7" style="padding: 20px; text-align: center; color: var(--text-muted);">Benchmark rankings not available.</td></tr>';
+            return;
+        }
+        const data = await resp.json();
+        cachedBenchmarkData = data;
+        const activeEng = (currentAppStatus && (currentAppStatus.engine || currentAppStatus.engine_name)) ||
+                          (currentConfig && currentConfig.general && currentConfig.general.engine) ||
+                          "local_whisper";
+        renderBenchmarkRankings(data, activeEng);
+    } catch (e) {
+        console.warn("Failed to load benchmark rankings:", e);
+        tbody.innerHTML = '<tr><td colspan="7" style="padding: 20px; text-align: center; color: var(--text-muted);">Error loading rankings.</td></tr>';
+    }
+}
+
+function renderBenchmarkRankings(data, activeEngineId) {
+    const tbody = document.getElementById("benchmark-rankings-tbody");
+    if (!tbody || !data || !data.rankings) return;
+
+    const currentEngine = (activeEngineId || (currentConfig && currentConfig.general && currentConfig.general.engine) || "local_whisper").toLowerCase();
+
+    tbody.innerHTML = data.rankings.map(e => {
+        const isMatch = (e.engine_id.toLowerCase() === currentEngine) ||
+                        (currentEngine === "vosk" && e.engine_id === "vosk") ||
+                        (currentEngine === "local_whisper" && e.engine_id === "local_whisper") ||
+                        (currentEngine === "moonshine" && e.engine_id === "moonshine");
+
+        const rankMedals = { 1: "🥇", 2: "🥈", 3: "🥉" };
+        const medal = rankMedals[e.rank] || `#${e.rank}`;
+        
+        const accuracyColor = e.overall_accuracy_pct >= 95 ? "#10B981" : (e.overall_accuracy_pct >= 90 ? "#60A5FA" : "#F59E0B");
+        const privacyBadge = e.privacy.includes("100% Offline") 
+            ? '<span style="background: rgba(16, 185, 129, 0.12); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.3); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">🔒 Offline</span>'
+            : '<span style="background: rgba(99, 102, 241, 0.12); color: #818CF8; border: 1px solid rgba(99, 102, 241, 0.3); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">☁️ Cloud</span>';
+
+        const actionBtn = isMatch
+            ? `<span style="background: rgba(16, 185, 129, 0.18); color: #10B981; border: 1px solid #10B981; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 5px;">
+                 <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#10B981;"></span> Active
+               </span>`
+            : `<button class="btn btn-secondary btn-sm" onclick="selectEngineFromLeaderboard('${e.engine_id}')" style="padding: 4px 10px; font-size: 11px; border-radius: 6px; cursor: pointer;">
+                 Select
+               </button>`;
+
+        return `
+            <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); ${isMatch ? 'background: rgba(99, 102, 241, 0.08);' : ''}">
+                <td style="padding: 12px 10px; font-weight: 700; font-size: 14px; white-space: nowrap;">
+                    <span style="display: inline-flex; align-items: center; gap: 4px;">${medal} <span style="font-size: 11px; color: var(--text-muted);">(${e.composite_score} pts)</span></span>
+                </td>
+                <td style="padding: 12px 10px;">
+                    <div style="font-weight: 700; color: var(--text-main); font-size: 13.5px;">${escapeHtml(e.engine_name)}</div>
+                    <div style="font-size: 11px; color: var(--text-muted); font-family: monospace;">${escapeHtml(e.model_spec)}</div>
+                </td>
+                <td style="padding: 12px 10px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="font-weight: 700; color: ${accuracyColor}; font-size: 13px;">${e.overall_accuracy_pct}%</div>
+                        <div style="flex: 1; min-width: 50px; max-width: 80px; height: 5px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+                            <div style="width: ${e.overall_accuracy_pct}%; height: 100%; background: ${accuracyColor}; border-radius: 3px;"></div>
+                        </div>
+                    </div>
+                    <div style="font-size: 10.5px; color: var(--text-muted);">WER: ${e.overall_wer}</div>
+                </td>
+                <td style="padding: 12px 10px; font-size: 12px;">
+                    <div style="font-weight: 600; color: var(--text-main);">${e.avg_latency_ms}ms</div>
+                    <div style="font-size: 10.5px; color: var(--text-muted);">${e.avg_rtf}x RTF</div>
+                </td>
+                <td style="padding: 12px 10px;">
+                    ${privacyBadge}
+                </td>
+                <td style="padding: 12px 10px; font-size: 12px; color: #E2E8F0; max-width: 280px; line-height: 1.35;">
+                    ${escapeHtml(e.church_fit_summary)}
+                </td>
+                <td style="padding: 12px 10px; text-align: right; white-space: nowrap;">
+                    ${actionBtn}
+                </td>
+            </tr>
+        `;
+    }).join("");
+}
+
+async function selectEngineFromLeaderboard(engineId) {
+    const engineSelect = document.getElementById("engine_select");
+    if (engineSelect) {
+        engineSelect.value = engineId;
+        engineSelect.dispatchEvent(new Event("change"));
+    }
+    showToast(`🔄 Switching recognition engine to ${engineId}...`, "info", 3000);
+    const payload = {
+        general: {
+            engine: engineId
+        }
+    };
+    await saveConfigPayload(payload, `Switched engine to ${engineId}!`);
+    if (cachedBenchmarkData) {
+        renderBenchmarkRankings(cachedBenchmarkData, engineId);
+    }
+}
+
 // Initialize on page load
 window.addEventListener("DOMContentLoaded", async () => {
     // Initialize Models Status
@@ -2751,6 +2862,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     await loadVocabularyState();
     await loadFilterState();
     await refreshEngineStatus();
+    await loadBenchmarkRankings();
     await loadYouTubeChapters();
     connectControlWs();
     connectCaptionWs();

@@ -831,6 +831,47 @@
                         </div>
                     </div>
                     
+                    <!-- CHURCH SERMON MODEL BENCHMARK & RANKINGS LEADERBOARD -->
+                    <div class="benchmark-rankings-card" style="background: var(--bg-card); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 10px; padding: 18px 20px; margin: 18px 0 24px 0; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 14px;">
+                            <div>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="font-size: 20px;">🏆</span>
+                                    <h3 style="margin: 0; font-size: 16px; font-weight: 700; color: var(--text-main);">Speech Engine Leaderboard (Church Sermon Benchmark)</h3>
+                                </div>
+                                <p class="subtext" style="margin: 4px 0 0 0; font-size: 12px; color: var(--text-muted);">
+                                    Tested on realistic, challenging church sermon speech: ancient biblical names (Nebuchadnezzar, Melchizedek), rapid scripture citations, and theological doctrine.
+                                </p>
+                            </div>
+                            <span style="font-size: 11px; background: rgba(99, 102, 241, 0.15); color: #818CF8; border: 1px solid rgba(99, 102, 241, 0.3); padding: 4px 10px; border-radius: 6px; font-weight: 600;">
+                                Verified Stress Test
+                            </span>
+                        </div>
+
+                        <!-- Leaderboard Table -->
+                        <div style="overflow-x: auto;">
+                            <table class="benchmark-table" style="width: 100%; border-collapse: collapse; font-size: 13px; text-align: left;">
+                                <thead>
+                                    <tr style="border-bottom: 1px solid var(--border-color); color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;">
+                                        <th style="padding: 8px 10px;">Rank</th>
+                                        <th style="padding: 8px 10px;">Engine &amp; Model</th>
+                                        <th style="padding: 8px 10px;">Church Accuracy</th>
+                                        <th style="padding: 8px 10px;">Speed / Latency</th>
+                                        <th style="padding: 8px 10px;">Privacy</th>
+                                        <th style="padding: 8px 10px;">Why It's Good for Church</th>
+                                        <th style="padding: 8px 10px; text-align: right;">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="benchmark-rankings-tbody">
+                                    <!-- Populated dynamically by dashboard.js from /api/engine/benchmark -->
+                                    <tr>
+                                        <td colspan="7" style="padding: 20px; text-align: center; color: var(--text-muted);">Loading benchmark rankings...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
                     <div class="form-group">
                         <label for="audio_device_select">Audio Input Device (Microphone / Loopback)</label>
                         <select id="audio_device_select" class="form-control">
