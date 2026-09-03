@@ -21,6 +21,7 @@ cp requirements.txt "$RELEASE_NAME/"
 cp config.json.example "$RELEASE_NAME/"
 cp README.md "$RELEASE_NAME/"
 cp INSTALL_GUIDE.md "$RELEASE_NAME/"
+cp FEATURES_AND_SYSTEM_SPECIFICATION.md "$RELEASE_NAME/" 2>/dev/null || true
 cp FULL_SETUP_GUIDE.md "$RELEASE_NAME/" 2>/dev/null || true
 cp API_GUIDE.md "$RELEASE_NAME/" 2>/dev/null || true
 cp LICENSE "$RELEASE_NAME/" 2>/dev/null || true

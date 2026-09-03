@@ -1,6 +1,6 @@
 {
   "general": {
-    "engine": "moonshine",
+    "engine": "local_whisper",
     "language": "en-US",
     "log_level": "INFO",
     "auto_capitalization": true,
@@ -8,7 +8,7 @@
     "church_mode": true
   },
   "audio": {
-    "device_name_filter": "MacBook Pro Microphone",
+    "device_name_filter": "default",
     "device_index": null,
     "sample_rate": 16000,
     "chunk_duration_ms": 100,
