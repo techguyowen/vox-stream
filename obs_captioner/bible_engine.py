@@ -201,6 +201,11 @@ class BibleEngine:
 
             conn.close()
 
+            # Clean Strong's numbers (e.g. <S>1063</S>) and markup annotations
+            combined_text = re.sub(r"<S>\d+</S>", "", combined_text)
+            combined_text = re.sub(r"<[^>]+>", "", combined_text)
+            combined_text = re.sub(r"\s+", " ", combined_text).strip()
+
             ver_meta = VERSION_METADATA.get(ver_code, VERSION_METADATA["bsb"])
             return ScriptureLookupResult(
                 citation=citation,
