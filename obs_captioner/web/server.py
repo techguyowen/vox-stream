@@ -72,7 +72,18 @@ class WebOverlayServer:
         self._recent_finals: list = []
         self._max_snapshot_lines = 10
 
-        self.app = web.Application()
+        @web.middleware
+        async def cors_middleware(request, handler):
+            if request.method == "OPTIONS":
+                response = web.Response()
+            else:
+                response = await handler(request)
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-API-Key"
+            return response
+
+        self.app = web.Application(middlewares=[cors_middleware])
         self.runner: web.AppRunner = None
         self.site: web.TCPSite = None
         self.caption_sockets: Dict[web.WebSocketResponse, str] = {}
@@ -136,6 +147,7 @@ class WebOverlayServer:
         self.app.router.add_get("/api/config", self._handle_get_config)
         self.app.router.add_post("/api/config", self._handle_post_config)
         self.app.router.add_get("/api/devices", self._handle_get_devices)
+        self.app.router.add_get("/api/audio/devices", self._handle_get_devices)
         self.app.router.add_get("/api/presets", self._handle_get_presets)
         self.app.router.add_post("/api/presets/apply", self._handle_apply_preset)
         self.app.router.add_post("/api/presets/save", self._handle_save_preset)

@@ -18,10 +18,10 @@
     <link rel="icon" type="image/svg+xml" href="/static/icon.svg">
     <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
     <link rel="shortcut icon" href="/favicon.ico">
-    <!-- Google Fonts for typography previews -->
+    <!-- Google Fonts: Plus Jakarta Sans, JetBrains Mono & typography previews -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;800&family=Lora:ital,wght@0,600;0,700;1,400&family=Montserrat:wght@400;600;700;900&family=Open+Sans:wght@400;700&family=Oswald:wght@500;700&family=Poppins:wght@400;600;800&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Bebas+Neue&family=Inter:wght@400;600;800&family=Lora:ital,wght@0,600;0,700;1,400&family=Montserrat:wght@400;600;700;900&family=Open+Sans:wght@400;700&family=Oswald:wght@500;700&family=Poppins:wght@400;600;800&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/dashboard.css">
 </head>
 <body>
@@ -29,15 +29,22 @@
         <!-- Top Navigation / Status Header -->
         <header class="header">
             <div class="brand">
-                <div class="logo-icon">🎙️</div>
+                <div class="brand-badge" title="VoxStream Live Captions PRO">
+                    <img src="/static/icon.svg" alt="VoxStream Logo" class="brand-badge-img" width="28" height="28">
+                </div>
                 <div>
-                    <h1>VoxStream Live Captions</h1>
-                    <span class="subtext">Control Panel &amp; In-OBS Custom Dock</span>
+                    <div class="brand-title-row">
+                        <h1 class="brand-title">Waypoint VoxStream</h1>
+                        <span class="brand-app-pill badge-captions">PRO DOCK</span>
+                    </div>
+                    <div class="subtext">
+                        <span class="status-dot-sm"></span> Real-Time AI Captions, Scripture &amp; Accessibility Captions
+                    </div>
                 </div>
             </div>
             
             <div class="header-controls">
-                <a href="/display" target="_blank" class="btn btn-secondary" title="Open large-format Room / Stage Confidence Monitor">📺 Stage Monitor</a>
+                <a href="/display" target="_blank" class="btn btn-secondary" title="Open large-format Accessibility Captions &amp; Room View">📺 Captions View</a>
                 <button id="btn-reopen-projector" class="btn btn-secondary" title="Restore the video preview to the Conference Screen">🖥️ Restore Screen</button>
 
                 <div class="vu-container" title="Microphone Level">
@@ -65,6 +72,12 @@
                 </div>
 
                 <button id="btn-toggle-engine" class="btn btn-danger">⏹ Stop Captions</button>
+                <a href="http://localhost:3050" target="_blank" rel="noopener" class="btn btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 5px; font-weight: 600; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #6ee7b7;" title="Sanctuary AV Controller (Port 3050)">
+                    <span>🎛️ AV Controller ↗</span>
+                </a>
+                <a href="http://localhost:8085" target="_blank" rel="noopener" class="btn btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 5px; font-weight: 600; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.4); color: #c084fc;" title="Waypoint Sound Booth Operations Hub (Port 8085)">
+                    <span>📖 Booth Ops ↗</span>
+                </a>
                 <button id="btn-open-features-modal" class="btn btn-secondary" title="Advanced Settings & Features" style="display: inline-flex; align-items: center; gap: 5px; font-weight: 600;">
                     <span>⚙️ Advanced Settings</span>
                 </button>
