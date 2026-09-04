@@ -157,6 +157,13 @@ async def main_async(args):
                     initialized = True
                     engine_switch_error = None
                     engine_switch_status = f"✅ {engine.name} ready!"
+                    active_engine_type = new_cfg.general.engine
+                    active_vosk_model = new_cfg.vosk.model_name
+                    active_whisper_model = new_cfg.local_whisper.model_size
+                    active_moonshine_model = new_cfg.moonshine.model_name
+                    active_gemini_key = new_cfg.gemini_live.api_key
+                    active_gemini_model = new_cfg.gemini_live.model
+                    active_bandwidth_key = new_cfg.bandwidth.api_key
                     logger.info(f"✅ STT engine switched to: {engine.name} ({get_model_detail(new_cfg)})")
                     if web_server:
                         await web_server.broadcast_control({
@@ -168,7 +175,15 @@ async def main_async(args):
                 else:
                     err_msg = engine_switch_error or f"Failed to initialize '{target_name}'. See server logs for details."
                     await broadcast_status(err_msg, is_err=True)
-                    logger.error(f"Failed to initialize engine '{new_eng.name}'.")
+                    logger.error(f"Failed to initialize engine '{new_eng.name}'. Restoring previous working engine...")
+                    try:
+                        fallback_eng = create_engine(config)
+                        if await fallback_eng.initialize():
+                            engine = fallback_eng
+                            initialized = True
+                            logger.info(f"Restored previous engine: {engine.name}")
+                    except Exception as fe:
+                        logger.warning(f"Could not restore previous engine: {fe}")
             except Exception as e:
                 err_msg = f"Error during engine switch: {e}"
                 await broadcast_status(err_msg, is_err=True)
@@ -189,9 +204,12 @@ async def main_async(args):
     active_vosk_model = config.vosk.model_name
     active_whisper_model = config.local_whisper.model_size
     active_moonshine_model = config.moonshine.model_name
+    active_gemini_key = config.gemini_live.api_key
+    active_gemini_model = config.gemini_live.model
+    active_bandwidth_key = config.bandwidth.api_key
 
     def on_config_updated(new_cfg: AppConfig):
-        nonlocal config, active_engine_type, active_vosk_model, active_whisper_model, active_moonshine_model
+        nonlocal config, active_engine_type, active_vosk_model, active_whisper_model, active_moonshine_model, active_gemini_key, active_gemini_model, active_bandwidth_key
 
         config = new_cfg
         if sink:
@@ -203,14 +221,13 @@ async def main_async(args):
             or (new_cfg.general.engine == "vosk" and new_cfg.vosk.model_name != active_vosk_model)
             or (new_cfg.general.engine == "local_whisper" and new_cfg.local_whisper.model_size != active_whisper_model)
             or (new_cfg.general.engine == "moonshine" and new_cfg.moonshine.model_name != active_moonshine_model)
+            or (new_cfg.general.engine == "gemini_live" and (new_cfg.gemini_live.api_key != active_gemini_key or new_cfg.gemini_live.model != active_gemini_model))
+            or (new_cfg.general.engine == "bandwidth" and new_cfg.bandwidth.api_key != active_bandwidth_key)
+            or (engine_switch_error is not None)
         )
 
         if needs_engine_reload:
             logger.info(f"STT engine change requested: {active_engine_type} -> {new_cfg.general.engine}. Hot-switching engine...")
-            active_engine_type = new_cfg.general.engine
-            active_vosk_model = new_cfg.vosk.model_name
-            active_whisper_model = new_cfg.local_whisper.model_size
-            active_moonshine_model = new_cfg.moonshine.model_name
             asyncio.run_coroutine_threadsafe(switch_engine_async(new_cfg), loop)
 
     def on_start_requested():

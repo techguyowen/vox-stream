@@ -2808,6 +2808,35 @@ async function selectEngineFromLeaderboard(engineId) {
         engineSelect.value = engineId;
         engineSelect.dispatchEvent(new Event("change"));
     }
+
+    if (engineId === "gemini_live") {
+        const keyInput = document.getElementById("gemini_api_key");
+        const hasKey = keyInput && keyInput.value && keyInput.value.trim() && keyInput.value.trim() !== "•••";
+        const hasConfigKey = currentConfig && currentConfig.gemini_live && currentConfig.gemini_live.api_key;
+        if (!hasKey && !hasConfigKey) {
+            showToast("🔑 Gemini 3.5 Live requires a Google AI Studio API key. Please enter your key below.", "warning", 6000);
+            const geminiSection = document.getElementById("engine-fields-gemini") || document.getElementById("gemini_api_key");
+            if (geminiSection) {
+                geminiSection.scrollIntoView({ behavior: "smooth", block: "center" });
+                if (keyInput) keyInput.focus();
+            }
+            return;
+        }
+    } else if (engineId === "bandwidth") {
+        const keyInput = document.getElementById("bandwidth_api_key");
+        const hasKey = keyInput && keyInput.value && keyInput.value.trim() && keyInput.value.trim() !== "•••";
+        const hasConfigKey = currentConfig && currentConfig.bandwidth && currentConfig.bandwidth.api_key;
+        if (!hasKey && !hasConfigKey) {
+            showToast("🔑 Bandwidth Labs requires an API key. Please enter your key below.", "warning", 6000);
+            const bwSection = document.getElementById("engine-fields-bandwidth") || document.getElementById("bandwidth_api_key");
+            if (bwSection) {
+                bwSection.scrollIntoView({ behavior: "smooth", block: "center" });
+                if (keyInput) keyInput.focus();
+            }
+            return;
+        }
+    }
+
     showToast(`🔄 Switching recognition engine to ${engineId}...`, "info", 3000);
     const payload = {
         general: {

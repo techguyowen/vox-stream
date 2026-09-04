@@ -22,27 +22,54 @@ class GeminiLiveEngine(BaseSTTEngine):
         self.client = None
 
     async def initialize(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
-        """Validate API key and initialize Gemini Live client."""
+        """Validate API key, library installation, and verify Gemini Live client connection."""
+        self.api_key = self.config.gemini_live.api_key or os.environ.get("GEMINI_API_KEY", "")
         if not self.api_key:
-            logger.warning("GEMINI_API_KEY is not set in config.json or environment variables!")
+            msg = "Missing GEMINI_API_KEY. Please provide your Google AI Studio API key in Audio & Engine settings."
+            logger.warning(msg)
+            if status_callback:
+                status_callback(f"❌ {msg}")
             return False
 
         try:
             from google import genai
+            from google.genai import types
+
             self.client = genai.Client(api_key=self.api_key, http_options={"api_version": "v1alpha"})
-            logger.info("Gemini 3.5 Transcribe client initialized successfully.")
+
+            model = self.config.gemini_live.model or "gemini-3.5-transcribe-live"
+            if status_callback:
+                status_callback(f"Verifying connection to Gemini Live ({model})...")
+
+            # Validate connectivity with a fast session probe
+            config = types.LiveConnectConfig(
+                response_modalities=[types.Modality.TEXT],
+                system_instruction="Transcribe speech verbatim.",
+            )
+            async with self.client.aio.live.connect(model=model, config=config) as _:
+                pass
+
+            logger.info(f"Gemini 3.5 Transcribe client initialized and verified successfully with model '{model}'.")
+            if status_callback:
+                status_callback(f"✅ Gemini Live ({model}) ready!")
             return True
         except ImportError:
-            logger.error("google-genai is not installed. Install with: pip install google-genai")
+            msg = "google-genai library is not installed. Install with: pip install google-genai"
+            logger.error(msg)
+            if status_callback:
+                status_callback(f"❌ {msg}")
             return False
         except Exception as e:
-            logger.error(f"Failed to initialize Gemini client: {e}")
+            err_msg = str(e)
+            logger.error(f"Failed to initialize Gemini Live client: {err_msg}", exc_info=True)
+            if status_callback:
+                status_callback(f"❌ Gemini connection failed: {err_msg}")
             return False
 
     def _build_system_instruction(self) -> str:
         """Build optimized system instructions with custom vocabulary & smart transcription."""
         base = self.config.gemini_live.system_instruction or (
-            "You are Gemini 3.5 Transcribe. Transcribe the incoming audio stream into text verbatim."
+            "You are Gemini 3.5 Transcribe. Transcribe the incoming audio stream into text verbatim. Output ONLY the transcribed words."
         )
 
         extras = []
@@ -78,10 +105,9 @@ class GeminiLiveEngine(BaseSTTEngine):
                 instruction_text = self._build_system_instruction()
 
                 config = types.LiveConnectConfig(
-                    response_modalities=[types.LiveServerContentModality.TEXT],
-                    system_instruction=types.Content(
-                        parts=[types.Part.from_text(instruction_text)]
-                    ),
+                    response_modalities=[types.Modality.TEXT],
+                    input_audio_transcription=types.AudioTranscriptionConfig(),
+                    system_instruction=instruction_text,
                 )
 
                 async with self.client.aio.live.connect(model=model, config=config) as session:
@@ -91,9 +117,12 @@ class GeminiLiveEngine(BaseSTTEngine):
                         async for chunk in audio_stream:
                             if not self.is_running:
                                 break
-                            # Send 16kHz PCM audio chunk
-                            await session.send(
-                                input={"data": chunk, "mime_type": f"audio/pcm;rate={self.config.audio.sample_rate}"}
+                            # Send 16kHz PCM audio chunk via realtime input
+                            await session.send_realtime_input(
+                                media=types.Blob(
+                                    data=chunk,
+                                    mime_type=f"audio/pcm;rate={self.config.audio.sample_rate}",
+                                )
                             )
 
                     async def receive_transcripts():
@@ -101,22 +130,32 @@ class GeminiLiveEngine(BaseSTTEngine):
                         async for response in session.receive():
                             if not self.is_running:
                                 break
-                            server_content = response.server_content
-                            if server_content is not None and server_content.model_turn is not None:
+
+                            # 1. Check direct message text
+                            text_piece = getattr(response, "text", None)
+
+                            # 2. Check server_content model turn parts
+                            server_content = getattr(response, "server_content", None)
+                            if not text_piece and server_content and getattr(server_content, "model_turn", None):
                                 for part in server_content.model_turn.parts:
-                                    if part.text:
-                                        text_piece = part.text
-                                        current_line += text_piece
-                                        # Yield interim update
-                                        await on_transcript(
-                                            TranscriptEvent(
-                                                text=current_line.strip(),
-                                                is_final=False,
-                                            )
-                                        )
-                            
-                            # Check turn complete
-                            if server_content is not None and server_content.turn_complete:
+                                    if getattr(part, "text", None):
+                                        text_piece = (text_piece or "") + part.text
+
+                            # 3. Check server_content input_transcription
+                            if not text_piece and server_content and getattr(server_content, "input_transcription", None):
+                                text_piece = server_content.input_transcription.text
+
+                            if text_piece:
+                                current_line += text_piece
+                                await on_transcript(
+                                    TranscriptEvent(
+                                        text=current_line.strip(),
+                                        is_final=False,
+                                    )
+                                )
+
+                            # 4. Check turn completion
+                            if server_content is not None and getattr(server_content, "turn_complete", False):
                                 if current_line.strip():
                                     await on_transcript(
                                         TranscriptEvent(
@@ -126,7 +165,6 @@ class GeminiLiveEngine(BaseSTTEngine):
                                     )
                                 current_line = ""
 
-                    # Run both sender and receiver concurrently
                     send_task = asyncio.create_task(send_audio())
                     recv_task = asyncio.create_task(receive_transcripts())
 
