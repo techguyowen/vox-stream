@@ -39,38 +39,38 @@ class LocalWhisperEngine(BaseSTTEngine):
             from faster_whisper import WhisperModel
             import torch
 
-            device = self.config.local_whisper.device
-            compute_type = self.config.local_whisper.compute_type
+            device = (self.config.local_whisper.device or "auto").strip().lower()
+            compute_type = (self.config.local_whisper.compute_type or "auto").strip().lower()
 
-            if device == "auto":
-                if torch.cuda.is_available():
-                    device = "cuda"
-                elif torch.backends.mps.is_available():
-                    device = "mps"
-                else:
-                    device = "cpu"
+            # CTranslate2 supports NVIDIA CUDA and CPU (Apple Accelerate / NEON). It does not support MPS.
+            if device == "mps":
+                logger.info("CTranslate2 / Faster-Whisper does not support Apple MPS. Using high-performance CPU (Accelerate/NEON).")
+                device = "cpu"
+            elif device == "auto":
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+
             if compute_type == "auto":
-                if device == "cuda":
-                    compute_type = "float16"
-                elif device == "mps":
-                    # CTranslate2 MPS backend requires float32
-                    compute_type = "float32"
-                else:
-                    compute_type = "int8"
+                compute_type = "float16" if device == "cuda" else "int8"
 
             model_size = self.config.local_whisper.model_size or "base.en"
-            logger.info(f"Faster-Whisper device selected: {device} ({compute_type})")
+            device_label = "NVIDIA CUDA GPU" if device == "cuda" else "CPU (Accelerate)"
+            logger.info(f"Faster-Whisper loading on {device_label} [device={device}, compute_type={compute_type}]")
             if status_callback:
-                status_callback(f"Downloading/loading Faster-Whisper '{model_size}' model ({device}, {compute_type})...")
-            logger.info(f"Loading faster-whisper model '{model_size}' on {device} ({compute_type})...")
+                status_callback(f"Loading Faster-Whisper '{model_size}' on {device_label} ({compute_type})...")
+
+            def _load_whisper():
+                try:
+                    return WhisperModel(model_size, device=device, compute_type=compute_type)
+                except Exception as first_err:
+                    if device == "cuda":
+                        logger.warning(f"CUDA initialization failed ({first_err}). Falling back to CPU...")
+                        return WhisperModel(model_size, device="cpu", compute_type="int8")
+                    raise first_err
 
             loop = asyncio.get_event_loop()
-            self.model = await loop.run_in_executor(
-                None,
-                lambda: WhisperModel(model_size, device=device, compute_type=compute_type),
-            )
+            self.model = await loop.run_in_executor(None, _load_whisper)
             if status_callback:
-                status_callback(f"✅ Faster-Whisper ({model_size}) ready!")
+                status_callback(f"✅ Faster-Whisper ({model_size}) ready on {device_label}!")
             logger.info("Faster-Whisper model loaded successfully.")
             return True
         except ImportError:
