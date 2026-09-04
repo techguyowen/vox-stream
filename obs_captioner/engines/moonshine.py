@@ -31,6 +31,7 @@ class MoonshineEngine(BaseSTTEngine):
         self.config = config
         self.model = None
         self.tokenizer = None
+        self._device = "cpu"
         self.vad = VoiceActivityDetector(
             sample_rate=config.audio.sample_rate,
             noise_gate_db=config.audio.noise_gate_db,
@@ -64,8 +65,25 @@ class MoonshineEngine(BaseSTTEngine):
                 return m, tok
 
             self.model, self.tokenizer = await loop.run_in_executor(None, _load)
+
+            # Select best available device: NVIDIA CUDA → Apple MPS → CPU
+            import torch
+            if torch.cuda.is_available():
+                self._device = "cuda"
+            elif torch.backends.mps.is_available():
+                self._device = "mps"
+            else:
+                self._device = "cpu"
+            try:
+                self.model = self.model.to(self._device)
+                logger.info(f"Moonshine model moved to device: {self._device}")
+            except Exception as dev_err:
+                logger.warning(f"Could not move Moonshine to {self._device}, using cpu: {dev_err}")
+                self._device = "cpu"
+
             if status_callback:
-                status_callback(f"✅ Moonshine ({model_name}) ready!")
+                device_label = self._device.upper()
+                status_callback(f"✅ Moonshine ({model_name}) ready on {device_label}!")
             logger.info("Moonshine model and tokenizer loaded successfully.")
             return True
         except ImportError as ie:
@@ -92,7 +110,9 @@ class MoonshineEngine(BaseSTTEngine):
                 else:
                     audio_input = audio_float32
 
-                tokens = self.model.generate(audio_input)
+                # Move tensor to GPU (CUDA/MPS) if available for accelerated inference
+                audio_tensor = torch.from_numpy(audio_input).to(self._device)
+                tokens = self.model.generate(audio_tensor)
                 decoded = self.tokenizer.decode_batch(tokens)
                 if decoded and len(decoded) > 0:
                     return decoded[0].strip()

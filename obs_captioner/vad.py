@@ -11,6 +11,11 @@ except ImportError:
 
 logger = logging.getLogger("obs_captioner.vad")
 
+# Module-level cache so Silero VAD is only loaded from disk once across all engine instances.
+# Engine hot-switching creates multiple VoiceActivityDetector objects — caching eliminates
+# the ~800ms repeated load cost.
+_SILERO_CACHE: dict = {}
+
 
 class VoiceActivityDetector:
     """Detects voice activity in audio chunks using energy gating and optional Silero VAD."""
@@ -27,17 +32,25 @@ class VoiceActivityDetector:
                 import torch
                 # Suppress torch / hub download noise
                 torch.set_num_threads(1)
-                model, utils = torch.hub.load(
-                    repo_or_dir="snakers4/silero-vad",
-                    model="silero_vad",
-                    force_reload=False,
-                    onnx=False,
-                    trust_repo=True,
-                    verbose=False,
-                )
-                self.silero_model = model
-                self.silero_utils = utils
-                logger.info("Silero VAD model loaded successfully.")
+                if _SILERO_CACHE:
+                    # Reuse already-loaded model — avoids repeated disk I/O on engine switches
+                    self.silero_model = _SILERO_CACHE["model"]
+                    self.silero_utils = _SILERO_CACHE["utils"]
+                    logger.debug("Silero VAD reused from module cache (no reload needed).")
+                else:
+                    model, utils = torch.hub.load(
+                        repo_or_dir="snakers4/silero-vad",
+                        model="silero_vad",
+                        force_reload=False,
+                        onnx=False,
+                        trust_repo=True,
+                        verbose=False,
+                    )
+                    _SILERO_CACHE["model"] = model
+                    _SILERO_CACHE["utils"] = utils
+                    self.silero_model = model
+                    self.silero_utils = utils
+                    logger.info("Silero VAD model loaded and cached successfully.")
             except Exception as e:
                 logger.debug(f"Silero VAD not available ({e}). Using energy-based VAD.")
 

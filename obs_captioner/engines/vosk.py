@@ -99,7 +99,37 @@ class VoskEngine(BaseSTTEngine):
 
         self.is_running = True
         sample_rate = self.config.audio.sample_rate or 16000
-        rec = vosk.KaldiRecognizer(self.model, sample_rate)
+
+        # Build church vocabulary phrase grammar for Kaldi acoustic boosting
+        phrases_json = None
+        if getattr(self.config.general, "church_mode", True):
+            try:
+                from ..church_lexicon import ChurchLexiconFormatter
+                import json as _json
+                church_phrases = []
+                for k in ChurchLexiconFormatter.CHURCH_TERMS:
+                    church_phrases.append(k)
+                for k in ChurchLexiconFormatter.BOOKS_OF_BIBLE:
+                    church_phrases.append(k)
+                # Include capitalized variants too
+                church_phrases += [p.title() for p in church_phrases]
+                # Deduplicate, cap at 300 phrases (Kaldi limit), always end with "[unk]"
+                seen = []
+                for p in church_phrases:
+                    if p.lower() not in (x.lower() for x in seen):
+                        seen.append(p)
+                    if len(seen) >= 299:
+                        break
+                seen.append("[unk]")
+                phrases_json = _json.dumps(seen)
+                logger.info(f"Vosk church phrase grammar loaded ({len(seen)-1} terms).")
+            except Exception as pg_err:
+                logger.debug(f"Could not build Vosk church phrase grammar: {pg_err}")
+
+        if phrases_json:
+            rec = vosk.KaldiRecognizer(self.model, sample_rate, phrases_json)
+        else:
+            rec = vosk.KaldiRecognizer(self.model, sample_rate)
         rec.SetWords(True)
         if hasattr(rec, "SetPartialWords"):
             rec.SetPartialWords(True)

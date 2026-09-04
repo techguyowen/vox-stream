@@ -61,6 +61,20 @@ class GoogleSTTEngine(BaseSTTEngine):
                 speech.SpeechContext(phrases=self.config.google_stt.speech_contexts, boost=15.0)
             )
 
+        # Auto-inject church vocabulary context when church_mode is on
+        if getattr(self.config.general, "church_mode", True):
+            try:
+                from ..church_lexicon import ChurchLexiconFormatter
+                church_phrases = list(ChurchLexiconFormatter.CHURCH_TERMS.values())
+                church_phrases += list(ChurchLexiconFormatter.BOOKS_OF_BIBLE.values())
+                # Deduplicate and cap at 100 (Google STT API limit per SpeechContext)
+                seen = list(dict.fromkeys(church_phrases))[:100]
+                if seen:
+                    speech_contexts.append(speech.SpeechContext(phrases=seen, boost=20.0))
+                    logger.debug(f"Google STT church speech context added ({len(seen)} phrases, boost=20).")
+            except Exception as ce:
+                logger.debug(f"Could not build Google STT church context: {ce}")
+
         recognition_config = speech.RecognitionConfig(
             encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
             sample_rate_hertz=self.config.audio.sample_rate,

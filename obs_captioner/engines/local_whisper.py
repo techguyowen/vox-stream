@@ -43,11 +43,23 @@ class LocalWhisperEngine(BaseSTTEngine):
             compute_type = self.config.local_whisper.compute_type
 
             if device == "auto":
-                device = "cuda" if torch.cuda.is_available() else "cpu"
+                if torch.cuda.is_available():
+                    device = "cuda"
+                elif torch.backends.mps.is_available():
+                    device = "mps"
+                else:
+                    device = "cpu"
             if compute_type == "auto":
-                compute_type = "float16" if device == "cuda" else "int8"
+                if device == "cuda":
+                    compute_type = "float16"
+                elif device == "mps":
+                    # CTranslate2 MPS backend requires float32
+                    compute_type = "float32"
+                else:
+                    compute_type = "int8"
 
             model_size = self.config.local_whisper.model_size or "base.en"
+            logger.info(f"Faster-Whisper device selected: {device} ({compute_type})")
             if status_callback:
                 status_callback(f"Downloading/loading Faster-Whisper '{model_size}' model ({device}, {compute_type})...")
             logger.info(f"Loading faster-whisper model '{model_size}' on {device} ({compute_type})...")

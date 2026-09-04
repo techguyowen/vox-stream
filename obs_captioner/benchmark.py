@@ -341,10 +341,25 @@ async def run_church_sermon_benchmark() -> Dict[str, Any]:
     # Rank by composite score descending
     all_engines.sort(key=lambda x: x["composite_score"], reverse=True)
 
-    rank_badges = ["🥇 #1 Champion", "⚡ #2 High Efficiency", "🎙️ #3 Low Latency", "☁️ #4 Cloud AI", "☁️ #5 Enterprise", "📡 #6 Cloud STT", "🌐 #7 Legacy Fallback"]
+    def _make_rank_badge(rank: int, privacy: str) -> str:
+        """Generate a contextually accurate rank badge based on engine type and rank position."""
+        is_offline = "100% Offline" in privacy
+        if rank == 1:
+            return "🥇 #1 Champion"
+        elif rank == 2:
+            return ("🖥️" if is_offline else "⚡") + " #2 " + ("Best Local" if is_offline else "High Efficiency")
+        elif rank == 3:
+            return ("🖥️" if is_offline else "⚡") + " #3 " + ("Fast Local" if is_offline else "Low Latency")
+        elif is_offline:
+            return f"🖥️ #{rank} Local Offline"
+        else:
+            cloud_labels = {4: "Cloud AI", 5: "Enterprise", 6: "Cloud STT", 7: "Legacy Fallback"}
+            label = cloud_labels.get(rank, "Cloud")
+            return f"☁️ #{rank} {label}"
+
     for idx, e in enumerate(all_engines):
         e["rank"] = idx + 1
-        e["rank_badge"] = rank_badges[idx] if idx < len(rank_badges) else f"#{idx + 1}"
+        e["rank_badge"] = _make_rank_badge(idx + 1, e.get("privacy", ""))
 
     output_payload = {
         "timestamp": time.time(),
