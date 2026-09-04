@@ -19,6 +19,7 @@ from obs_captioner.engines import (
     MoonshineEngine,
     BandwidthEngine,
 )
+from obs_captioner.engines.base import TranscriptEvent
 from obs_captioner.themes import THEME_PRESETS, get_all_presets
 from obs_captioner.translator import SubtitleTranslator, TranslationConfig
 from obs_captioner.twitch_bot import TwitchCaptionBot, TwitchConfig
@@ -305,6 +306,81 @@ class TestConfigAndEngines(unittest.TestCase):
         eng_moonshine = create_engine(cfg)
         self.assertIsInstance(eng_moonshine, MoonshineEngine)
         self.assertTrue(cfg.moonshine.model_name.startswith("moonshine/"))
+
+    def test_gemini_live_packet_processing(self):
+        """Verify GeminiLiveEngine cumulative input_transcription handling and generation_complete finalization."""
+        cfg = AppConfig()
+        cfg.gemini_live.api_key = "dummy-test-key"
+        engine = GeminiLiveEngine(cfg)
+
+        class MockTranscription:
+            def __init__(self, text, finished=None):
+                self.text = text
+                self.finished = finished
+
+        class MockServerContent:
+            def __init__(self, text=None, generation_complete=None, finished=None, turn_complete=None):
+                self.input_transcription = MockTranscription(text, finished) if text is not None else None
+                self.generation_complete = generation_complete
+                self.turn_complete = turn_complete
+                self.model_turn = None
+
+        class MockResponse:
+            def __init__(self, server_content=None, text=None):
+                self.server_content = server_content
+                self.text = text
+
+        mock_responses = [
+            MockResponse(server_content=MockServerContent(text="Welcome")),
+            MockResponse(server_content=MockServerContent(text="Welcome to church")),
+            MockResponse(server_content=MockServerContent(text="Welcome to church this morning.")),
+            MockResponse(server_content=MockServerContent(generation_complete=True)),
+        ]
+
+        events = []
+        async def mock_callback(ev):
+            events.append(ev)
+
+        async def run_sim():
+            current_line = ""
+            for response in mock_responses:
+                server_content = getattr(response, "server_content", None)
+                it_text = None
+                if server_content and getattr(server_content, "input_transcription", None):
+                    it = server_content.input_transcription
+                    if getattr(it, "text", None):
+                        it_text = it.text
+
+                it_finished = False
+                if server_content and getattr(server_content, "input_transcription", None):
+                    it_finished = bool(getattr(server_content.input_transcription, "finished", False))
+                gen_complete = bool(getattr(server_content, "generation_complete", False)) if server_content else False
+                turn_complete = bool(getattr(server_content, "turn_complete", False)) if server_content else False
+                is_completed = it_finished or gen_complete or turn_complete
+
+                if it_text:
+                    current_line = it_text.strip()
+
+                if is_completed:
+                    if current_line.strip():
+                        await mock_callback(TranscriptEvent(text=current_line.strip(), is_final=True))
+                        current_line = ""
+                elif current_line.strip() and it_text:
+                    await mock_callback(TranscriptEvent(text=current_line.strip(), is_final=False))
+
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(run_sim())
+        loop.close()
+
+        self.assertEqual(len(events), 4)
+        self.assertFalse(events[0].is_final)
+        self.assertEqual(events[0].text, "Welcome")
+        self.assertFalse(events[1].is_final)
+        self.assertEqual(events[1].text, "Welcome to church")
+        self.assertFalse(events[2].is_final)
+        self.assertEqual(events[2].text, "Welcome to church this morning.")
+        self.assertTrue(events[3].is_final)
+        self.assertEqual(events[3].text, "Welcome to church this morning.")
 
     def test_vad_energy_calculation(self):
         vad = VoiceActivityDetector(enable_silero=False, noise_gate_db=-40.0)

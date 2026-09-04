@@ -57,6 +57,7 @@ class GeminiLiveConfig:
         "You are Gemini 3.5 Transcribe, a real-time speech transcriber. Transcribe the incoming audio accurately into text verbatim. "
         "Output only the transcribed text without commentary, pleasantries, or conversation."
     )
+    silence_duration_ms: int = 600
 
 
 @dataclass

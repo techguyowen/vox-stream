@@ -97,17 +97,35 @@ class GeminiLiveEngine(BaseSTTEngine):
         self.is_running = True
         model = self.config.gemini_live.model or "gemini-3.5-transcribe-live"
 
+        if self.client is None:
+            self.api_key = self.config.gemini_live.api_key or os.environ.get("GEMINI_API_KEY", "")
+            if not self.api_key:
+                logger.error("Gemini Live cannot start: Missing API key. Please configure your API key.")
+                return
+            try:
+                from google import genai
+                self.client = genai.Client(api_key=self.api_key, http_options={"api_version": "v1alpha"})
+            except Exception as e:
+                logger.error(f"Failed to initialize GenAI client: {e}")
+                return
+
         while self.is_running:
             logger.info(f"Opening Gemini Live connection (model: {model})...")
             try:
                 from google.genai import types
 
                 instruction_text = self._build_system_instruction()
+                silence_ms = getattr(self.config.gemini_live, "silence_duration_ms", 600) or 600
 
                 config = types.LiveConnectConfig(
                     response_modalities=[types.Modality.TEXT],
                     input_audio_transcription=types.AudioTranscriptionConfig(),
                     system_instruction=instruction_text,
+                    realtime_input_config=types.RealtimeInputConfig(
+                        automatic_activity_detection=types.AutomaticActivityDetection(
+                            silence_duration_ms=silence_ms,
+                        )
+                    ),
                 )
 
                 async with self.client.aio.live.connect(model=model, config=config) as session:
@@ -131,31 +149,44 @@ class GeminiLiveEngine(BaseSTTEngine):
                             if not self.is_running:
                                 break
 
+                            server_content = getattr(response, "server_content", None)
+                            it_text = None
+                            model_text = None
+
                             # 1. Check direct message text
-                            text_piece = getattr(response, "text", None)
+                            direct_text = getattr(response, "text", None)
 
                             # 2. Check server_content model turn parts
-                            server_content = getattr(response, "server_content", None)
-                            if not text_piece and server_content and getattr(server_content, "model_turn", None):
+                            if server_content and getattr(server_content, "model_turn", None):
                                 for part in server_content.model_turn.parts:
                                     if getattr(part, "text", None):
-                                        text_piece = (text_piece or "") + part.text
+                                        model_text = (model_text or "") + part.text
 
                             # 3. Check server_content input_transcription
-                            if not text_piece and server_content and getattr(server_content, "input_transcription", None):
-                                text_piece = server_content.input_transcription.text
+                            if server_content and getattr(server_content, "input_transcription", None):
+                                it = server_content.input_transcription
+                                if getattr(it, "text", None):
+                                    it_text = it.text
 
-                            if text_piece:
-                                current_line += text_piece
-                                await on_transcript(
-                                    TranscriptEvent(
-                                        text=current_line.strip(),
-                                        is_final=False,
-                                    )
-                                )
+                            # 4. Check completion flags
+                            it_finished = False
+                            if server_content and getattr(server_content, "input_transcription", None):
+                                it_finished = bool(getattr(server_content.input_transcription, "finished", False))
+                            gen_complete = bool(getattr(server_content, "generation_complete", False)) if server_content else False
+                            turn_complete = bool(getattr(server_content, "turn_complete", False)) if server_content else False
 
-                            # 4. Check turn completion
-                            if server_content is not None and getattr(server_content, "turn_complete", False):
+                            is_completed = it_finished or gen_complete or turn_complete
+
+                            # Update current_line
+                            if it_text:
+                                # For input_transcription, text is the cumulative utterance
+                                current_line = it_text.strip()
+                            elif model_text:
+                                current_line += model_text
+                            elif direct_text:
+                                current_line += direct_text
+
+                            if is_completed:
                                 if current_line.strip():
                                     await on_transcript(
                                         TranscriptEvent(
@@ -163,7 +194,23 @@ class GeminiLiveEngine(BaseSTTEngine):
                                             is_final=True,
                                         )
                                     )
-                                current_line = ""
+                                    current_line = ""
+                            elif current_line.strip() and (it_text or model_text or direct_text):
+                                await on_transcript(
+                                    TranscriptEvent(
+                                        text=current_line.strip(),
+                                        is_final=False,
+                                    )
+                                )
+
+                        if current_line.strip():
+                            await on_transcript(
+                                TranscriptEvent(
+                                    text=current_line.strip(),
+                                    is_final=True,
+                                )
+                            )
+                            current_line = ""
 
                     send_task = asyncio.create_task(send_audio())
                     recv_task = asyncio.create_task(receive_transcripts())
@@ -172,8 +219,26 @@ class GeminiLiveEngine(BaseSTTEngine):
                         [send_task, recv_task],
                         return_when=asyncio.FIRST_COMPLETED,
                     )
-                    for task in pending:
-                        task.cancel()
+
+                    if send_task in done:
+                        # Audio stream ended normally; allow recv_task to finish receiving remaining server responses
+                        if recv_task in pending and self.is_running:
+                            try:
+                                await asyncio.wait_for(asyncio.shield(recv_task), timeout=2.0)
+                            except (asyncio.TimeoutError, asyncio.CancelledError):
+                                pass
+                        for task in pending:
+                            if not task.done():
+                                task.cancel()
+                        # Stream completed, exit loop
+                        break
+                    else:
+                        # Server disconnected or recv_task errored while send_task still active
+                        for task in pending:
+                            if not task.done():
+                                task.cancel()
+                        if not self.is_running:
+                            break
 
             except asyncio.CancelledError:
                 break
