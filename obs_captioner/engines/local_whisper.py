@@ -87,7 +87,13 @@ class LocalWhisperEngine(BaseSTTEngine):
             return False
 
     def _build_initial_prompt(self) -> str:
-        """Construct domain-optimized prompt to prime Whisper's vocabulary and formatting."""
+        """Construct natural prompt to establish capitalization, punctuation, and domain style without prompting hallucinations."""
+        if getattr(self.config.general, "church_mode", True):
+            return "The following is a live church sermon and scripture reading with accurate transcription, proper punctuation, and capitalization."
+        return "The following is a live speech stream with accurate transcription, proper punctuation, and capitalization."
+
+    def _build_hotwords(self) -> str:
+        """Construct domain-optimized hotwords string for faster-whisper vocabulary biasing."""
         terms = []
         if getattr(self.config, "gemini_live", None) and self.config.gemini_live.custom_vocabulary:
             terms.extend([v for v in self.config.gemini_live.custom_vocabulary if v.strip()])
@@ -107,30 +113,34 @@ class LocalWhisperEngine(BaseSTTEngine):
             for ct in church_terms:
                 if ct not in terms:
                     terms.append(ct)
-        if terms:
-            return f"Live captions and sermon transcription: {', '.join(terms[:60])}."
-        return "Live captions: accurate speech transcription with proper capitalization and punctuation."
+        return " ".join(terms[:60])
 
     def _transcribe_buffer(self, audio_float32: np.ndarray) -> str:
-        """Run whisper transcription synchronously in worker thread."""
+        """Run whisper transcription synchronously in worker thread with hallucination rejection."""
         try:
             prompt = self._build_initial_prompt()
+            hotwords = self._build_hotwords()
             beam_sz = self.config.local_whisper.beam_size or 1
             segments, _ = self.model.transcribe(
                 audio_float32,
                 language=self.config.local_whisper.language or "en",
                 beam_size=beam_sz,
-                vad_filter=False,
+                vad_filter=True,
                 condition_on_previous_text=False,
                 temperature=0.0,
                 repetition_penalty=1.1,
                 no_speech_threshold=0.6,
                 suppress_blank=True,
                 initial_prompt=prompt,
+                hotwords=hotwords,
                 without_timestamps=True,
             )
-            text = " ".join(s.text.strip() for s in segments if s.text.strip())
-            return text
+            valid_segments = [
+                s.text.strip()
+                for s in segments
+                if s.text.strip() and getattr(s, "no_speech_prob", 0.0) < 0.6
+            ]
+            return " ".join(valid_segments)
         except Exception as e:
             logger.debug(f"Whisper transcription error: {e}")
             return ""

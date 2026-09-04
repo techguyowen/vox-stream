@@ -92,13 +92,18 @@ class VoiceActivityDetector:
             try:
                 import torch
                 audio_array = np.frombuffer(audio_chunk_bytes, dtype=np.int16).astype(np.float32) / 32768.0
-                tensor = torch.from_numpy(audio_array)
-                speech_prob = self.silero_model(tensor, self.sample_rate).item()
-                return speech_prob >= self.vad_threshold
+                window_size = 512 if self.sample_rate == 16000 else 256
+                max_prob = 0.0
+                for i in range(0, len(audio_array) - window_size + 1, window_size):
+                    slice_tensor = torch.from_numpy(audio_array[i : i + window_size])
+                    prob = self.silero_model(slice_tensor, self.sample_rate).item()
+                    if prob > max_prob:
+                        max_prob = prob
+                return max_prob >= self.vad_threshold
             except Exception as e:
                 logger.debug(f"Silero inference error: {e}")
                 # Fallback to energy check if Silero fails
-                return True
+                return db >= self.noise_gate_db
 
         # If no Silero, energy above noise gate is considered active
         return True
