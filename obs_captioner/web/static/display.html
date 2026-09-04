@@ -353,24 +353,47 @@
             min-height: 0;
             overflow-y: auto;
             overflow-x: hidden;
+            overscroll-behavior-y: contain;
             display: flex;
             flex-direction: column;
             justify-content: flex-start;
             padding: 32px 40px calc(48px + env(safe-area-inset-bottom, 0px)) 40px;
-            scroll-behavior: smooth;
             box-sizing: border-box;
             width: 100%;
             position: relative;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+        }
+
+        .stage-container::-webkit-scrollbar {
+            width: 8px;
+        }
+        .stage-container::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .stage-container::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.25);
+            border-radius: 4px;
+        }
+        .stage-container::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.45);
         }
 
         .transcript-content {
             display: flex;
             flex-direction: column;
-            justify-content: flex-end;
+            justify-content: flex-start;
             min-height: 100%;
             width: 100%;
             box-sizing: border-box;
             transition: opacity 0.35s ease;
+        }
+
+        /* FIX: Push content to bottom when few items exist, but allow upward scrolling when overflowing */
+        .transcript-content::before {
+            content: '';
+            margin-top: auto;
+            flex-shrink: 0;
         }
 
         .transcript-content.faded {
@@ -408,6 +431,11 @@
         }
 
         .caption-sentence.previous {
+            opacity: 0.85;
+            font-weight: 600;
+        }
+
+        body.mode-live .caption-sentence.previous {
             opacity: 0.38;
             font-weight: 600;
         }
@@ -442,6 +470,7 @@
             font-size: calc(var(--font-size) * 0.55);
             font-weight: 600;
             padding: 60px 0;
+            margin: auto 0;
         }
 
         /* Floating Controls */
@@ -772,13 +801,18 @@
                         const oldNode = finals.shift();
                         oldNode.remove();
                     }
-                    scrollToBottom();
+                    scrollToBottom(false);
                 }
             } else {
                 document.body.classList.remove('mode-live');
                 maxHistorySentences = 300;
                 if (transcriptContent) {
                     transcriptContent.classList.remove('faded');
+                }
+                if (finalSentences.length <= 2) {
+                    loadServerHistory();
+                } else {
+                    renderCaptions();
                 }
             }
         }
@@ -1092,7 +1126,7 @@
         if (btnScrollBottom) {
             btnScrollBottom.addEventListener('click', () => {
                 autoScroll = true;
-                scrollToBottom();
+                scrollToBottom(true);
                 updateFloatingButtons();
             });
         }
@@ -1151,8 +1185,25 @@
             return node;
         }
 
-        function scrollToBottom() {
-            if (stageContainer) {
+        let isSmoothScrollingToBottom = false;
+        let smoothScrollTimer = null;
+
+        function scrollToBottom(smooth = false) {
+            if (!stageContainer) return;
+            if (smooth) {
+                isSmoothScrollingToBottom = true;
+                if (smoothScrollTimer) clearTimeout(smoothScrollTimer);
+                stageContainer.scrollTo({
+                    top: stageContainer.scrollHeight,
+                    behavior: 'smooth'
+                });
+                smoothScrollTimer = setTimeout(() => {
+                    isSmoothScrollingToBottom = false;
+                    const dist = stageContainer.scrollHeight - stageContainer.scrollTop - stageContainer.clientHeight;
+                    autoScroll = dist <= 45;
+                    updateFloatingButtons();
+                }, 400);
+            } else {
                 stageContainer.scrollTop = stageContainer.scrollHeight;
             }
         }
@@ -1165,9 +1216,34 @@
 
         if (stageContainer) {
             stageContainer.addEventListener('scroll', () => {
+                if (isSmoothScrollingToBottom) return;
                 const dist = stageContainer.scrollHeight - stageContainer.scrollTop - stageContainer.clientHeight;
-                autoScroll = dist < 80;
+                if (dist > 45) {
+                    autoScroll = false;
+                } else if (dist <= 15) {
+                    autoScroll = true;
+                }
                 updateFloatingButtons();
+            }, { passive: true });
+
+            // Immediately pause auto-scroll when user scrolls upward with mouse wheel or touch
+            stageContainer.addEventListener('wheel', (e) => {
+                if (e.deltaY < 0) {
+                    isSmoothScrollingToBottom = false;
+                    if (smoothScrollTimer) clearTimeout(smoothScrollTimer);
+                    autoScroll = false;
+                    updateFloatingButtons();
+                }
+            }, { passive: true });
+
+            stageContainer.addEventListener('touchmove', () => {
+                const dist = stageContainer.scrollHeight - stageContainer.scrollTop - stageContainer.clientHeight;
+                if (dist > 30) {
+                    isSmoothScrollingToBottom = false;
+                    if (smoothScrollTimer) clearTimeout(smoothScrollTimer);
+                    autoScroll = false;
+                    updateFloatingButtons();
+                }
             }, { passive: true });
         }
 
@@ -1186,10 +1262,8 @@
             el.innerHTML = formatBionicReading(text);
 
             const existing = transcriptContent.querySelectorAll('.caption-sentence:not(#liveInterimNode)');
-            existing.forEach((node, idx) => {
-                if (idx < existing.length - 1) {
-                    node.classList.add('previous');
-                }
+            existing.forEach((node) => {
+                node.classList.add('previous');
             });
 
             const interimNode = getInterimNode();
@@ -1208,7 +1282,7 @@
                 interimNode.style.display = 'none';
             }
 
-            if (autoScroll) scrollToBottom();
+            if (autoScroll) scrollToBottom(false);
 
             triggerSilenceTimer(isPacedReadingEnabled ? 12000 : 4000);
         }
@@ -1227,7 +1301,7 @@
                 interimNode.style.display = 'none';
             }
 
-            if (autoScroll) scrollToBottom();
+            if (autoScroll) scrollToBottom(false);
         }
 
         function clearAllCaptions() {
@@ -1265,7 +1339,29 @@
                 interimNode.style.display = 'none';
             }
 
-            if (autoScroll) scrollToBottom();
+            if (autoScroll) scrollToBottom(false);
+        }
+
+        // Fetch session transcript history from server so Scrollable History is immediately populated
+        async function loadServerHistory() {
+            if (currentMode === 'live') return;
+            try {
+                const res = await fetch('/api/transcript/history?limit=100');
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.history && data.history.length > 0) {
+                        const chronological = [...data.history].reverse();
+                        const lines = chronological.map(e => (e.text || '').trim()).filter(Boolean);
+                        if (lines.length > 0) {
+                            finalSentences = lines;
+                            renderCaptions();
+                            scrollToBottom(false);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to load server transcript history:", e);
+            }
         }
 
         // -------------------------------------------------------------
@@ -1273,7 +1369,7 @@
         // -------------------------------------------------------------
         function connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            const wsUrl = `${protocol}//${window.location.host}/ws?lang=${encodeURIComponent(currentLang)}`;
 
             ws = new WebSocket(wsUrl);
 
@@ -1288,6 +1384,18 @@
             ws.onmessage = async (event) => {
                 try {
                     const data = JSON.parse(event.data);
+
+                    if (data.type === 'snapshot') {
+                        if (currentMode !== 'live' && data.lines && data.lines.length > 0 && finalSentences.length === 0) {
+                            const snapshotTexts = data.lines.map(l => (typeof l === 'string' ? l : (l.text || ''))).map(t => t.trim()).filter(Boolean);
+                            if (snapshotTexts.length > 0) {
+                                finalSentences = snapshotTexts;
+                                renderCaptions();
+                                scrollToBottom(false);
+                            }
+                        }
+                        return;
+                    }
 
                     if (data.type === 'scripture' && data.action === 'show') {
                         showStageScripture(data);
@@ -1346,6 +1454,7 @@
 
         connectWebSocket();
         applyDisplayMode(currentMode);
+        loadServerHistory();
 
         function formatEngineBadge(engine, engineName) {
             const raw = (engineName || engine || '').toLowerCase();

@@ -659,6 +659,16 @@ class TestServerEndpoints(AioHTTPTestCase):
         self.assertEqual(manifest['name'], 'VoxStream Live Read-Along')
         self.assertEqual(manifest['start_url'], '/display')
 
+    async def test_display_page(self):
+        resp = await self.client.request('GET', '/display')
+        self.assertEqual(resp.status, 200)
+        text = await resp.text()
+        self.assertIn('stageContainer', text)
+        self.assertIn('btnScrollBottom', text)
+        self.assertIn('.transcript-content::before', text)
+        self.assertIn('loadServerHistory', text)
+        self.assertIn('isSmoothScrollingToBottom', text)
+
     async def test_sw_endpoint(self):
         resp = await self.client.request('GET', '/sw.js')
         self.assertEqual(resp.status, 200)
