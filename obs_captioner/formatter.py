@@ -304,20 +304,26 @@ class TextFormatter:
             "twenty-ninth": 29, "thirtieth": 30, "thirty-first": 31,
         }
 
+        ORDINAL_UNITS = {
+            "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
+            "sixth": 6, "seventh": 7, "eighth": 8, "ninth": 9,
+        }
+
         # Build compound ordinal pattern: "twenty fourth", "thirty second", etc.
         tens_pat = "|".join(TENS.keys())
         units_pat = "|".join(UNITS.keys())
+        ord_units_pat = "|".join(ORDINAL_UNITS.keys())
 
         def replace_compound_ordinal(m):
             tens_word = m.group(1).lower()
-            units_word = m.group(2).lower()
-            n = TENS.get(tens_word, 0) + UNITS.get(units_word, 0)
+            ord_word = m.group(2).lower()
+            n = TENS.get(tens_word, 0) + ORDINAL_UNITS.get(ord_word, 0)
             if n <= 0:
                 return m.group(0)
             return f"{n}{ordinal_suffix(n)}"
 
         text = re.sub(
-            rf"\b({tens_pat})[- ]+({units_pat})\b(?!\s*:)",
+            rf"\b({tens_pat})[- ]+({ord_units_pat})\b(?!\s*:)",
             replace_compound_ordinal,
             text,
             flags=re.IGNORECASE,

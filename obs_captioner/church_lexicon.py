@@ -302,6 +302,10 @@ class ChurchLexiconFormatter:
         "the most high": "the Most High",
         "the great i am": "the Great I Am",
         # ── Doctrinal Terms ───────────────────────────────────────────────────
+        "justification": "Justification",
+        "sanctification": "Sanctification",
+        "propitiation": "Propitiation",
+        "righteousness": "Righteousness",
         "atonement": "Atonement",
         "regeneration": "Regeneration",
         "predestination": "Predestination",
