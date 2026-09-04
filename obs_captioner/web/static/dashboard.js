@@ -66,6 +66,16 @@ function setupA11yPresets() {
         });
     }
 
+    const chkFinalOnly = document.getElementById("overlay_final_only");
+    if (chkFinalOnly) {
+        chkFinalOnly.addEventListener("change", () => {
+            if (chkFinalOnly.checked && previewInterim) {
+                previewInterim.textContent = "";
+            }
+            updatePreviewStyles();
+        });
+    }
+
 
 // Feature Module Manager & Dynamic Tab Visibility
 const FEATURE_DEFAULTS = {
@@ -1253,6 +1263,10 @@ function populateFormFields(cfg) {
         if (ov.text_color) document.getElementById("text_color").value = ov.text_color;
         if (ov.interim_color) document.getElementById("interim_color").value = ov.interim_color;
         if (ov.highlight_color) document.getElementById("highlight_color").value = ov.highlight_color;
+        if (ov.final_only !== undefined) {
+            const el = document.getElementById("overlay_final_only");
+            if (el) el.checked = !!ov.final_only;
+        }
         populateBackgroundControls(ov.background_box_color);
     }
 
@@ -1363,6 +1377,7 @@ function buildOverlayStylePayload() {
         interim_color: document.getElementById("interim_color").value,
         highlight_color: document.getElementById("highlight_color").value,
         background_box_color: `rgba(${r}, ${g}, ${b}, ${opacity})`,
+        final_only: document.getElementById("overlay_final_only") ? document.getElementById("overlay_final_only").checked : false,
     };
     // Never persist an empty font family (e.g. a select in a transient state)
     const fontFamily = document.getElementById("font_family").value;
@@ -2590,7 +2605,12 @@ function connectCaptionWs() {
                 previewInterim.textContent = "";
                 appendTranscriptItem(data);
             } else {
-                previewInterim.textContent = data.text;
+                const chkFinal = document.getElementById("overlay_final_only");
+                if (chkFinal && chkFinal.checked) {
+                    previewInterim.textContent = "";
+                } else {
+                    previewInterim.textContent = data.text;
+                }
             }
         } catch (e) {}
     };

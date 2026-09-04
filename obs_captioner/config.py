@@ -132,6 +132,7 @@ class OverlayConfig:
     use_italics: bool = False  # Accessibility: False = upright text, True = italic slant
     reduce_motion: bool = False  # Accessibility: False = animated, True = instant/no motion
     high_contrast_outline: bool = False  # Accessibility: False = normal stroke, True = heavy 3.5px black outline
+    final_only: bool = False  # Display mode: False = show live in-progress speech, True = wait until text is fully prepared and finalized
 
     def apply_theme(self, theme_id: str, custom_presets: Optional[Dict[str, dict]] = None) -> bool:
         """Apply attributes from a known theme preset or custom user preset."""

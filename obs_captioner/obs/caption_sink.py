@@ -163,10 +163,11 @@ class CaptionSink:
                 obs_out_text = f"{display_text}\n{translated_text}"
 
             if self.config.obs.update_text_source and self.config.obs.text_source_name:
-                await self.obs_client.update_text_source(
-                    self.config.obs.text_source_name,
-                    obs_out_text,
-                )
+                if not getattr(self.config.overlay, "final_only", False) or event.is_final:
+                    await self.obs_client.update_text_source(
+                        self.config.obs.text_source_name,
+                        obs_out_text,
+                    )
 
             # Send Twitch/YouTube Closed Captions (only on finalized sentences)
             if self.config.obs.send_cea608_captions and event.is_final and clean_text:

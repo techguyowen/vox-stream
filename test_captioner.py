@@ -92,6 +92,12 @@ class TestThemes(unittest.TestCase):
         self.assertEqual(ov.text_color, "#FFFBEB")
         self.assertEqual(ov.font_family, "'Montserrat', sans-serif")
 
+    def test_overlay_final_only_config(self):
+        ov = OverlayConfig()
+        self.assertFalse(ov.final_only)
+        ov.final_only = True
+        self.assertTrue(ov.final_only)
+
 
 class TestContentFilterCRUD(unittest.TestCase):
 
@@ -940,6 +946,57 @@ class TestServerEndpoints(AioHTTPTestCase):
         self.assertIn('avg_latency_ms', top_rank)
         self.assertIn('composite_score', top_rank)
         self.assertIn('church_fit_summary', top_rank)
+
+
+class TestCaptionSinkFinalOnly(unittest.IsolatedAsyncioTestCase):
+    async def test_caption_sink_final_only_obs_text_source(self):
+        from unittest.mock import AsyncMock, MagicMock
+        from obs_captioner.obs.caption_sink import CaptionSink
+
+        cfg = AppConfig()
+        cfg.obs.enabled = True
+        cfg.obs.update_text_source = True
+        cfg.obs.text_source_name = "Live Captions"
+        cfg.overlay.final_only = True
+
+        obs_client = MagicMock()
+        obs_client.is_connected = True
+        obs_client.update_text_source = AsyncMock()
+        obs_client.send_stream_caption = AsyncMock()
+
+        sink = CaptionSink(cfg, obs_client=obs_client)
+
+        # 1. Interim event - should NOT update OBS text source when final_only is True
+        interim_evt = TranscriptEvent(text="Testing live speech", is_final=False)
+        await sink.handle_transcript(interim_evt)
+        obs_client.update_text_source.assert_not_called()
+
+        # 2. Final event - SHOULD update OBS text source
+        final_evt = TranscriptEvent(text="Testing live speech.", is_final=True)
+        await sink.handle_transcript(final_evt)
+        obs_client.update_text_source.assert_called_once()
+
+    async def test_caption_sink_interim_allowed_when_not_final_only(self):
+        from unittest.mock import AsyncMock, MagicMock
+        from obs_captioner.obs.caption_sink import CaptionSink
+
+        cfg = AppConfig()
+        cfg.obs.enabled = True
+        cfg.obs.update_text_source = True
+        cfg.obs.text_source_name = "Live Captions"
+        cfg.overlay.final_only = False
+
+        obs_client = MagicMock()
+        obs_client.is_connected = True
+        obs_client.update_text_source = AsyncMock()
+        obs_client.send_stream_caption = AsyncMock()
+
+        sink = CaptionSink(cfg, obs_client=obs_client)
+
+        # Interim event - SHOULD update OBS text source when final_only is False
+        interim_evt = TranscriptEvent(text="Testing live speech", is_final=False)
+        await sink.handle_transcript(interim_evt)
+        obs_client.update_text_source.assert_called_once()
 
 
 if __name__ == "__main__":

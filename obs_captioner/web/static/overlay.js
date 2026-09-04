@@ -84,6 +84,7 @@ let config = {
     auto_hide_seconds: 4.0,
     animation_style: "word_pop",
     vertical_align: "bottom",
+    final_only: false,
 };
 
 let hideTimer = null;
@@ -133,6 +134,16 @@ function applyStyles(ov) {
     }
 
     if (ov.max_lines) config.max_lines = parseInt(ov.max_lines) || 2;
+    if (ov.final_only !== undefined) {
+        config.final_only = Boolean(ov.final_only);
+    }
+    // Allow URL query parameter ?final_only=1 or ?final_only=true to override
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has("final_only")) {
+        const p = urlParams.get("final_only").toLowerCase();
+        config.final_only = p === "1" || p === "true" || p === "yes";
+    }
+
     if (ov.reduce_motion) {
         config.animation_style = "instant";
     } else if (ov.animation_style) {
@@ -287,6 +298,10 @@ function handleCaption(data) {
             hideBoxNow();
         }
     } else {
+        if (config.final_only) {
+            // Final-Only Mode: do not display live in-progress speech
+            return;
+        }
         if (text) {
             showBox();
             renderFinalLines(true);

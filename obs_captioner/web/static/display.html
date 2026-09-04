@@ -666,6 +666,15 @@
                             </div>
                             <input type="checkbox" id="chkDisplayBionic" style="width: 20px; height: 20px; cursor: pointer; accent-color: #A855F7;">
                         </label>
+
+                        <!-- Finalized Only Mode -->
+                        <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.35); padding: 10px 12px; border-radius: 8px;">
+                            <div>
+                                <span style="font-size: 13.5px; font-weight: 700; color: #34D399; display: block;">✨ Final Sentences Only</span>
+                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Waits until speech is fully prepared &amp; punctuated. Completely hides live in-progress guessing.</span>
+                            </div>
+                            <input type="checkbox" id="chkDisplayFinalOnly" style="width: 20px; height: 20px; cursor: pointer; accent-color: #10B981;">
+                        </label>
                     </div>
                 </div>
 
@@ -761,6 +770,7 @@
         let silenceHideTimer = null;
                 let isPacedReadingEnabled = false;
         let isBionicReadingEnabled = false;
+        let isFinalOnlyMode = false;
 
         // DOM Elements
         const stageContainer = document.getElementById('stageContainer');
@@ -777,6 +787,7 @@
         const chkDisplayA11y = document.getElementById('chkDisplayA11y');
         const chkDisplayPacing = document.getElementById('chkDisplayPacing');
         const chkDisplayBionic = document.getElementById('chkDisplayBionic');
+        const chkDisplayFinalOnly = document.getElementById('chkDisplayFinalOnly');
 
         const btnOpenSettings = document.getElementById('btnOpenSettings');
         const btnCloseSettings = document.getElementById('btnCloseSettings');
@@ -1024,6 +1035,39 @@
             chkDisplayPacing.addEventListener("change", (e) => applyDisplayPacingMode(e.target.checked));
         }
 
+        // ✨ Final-Only Mode Handler (Only show captions once fully prepared)
+        function applyDisplayFinalOnlyMode(enabled) {
+            isFinalOnlyMode = enabled;
+            if (chkDisplayFinalOnly) chkDisplayFinalOnly.checked = enabled;
+            try {
+                localStorage.setItem("voxstream_display_final_only", enabled ? "true" : "false");
+            } catch(e) {}
+            if (enabled) {
+                interimText = "";
+                const interimNode = getInterimNode();
+                if (interimNode) {
+                    interimNode.textContent = '';
+                    interimNode.style.display = 'none';
+                }
+            }
+        }
+
+        try {
+            const urlFinalOnly = urlParams.get('final_only');
+            if (urlFinalOnly === '1' || urlFinalOnly === 'true' || urlFinalOnly === 'yes') {
+                applyDisplayFinalOnlyMode(true);
+            } else {
+                const savedFinalOnly = localStorage.getItem("voxstream_display_final_only");
+                if (savedFinalOnly !== null) {
+                    applyDisplayFinalOnlyMode(savedFinalOnly === "true");
+                }
+            }
+        } catch(e) {}
+
+        if (chkDisplayFinalOnly) {
+            chkDisplayFinalOnly.addEventListener("change", (e) => applyDisplayFinalOnlyMode(e.target.checked));
+        }
+
         // Settings Modal Open/Close Logic
         if (btnOpenSettings && settingsModal) {
             btnOpenSettings.addEventListener('click', () => {
@@ -1147,6 +1191,9 @@
             }
             if (e.key === 'c' || e.key === 'C') {
                 clearAllCaptions();
+            }
+            if (e.key === 'f' || e.key === 'F') {
+                applyDisplayFinalOnlyMode(!isFinalOnlyMode);
             }
         });
 
@@ -1288,6 +1335,7 @@
         }
 
         function updateInterimSpeech(text) {
+            if (isFinalOnlyMode) return;
             if (!transcriptContent) return;
             removeEmptyIndicator();
             wakeLiveDisplay();
@@ -1331,7 +1379,7 @@
             });
 
             const interimNode = getInterimNode();
-            if (interimText) {
+            if (!isFinalOnlyMode && interimText) {
                 interimNode.innerHTML = formatBionicReading(interimText);
                 interimNode.style.display = 'block';
             } else {
@@ -1429,6 +1477,7 @@
                             interimText = "";
                             appendFinalSentence(text);
                         } else {
+                            if (isFinalOnlyMode) return;
                             interimText = text;
                             updateInterimSpeech(text);
                         }
@@ -1452,9 +1501,24 @@
             };
         }
 
+        async function loadServerOverlayConfig() {
+            try {
+                const res = await fetch('/api/config');
+                if (res.ok) {
+                    const cfg = await res.json();
+                    if (cfg && cfg.overlay && cfg.overlay.final_only !== undefined) {
+                        if (localStorage.getItem("voxstream_display_final_only") === null && !urlParams.has('final_only')) {
+                            applyDisplayFinalOnlyMode(Boolean(cfg.overlay.final_only));
+                        }
+                    }
+                }
+            } catch(e) {}
+        }
+
         connectWebSocket();
         applyDisplayMode(currentMode);
         loadServerHistory();
+        loadServerOverlayConfig();
 
         function formatEngineBadge(engine, engineName) {
             const raw = (engineName || engine || '').toLowerCase();
