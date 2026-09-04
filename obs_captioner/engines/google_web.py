@@ -161,6 +161,25 @@ class GoogleWebEngine(BaseSTTEngine):
                         )
                     )
 
+        # Flush remaining audio buffer when stream terminates
+        if len(audio_buffer) >= min_bytes and self.is_running:
+            even_len = len(audio_buffer) & ~1
+            pcm_data = bytes(audio_buffer[:even_len])
+            audio_buffer.clear()
+            transcript = await loop.run_in_executor(
+                None,
+                self._recognize_chunk,
+                pcm_data,
+                self.config.general.language,
+            )
+            if transcript and transcript.strip():
+                await on_transcript(
+                    TranscriptEvent(
+                        text=transcript.strip(),
+                        is_final=True,
+                    )
+                )
+
     async def stop(self) -> None:
         """Stop recognition engine."""
         self.is_running = False

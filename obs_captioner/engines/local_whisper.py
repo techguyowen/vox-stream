@@ -74,16 +74,47 @@ class LocalWhisperEngine(BaseSTTEngine):
             logger.error(err)
             return False
 
+    def _build_initial_prompt(self) -> str:
+        """Construct domain-optimized prompt to prime Whisper's vocabulary and formatting."""
+        terms = []
+        if getattr(self.config, "gemini_live", None) and self.config.gemini_live.custom_vocabulary:
+            terms.extend([v for v in self.config.gemini_live.custom_vocabulary if v.strip()])
+        if getattr(self.config, "vocabulary", None) and getattr(self.config.vocabulary, "terms", None):
+            terms.extend([v for v in self.config.vocabulary.terms.values() if v.strip()])
+        if getattr(self.config, "censor", None) and getattr(self.config.censor, "custom_whitelist", None):
+            terms.extend([v for v in self.config.censor.custom_whitelist if v.strip()])
+        if getattr(self.config.general, "church_mode", True):
+            church_terms = [
+                "Scripture", "Genesis", "Exodus", "Leviticus", "Numbers", "Deuteronomy",
+                "Matthew", "Mark", "Luke", "John", "Romans", "Corinthians", "Galatians",
+                "Ephesians", "Philippians", "Colossians", "Thessalonians", "Timothy",
+                "Hebrews", "Revelation", "Nebuchadnezzar", "Melchizedek", "Zephaniah",
+                "Habakkuk", "Septuagint", "Golgotha", "propitiation", "sanctification",
+                "justification", "covenant", "Jesus Christ", "Holy Spirit", "Hallelujah", "Amen"
+            ]
+            for ct in church_terms:
+                if ct not in terms:
+                    terms.append(ct)
+        if terms:
+            return f"Live captions and sermon transcription: {', '.join(terms[:60])}."
+        return "Live captions: accurate speech transcription with proper capitalization and punctuation."
+
     def _transcribe_buffer(self, audio_float32: np.ndarray) -> str:
         """Run whisper transcription synchronously in worker thread."""
         try:
+            prompt = self._build_initial_prompt()
+            beam_sz = self.config.local_whisper.beam_size or 1
             segments, _ = self.model.transcribe(
                 audio_float32,
                 language=self.config.local_whisper.language or "en",
-                beam_size=self.config.local_whisper.beam_size,
+                beam_size=beam_sz,
                 vad_filter=False,
                 condition_on_previous_text=False,
                 temperature=0.0,
+                repetition_penalty=1.1,
+                no_speech_threshold=0.6,
+                suppress_blank=True,
+                initial_prompt=prompt,
                 without_timestamps=True,
             )
             text = " ".join(s.text.strip() for s in segments if s.text.strip())
@@ -158,6 +189,21 @@ class LocalWhisperEngine(BaseSTTEngine):
                 if is_final:
                     buffer.clear()
                     silence_start_time = None
+
+        # Flush remaining audio buffer when stream terminates
+        if len(buffer) >= min_bytes and self.is_running:
+            even_len = len(buffer) & ~1
+            audio_i16 = np.frombuffer(buffer[:even_len], dtype=np.int16)
+            audio_f32 = audio_i16.astype(np.float32) / 32768.0
+            text = await loop.run_in_executor(None, self._transcribe_buffer, audio_f32)
+            if text and text.strip():
+                await on_transcript(
+                    TranscriptEvent(
+                        text=text.strip(),
+                        is_final=True,
+                    )
+                )
+            buffer.clear()
 
     async def stop(self) -> None:
         """Stop STT engine and free memory."""

@@ -101,8 +101,11 @@ class VoskEngine(BaseSTTEngine):
         sample_rate = self.config.audio.sample_rate or 16000
         rec = vosk.KaldiRecognizer(self.model, sample_rate)
         rec.SetWords(True)
+        if hasattr(rec, "SetPartialWords"):
+            rec.SetPartialWords(True)
 
         logger.info("Vosk continuous streaming recognition loop active.")
+        last_partial_text = ""
 
         async for chunk in audio_stream:
             if not self.is_running:
@@ -121,6 +124,7 @@ class VoskEngine(BaseSTTEngine):
                     res_data = json.loads(res_json)
                     text = res_data.get("text", "").strip()
                     if text:
+                        last_partial_text = ""
                         await on_transcript(
                             TranscriptEvent(
                                 text=text,
@@ -135,7 +139,8 @@ class VoskEngine(BaseSTTEngine):
                 try:
                     part_data = json.loads(partial_json)
                     partial_text = part_data.get("partial", "").strip()
-                    if partial_text:
+                    if partial_text and partial_text != last_partial_text:
+                        last_partial_text = partial_text
                         await on_transcript(
                             TranscriptEvent(
                                 text=partial_text,

@@ -133,6 +133,13 @@ class BandwidthEngine(BaseSTTEngine):
         finally:
             self.is_running = False
             flush_task.cancel()
+            async with self._lock:
+                if self._buffer.strip():
+                    try:
+                        await on_transcript(TranscriptEvent(text=self._buffer.strip(), is_final=True))
+                    except Exception:
+                        pass
+                    self._buffer = ""
 
     async def stop(self) -> None:
         self.is_running = False

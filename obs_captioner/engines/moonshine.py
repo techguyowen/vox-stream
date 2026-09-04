@@ -82,19 +82,21 @@ class MoonshineEngine(BaseSTTEngine):
             return False
 
     def _transcribe_buffer(self, audio_float32: np.ndarray) -> str:
-        """Run Moonshine forward inference synchronously in worker thread."""
+        """Run Moonshine forward inference synchronously in worker thread with torch inference mode."""
         try:
-            # Moonshine expects shape (1, N) of 16kHz float32
-            if audio_float32.ndim == 1:
-                audio_input = np.expand_dims(audio_float32, axis=0)
-            else:
-                audio_input = audio_float32
+            import torch
+            with torch.inference_mode():
+                # Moonshine expects shape (1, N) of 16kHz float32
+                if audio_float32.ndim == 1:
+                    audio_input = np.expand_dims(audio_float32, axis=0)
+                else:
+                    audio_input = audio_float32
 
-            tokens = self.model.generate(audio_input)
-            decoded = self.tokenizer.decode_batch(tokens)
-            if decoded and len(decoded) > 0:
-                return decoded[0].strip()
-            return ""
+                tokens = self.model.generate(audio_input)
+                decoded = self.tokenizer.decode_batch(tokens)
+                if decoded and len(decoded) > 0:
+                    return decoded[0].strip()
+                return ""
         except Exception as e:
             logger.debug(f"Moonshine transcription error: {e}")
             return ""
@@ -138,9 +140,9 @@ class MoonshineEngine(BaseSTTEngine):
                     if silence_start_time is None:
                         silence_start_time = now
 
-            # Determine if we should transcribe (speech pause detected or live interim interval)
+            # Determine if we should transcribe (speech pause detected or live interim interval ~1.2s)
             is_silence_timeout = silence_start_time is not None and (now - silence_start_time > 0.45)
-            is_interval = (now - last_transcribe_time > 0.35) and len(buffer) >= min_bytes
+            is_interval = (now - last_transcribe_time > 1.2) and len(buffer) >= min_bytes
             is_full = len(buffer) >= max_bytes
 
             if (is_silence_timeout or is_interval or is_full) and len(buffer) >= min_bytes:
