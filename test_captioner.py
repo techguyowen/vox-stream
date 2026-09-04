@@ -999,5 +999,60 @@ class TestCaptionSinkFinalOnly(unittest.IsolatedAsyncioTestCase):
         obs_client.update_text_source.assert_called_once()
 
 
+class TestSentenceBreakConfiguration(unittest.IsolatedAsyncioTestCase):
+    def test_audio_config_sentence_break_defaults(self):
+        from obs_captioner.config import AudioConfig
+        ac = AudioConfig()
+        self.assertEqual(ac.sentence_break_ms, 450)
+        self.assertEqual(ac.max_sentence_duration_seconds, 4.5)
+        self.assertEqual(ac.max_sentence_words, 18)
+
+    def test_vad_update_config(self):
+        from obs_captioner.vad import VoiceActivityDetector
+        from obs_captioner.config import AudioConfig
+        vad = VoiceActivityDetector(sample_rate=16000, noise_gate_db=-45.0, vad_threshold=0.5)
+        new_ac = AudioConfig(noise_gate_db=-35.0, vad_threshold=0.7)
+        vad.update_config(new_ac)
+        self.assertEqual(vad.noise_gate_db, -35.0)
+        self.assertEqual(vad.vad_threshold, 0.7)
+
+    async def test_vosk_sentence_break_governor(self):
+        import wave
+        from pathlib import Path
+        from obs_captioner.engines.vosk import VoskEngine
+        from obs_captioner.config import load_config
+
+        wav_path = Path("mtest.wav")
+        if not wav_path.exists():
+            return
+
+        cfg = load_config("config.json")
+        cfg.audio.sentence_break_ms = 400
+        cfg.audio.max_sentence_duration_seconds = 2.0
+        cfg.audio.max_sentence_words = 6
+
+        engine = VoskEngine(cfg)
+        ok = await engine.initialize()
+        if not ok:
+            return
+
+        wf = wave.open(str(wav_path), "rb")
+        async def mock_stream():
+            while True:
+                data = wf.readframes(1600)
+                if not data:
+                    break
+                yield data
+
+        finals = []
+        async def on_transcript(evt):
+            if evt.is_final and evt.text:
+                finals.append(evt.text)
+
+        await engine.start_streaming(mock_stream(), on_transcript)
+        await engine.stop()
+        self.assertGreater(len(finals), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

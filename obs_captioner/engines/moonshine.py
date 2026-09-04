@@ -136,8 +136,9 @@ class MoonshineEngine(BaseSTTEngine):
 
         # Min audio before first transcription (~250ms)
         min_bytes = int(self.config.audio.sample_rate * 2 * 0.25)
-        # Max buffer length (~10s) before forced finalization
-        max_bytes = int(self.config.audio.sample_rate * 2 * 10.0)
+        # Max buffer length before forced finalization
+        max_sentence_seconds = getattr(self.config.audio, "max_sentence_duration_seconds", 4.5)
+        max_bytes = int(self.config.audio.sample_rate * 2 * max_sentence_seconds)
 
         logger.info("Moonshine streaming recognition pipeline active.")
 
@@ -151,6 +152,10 @@ class MoonshineEngine(BaseSTTEngine):
             has_speech = self.vad.is_speech(chunk)
             now = time.time()
 
+            pause_break_seconds = getattr(self.config.audio, "sentence_break_ms", 450) / 1000.0
+            max_sentence_seconds = getattr(self.config.audio, "max_sentence_duration_seconds", 4.5)
+            max_bytes = int(self.config.audio.sample_rate * 2 * max_sentence_seconds)
+
             if has_speech:
                 buffer.extend(chunk)
                 silence_start_time = None
@@ -161,7 +166,7 @@ class MoonshineEngine(BaseSTTEngine):
                         silence_start_time = now
 
             # Determine if we should transcribe (speech pause detected or live interim interval ~1.2s)
-            is_silence_timeout = silence_start_time is not None and (now - silence_start_time > 0.45)
+            is_silence_timeout = silence_start_time is not None and (now - silence_start_time >= pause_break_seconds)
             is_interval = (now - last_transcribe_time > 1.2) and len(buffer) >= min_bytes
             is_full = len(buffer) >= max_bytes
 

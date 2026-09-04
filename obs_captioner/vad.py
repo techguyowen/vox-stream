@@ -54,6 +54,12 @@ class VoiceActivityDetector:
             except Exception as e:
                 logger.debug(f"Silero VAD not available ({e}). Using energy-based VAD.")
 
+    def update_config(self, audio_config) -> None:
+        """Live update threshold and noise gate parameters."""
+        self.sample_rate = getattr(audio_config, "sample_rate", self.sample_rate)
+        self.noise_gate_db = getattr(audio_config, "noise_gate_db", self.noise_gate_db)
+        self.vad_threshold = getattr(audio_config, "vad_threshold", self.vad_threshold)
+
     def calculate_rms_db(self, audio_chunk_bytes: bytes) -> float:
         """Calculate Root Mean Square (RMS) energy in decibels (dBFS) for 16-bit linear PCM."""
         if not audio_chunk_bytes:

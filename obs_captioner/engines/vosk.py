@@ -5,11 +5,13 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from pathlib import Path
 from typing import AsyncGenerator, Callable, Optional
 
 from .base import BaseSTTEngine, CaptionCallback, TranscriptEvent
 from ..config import AppConfig
+from ..vad import VoiceActivityDetector
 
 logger = logging.getLogger("obs_captioner.engine.vosk")
 
@@ -21,6 +23,11 @@ class VoskEngine(BaseSTTEngine):
         super().__init__("Local Vosk / Kaldi")
         self.config = config
         self.model = None
+        self.vad = VoiceActivityDetector(
+            sample_rate=config.audio.sample_rate,
+            noise_gate_db=config.audio.noise_gate_db,
+            vad_threshold=config.audio.vad_threshold,
+        )
 
     async def initialize(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
         """Load or download Vosk model into memory with progress updates."""
@@ -104,8 +111,12 @@ class VoskEngine(BaseSTTEngine):
         if hasattr(rec, "SetPartialWords"):
             rec.SetPartialWords(True)
 
-        logger.info("Vosk continuous streaming recognition loop active.")
+        logger.info("Vosk continuous streaming recognition loop active with adaptive sentence breaking.")
         last_partial_text = ""
+        current_partial_text = ""
+        speech_started = False
+        speech_start_time = None
+        silence_start_time = None
 
         async for chunk in audio_stream:
             if not self.is_running:
@@ -117,7 +128,15 @@ class VoskEngine(BaseSTTEngine):
             even_len = len(chunk) & ~1
             pcm_chunk = chunk[:even_len]
 
-            # AcceptWaveform returns True when Kaldi detects silence/endpoint (final sentence)
+            now = time.time()
+            has_speech = self.vad.is_speech(pcm_chunk)
+
+            # Live dynamic thresholds from active config
+            pause_break_seconds = getattr(self.config.audio, "sentence_break_ms", 450) / 1000.0
+            max_sentence_seconds = getattr(self.config.audio, "max_sentence_duration_seconds", 4.5)
+            max_sentence_words = getattr(self.config.audio, "max_sentence_words", 18)
+
+            # 1. Feed chunk to Kaldi recognizer
             if rec.AcceptWaveform(pcm_chunk):
                 res_json = rec.Result()
                 try:
@@ -125,6 +144,10 @@ class VoskEngine(BaseSTTEngine):
                     text = res_data.get("text", "").strip()
                     if text:
                         last_partial_text = ""
+                        current_partial_text = ""
+                        speech_started = False
+                        speech_start_time = None
+                        silence_start_time = None
                         await on_transcript(
                             TranscriptEvent(
                                 text=text,
@@ -133,29 +156,88 @@ class VoskEngine(BaseSTTEngine):
                         )
                 except Exception:
                     pass
-            else:
-                # PartialResult returns interim words as you speak
-                partial_json = rec.PartialResult()
-                try:
-                    part_data = json.loads(partial_json)
-                    partial_text = part_data.get("partial", "").strip()
-                    if partial_text and partial_text != last_partial_text:
-                        last_partial_text = partial_text
-                        await on_transcript(
-                            TranscriptEvent(
-                                text=partial_text,
-                                is_final=False,
-                            )
+                continue
+
+            # 2. Extract partial result
+            partial_json = rec.PartialResult()
+            try:
+                part_data = json.loads(partial_json)
+                partial_text = part_data.get("partial", "").strip()
+            except Exception:
+                partial_text = ""
+
+            if partial_text:
+                if not speech_started:
+                    speech_started = True
+                    speech_start_time = now
+                current_partial_text = partial_text
+
+                if partial_text != last_partial_text:
+                    last_partial_text = partial_text
+                    await on_transcript(
+                        TranscriptEvent(
+                            text=partial_text,
+                            is_final=False,
                         )
+                    )
+
+            # 3. Track speech activity vs pause
+            if has_speech:
+                silence_start_time = None
+            else:
+                if speech_started and silence_start_time is None:
+                    silence_start_time = now
+
+            # 4. Check intelligent sentence break conditions
+            words = current_partial_text.split() if current_partial_text else []
+            word_count = len(words)
+
+            # Condition A: Natural pause/breath detected (speaker stopped speaking for pause_break_seconds)
+            is_pause_timeout = (
+                speech_started
+                and silence_start_time is not None
+                and (now - silence_start_time >= pause_break_seconds)
+                and word_count >= 2
+            )
+
+            # Condition B: Max continuous speech duration reached (preacher preaching continuously without pause)
+            is_duration_timeout = (
+                speech_started
+                and speech_start_time is not None
+                and (now - speech_start_time >= max_sentence_seconds)
+                and word_count >= 6
+            )
+
+            # Condition C: Word count ceiling reached
+            is_word_ceiling = word_count >= max_sentence_words
+
+            if (is_pause_timeout or is_duration_timeout or is_word_ceiling) and current_partial_text:
+                res_json = rec.Result()
+                try:
+                    res_data = json.loads(res_json)
+                    text = res_data.get("text", "").strip() or current_partial_text
                 except Exception:
-                    pass
+                    text = current_partial_text
+
+                if text:
+                    last_partial_text = ""
+                    current_partial_text = ""
+                    speech_started = False
+                    speech_start_time = None
+                    silence_start_time = None
+                    await on_transcript(
+                        TranscriptEvent(
+                            text=text,
+                            is_final=True,
+                        )
+                    )
 
         # Final cleanup on stream stop
         if self.is_running:
             try:
                 final_json = rec.FinalResult()
                 final_data = json.loads(final_json)
-                text = final_data.get("text", "").strip()
+                text = final_data.get("text", "").strip() or current_partial_text
                 if text:
                     await on_transcript(
                         TranscriptEvent(

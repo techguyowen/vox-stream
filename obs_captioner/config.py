@@ -35,6 +35,9 @@ class AudioConfig:
     enable_vad: bool = True
     vad_threshold: float = 0.5
     noise_gate_db: float = -45.0
+    sentence_break_ms: int = 450  # Pause/silence duration in ms to trigger a sentence break (default 450ms, range 200-1500ms)
+    max_sentence_duration_seconds: float = 4.5  # Max duration of continuous speech in seconds before forcing a break (default 4.5s)
+    max_sentence_words: int = 18  # Max word count before forcing a sentence break (default 18 words)
 
 
 @dataclass

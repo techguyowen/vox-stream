@@ -46,8 +46,8 @@ class BandwidthEngine(BaseSTTEngine):
                 # Flush conditions:
                 # 1. Terminal punctuation with a brief pause (>300ms)
                 # 2. Natural pause in speech (>1.2s)
-                # 3. Buffer length exceeds comfortable reading limit (~200 chars)
-                if (has_punctuation and silence_duration > 0.3) or (silence_duration > 1.2) or len(self._buffer) > 200:
+                pause_limit = getattr(self.config.audio, "sentence_break_ms", 450) / 1000.0
+                if (has_punctuation and silence_duration > 0.3) or (silence_duration >= pause_limit) or len(self._buffer) > 160:
                     text_to_flush = self._buffer.strip()
                     self._buffer = ""
                     if text_to_flush:

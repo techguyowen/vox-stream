@@ -1307,6 +1307,18 @@ function populateFormFields(cfg) {
         document.getElementById("val-noise-gate").textContent = `${cfg.audio.noise_gate_db || -45} dB`;
         document.getElementById("vad_slider").value = cfg.audio.vad_threshold || 0.5;
         document.getElementById("val-vad").textContent = cfg.audio.vad_threshold || 0.5;
+
+        const breakVal = cfg.audio.sentence_break_ms || 450;
+        const sBreakEl = document.getElementById("sentence_break_slider");
+        if (sBreakEl) sBreakEl.value = breakVal;
+        const vBreakEl = document.getElementById("val-sentence-break");
+        if (vBreakEl) vBreakEl.textContent = `${breakVal} ms`;
+
+        const maxSentenceVal = cfg.audio.max_sentence_duration_seconds || 4.5;
+        const sMaxEl = document.getElementById("max_sentence_slider");
+        if (sMaxEl) sMaxEl.value = maxSentenceVal;
+        const vMaxEl = document.getElementById("val-max-sentence");
+        if (vMaxEl) vMaxEl.textContent = `${maxSentenceVal}s`;
     }
     if (cfg.google_stt) {
         document.getElementById("google_creds_path").value = cfg.google_stt.credentials_path || "";
@@ -1483,6 +1495,20 @@ document.getElementById("noise_gate_slider").addEventListener("input", (e) => {
 document.getElementById("vad_slider").addEventListener("input", (e) => {
     document.getElementById("val-vad").textContent = e.target.value;
 });
+const sBreakInput = document.getElementById("sentence_break_slider");
+if (sBreakInput) {
+    sBreakInput.addEventListener("input", (e) => {
+        const v = document.getElementById("val-sentence-break");
+        if (v) v.textContent = `${e.target.value} ms`;
+    });
+}
+const sMaxInput = document.getElementById("max_sentence_slider");
+if (sMaxInput) {
+    sMaxInput.addEventListener("input", (e) => {
+        const v = document.getElementById("val-max-sentence");
+        if (v) v.textContent = `${e.target.value}s`;
+    });
+}
 
 function toggleEngineFields(engine) {
     document.getElementById("google-stt-fields").style.display = engine === "google_stt" ? "block" : "none";
@@ -1989,6 +2015,8 @@ document.getElementById("btn-save-audio").addEventListener("click", async () => 
             device_name_filter: document.getElementById("audio_device_select").value,
             noise_gate_db: parseFloat(document.getElementById("noise_gate_slider").value),
             vad_threshold: parseFloat(document.getElementById("vad_slider").value),
+            sentence_break_ms: parseInt(document.getElementById("sentence_break_slider").value, 10),
+            max_sentence_duration_seconds: parseFloat(document.getElementById("max_sentence_slider").value),
         },
         bandwidth: {
             api_key: document.getElementById("bandwidth_api_key") ? document.getElementById("bandwidth_api_key").value.trim() : "",

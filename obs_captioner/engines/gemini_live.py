@@ -115,7 +115,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                 from google.genai import types
 
                 instruction_text = self._build_system_instruction()
-                silence_ms = getattr(self.config.gemini_live, "silence_duration_ms", 600) or 600
+                silence_ms = getattr(self.config.audio, "sentence_break_ms", None) or getattr(self.config.gemini_live, "silence_duration_ms", 600) or 600
 
                 config = types.LiveConnectConfig(
                     response_modalities=[types.Modality.TEXT],
