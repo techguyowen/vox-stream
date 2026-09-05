@@ -246,9 +246,9 @@ class TextFormatter:
         if not text:
             return ""
 
-        # 1. Fast scripture reference parsing (only if digits or numbers present)
+        # 1. Fast scripture reference parsing (if digits, book names, or citation markers present)
         if self.church_mode and self.church_formatter:
-            if any(c.isdigit() for c in text) or ("chapter" in text.lower()) or ("verse" in text.lower()) or ("psalm" in text.lower()):
+            if any(c.isdigit() for c in text) or getattr(self.church_formatter, "_citation_trigger_pattern", None) and self.church_formatter._citation_trigger_pattern.search(text):
                 text = self.church_formatter._format_scripture_citations(text)
 
         # 1b. Normalize spoken ordinals/times AFTER scripture citations are resolved

@@ -348,6 +348,11 @@ class ChurchLexiconFormatter:
     def __init__(self, enabled: bool = True):
         self.enabled = enabled
         self._compiled_church_patterns: List[Tuple[re.Pattern, str]] = []
+        books_sorted = sorted(self.BOOKS_OF_BIBLE.keys(), key=len, reverse=True)
+        self._citation_trigger_pattern = re.compile(
+            rf"\b(?:{'|'.join(re.escape(b) for b in books_sorted)}|chapter|verse|verses|psalm|psalms)\b",
+            re.IGNORECASE,
+        )
         self._build_patterns()
 
     def _build_patterns(self):
