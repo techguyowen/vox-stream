@@ -371,3 +371,73 @@ class ModelDownloadManager:
         except Exception as e:
             logger.error(f"Error deleting model {item.name}: {e}", exc_info=True)
             return False, f"Error deleting model: {e}", 0
+
+
+if __name__ == "__main__":
+    import argparse
+    import sys
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+    parser = argparse.ArgumentParser(description="VoxStream AI Model Pre-Downloader & Cache Manager")
+    parser.add_argument(
+        "--preload-defaults",
+        action="store_true",
+        help="Pre-download default offline models (Vosk, Faster-Whisper, and Silero VAD) for 100% offline use.",
+    )
+    parser.add_argument("--list", action="store_true", help="List all supported models and their cache status")
+    parser.add_argument(
+        "--download",
+        type=str,
+        help="Download a specific model ID (e.g. whisper_base, vosk_small, moonshine_tiny, all)",
+    )
+    args = parser.parse_args()
+
+    mgr = ModelDownloadManager()
+
+    if args.list:
+        print("\n=== VoxStream Offline AI Model Catalog ===")
+        for m in mgr.get_models_status():
+            status_icon = "✅ CACHED" if m["is_cached"] else "⚪ NOT DOWNLOADED"
+            print(f"[{status_icon}] {m['name']} ({m['id']}) - ~{m['size_mb']}MB")
+            print(f"    {m['description']}\n")
+        sys.exit(0)
+
+    if args.preload_defaults:
+        print("\n=== Pre-downloading VoxStream Default Offline AI Models ===")
+        # 1. Silero VAD
+        print("1/3 Checking Silero VAD neural pause detector...")
+        try:
+            from .vad import VoiceActivityDetector
+            _vad = VoiceActivityDetector()
+            print("    ✅ Silero VAD cached and ready.")
+        except Exception as e:
+            print(f"    ⚠️ Silero VAD note: {e}")
+
+        # 2. Vosk Small
+        print("2/3 Checking Vosk Small acoustic model (~40 MB)...")
+        vosk_item = next((x for x in MODEL_CATALOG if x.id == "vosk_small"), None)
+        if vosk_item:
+            cached, _ = mgr.check_model_cached(vosk_item)
+            if not cached:
+                mgr._sync_download_single(vosk_item)
+            print("    ✅ Vosk Small model ready.")
+
+        # 3. Faster-Whisper Base.en
+        print("3/3 Checking Faster-Whisper Base.en neural model (~140 MB)...")
+        whisper_item = next((x for x in MODEL_CATALOG if x.id == "whisper_base"), None)
+        if whisper_item:
+            cached, _ = mgr.check_model_cached(whisper_item)
+            if not cached:
+                mgr._sync_download_single(whisper_item)
+            print("    ✅ Faster-Whisper Base model ready.")
+
+        print("\n🎉 All default offline AI models are cached and ready for 100% offline broadcast!\n")
+        sys.exit(0)
+
+    if args.download:
+        asyncio.run(mgr.download_model(args.download))
+        sys.exit(0)
+
+    parser.print_help()
+

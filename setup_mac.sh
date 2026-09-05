@@ -32,12 +32,37 @@ echo "📥 Installing required dependencies from requirements.txt..."
 .venv/bin/python -m pip install --upgrade pip
 .venv/bin/python -m pip install -r requirements.txt
 
-# 4. Make scripts executable
+# 4. Linux-specific audio check
+if [ "$(uname -s)" = "Linux" ]; then
+    if ! ldconfig -p 2>/dev/null | grep -q libportaudio; then
+        echo "⚠️ Note: libportaudio was not found on your system."
+        echo "   On Debian/Ubuntu, run: sudo apt-get install -y libportaudio2 ffmpeg"
+    fi
+fi
+
+# 5. Initialize config.json if not present
+if [ ! -f "config.json" ]; then
+    echo "⚙️ Initializing config.json from template..."
+    cp config.json.example config.json
+fi
+
+# 6. Preload default offline AI models
+echo "🧠 Pre-caching default speech models (Vosk & Faster-Whisper & Silero VAD)..."
+.venv/bin/python -m obs_captioner.model_downloader --preload-defaults || echo "⚠️ Model pre-cache skipped (will download on first launch)."
+
+# 7. Make scripts executable
 chmod +x run_captioner.sh setup_mac.sh 2>/dev/null || true
+
+echo ""
+echo "=================================================="
+echo "   Available Audio Input Devices:"
+echo "=================================================="
+.venv/bin/python -m obs_captioner.main --list-devices 2>/dev/null || true
 
 echo ""
 echo "=================================================="
 echo "🎉 Setup complete! You can now start VoxStream:"
 echo "   ./run_captioner.sh"
-echo "   (or: ./run_captioner.sh --engine google_web)"
+echo "   (or: ./run_captioner.sh --engine local_whisper)"
 echo "=================================================="
+

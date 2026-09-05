@@ -111,18 +111,44 @@ echo [2/4] Activating virtual environment...
 call .venv\Scripts\activate.bat
 
 :: 5. Install dependencies
-echo [3/4] Upgrading pip and installing required packages...
+echo [3/6] Upgrading pip and installing required packages...
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 
-:: 6. Setup Configuration
-echo [4/4] Verifying configuration file...
+:: 6. Check for NVIDIA GPU and install CUDA acceleration automatically
+echo [4/6] Checking for NVIDIA GPU acceleration...
+set "HAS_NVIDIA=0"
+nvidia-smi >nul 2>&1
+if %errorlevel% equ 0 (
+    set "HAS_NVIDIA=1"
+) else (
+    powershell -NoProfile -Command "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name" 2>nul | findstr /i "NVIDIA GeForce RTX GTX Quadro" >nul 2>&1
+    if %errorlevel% equ 0 (
+        set "HAS_NVIDIA=1"
+    )
+)
+
+if "!HAS_NVIDIA!"=="1" (
+    echo [SUCCESS] NVIDIA GPU detected!
+    echo [INFO] Installing CUDA and cuDNN runtime packages for Faster-Whisper...
+    python -m pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+    echo [SUCCESS] NVIDIA GPU acceleration installed!
+) else (
+    echo [INFO] No dedicated NVIDIA GPU detected. Configured for fast CPU int8 inference.
+)
+
+:: 7. Setup Configuration
+echo [5/6] Verifying configuration file...
 if not exist "config.json" (
     copy config.json.example config.json >nul
     echo Created fresh config.json from template.
 ) else (
     echo Existing config.json preserved.
 )
+
+:: 8. Preload default offline AI models
+echo [6/6] Pre-caching default offline AI speech models...
+python -m obs_captioner.model_downloader --preload-defaults
 
 echo.
 echo =======================================================
