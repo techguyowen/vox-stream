@@ -8,8 +8,6 @@
 
 **VoxStream** is a high-performance, low-latency, real-time speech-to-text captioning and broadcast automation suite for **OBS Studio** on **macOS, Windows, and Linux**.
 
-**VoxStream** is a high-performance, low-latency, real-time speech-to-text captioning and broadcast automation suite for **OBS Studio** on **macOS, Windows, and Linux**.
-
 It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Multi-Tier Speech Recognition Engines** with **Local Faster-Whisper** as the verified #1 Champion for church sermons, an **In-App Church Sermon Benchmark Leaderboard**, a **Universal Live Read-Along Display (`/display`)** with WCAG 2.2 AAA accessibility, **Real-Time Words Per Minute (WPM) Speaking Pace Analytics**, **⛪ Church & Biblical Lexicon with Offline Bible Engine (KJV, BSB, WEB)**, **Smart Punctuation & Capitalization**, **Multi-Language Live Translation**, **1-Click Theme Gallery**, **Twitch Chat Caption Bot**, **YouTube Live CEA-608 Closed Captions**, and **Automated YouTube Chapters & Subtitle Exporter (SRT/VTT/TXT)**.
 
 ---
@@ -183,9 +181,19 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Mu
 
 ---
 
-## 📋 Quick Start Guide
+## 📦 Installation & Quick Start
 
-### 🍏 macOS & Linux
+### 📋 Prerequisites
+* **Python**: Version `3.9` through `3.12` ([python.org/downloads](https://www.python.org/downloads/)). *(On Windows, make sure to check "Add Python to PATH" during installation)*.
+* **Git**: ([git-scm.com](https://git-scm.com/downloads)).
+* **OBS Studio**: Version `28.0+` (Version `30.0+` recommended).
+* **Linux Only**: `sudo apt install libportaudio2 ffmpeg` (for PortAudio mic capture and audio decoding).
+
+---
+
+### 🚀 Option 1: Automated 1-Click Setup (Recommended)
+
+#### 🍏 macOS & Linux
 ```bash
 # 1. Clone repository
 git clone https://github.com/techguyowen/vox-stream.git
@@ -198,9 +206,79 @@ cd vox-stream
 ./run_captioner.sh
 ```
 
-### 🪟 Windows
-1. Double-click `setup_windows.bat` (automatically installs Python dependencies).
-2. Double-click `run_captioner.bat`.
+#### 🪟 Windows
+1. Clone or download the repository:
+   ```cmd
+   git clone https://github.com/techguyowen/vox-stream.git
+   cd vox-stream
+   ```
+2. Double-click **`setup_windows.bat`**  
+   *(Automatically checks for Python, installs Python 3.11 via winget if missing, creates `.venv`, installs all packages, and lists your audio devices).*
+3. Double-click **`run_captioner.bat`** to start!
+
+---
+
+### 💻 Option 2: Manual Terminal Installation
+
+If you prefer configuring your virtual environment manually:
+
+```bash
+# 1. Clone repository
+git clone https://github.com/techguyowen/vox-stream.git
+cd vox-stream
+
+# 2. Create and activate a Python virtual environment
+# On macOS / Linux:
+python3 -m venv .venv
+source .venv/bin/activate
+
+# On Windows (cmd.exe):
+python -m venv .venv
+call .venv\Scripts\activate.bat
+
+# On Windows (PowerShell):
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+
+# 3. Upgrade pip and install dependencies
+pip install --upgrade pip
+pip install -r requirements.txt
+
+# 4. (Optional) Initialize default configuration if config.json does not exist
+cp config.json.example config.json
+
+# 5. Launch VoxStream
+python -m obs_captioner.main
+```
+
+---
+
+### ⚡ NVIDIA GPU Acceleration (CUDA / Windows & Linux)
+
+VoxStream's #1 champion engine, **Local Faster-Whisper**, natively supports **NVIDIA GPU acceleration** (via CTranslate2 / CUDA):
+
+* **CPU Mode (Default)**: Automatically runs on your CPU using fast `int8` quantization (~400–600ms latency, zero GPU setup required).
+* **Enabling NVIDIA CUDA Acceleration**:
+  1. Ensure you have up-to-date NVIDIA Graphics Drivers installed ([nvidia.com/drivers](https://www.nvidia.com/download/index.aspx)).
+  2. In your virtual environment, install NVIDIA's cuDNN/cuBLAS runtime wheels:
+     ```bash
+     pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+     ```
+  3. In the VoxStream dashboard (**🎙️ Audio & Engine Settings**), set device to `cuda` or leave on `auto`. Faster-Whisper will automatically leverage your NVIDIA GPU tensor cores, reducing transcription latency to `< 150ms`!
+
+---
+
+### 🎙️ Audio Device Selection
+
+To list all available audio capture devices on your system:
+```bash
+# macOS / Linux
+.venv/bin/python -m obs_captioner.main --list-devices
+
+# Windows
+.venv\Scripts\python.exe -m obs_captioner.main --list-devices
+```
+You can select your desired microphone directly in the **Web Dashboard** (`http://127.0.0.1:8765/dashboard`) under **🎙️ Audio & Engine Settings**, or by specifying `"device_name_filter"` in `config.json`.
 
 ---
 
@@ -217,8 +295,7 @@ cd vox-stream
 ## 🖥️ OBS Studio Setup
 
 ### 1. Add the In-OBS Control Dock (Recommended)
-1. In OBS Studio, go to the top menu: **Docks $
-ightarrow$ Custom Browser Docks...**
+1. In OBS Studio, go to the top menu: **Docks → Custom Browser Docks...**
 2. **Dock Name**: `Live Captions`
 3. **URL**: `http://127.0.0.1:8765/dashboard`
 4. Click **Apply** and dock the panel anywhere in your OBS workspace.
@@ -226,8 +303,7 @@ ightarrow$ Custom Browser Docks...**
 ---
 
 ### 2. Add the Transparent Stream Overlay
-1. In your OBS Scene, click **+ (Add Source) $
-ightarrow$ Browser**.
+1. In your OBS Scene, click **+ (Add Source) → Browser**.
 2. **URL**: `http://127.0.0.1:8765/`
 3. **Width**: `1920`, **Height**: `1080` (or match your canvas resolution).
 4. Check **"Shutdown source when not visible"** and **"Refresh browser when scene becomes active"**.
@@ -235,8 +311,7 @@ ightarrow$ Browser**.
 ---
 
 ### 3. Native Closed Captions (YouTube & Twitch [CC] Button) 📺
-1. **In OBS Studio**: Go to **Tools $
-ightarrow$ WebSocket Server Settings** and check **"Enable WebSocket server"** (Port `4455`).
+1. **In OBS Studio**: Go to **Tools → WebSocket Server Settings** and check **"Enable WebSocket server"** (Port `4455`).
 2. **For YouTube Livestreams**:
    * Open your stream in **YouTube Studio** (Live Control Room).
    * In **Stream Settings**, toggle **Closed Captions** to **ON**.
@@ -249,8 +324,7 @@ ightarrow$ WebSocket Server Settings** and check **"Enable WebSocket server"** (
 
 ### 4. Auto-Start VoxStream Automatically When OBS Opens 🚀
 You can have OBS Studio launch VoxStream in the background automatically whenever OBS opens:
-1. In OBS Studio, go to **Tools $
-ightarrow$ Scripts**.
+1. In OBS Studio, go to **Tools → Scripts**.
 2. **On macOS**: In the **Python Settings** tab, ensure your Python path is set (e.g. `/opt/homebrew/Frameworks/Python.framework/Versions/3.11` or `/Library/Frameworks/Python.framework/Versions/3.11`). On Windows, select your Python install folder.
 3. Click the **Scripts** tab, click **+ (Add Script)**, and select `obs_script/obs_live_captions.py`.
 4. Check **"Auto-start when OBS launches"** and choose your default speech engine (e.g. *Vosk, Moonshine, Bandwidth Labs, etc.*).
