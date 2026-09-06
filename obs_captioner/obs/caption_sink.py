@@ -2,8 +2,9 @@
 
 import asyncio
 import logging
+import re
 import time
-from typing import Optional
+from typing import Optional, Tuple
 
 from ..config import AppConfig
 from ..engines.base import TranscriptEvent
@@ -21,6 +22,18 @@ logger = logging.getLogger("obs_captioner.sink")
 
 class CaptionSink:
     """Dispatches transcribed captions to OBS, Web Overlay, Translation, and Twitch Chat."""
+
+    BOUNDARY_STITCH_PAIRS = {
+        ("waypoint", "point"): ("Waypoint", ""),
+        ("way point", "point"): ("Waypoint", ""),
+        ("way poi", "point"): ("Waypoint", ""),
+        ("dog", "solid g"): ("Doxology", ""),
+        ("dog.", "solid g"): ("Doxology", ""),
+        ("author", "forty"): ("authority", ""),
+        ("corin", "thians"): ("Corinthians", ""),
+        ("dis", "ciple"): ("disciple", ""),
+        ("dis", "ciples"): ("disciples", ""),
+    }
 
     def __init__(
         self,
@@ -51,6 +64,7 @@ class CaptionSink:
         self._utterance_active = False
         self._last_partial_text: Optional[str] = None
         self._auto_clear_task: Optional[asyncio.Task] = None
+        self._last_final_time = 0.0
 
     def update_config(self, new_config: AppConfig):
         """Live update configuration, filter dictionary, and translation rules."""
@@ -64,6 +78,43 @@ class CaptionSink:
         )
         self.content_filter = ContentFilter(new_config.censor, church_mode=church_mode)
         self.translator = SubtitleTranslator(new_config.translation)
+
+    def _attempt_boundary_stitch(self, clean_text: str) -> Tuple[str, bool]:
+        """Stitch mid-word chunk boundary splits between consecutive finalized utterances."""
+        now = time.time()
+        if not self.history.entries or (now - self._last_final_time > 3.5):
+            return clean_text, False
+
+        last_entry = self.history.entries[-1]
+        last_text = last_entry.text
+
+        clean_new = clean_text.strip()
+        for (prefix, suffix), (stitched_word, _) in self.BOUNDARY_STITCH_PAIRS.items():
+            # Check if last entry ends with prefix or stitched word (ignoring trailing punctuation)
+            tail_pat = rf"(?:\b|_)(?:{re.escape(prefix)}|{re.escape(stitched_word)})[.,!?:;\-_]*$"
+            tail_match = re.search(tail_pat, last_text, re.IGNORECASE)
+            if not tail_match:
+                continue
+
+            # Check if clean_text starts with suffix or stitched word (ignoring leading punctuation)
+            head_pat = rf"^[.,!?:;\-_\s]*(?:{re.escape(suffix)}|{re.escape(stitched_word)})\b[.,!?:;\-_]*"
+            head_match = re.search(head_pat, clean_new, re.IGNORECASE)
+            if not head_match:
+                continue
+
+            # Found split boundary! Update last history entry
+            prefix_span = tail_match.span()
+            last_entry.text = last_text[:prefix_span[0]] + stitched_word + ("." if last_text.endswith(".") else "")
+
+            # Remainder of new chunk
+            remainder = clean_new[head_match.end():].strip()
+            if remainder:
+                remainder = remainder[0].upper() + remainder[1:]
+                return remainder, False
+            else:
+                return "", True
+
+        return clean_text, False
 
     async def handle_transcript(self, event: TranscriptEvent):
         """Process, filter, translate, record, and dispatch a new transcript event."""
@@ -120,6 +171,17 @@ class CaptionSink:
             logger.info("✓ [FINAL]   🛡️ [DROPPED]")
             return
 
+        # Boundary Stitcher for split chunks
+        if event.is_final and clean_text:
+            stitched_text, is_absorbed = self._attempt_boundary_stitch(clean_text)
+            if is_absorbed:
+                logger.info(f"✓ [STITCHED & ABSORBED] '{clean_text}' into previous entry")
+                self._utterance_active = False
+                self._sentence_start_time = time.time()
+                self._last_final_time = time.time()
+                return
+            clean_text = stitched_text
+
         # 4. Live Translation if enabled
         translated_text = None
         if clean_text and self.config.translation.enabled:
@@ -130,6 +192,7 @@ class CaptionSink:
 
         # 5. Record to history if finalized
         if event.is_final and clean_text:
+            self._last_final_time = time.time()
             recorded_text = clean_text
             if translated_text:
                 recorded_text = f"{clean_text} ({translated_text})"

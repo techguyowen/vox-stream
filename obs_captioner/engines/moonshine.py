@@ -136,11 +136,13 @@ class MoonshineEngine(BaseSTTEngine):
 
         # Min audio before first transcription (~250ms)
         min_bytes = int(self.config.audio.sample_rate * 2 * 0.25)
-        # Max buffer length before forced finalization
-        max_sentence_seconds = getattr(self.config.audio, "max_sentence_duration_seconds", 4.5)
+        # Max buffer length before forced finalization (default 7.0s for natural preaching flow)
+        max_sentence_seconds = getattr(self.config.audio, "max_sentence_duration_seconds", 7.0) or 7.0
         max_bytes = int(self.config.audio.sample_rate * 2 * max_sentence_seconds)
+        # Overlap buffer (~350ms of 16kHz PCM audio) to prevent slicing words mid-syllable across chunk cuts
+        overlap_bytes = int(self.config.audio.sample_rate * 2 * 0.35) & ~1
 
-        logger.info("Moonshine streaming recognition pipeline active.")
+        logger.info(f"Moonshine streaming recognition pipeline active (sentence max: {max_sentence_seconds}s).")
 
         async for chunk in audio_stream:
             if not self.is_running:
@@ -152,8 +154,8 @@ class MoonshineEngine(BaseSTTEngine):
             has_speech = self.vad.is_speech(chunk)
             now = time.time()
 
-            pause_break_seconds = getattr(self.config.audio, "sentence_break_ms", 450) / 1000.0
-            max_sentence_seconds = getattr(self.config.audio, "max_sentence_duration_seconds", 4.5)
+            pause_break_seconds = (getattr(self.config.audio, "sentence_break_ms", 550) or 550) / 1000.0
+            max_sentence_seconds = getattr(self.config.audio, "max_sentence_duration_seconds", 7.0) or 7.0
             max_bytes = int(self.config.audio.sample_rate * 2 * max_sentence_seconds)
 
             if has_speech:
@@ -165,10 +167,15 @@ class MoonshineEngine(BaseSTTEngine):
                     if silence_start_time is None:
                         silence_start_time = now
 
-            # Determine if we should transcribe (speech pause detected or live interim interval ~1.2s)
+            # Determine if we should finalize:
+            # 1. Natural breath/pause detected (speaker stopped speaking)
             is_silence_timeout = silence_start_time is not None and (now - silence_start_time >= pause_break_seconds)
+            # 2. Live interim update every ~1.2s while speaker is talking
             is_interval = (now - last_transcribe_time > 1.2) and len(buffer) >= min_bytes
-            is_full = len(buffer) >= max_bytes
+            # 3. Buffer length ceiling reached: prefer waiting for at least a brief silence dip before forcing cut
+            is_soft_full = len(buffer) >= max_bytes and (silence_start_time is not None or not has_speech)
+            is_hard_full = len(buffer) >= int(max_bytes * 1.25)  # Hard ceiling if preacher speaks without any breath
+            is_full = is_soft_full or is_hard_full
 
             if (is_silence_timeout or is_interval or is_full) and len(buffer) >= min_bytes:
                 even_len = len(buffer) & ~1
@@ -189,7 +196,18 @@ class MoonshineEngine(BaseSTTEngine):
                     )
 
                 if is_final:
-                    buffer.clear()
+                    if is_silence_timeout:
+                        # Full breath/silence: safe to clear entire audio buffer
+                        buffer.clear()
+                    else:
+                        # Split occurred during continuous speech: retain trailing ~350ms overlap
+                        # so the next chunk starts with the complete transitioning syllable
+                        if len(buffer) > overlap_bytes:
+                            tail = buffer[-overlap_bytes:]
+                            buffer.clear()
+                            buffer.extend(tail)
+                        else:
+                            buffer.clear()
                     silence_start_time = None
 
         # Flush remaining buffer at stream end

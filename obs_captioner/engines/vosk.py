@@ -133,9 +133,9 @@ class VoskEngine(BaseSTTEngine):
             has_speech = self.vad.is_speech(pcm_chunk)
 
             # Live dynamic thresholds from active config
-            pause_break_seconds = getattr(self.config.audio, "sentence_break_ms", 450) / 1000.0
-            max_sentence_seconds = getattr(self.config.audio, "max_sentence_duration_seconds", 4.5)
-            max_sentence_words = getattr(self.config.audio, "max_sentence_words", 18)
+            pause_break_seconds = (getattr(self.config.audio, "sentence_break_ms", 550) or 550) / 1000.0
+            max_sentence_seconds = getattr(self.config.audio, "max_sentence_duration_seconds", 7.0) or 7.0
+            max_sentence_words = getattr(self.config.audio, "max_sentence_words", 24) or 24
 
             # 1. Feed chunk to Kaldi recognizer
             if rec.AcceptWaveform(pcm_chunk):

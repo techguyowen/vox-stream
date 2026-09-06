@@ -231,11 +231,44 @@ class TextFormatter:
         self._lookup = {k.lower(): v for k, v in master_dict.items()}
         sorted_keys = sorted(self._lookup.keys(), key=len, reverse=True)
         if sorted_keys:
-            # (?!\w) instead of a trailing \b so keys ending in an apostrophe
-            # (e.g. "jesus'") can still match before a space or punctuation.
-            self._master_pattern = re.compile(rf"\b({'|'.join(map(re.escape, sorted_keys))})(?!\w)", re.IGNORECASE)
+            # (?!\w) and (?<!\w) so keys ending/starting with punctuation (e.g. "jesus'", "dog. solid g") match cleanly
+            self._master_pattern = re.compile(rf"(?<!\w)({'|'.join(map(re.escape, sorted_keys))})(?!\w)", re.IGNORECASE)
         else:
             self._master_pattern = None
+
+    @staticmethod
+    def de_duplicate_phrases(text: str) -> str:
+        """Collapse immediate identical sentence repetitions and stuttered phrase loops.
+
+        Examples:
+          'I help our church to continue to be apart. I help our church to continue to be apart.'
+          -> 'I help our church to continue to be apart.'
+          'we want to, we want to make sure'
+          -> 'we want to make sure'
+        """
+        if not text or len(text) < 6:
+            return text
+
+        # 1. Whole-sentence repetition (e.g. "Sentence A. Sentence A.")
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
+        if len(sentences) >= 2:
+            deduped = [sentences[0]]
+            for s in sentences[1:]:
+                clean_curr = re.sub(r"[^\w\s]", "", s).lower().strip()
+                clean_prev = re.sub(r"[^\w\s]", "", deduped[-1]).lower().strip()
+                if clean_curr != clean_prev:
+                    deduped.append(s)
+            text = " ".join(deduped)
+
+        # 2. Phrase-level stutters (2+ words repeated consecutively, e.g. "we want to we want to")
+        pattern = re.compile(r"\b(\w+(?:[^\w\n]+(?:\w+)){1,5})\s*[,;]?\s+\1\b", re.IGNORECASE)
+        for _ in range(2):
+            prev = text
+            text = pattern.sub(r"\1", text)
+            if text == prev:
+                break
+
+        return text
 
     def format_text(self, text: str, is_final: bool = True) -> str:
         """Apply church terms, capitalization, and punctuation in an ultra-fast single-pass pipeline."""
@@ -245,6 +278,9 @@ class TextFormatter:
         text = text.strip()
         if not text:
             return ""
+
+        # 0. De-duplicate stutters and repeated sentences
+        text = self.de_duplicate_phrases(text)
 
         # 1. Fast scripture reference parsing (if digits, book names, or citation markers present)
         if self.church_mode and self.church_formatter:

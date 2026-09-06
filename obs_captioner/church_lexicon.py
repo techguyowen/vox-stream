@@ -343,6 +343,66 @@ class ChurchLexiconFormatter:
         "gifts of the spirit": "gifts of the Spirit",
         "armor of god": "armor of God",
         "full armor of god": "full armor of God",
+        # ── Sermon Specific Phonetic Corrections & Local Names ────────────────
+        # Pastoral & Leadership
+        "ben lut": "Ben Luthi",
+        "ben luthi": "Ben Luthi",
+        "ben luther": "Ben Luthi",
+        "beneath the who's": "Ben Luthi, who's",
+        "beneath the who is": "Ben Luthi, who is",
+        "beneath the who": "Ben Luthi who",
+        "astrodani": "Pastor Donnie",
+        "astro donnie": "Pastor Donnie",
+        "pastor donnie": "Pastor Donnie",
+        "pastor donny": "Pastor Donnie",
+        "dave benton": "Dave Benton",
+        "lawrence and gina": "Lawrence and Gina",
+        # Church Campuses & Community
+        "way point": "Waypoint",
+        "way poi": "Waypoint",
+        "wave once": "Waypoint",
+        "way pope": "Waypoint",
+        "waypoint church": "Waypoint Church",
+        "waypoint kids": "Waypoint Kids",
+        "the journey church": "The Journey Church",
+        "journey church": "Journey Church",
+        "church centre": "Church Center",
+        "church center": "Church Center",
+        "jim conna": "Gymkhana",
+        "jim conner": "Gymkhana",
+        "jim connaught": "Gymkhana",
+        "gymkhana": "Gymkhana",
+        # Regional Geography
+        "the triangle": "the Triangle",
+        "rtp": "RTP",
+        "research triangle park": "Research Triangle Park",
+        "raleigh": "Raleigh",
+        "raleigh and waypoint": "Raleigh and Waypoint",
+        "raleigh-durham": "Raleigh-Durham",
+        "south durham": "South Durham",
+        "east chapel hill": "East Chapel Hill",
+        "chapel hill": "Chapel Hill",
+        "tucker hall": "Tucker Hall",
+        # Sacred & Liturgical Corrections
+        "dog solid g": "Doxology",
+        "dog. solid g": "Doxology",
+        "solid g": "Doxology",
+        "said corinthians": "2 Corinthians",
+        "cried the ends": "Corinthians",
+        "cryney is": "Corinthians",
+        "entinction": "intinction",
+        "intinction": "intinction",
+        "top 24": "Luke 24",
+        "road to emmaus": "Road to Emmaus",
+        "emmaus": "Emmaus",
+        "he took a cop": "he took a cup",
+        "receive this part in": "receive this pardon",
+        "try to lure for them": "pray to the Lord for them",
+        "a socioplship": "discipleship",
+        "the cyber": "disciple",
+        "the cybers": "disciples",
+        # Vulgar Acoustic Mishearing Safeguards
+        "pissed back up": "picked back up",
     }
 
     def __init__(self, enabled: bool = True):
@@ -367,7 +427,7 @@ class ChurchLexiconFormatter:
         self._compiled_church_patterns = []
         for orig, rep in sorted_terms:
             escaped = re.escape(orig)
-            pattern = re.compile(rf"\b{escaped}\b", re.IGNORECASE)
+            pattern = re.compile(rf"(?<!\w){escaped}(?!\w)", re.IGNORECASE)
             self._compiled_church_patterns.append((pattern, rep))
 
     def _words_to_number(self, text: str) -> int:

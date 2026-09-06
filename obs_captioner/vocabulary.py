@@ -24,6 +24,35 @@ class VocabularyConfig:
         "obs": "OBS",
         "voxstream": "VoxStream",
         "vox stream": "VoxStream",
+        "way point": "Waypoint",
+        "way poi": "Waypoint",
+        "wave once": "Waypoint",
+        "way pope": "Waypoint",
+        "waypoint kids": "Waypoint Kids",
+        "jim conna": "Gymkhana",
+        "jim conner": "Gymkhana",
+        "jim connaught": "Gymkhana",
+        "gymkhana": "Gymkhana",
+        "astrodani": "Pastor Donnie",
+        "astro donnie": "Pastor Donnie",
+        "pastor donnie": "Pastor Donnie",
+        "ben lut": "Ben Luthi",
+        "ben luthi": "Ben Luthi",
+        "ben luther": "Ben Luthi",
+        "dog solid g": "Doxology",
+        "dog. solid g": "Doxology",
+        "solid g": "Doxology",
+        "pissed back up": "picked back up",
+        "said corinthians": "2 Corinthians",
+        "entinction": "intinction",
+        "top 24": "Luke 24",
+        "he took a cop": "he took a cup",
+        "receive this part in": "receive this pardon",
+        "try to lure for them": "pray to the Lord for them",
+        "a socioplship": "discipleship",
+        "the cyber": "disciple",
+        "dave benton": "Dave Benton",
+        "lawrence and gina": "Lawrence and Gina",
     })
 
 
@@ -54,8 +83,8 @@ class VocabularyReplacer:
                 continue
 
             escaped = re.escape(orig_clean)
-            # Use word boundaries (\b) to match full words/phrases
-            pattern = re.compile(rf"\b{escaped}\b", re.IGNORECASE)
+            # Use flexible word boundaries to match full words/phrases even with punctuation
+            pattern = re.compile(rf"(?<!\w){escaped}(?!\w)", re.IGNORECASE)
             self._compiled_patterns.append((pattern, replacement.strip()))
 
     def replace(self, text: str) -> Tuple[str, bool]:

@@ -1077,9 +1077,9 @@ class TestSentenceBreakConfiguration(unittest.IsolatedAsyncioTestCase):
     def test_audio_config_sentence_break_defaults(self):
         from obs_captioner.config import AudioConfig
         ac = AudioConfig()
-        self.assertEqual(ac.sentence_break_ms, 450)
-        self.assertEqual(ac.max_sentence_duration_seconds, 4.5)
-        self.assertEqual(ac.max_sentence_words, 18)
+        self.assertEqual(ac.sentence_break_ms, 550)
+        self.assertEqual(ac.max_sentence_duration_seconds, 7.0)
+        self.assertEqual(ac.max_sentence_words, 24)
 
     def test_vad_update_config(self):
         from obs_captioner.vad import VoiceActivityDetector
@@ -1476,6 +1476,163 @@ class TestUpdaterCore(unittest.IsolatedAsyncioTestCase):
         content = bat.read_bytes()
         self.assertEqual(content.count(b"\r\n"), 3)
         self.assertEqual(content.count(b"\n") - content.count(b"\r\n"), 0)
+
+
+class TestSermonPipelineEnhancements(unittest.IsolatedAsyncioTestCase):
+    """Unit tests for sermon caption accuracy, boundary stitching, music suppression, and lexicon."""
+
+    def test_music_hallucination_suppression(self):
+        from obs_captioner.music import is_music_text, is_repetition_loop, is_orphan_noise
+
+        # Known neural ASR hallucination phrases
+        self.assertTrue(is_music_text("Satsang with Mooji."))
+        self.assertTrue(is_music_text("Subtitles by amara.org"))
+        self.assertTrue(is_music_text("Thank you for watching."))
+        self.assertTrue(is_music_text("Please subscribe to our channel."))
+
+        # Punctuation / dot loops
+        self.assertTrue(is_music_text("everything dot everything dot dot"))
+        self.assertTrue(is_music_text("dot everything dot everything dot"))
+
+        # Low entropy repetition loops
+        self.assertTrue(is_music_text("other in other other in other other"))
+        self.assertTrue(is_music_text("other other other other"))
+
+        # Orphan noise fragments emitted during silence/breaths
+        self.assertTrue(is_orphan_noise("It."))
+        self.assertTrue(is_orphan_noise("Sun."))
+        self.assertTrue(is_orphan_noise("S new."))
+        self.assertTrue(is_orphan_noise("In."))
+        self.assertTrue(is_orphan_noise("And."))
+        self.assertTrue(is_orphan_noise("So."))
+        self.assertTrue(is_music_text("It."))
+        self.assertTrue(is_music_text("Sun."))
+
+        # Legitimate single words or normal phrases should NOT be suppressed
+        self.assertFalse(is_music_text("Amen."))
+        self.assertFalse(is_music_text("Jesus."))
+        self.assertFalse(is_music_text("Praise."))
+        self.assertFalse(is_music_text("Good morning church."))
+        self.assertFalse(is_music_text("All you need is a book."))
+
+    def test_church_lexicon_and_proper_nouns(self):
+        from obs_captioner.formatter import TextFormatter
+
+        fmt = TextFormatter(auto_capitalization=True, auto_punctuation=True, church_mode=True)
+
+        # Pastoral & Leadership
+        self.assertIn("Ben Luthi", fmt.format_text("ben lut is our pastor"))
+        self.assertIn("Ben Luthi", fmt.format_text("ben luthi preached today"))
+        self.assertIn("Pastor Donnie", fmt.format_text("astrodani will join us"))
+        self.assertIn("Dave Benton", fmt.format_text("dave benton spoke today"))
+        self.assertIn("Lawrence and Gina", fmt.format_text("lawrence and gina are here"))
+
+        # Church & Campuses & Events
+        self.assertIn("Waypoint", fmt.format_text("welcome to way point church"))
+        self.assertIn("Waypoint Kids", fmt.format_text("waypoint kids volunteer appreciation"))
+        self.assertIn("Gymkhana", fmt.format_text("our men's event is jim conna"))
+        self.assertIn("The Journey Church", fmt.format_text("partnering with the journey church"))
+        self.assertIn("Church Center", fmt.format_text("download the church centre app"))
+
+        # Regional Geography
+        self.assertIn("the Triangle", fmt.format_text("serving in the triangle"))
+        self.assertIn("RTP", fmt.format_text("our rtp campus"))
+        self.assertIn("Raleigh", fmt.format_text("members from raleigh"))
+        self.assertIn("South Durham", fmt.format_text("in south durham"))
+        self.assertIn("East Chapel Hill", fmt.format_text("in east chapel hill"))
+        self.assertIn("Tucker Hall", fmt.format_text("meeting at tucker hall"))
+
+        # Sacred & Liturgical
+        self.assertIn("Doxology", fmt.format_text("singing dog solid g"))
+        self.assertIn("Doxology", fmt.format_text("dog. solid g"))
+        self.assertIn("2 Corinthians", fmt.format_text("turn to said corinthians"))
+        self.assertIn("intinction", fmt.format_text("communion via entinction"))
+        self.assertIn("Luke 24", fmt.format_text("as written in top 24"))
+        self.assertIn("he took a cup", fmt.format_text("when he took a cop and broke it"))
+        self.assertIn("receive this pardon", fmt.format_text("come to receive this part in"))
+
+    def test_vulgar_mishearing_safeguard(self):
+        from obs_captioner.formatter import TextFormatter
+        from obs_captioner.vocabulary import VocabularyReplacer, VocabularyConfig
+
+        vocab = VocabularyReplacer(VocabularyConfig())
+        replaced, _ = vocab.replace("Hopefully we've pissed back up next week")
+        self.assertEqual(replaced, "Hopefully we've picked back up next week")
+
+        fmt = TextFormatter(church_mode=True)
+        formatted = fmt.format_text("we pissed back up")
+        self.assertIn("picked back up", formatted)
+        self.assertNotIn("pissed", formatted.lower())
+
+    def test_deduplicate_stutters_and_repeated_sentences(self):
+        from obs_captioner.formatter import TextFormatter
+
+        fmt = TextFormatter()
+
+        # Identical repeated sentence
+        sermon_dup = "I help our church to continue to be apart. I help our church to continue to be apart."
+        res = fmt.format_text(sermon_dup)
+        self.assertEqual(res, "I help our church to continue to be apart.")
+
+        # Stuttered phrase
+        stutter = "we want to, we want to make sure"
+        res_stutter = fmt.format_text(stutter)
+        self.assertIn("We want to make sure", res_stutter)
+
+        # Biblical repetition should be preserved
+        holy = "Holy, holy, holy is the Lord God Almighty."
+        res_holy = fmt.format_text(holy)
+        self.assertIn("Holy", res_holy)
+        self.assertTrue(res_holy.lower().count("holy") >= 3)
+
+    async def test_boundary_stitching_in_caption_sink(self):
+        from obs_captioner.obs.caption_sink import CaptionSink
+        from obs_captioner.history import TranscriptHistory
+        from obs_captioner.config import AppConfig
+        from obs_captioner.engines.base import TranscriptEvent
+
+        config = AppConfig()
+        history = TranscriptHistory()
+        sink = CaptionSink(config=config, history=history)
+
+        # Chunk 1: Cut off at boundary
+        evt1 = TranscriptEvent(text="If you're a man at way poi.", is_final=True)
+        await sink.handle_transcript(evt1)
+        self.assertEqual(len(history.entries), 1)
+
+        # Chunk 2: Second half arrives
+        evt2 = TranscriptEvent(text="Point please come out for.", is_final=True)
+        await sink.handle_transcript(evt2)
+
+        # Entry 1 should be stitched to Waypoint
+        self.assertIn("Waypoint", history.entries[0].text)
+        self.assertNotIn("way poi", history.entries[0].text.lower())
+        # Entry 2 should contain remainder without orphan 'Point'
+        self.assertEqual(len(history.entries), 2)
+        self.assertTrue(history.entries[1].text.startswith("Please come out"))
+
+        # Absorption test: Entire chunk 2 is just the split word suffix
+        history.entries.clear()
+        evt_a = TranscriptEvent(text="Praise God from whom all blessings flow. dog.", is_final=True)
+        await sink.handle_transcript(evt_a)
+        self.assertEqual(len(history.entries), 1)
+
+        evt_b = TranscriptEvent(text="Solid g.", is_final=True)
+        await sink.handle_transcript(evt_b)
+
+        # Chunk 2 should be absorbed into Chunk 1: Doxology
+        self.assertEqual(len(history.entries), 1)
+        self.assertIn("Doxology", history.entries[0].text)
+
+    def test_moonshine_rolling_overlap_buffer(self):
+        from obs_captioner.engines.moonshine import MoonshineEngine
+        from obs_captioner.config import AppConfig
+
+        config = AppConfig()
+        engine = MoonshineEngine(config)
+        sample_rate = 16000
+        expected_overlap = int(sample_rate * 2 * 0.35) & ~1
+        self.assertEqual(expected_overlap, 11200)
 
 
 if __name__ == "__main__":

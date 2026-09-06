@@ -42,14 +42,38 @@ MUSIC_TAG_PATTERNS = [
 # Symbols pattern
 MUSIC_CHAR_PATTERN = re.compile(r"[♪♫♩♬♭♯]")
 
+# Known neural ASR hallucination patterns (YouTube subtitle artifacts, silence phantoms)
+HALLUCINATION_PHRASES = [
+    "satsang with mooji",
+    "amara.org",
+    "thank you for watching",
+    "thanks for watching",
+    "please subscribe",
+    "subscribe to our channel",
+    "subtitles by",
+    "transcribed by",
+    "translated by",
+    "english subtitles",
+    "like and subscribe",
+]
+
+# Orphan function words / click noise phonemes emitted during silence/breaths
+ORPHAN_NOISE_WORDS = {
+    "it", "and", "in", "to", "the", "a", "an", "s", "sun", "so",
+    "i", "or", "of", "on", "at", "by", "as", "is", "it's", "its",
+    "he", "she", "we", "they", "that", "this", "uh", "um", "ah", "oh",
+}
+
 
 def is_repetition_loop(text: str) -> bool:
-    """Detect autoregressive repetition loops typical of Whisper during music or sustained tones.
+    """Detect autoregressive repetition loops typical of Whisper/Moonshine during music or sustained tones.
 
     Examples:
       'Thank you. Thank you. Thank you. Thank you.' -> True
       'you you you you you' -> True
       'Hallelujah Amen Hallelujah Amen Hallelujah Amen' -> True
+      'everything dot everything dot dot' -> True
+      'other in other other in other other' -> True
     """
     if not text:
         return False
@@ -58,6 +82,18 @@ def is_repetition_loop(text: str) -> bool:
     total_words = len(words)
     if total_words < 3:
         return False
+
+    # Check for hallucinated punctuation dictation loops like 'everything dot everything dot dot'
+    if "dot" in words and words.count("dot") >= 2:
+        return True
+
+    # Check for vocabulary collapse / low entropy (e.g. 'other in other other in other other')
+    counts = collections.Counter(words)
+    most_common_word, most_common_count = counts.most_common(1)[0]
+    if total_words >= 4 and (most_common_count / total_words) >= 0.5:
+        return True
+    if total_words >= 5 and len(counts) <= 2:
+        return True
 
     # Check 1-gram, 2-gram, 3-gram, 4-gram repetitions
     max_gram = min(4, total_words // 3)
@@ -76,6 +112,27 @@ def is_repetition_loop(text: str) -> bool:
     return False
 
 
+def is_orphan_noise(text: str) -> bool:
+    """Detect isolated 1-2 word noise fragments/clicks during pauses or music (e.g. 'It.', 'Sun.', 'S new.', 'In.')."""
+    if not text:
+        return False
+    words = re.findall(r"\b\w+\b", text.lower())
+    if not words:
+        return False
+
+    if len(words) == 1:
+        return words[0] in ORPHAN_NOISE_WORDS
+
+    if len(words) == 2:
+        phrase = " ".join(words)
+        if phrase in {"s new", "in other", "and so", "it is", "that the"}:
+            return True
+        if all(w in ORPHAN_NOISE_WORDS for w in words):
+            return True
+
+    return False
+
+
 def is_music_text(text: str) -> bool:
     """Return True if the transcript is identified as music, singing, or a music hallucination."""
     if not text:
@@ -85,7 +142,14 @@ def is_music_text(text: str) -> bool:
     if not stripped:
         return False
 
-    # 1. Direct musical note symbols (if note is present at start/end or dominates)
+    lower_text = stripped.lower()
+
+    # 1. Known neural ASR hallucination phrases (silence / sustained tone artifacts)
+    for h in HALLUCINATION_PHRASES:
+        if h in lower_text:
+            return True
+
+    # 2. Direct musical note symbols (if note is present at start/end or dominates)
     if any(c in MUSIC_SYMBOLS for c in stripped):
         # Clean out notes and punctuation: if nothing left, it's 100% music symbol
         no_notes = re.sub(r"[♪♫♩♬♭♯\s.,!?:;\"'()\[\]\-_]", "", stripped)
@@ -97,13 +161,17 @@ def is_music_text(text: str) -> bool:
         # If text contains musical notes anywhere
         return True
 
-    # 2. Bracketed or parenthesized music/sound tags
+    # 3. Bracketed or parenthesized music/sound tags
     for pat in MUSIC_TAG_PATTERNS:
         if pat.search(stripped):
             return True
 
-    # 3. Autoregressive hallucination loop check
+    # 4. Autoregressive hallucination loop check (repetition loops, dot loops, low entropy)
     if is_repetition_loop(stripped):
+        return True
+
+    # 5. Orphan single-token noise click artifacts (e.g. 'It.', 'Sun.', 'S new.', 'And.')
+    if is_orphan_noise(stripped):
         return True
 
     return False
