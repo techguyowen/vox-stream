@@ -567,7 +567,7 @@ class WebOverlayServer:
             except Exception:
                 pass
 
-            asyncio.get_event_loop().call_later(0.3, self.on_restart_requested)
+            asyncio.get_event_loop().call_later(0.2, self.on_restart_requested)
             return web.json_response({
                 "status": "restarting",
                 "instance_id": self.instance_id,
@@ -580,7 +580,7 @@ class WebOverlayServer:
             return web.json_response({"error": "Unauthorized"}, status=401)
         logger.info("Received request to shut down application.")
         if self.on_shutdown_requested:
-            asyncio.get_event_loop().call_later(0.5, self.on_shutdown_requested)
+            asyncio.get_event_loop().call_later(0.2, self.on_shutdown_requested)
             return web.json_response({"status": "shutting_down", "message": "Application is shutting down..."})
         return web.json_response({"error": "Shutdown handler not configured."}, status=500)
 
@@ -1106,7 +1106,7 @@ class WebOverlayServer:
         for offset in range(10):
             current_port = initial_port + offset
             try:
-                self.site = web.TCPSite(self.runner, host, current_port)
+                self.site = web.TCPSite(self.runner, host, current_port, shutdown_timeout=1.0)
                 await self.site.start()
                 self.config.overlay.port = current_port
                 
@@ -1127,17 +1127,23 @@ class WebOverlayServer:
         return False
 
     async def stop(self):
-        """Stop the web server."""
-        for ws in list(set(self.caption_sockets.keys()) | self.control_sockets):
-            try:
-                await ws.close()
-            except Exception:
-                pass
+        """Stop the web server cleanly with fast timeout."""
+        all_sockets = list(set(self.caption_sockets.keys()) | self.control_sockets)
         self.caption_sockets.clear()
         self.control_sockets.clear()
 
+        for ws in all_sockets:
+            try:
+                await asyncio.wait_for(ws.close(), timeout=0.3)
+            except Exception:
+                pass
+
         if self.runner:
-            await self.runner.cleanup()
+            try:
+                await asyncio.wait_for(self.runner.cleanup(), timeout=1.5)
+            except Exception as e:
+                logger.debug(f"Runner cleanup error or timeout: {e}")
+            self.runner = None
         logger.info("Overlay and API server stopped.")
 
 

@@ -6,6 +6,7 @@
 # Find the script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
+export VOXSTREAM_RUNNER=sh
 
 # Check if .venv exists
 if [ ! -d ".venv" ]; then

@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import logging
+import os
 import signal
 import sys
 import time
@@ -377,26 +378,58 @@ async def main_async(args):
 
     pipeline_task = asyncio.create_task(run_pipeline())
 
+    async def cleanup_all():
+        logger.info("Cleaning up resources...")
+        if pipeline_task:
+            pipeline_task.cancel()
+            try:
+                await asyncio.wait_for(pipeline_task, timeout=0.5)
+            except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
+                pass
+        if 'obs_reconnect_task' in locals():
+            try:
+                obs_reconnect_task.cancel()
+            except Exception:
+                pass
+        if twitch_bot:
+            try:
+                await asyncio.wait_for(twitch_bot.stop(), timeout=0.8)
+            except Exception as e:
+                logger.debug(f"Error stopping Twitch bot: {e}")
+        if engine:
+            try:
+                await asyncio.wait_for(engine.stop(), timeout=0.8)
+            except Exception as e:
+                logger.debug(f"Error stopping engine: {e}")
+        if audio_capture:
+            try:
+                audio_capture.stop()
+            except Exception as e:
+                logger.debug(f"Error stopping audio capture: {e}")
+        if obs_client:
+            try:
+                await asyncio.wait_for(obs_client.close(), timeout=0.8)
+            except Exception as e:
+                logger.debug(f"Error closing OBS client: {e}")
+        if web_server:
+            try:
+                await asyncio.wait_for(web_server.stop(), timeout=1.5)
+            except Exception as e:
+                logger.debug(f"Error stopping web server: {e}")
+        logger.info("OBS Live Captioner stopped gracefully.")
+
     # Wait until shutdown requested
     try:
         await shutdown_event.wait()
     except KeyboardInterrupt:
         logger.info("KeyboardInterrupt received.")
     finally:
-        logger.info("Cleaning up resources...")
-        if pipeline_task:
-            pipeline_task.cancel()
-        if 'obs_reconnect_task' in locals():
-            obs_reconnect_task.cancel()
-        if engine:
-            await engine.stop()
-        if audio_capture:
-            audio_capture.stop()
-        if obs_client:
-            await obs_client.close()
-        if web_server:
-            await web_server.stop()
-        logger.info("OBS Live Captioner stopped gracefully.")
+        try:
+            await asyncio.wait_for(cleanup_all(), timeout=3.0)
+        except asyncio.TimeoutError:
+            logger.warning("Resource cleanup timed out after 3.0s, proceeding with exit.")
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
         return 42 if is_restart else 0
 
 
@@ -424,20 +457,41 @@ def main():
         print("--------------------------------------------------------------------------------\n")
         return
 
-    while True:
+    exit_code = 0
+    try:
+        exit_code = asyncio.run(main_async(args))
+    except KeyboardInterrupt:
         exit_code = 0
-        try:
-            exit_code = asyncio.run(main_async(args))
-        except KeyboardInterrupt:
-            exit_code = 0
-            break
+    except Exception as e:
+        logger.error(f"Fatal error during execution: {e}", exc_info=True)
+        exit_code = 1
 
-        if exit_code == 42:
-            logger.info("🔄 [VoxStream] Application restart requested. Re-launching pipeline in 0.5s...")
-            time.sleep(0.5)
-            continue
+    if exit_code == 42:
+        logger.info("🔄 [VoxStream] Application restart requested. Handing over to launcher...")
+        try:
+            sys.stdout.flush()
+            sys.stderr.flush()
+        except Exception:
+            pass
+
+        # If running on Windows or under batch/shell wrapper, exit with code 42 so launcher loops
+        is_runner = os.environ.get("VOXSTREAM_RUNNER") in ("bat", "sh") or sys.platform == "win32"
+        if is_runner:
+            os._exit(42)
         else:
-            sys.exit(exit_code or 0)
+            # Standalone POSIX execution: re-exec Python process in-place
+            try:
+                os.execv(sys.executable, [sys.executable] + sys.argv)
+            except Exception:
+                os._exit(42)
+    else:
+        logger.info("🛑 [VoxStream] Application shutdown complete.")
+        try:
+            sys.stdout.flush()
+            sys.stderr.flush()
+        except Exception:
+            pass
+        os._exit(exit_code or 0)
 
 
 if __name__ == "__main__":

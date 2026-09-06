@@ -654,8 +654,8 @@ from obs_captioner.web.server import WebOverlayServer
 class TestServerEndpoints(AioHTTPTestCase):
     async def get_application(self):
         self.cfg = AppConfig()
-        self.server = WebOverlayServer(self.cfg)
-        return self.server.app
+        self.overlay_server = WebOverlayServer(self.cfg)
+        return self.overlay_server.app
 
     async def test_manifest_endpoint(self):
         resp = await self.client.request('GET', '/manifest.json')
@@ -704,6 +704,35 @@ class TestServerEndpoints(AioHTTPTestCase):
         self.assertEqual(resp.status, 200)
         data = await resp.json()
         self.assertEqual(data['status'], 'success')
+
+    async def test_control_restart_endpoint(self):
+        restart_called = False
+        def handle_restart():
+            nonlocal restart_called
+            restart_called = True
+
+        self.overlay_server.on_restart_requested = handle_restart
+        resp = await self.client.request('POST', '/api/control/restart')
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertEqual(data['status'], 'restarting')
+        self.assertIn('instance_id', data)
+        await asyncio.sleep(0.3)
+        self.assertTrue(restart_called)
+
+    async def test_control_shutdown_endpoint(self):
+        shutdown_called = False
+        def handle_shutdown():
+            nonlocal shutdown_called
+            shutdown_called = True
+
+        self.overlay_server.on_shutdown_requested = handle_shutdown
+        resp = await self.client.request('POST', '/api/control/shutdown')
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertEqual(data['status'], 'shutting_down')
+        await asyncio.sleep(0.3)
+        self.assertTrue(shutdown_called)
 
     async def test_api_status(self):
         resp = await self.client.request('GET', '/api/status')
@@ -1176,6 +1205,33 @@ class TestMusicSuppressionAndOverlayMinimumDuration(unittest.IsolatedAsyncioTest
         await sink._auto_clear_worker()
         elapsed = time.time() - t_start
         self.assertGreaterEqual(elapsed, 0.18)
+
+    def test_audio_capture_stop_unblocks_queue(self):
+        from obs_captioner.audio_capture import AudioCapture
+        from obs_captioner.config import AudioConfig
+
+        ac = AudioCapture(AudioConfig())
+        ac._running = True
+        self.assertTrue(ac._running)
+        ac.stop()
+        self.assertFalse(ac._running)
+        # Verify dummy chunk b"" was placed in queue to unblock any waiting worker thread
+        chunk = ac._queue.get_nowait()
+        self.assertEqual(chunk, b"")
+
+    async def test_web_server_stop_resilient(self):
+        import time
+        from obs_captioner.web.server import WebOverlayServer
+        from obs_captioner.config import AppConfig
+
+        cfg = AppConfig()
+        server = WebOverlayServer(cfg)
+        t_start = time.time()
+        await server.stop()
+        elapsed = time.time() - t_start
+        self.assertLess(elapsed, 1.0)
+        self.assertEqual(len(server.caption_sockets), 0)
+        self.assertEqual(len(server.control_sockets), 0)
 
 
 if __name__ == "__main__":

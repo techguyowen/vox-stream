@@ -1,5 +1,6 @@
 @echo off
 setlocal
+set VOXSTREAM_RUNNER=bat
 
 cd /d "%~dp0"
 

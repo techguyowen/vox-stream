@@ -259,13 +259,19 @@ class AudioCapture:
     def stop(self):
         """Stop the audio capture stream."""
         self._running = False
+        # Unblock any thread or generator waiting on the queue
+        try:
+            self._queue.put_nowait(b"")
+        except Exception:
+            pass
         if self.stream is not None:
+            s = self.stream
+            self.stream = None
             try:
-                self.stream.stop()
-                self.stream.close()
+                s.stop()
+                s.close()
             except Exception as e:
                 logger.debug(f"Error closing audio stream: {e}")
-            self.stream = None
         self.current_rms_db = -100.0
         logger.info("Audio capture stream stopped.")
 
