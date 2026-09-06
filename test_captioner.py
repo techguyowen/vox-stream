@@ -1459,6 +1459,24 @@ class TestUpdaterCore(unittest.IsolatedAsyncioTestCase):
         # Verify new code was installed
         self.assertTrue((self.app_root / "obs_captioner" / "new_feature.py").exists())
 
+    def test_ensure_windows_batch_crlf(self):
+        """Verify that updater converts any LF batch scripts to CRLF for cmd.exe."""
+        from obs_captioner.updater import UpdateManager
+        mgr = UpdateManager(app_root=self.app_root)
+
+        bat = self.app_root / "test_script.bat"
+        # Write pure LF-only content
+        bat.write_bytes(b"@echo off\necho hello\npause\n")
+        self.assertEqual(bat.read_bytes().count(b"\r\n"), 0)
+        self.assertEqual(bat.read_bytes().count(b"\n"), 3)
+
+        mgr._ensure_windows_batch_crlf()
+
+        # Must now have CRLF
+        content = bat.read_bytes()
+        self.assertEqual(content.count(b"\r\n"), 3)
+        self.assertEqual(content.count(b"\n") - content.count(b"\r\n"), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

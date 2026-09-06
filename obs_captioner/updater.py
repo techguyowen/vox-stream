@@ -263,6 +263,9 @@ class UpdateManager:
                 if pip_res.returncode != 0:
                     logger.warning(f"pip install completed with warnings: {pip_res.stderr.strip()[:200]}")
 
+            # Ensure Windows batch files maintain CRLF line endings
+            self._ensure_windows_batch_crlf()
+
             if progress_cb:
                 progress_cb("🎉 Update applied successfully! Restarting VoxStream...")
             logger.info("Git update applied successfully.")
@@ -341,6 +344,9 @@ class UpdateManager:
                         timeout=90,
                     )
 
+            # Ensure Windows batch files maintain CRLF line endings
+            self._ensure_windows_batch_crlf()
+
             if progress_cb:
                 progress_cb("🎉 Update applied successfully! Restarting VoxStream...")
             logger.info("Zip update applied successfully.")
@@ -349,3 +355,19 @@ class UpdateManager:
         except Exception as e:
             logger.error(f"Error applying Zip update: {e}", exc_info=True)
             return False, f"Failed to download or apply update: {e}"
+
+    def _ensure_windows_batch_crlf(self) -> None:
+        """Normalize line endings of all .bat and .cmd files to CRLF for Windows cmd.exe compatibility."""
+        try:
+            for ext in ("*.bat", "*.cmd"):
+                for script in self.app_root.glob(ext):
+                    try:
+                        raw = script.read_bytes()
+                        normalized = raw.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+                        if normalized != raw:
+                            script.write_bytes(normalized)
+                    except Exception as e:
+                        logger.debug(f"Failed to normalize CRLF for {script.name}: {e}")
+        except Exception as e:
+            logger.debug(f"Batch script CRLF normalization skipped: {e}")
+

@@ -4,7 +4,7 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 echo =======================================================
-echo   🔨 Building VoxStream Native OBS C++ Plugin (.dll)
+echo   Building VoxStream Native OBS C++ Plugin (.dll)
 echo =======================================================
 echo.
 
@@ -43,7 +43,7 @@ cmake -B build -S obs_native_plugin -A x64 -DCMAKE_BUILD_TYPE=Release
 if %errorlevel% neq 0 (
     echo.
     echo =======================================================
-    echo   ⚠️ C++ Compiler (MSVC) Missing or Failed
+    echo   [WARNING] C++ Compiler (MSVC) Missing or Failed
     echo =======================================================
     echo CMake requires Visual Studio C++ Build Tools to compile .dll files.
     echo.
@@ -58,9 +58,9 @@ if %errorlevel% neq 0 (
         echo   winget install Microsoft.VisualStudio.2022.BuildTools --override "--passive --add Microsoft.VisualStudio.Workload.VCTools"
     )
     echo.
-    echo 💡 REMINDER: You do NOT need to compile this C++ plugin!
-    echo You can run the Python app right now by double-clicking 'run_captioner.bat'.
-    echo In OBS, simply set your ASIO soundboard Audio Monitoring to 'Monitor and Output'.
+    echo [NOTE] You do NOT need to compile this C++ plugin!
+    echo You can run the Python app right now by double-clicking run_captioner.bat.
+    echo In OBS, simply set your ASIO soundboard Audio Monitoring to Monitor and Output.
     echo =======================================================
     pause
     exit /b 1
@@ -99,10 +99,10 @@ if defined DLL_PATH (
             echo [SUCCESS] Installed to OBS Studio successfully!
         ) else (
             echo [NOTE] Administrator permissions required to copy to Program Files.
-            echo Please copy '!DLL_PATH!' into '!OBS_DIR!'.
+            echo Please copy !DLL_PATH! into !OBS_DIR!.
         )
     ) else (
-        echo [INFO] Copy '!DLL_PATH!' into your OBS plugins 64bit folder.
+        echo [INFO] Copy !DLL_PATH! into your OBS plugins 64bit folder.
     )
 ) else (
     echo [WARNING] Build completed but DLL file was not found in build directory.
@@ -110,6 +110,6 @@ if defined DLL_PATH (
 
 echo.
 echo =======================================================
-echo   🎉 Native Plugin Build Finished!
+echo   [SUCCESS] Native Plugin Build Finished!
 echo =======================================================
 pause

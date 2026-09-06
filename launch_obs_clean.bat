@@ -1,7 +1,7 @@
 @echo off
 title OBS Clean Launcher (No Safe-Mode Prompts)
 echo ========================================================
-echo 🎬 OBS Studio Clean Launcher
+echo   OBS Studio Clean Launcher
 echo ========================================================
 echo.
 echo Clearing OBS Sentinel and Safe Mode flags...
