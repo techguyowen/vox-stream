@@ -490,9 +490,16 @@ def main():
         except Exception:
             pass
 
-        # If running on Windows or under batch/shell wrapper, exit with code 42 so launcher loops
-        is_runner = os.environ.get("VOXSTREAM_RUNNER") in ("bat", "sh") or sys.platform == "win32"
+        # If running under batch/shell wrapper, exit with code 42 so launcher loops
+        is_runner = os.environ.get("VOXSTREAM_RUNNER") in ("bat", "sh")
         if is_runner:
+            os._exit(42)
+        elif sys.platform == "win32":
+            # Standalone Windows execution without wrapper: spawn replacement process and exit
+            try:
+                subprocess.Popen([sys.executable] + sys.argv)
+            except Exception as restart_err:
+                logger.error(f"Failed to spawn replacement restart process: {restart_err}")
             os._exit(42)
         else:
             # Standalone POSIX execution: re-exec Python process in-place

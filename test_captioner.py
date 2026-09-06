@@ -1784,6 +1784,92 @@ class TestVersioningAndSemanticUpdater(unittest.TestCase):
             self.assertEqual(status["update_type"], "minor")
             self.assertEqual(status["current_version"], "1.1.0")
 
+    def test_git_update_fallback_to_zip_on_failure(self):
+        from unittest.mock import patch, MagicMock
+        from obs_captioner.updater import UpdateManager
+
+        updater = UpdateManager()
+        with patch.object(updater, "is_git_repo", return_value=True), \
+             patch.object(updater, "_apply_update_git", return_value=(False, "Git lock error")), \
+             patch.object(updater, "_apply_update_zip", return_value=(True, "Zip update success")):
+
+            success, msg = updater._sync_apply_update()
+            self.assertTrue(success)
+            self.assertEqual(msg, "Zip update success")
+
+    def test_zip_update_preserves_protected_files_and_merges(self):
+        import tempfile
+        import zipfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from obs_captioner.updater import UpdateManager
+
+        with tempfile.TemporaryDirectory() as root_dir, tempfile.TemporaryDirectory() as web_dir:
+            app_root = Path(root_dir)
+            # Create user files that must be protected
+            user_config = app_root / "config.json"
+            user_config.write_text('{"user_setting": "keep_me"}', encoding="utf-8")
+            user_env = app_root / ".env"
+            user_env.write_text("API_SECRET=super_secret", encoding="utf-8")
+            sub_dir = app_root / "obs_captioner"
+            sub_dir.mkdir(parents=True)
+            existing_file = sub_dir / "existing.py"
+            existing_file.write_text("# existing code", encoding="utf-8")
+
+            # Create mock zip with new update payload
+            mock_zip_path = Path(web_dir) / "release.zip"
+            with zipfile.ZipFile(mock_zip_path, "w") as zf:
+                zf.writestr("vox-stream-main/config.json", '{"user_setting": "OVERWRITTEN"}')
+                zf.writestr("vox-stream-main/.env", "API_SECRET=OVERWRITTEN")
+                zf.writestr("vox-stream-main/obs_captioner/new_feature.py", "# new feature code")
+                zf.writestr("vox-stream-main/version.json", '{"version": "1.2.0"}')
+
+            import io
+            updater = UpdateManager(app_root=app_root)
+            with patch("urllib.request.urlopen", side_effect=lambda *args, **kwargs: io.BytesIO(mock_zip_path.read_bytes())), \
+                 patch.object(updater, "_ensure_windows_batch_crlf"):
+                success, msg = updater._apply_update_zip()
+                self.assertTrue(success)
+
+            # Assert protected user files were untouched
+            self.assertEqual(user_config.read_text(encoding="utf-8"), '{"user_setting": "keep_me"}')
+            self.assertEqual(user_env.read_text(encoding="utf-8"), "API_SECRET=super_secret")
+            # Assert existing files still exist and new files were merged
+            self.assertTrue(existing_file.exists())
+            self.assertTrue((sub_dir / "new_feature.py").exists())
+            self.assertTrue((app_root / "version.json").exists())
+
+    def test_ensure_windows_batch_crlf(self):
+        import tempfile
+        from pathlib import Path
+        from obs_captioner.updater import UpdateManager
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            app_root = Path(tmp_dir)
+            bat_file = app_root / "test_launcher.bat"
+            bat_file.write_bytes(b"@echo off\necho hello\nexit /b 0\n")
+
+            updater = UpdateManager(app_root=app_root)
+            updater._ensure_windows_batch_crlf()
+
+            content = bat_file.read_bytes()
+            self.assertIn(b"\r\n", content)
+            self.assertNotIn(b"\r\r\n", content)
+            self.assertEqual(content, b"@echo off\r\necho hello\r\nexit /b 0\r\n")
+
+    def test_check_update_handles_network_failure_gracefully(self):
+        import urllib.error
+        from unittest.mock import patch
+        from obs_captioner.updater import UpdateManager
+
+        updater = UpdateManager()
+        with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("Network down")), \
+             patch.object(updater, "is_git_repo", return_value=False):
+            res = updater._sync_check_update()
+            self.assertIsInstance(res, dict)
+            self.assertFalse(res["update_available"])
+            self.assertEqual(res["current_version"], "1.1.0")
+
 
 if __name__ == "__main__":
     unittest.main()

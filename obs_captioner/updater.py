@@ -281,7 +281,13 @@ class UpdateManager:
         is_git = self.is_git_repo()
 
         if is_git:
-            return self._apply_update_git(progress_cb)
+            success, msg = self._apply_update_git(progress_cb)
+            if success:
+                return True, msg
+            logger.warning(f"Git update failed ({msg}). Falling back to clean archive download...")
+            if progress_cb:
+                progress_cb("⚠️ Git update failed. Falling back to clean GitHub archive download...")
+            return self._apply_update_zip(progress_cb)
         else:
             return self._apply_update_zip(progress_cb)
 
@@ -292,9 +298,9 @@ class UpdateManager:
                 progress_cb("⬇️ Downloading latest updates from GitHub (git pull)...")
             logger.info("Executing git pull origin main...")
 
-            # 1. Stash any accidental local modifications to tracked files
+            # 1. Stash any accidental local modifications and untracked files
             subprocess.run(
-                ["git", "stash"],
+                ["git", "stash", "--include-untracked"],
                 cwd=str(self.app_root),
                 capture_output=True,
                 text=True,
@@ -314,7 +320,7 @@ class UpdateManager:
             if pull_res.returncode != 0:
                 logger.warning(f"git pull --ff-only failed ({pull_res.stderr.strip()}). Attempting clean fetch and reset...")
                 subprocess.run(
-                    ["git", "fetch", "origin", GITHUB_BRANCH],
+                    ["git", "fetch", "--all"],
                     cwd=str(self.app_root),
                     capture_output=True,
                     text=True,
@@ -377,7 +383,7 @@ class UpdateManager:
                     GITHUB_ZIP_URL,
                     headers={"User-Agent": f"VoxStream-Captioner/{VERSION}"},
                 )
-                with urllib.request.urlopen(req, timeout=30) as resp, open(zip_path, "wb") as f:
+                with urllib.request.urlopen(req, timeout=60) as resp, open(zip_path, "wb") as f:
                     shutil.copyfileobj(resp, f)
 
                 if progress_cb:
@@ -399,6 +405,9 @@ class UpdateManager:
                     "logs",
                     "data",
                     ".env",
+                    "models",
+                    "custom_models",
+                    ".user_uploaded",
                 }
 
                 if progress_cb:
