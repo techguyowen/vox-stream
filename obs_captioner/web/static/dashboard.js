@@ -2654,6 +2654,14 @@ function connectControlWs() {
             } else if (msg.type === "server_restarting") {
                 // Restart triggered elsewhere (another tab, API, Stream Deck)
                 beginRestartMonitor(msg.instance_id || currentInstanceId);
+            } else if (msg.type === "update_available") {
+                if (msg.status) {
+                    currentUpdateStatus = msg.status;
+                    renderUpdateUI(msg.status);
+                    showToast(`🚀 New VoxStream update available (${msg.status.latest_commit || 'New'})! Check Advanced Settings.`, "info", 5000);
+                }
+            } else if (msg.type === "updater_progress") {
+                handleUpdaterProgress(msg.message);
             }
         } catch (e) {}
     };
@@ -2951,6 +2959,247 @@ async function selectEngineFromLeaderboard(engineId) {
     }
 }
 
+// --- Software Updater Engine ---
+let currentUpdateStatus = null;
+let isCheckingUpdates = false;
+
+function renderUpdateUI(status) {
+    if (!status) return;
+    const versionEl = document.getElementById("updater-version-info");
+    if (versionEl) {
+        const v = status.current_version || "1.0.0";
+        const c = status.current_commit ? ` (${status.current_commit})` : "";
+        versionEl.textContent = `Current: v${v}${c}`;
+    }
+
+    const headerBadge = document.getElementById("btn-header-update");
+    const banner = document.getElementById("updater-status-banner");
+    const bannerText = document.getElementById("updater-banner-text");
+
+    if (status.update_available) {
+        if (headerBadge) {
+            headerBadge.style.display = "inline-flex";
+            const commitBadge = status.latest_commit ? ` (${escapeHtml(status.latest_commit)})` : "";
+            headerBadge.innerHTML = `<span>🚀 Update Available${commitBadge}</span>`;
+        }
+        if (banner) {
+            banner.style.display = "block";
+        }
+        if (bannerText) {
+            const commitMsg = escapeHtml(status.commit_message || "Latest enhancements, bug fixes, and improvements");
+            const commitAuthor = status.commit_author ? ` • by ${escapeHtml(status.commit_author)}` : "";
+            const commitHash = escapeHtml(status.latest_commit || "");
+            bannerText.innerHTML = `
+                <div style="font-weight: 700; display: flex; align-items: center; gap: 6px;">
+                    <span>✨ New Update Available:</span>
+                    <code style="background: rgba(16, 185, 129, 0.2); color: #A7F3D0; padding: 1px 6px; border-radius: 4px; font-size: 11px;">${commitHash}</code>
+                </div>
+                <div style="font-size: 11.5px; opacity: 0.9; margin-top: 3px; max-width: 460px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${commitMsg}">
+                    ${commitMsg}${commitAuthor}
+                </div>
+            `;
+        }
+    } else {
+        if (headerBadge) headerBadge.style.display = "none";
+        if (banner) banner.style.display = "none";
+    }
+}
+
+async function loadUpdateStatus(force = false) {
+    if (isCheckingUpdates) return;
+    isCheckingUpdates = true;
+
+    const btnCheck = document.getElementById("btn-check-updates");
+    const spinner = document.getElementById("check-updates-spinner");
+    const label = document.getElementById("check-updates-label");
+
+    if (force) {
+        if (btnCheck) btnCheck.disabled = true;
+        if (spinner) spinner.style.display = "inline-block";
+        if (label) label.textContent = "Checking...";
+    }
+
+    try {
+        const url = force ? "/api/updater/check" : "/api/updater/status";
+        const method = force ? "POST" : "GET";
+        const res = await fetch(url, { method });
+        if (res.ok) {
+            const data = await res.json();
+            currentUpdateStatus = data;
+            renderUpdateUI(data);
+            if (force) {
+                if (data.update_available) {
+                    showToast(`🚀 Update found: ${data.latest_commit || 'New version'}!`, "success", 4000);
+                } else {
+                    showToast("✅ VoxStream is up to date!", "info", 3000);
+                }
+            }
+        } else if (force) {
+            showToast("⚠️ Could not check for updates. Check server logs or internet connection.", "warning", 4000);
+        }
+    } catch (err) {
+        console.debug("Update check error:", err);
+        if (force) {
+            showToast("⚠️ Error checking updates: " + err.message, "error", 4000);
+        }
+    } finally {
+        isCheckingUpdates = false;
+        if (force) {
+            if (btnCheck) btnCheck.disabled = false;
+            if (spinner) spinner.style.display = "none";
+            if (label) label.textContent = "Check for Updates";
+        }
+    }
+}
+
+function handleUpdaterProgress(message) {
+    const updateModal = document.getElementById("update-modal");
+    if (updateModal) updateModal.style.display = "flex";
+
+    const updateStepStatus = document.getElementById("update-step-status");
+    const updateProgressBar = document.getElementById("update-progress-bar");
+
+    if (updateStepStatus && message) {
+        updateStepStatus.textContent = message;
+    }
+    if (updateProgressBar && message) {
+        const lower = message.toLowerCase();
+        if (lower.includes("downloading") || lower.includes("pulling")) {
+            updateProgressBar.style.width = "40%";
+        } else if (lower.includes("dependencies") || lower.includes("pip") || lower.includes("install")) {
+            updateProgressBar.style.width = "75%";
+        } else if (lower.includes("restarting")) {
+            updateProgressBar.style.width = "90%";
+        }
+    }
+}
+
+async function applyVoxStreamUpdate() {
+    const latestCommit = currentUpdateStatus?.latest_commit ? ` (${currentUpdateStatus.latest_commit})` : "";
+    const confirmMsg = `Are you sure you want to download and install the latest update${latestCommit}?\n\n` +
+        `VoxStream will update its application code from GitHub, install any new dependencies, and restart automatically.\n` +
+        `Your audio settings, AI models, custom vocabulary, and credentials will be preserved.`;
+
+    if (!confirm(confirmMsg)) {
+        return;
+    }
+
+    const btnApply = document.getElementById("btn-apply-update");
+    if (btnApply) btnApply.disabled = true;
+
+    const updateModal = document.getElementById("update-modal");
+    const updateTitle = document.getElementById("update-modal-title");
+    const updateSub = document.getElementById("update-modal-sub");
+    const updateProgressBar = document.getElementById("update-progress-bar");
+    const updateStepStatus = document.getElementById("update-step-status");
+
+    if (updateModal) updateModal.style.display = "flex";
+    if (updateTitle) updateTitle.textContent = "Updating VoxStream...";
+    if (updateSub) updateSub.textContent = "Downloading latest release from GitHub and syncing dependencies...";
+    if (updateProgressBar) {
+        updateProgressBar.style.width = "25%";
+        updateProgressBar.style.background = "linear-gradient(90deg, #10B981, #38BDF8)";
+    }
+    if (updateStepStatus) updateStepStatus.textContent = "⬇️ Step 1/3: Downloading code from GitHub...";
+
+    try {
+        const res = await fetch("/api/updater/apply", { method: "POST" });
+        const data = await res.json();
+
+        if (!res.ok || data.status === "error") {
+            throw new Error(data.message || "Update installation failed");
+        }
+
+        if (updateProgressBar) updateProgressBar.style.width = "90%";
+        if (updateStepStatus) updateStepStatus.textContent = "🔄 Step 3/3: Backend restarting to finalize update...";
+
+        // Begin polling for backend recovery
+        pollForUpdateRestartSuccess();
+    } catch (err) {
+        console.error("Update apply error:", err);
+        if (updateModal) updateModal.style.display = "none";
+        if (btnApply) btnApply.disabled = false;
+        showToast(`❌ Update failed: ${err.message}`, "error", 6000);
+    }
+}
+
+function pollForUpdateRestartSuccess() {
+    const updateModal = document.getElementById("update-modal");
+    const updateTitle = document.getElementById("update-modal-title");
+    const updateSub = document.getElementById("update-modal-sub");
+    const updateProgressBar = document.getElementById("update-progress-bar");
+    const updateStepStatus = document.getElementById("update-step-status");
+
+    let attempts = 0;
+    const maxAttempts = 45;
+
+    // Wait 2.5s before initial ping to let the old backend process exit cleanly
+    setTimeout(() => {
+        const interval = setInterval(async () => {
+            attempts++;
+            try {
+                const res = await fetch("/api/status", { cache: "no-store" });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && (data.instance_id !== currentInstanceId || (data.uptime_seconds !== undefined && data.uptime_seconds < 15.0))) {
+                        clearInterval(interval);
+                        if (updateTitle) updateTitle.textContent = "✅ VoxStream Updated Successfully!";
+                        if (updateSub) updateSub.textContent = `New backend is active (${data.engine_name || 'Speech Engine'}). Reloading dashboard...`;
+                        if (updateProgressBar) {
+                            updateProgressBar.style.width = "100%";
+                            updateProgressBar.style.background = "#10B981";
+                        }
+                        if (updateStepStatus) updateStepStatus.textContent = "Reloading...";
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 800);
+                        return;
+                    }
+                }
+            } catch (e) {
+                // Server cycling down/up
+            }
+
+            if (attempts >= maxAttempts) {
+                clearInterval(interval);
+                if (updateTitle) updateTitle.textContent = "⚠️ Restart Taking Longer Than Expected";
+                if (updateSub) updateSub.textContent = "The updated backend is still starting. Please refresh the page manually once the server window is up.";
+                if (updateStepStatus) {
+                    updateStepStatus.innerHTML = `<button type="button" class="btn btn-primary btn-sm" onclick="window.location.reload()">🔄 Refresh Dashboard</button>`;
+                }
+            }
+        }, 1000);
+    }, 2500);
+}
+
+function initUpdaterHandlers() {
+    const btnCheck = document.getElementById("btn-check-updates");
+    if (btnCheck) {
+        btnCheck.addEventListener("click", () => loadUpdateStatus(true));
+    }
+
+    const btnHeader = document.getElementById("btn-header-update");
+    if (btnHeader) {
+        btnHeader.addEventListener("click", () => {
+            const modal = document.getElementById("modal-feature-settings");
+            if (modal) {
+                modal.style.display = "flex";
+                const banner = document.getElementById("updater-status-banner");
+                const card = document.getElementById("updater-version-info");
+                const target = (banner && banner.style.display !== "none") ? banner : card;
+                if (target) {
+                    setTimeout(() => target.scrollIntoView({ behavior: "smooth", block: "center" }), 100);
+                }
+            }
+        });
+    }
+
+    const btnApply = document.getElementById("btn-apply-update");
+    if (btnApply) {
+        btnApply.addEventListener("click", applyVoxStreamUpdate);
+    }
+}
+
 // Initialize on page load
 window.addEventListener("DOMContentLoaded", async () => {
     // Initialize Models Status
@@ -2995,6 +3244,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     await refreshEngineStatus();
     await loadBenchmarkRankings();
     await loadYouTubeChapters();
+    initUpdaterHandlers();
+    loadUpdateStatus(false);
     connectControlWs();
     connectCaptionWs();
 

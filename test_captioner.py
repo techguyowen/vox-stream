@@ -976,6 +976,51 @@ class TestServerEndpoints(AioHTTPTestCase):
         self.assertIn('composite_score', top_rank)
         self.assertIn('church_fit_summary', top_rank)
 
+    async def test_updater_endpoints(self):
+        """Verify /api/updater/status, /api/updater/check, and /api/updater/apply endpoints."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        # 1. Status when updater is not configured
+        self.overlay_server.updater = None
+        resp = await self.client.request('GET', '/api/updater/status')
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertFalse(data.get('update_available'))
+        self.assertEqual(data.get('error'), 'Updater not configured')
+
+        # 2. Status when updater is configured with available update
+        mock_updater = MagicMock()
+        mock_updater.check_update = AsyncMock(return_value={
+            "current_version": "1.0.0",
+            "current_commit": "3cb58c8",
+            "latest_commit": "abcdef1",
+            "update_available": True,
+            "commit_message": "Awesome auto-updater feature",
+            "commit_author": "techguyowen",
+        })
+        mock_updater.apply_update = AsyncMock(return_value=(True, "VoxStream updated successfully!"))
+        self.overlay_server.updater = mock_updater
+
+        resp = await self.client.request('GET', '/api/updater/status')
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertTrue(data['update_available'])
+        self.assertEqual(data['latest_commit'], "abcdef1")
+
+        # 3. Check endpoint (POST /api/updater/check)
+        resp = await self.client.request('POST', '/api/updater/check')
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertTrue(data['update_available'])
+        mock_updater.check_update.assert_called_with(force=True)
+
+        # 4. Apply endpoint (POST /api/updater/apply)
+        resp = await self.client.request('POST', '/api/updater/apply')
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertEqual(data['status'], 'restarting')
+        self.assertIn('updated successfully', data['message'])
+
 
 class TestCaptionSinkFinalOnly(unittest.IsolatedAsyncioTestCase):
     async def test_caption_sink_final_only_obs_text_source(self):
@@ -1303,6 +1348,116 @@ class TestWindowsAuditAndResilience(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(js_type, "application/javascript")
         self.assertEqual(css_type, "text/css")
         self.assertEqual(json_type, "application/json")
+
+
+class TestUpdaterCore(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        self.test_dir = tempfile.TemporaryDirectory()
+        self.app_root = Path(self.test_dir.name)
+
+    def tearDown(self):
+        self.test_dir.cleanup()
+
+    def test_update_config_defaults(self):
+        from obs_captioner.config import UpdateConfig, AppConfig
+        cfg = AppConfig()
+        self.assertTrue(cfg.update.enabled)
+        self.assertTrue(cfg.update.auto_check)
+        self.assertEqual(cfg.update.check_interval_hours, 6)
+        self.assertEqual(cfg.update.channel, "main")
+
+    def test_git_repo_detection(self):
+        from obs_captioner.updater import UpdateManager
+        mgr = UpdateManager(app_root=self.app_root)
+        self.assertFalse(mgr.is_git_repo())
+        (self.app_root / ".git").mkdir()
+        self.assertTrue(mgr.is_git_repo())
+
+    def test_get_local_commit_fallback(self):
+        from obs_captioner.updater import UpdateManager
+        mgr = UpdateManager(app_root=self.app_root)
+        commit = mgr.get_local_commit()
+        self.assertIsInstance(commit, str)
+        self.assertGreater(len(commit), 0)
+
+    async def test_check_update_caching(self):
+        from obs_captioner.updater import UpdateManager
+        mgr = UpdateManager(app_root=self.app_root)
+
+        call_count = 0
+        def mock_sync():
+            nonlocal call_count
+            call_count += 1
+            return {"update_available": False, "cached_run": call_count}
+
+        mgr._sync_check_update = mock_sync
+
+        res1 = await mgr.check_update(force=False)
+        self.assertEqual(res1["cached_run"], 1)
+        self.assertEqual(call_count, 1)
+
+        # Subsequent call without force hits the cache
+        res2 = await mgr.check_update(force=False)
+        self.assertEqual(res2["cached_run"], 1)
+        self.assertEqual(call_count, 1)
+
+        # Force=True bypasses the cache
+        res3 = await mgr.check_update(force=True)
+        self.assertEqual(res3["cached_run"], 2)
+        self.assertEqual(call_count, 2)
+
+    def test_zip_update_protects_critical_files(self):
+        """Ensure config.json and user credentials are never overwritten during update extraction."""
+        import zipfile
+        import shutil
+
+        # Create critical existing files in app_root
+        user_config = self.app_root / "config.json"
+        user_config.write_text('{"my_custom_secret": 12345}', encoding="utf-8")
+
+        creds = self.app_root / "google_credentials.json"
+        creds.write_text('{"private_key": "secret"}', encoding="utf-8")
+
+        # Create mock update archive containing updated code and conflicting config/creds
+        zip_path = self.app_root / "test_update.zip"
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("vox-stream-main/config.json", '{"overwritten": true}')
+            zf.writestr("vox-stream-main/google_credentials.json", '{"overwritten": true}')
+            zf.writestr("vox-stream-main/obs_captioner/new_feature.py", "# new feature code")
+
+        extract_dir = self.app_root / "extracted"
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            zf.extractall(extract_dir)
+
+        source_dir = extract_dir / "vox-stream-main"
+        PROTECTED_NAMES = {
+            "config.json",
+            "google_credentials.json",
+            ".venv",
+            "venv",
+            ".git",
+            "logs",
+            "data",
+            ".env",
+        }
+
+        for item in source_dir.iterdir():
+            if item.name in PROTECTED_NAMES:
+                continue
+            dest = self.app_root / item.name
+            if item.is_dir():
+                shutil.copytree(item, dest, dirs_exist_ok=True)
+            else:
+                shutil.copy2(item, dest)
+
+        # Verify critical files were preserved untouched
+        self.assertIn("12345", user_config.read_text(encoding="utf-8"))
+        self.assertNotIn("overwritten", user_config.read_text(encoding="utf-8"))
+        self.assertIn("secret", creds.read_text(encoding="utf-8"))
+        # Verify new code was installed
+        self.assertTrue((self.app_root / "obs_captioner" / "new_feature.py").exists())
 
 
 if __name__ == "__main__":

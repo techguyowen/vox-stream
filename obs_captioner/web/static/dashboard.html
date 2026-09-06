@@ -78,6 +78,9 @@
                 <a href="http://localhost:8085" target="_blank" rel="noopener" class="btn btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 5px; font-weight: 600; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.4); color: #c084fc;" title="Waypoint Sound Booth Operations Hub (Port 8085)">
                     <span>📖 Booth Ops ↗</span>
                 </a>
+                <button id="btn-header-update" class="btn btn-sm" style="display: none; background: linear-gradient(135deg, #10B981, #059669); color: #fff; font-weight: 700; border: none; padding: 6px 12px; border-radius: 6px; align-items: center; gap: 6px; cursor: pointer;" title="A new VoxStream update is available!">
+                    <span>✨ Update Available</span>
+                </button>
                 <button id="btn-open-features-modal" class="btn btn-secondary" title="Advanced Settings & Features" style="display: inline-flex; align-items: center; gap: 5px; font-weight: 600;">
                     <span>⚙️ Advanced Settings</span>
                 </button>
@@ -1466,6 +1469,19 @@
         </div>
     </div>
 
+    <!-- Fullscreen Update in Progress Overlay -->
+    <div id="update-modal" style="display: none; position: fixed; inset: 0; background: rgba(10, 10, 15, 0.94); backdrop-filter: blur(14px); z-index: 10000; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #fff; padding: 24px;">
+        <div style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 16px; padding: 36px 40px; max-width: 480px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,0.7);">
+            <div id="update-modal-icon" style="font-size: 54px; margin-bottom: 18px; display: inline-block;">🚀</div>
+            <h2 id="update-modal-title" style="font-size: 22px; font-weight: 700; margin-bottom: 8px; color: #fff;">Updating VoxStream...</h2>
+            <p id="update-modal-sub" style="color: #9CA3AF; font-size: 13px; margin-bottom: 20px; line-height: 1.5;">Downloading latest release from GitHub and syncing dependencies...</p>
+            <div style="background: rgba(255,255,255,0.08); border-radius: 999px; height: 6px; overflow: hidden; margin-bottom: 16px; width: 100%;">
+                <div id="update-progress-bar" style="background: linear-gradient(90deg, #10B981, #38BDF8); width: 30%; height: 100%; border-radius: 999px; transition: width 0.4s ease;"></div>
+            </div>
+            <div id="update-step-status" style="font-size: 12.5px; color: #38BDF8; font-weight: 600;">⬇️ Step 1/3: Downloading code from GitHub...</div>
+        </div>
+    </div>
+
     <!-- Floating Toast Notification System -->
     <div id="toast-container" class="toast-container"></div>
 
@@ -1592,6 +1608,30 @@
                         <input type="checkbox" id="feat_toggle_api" data-target-tab="api" checked>
                         <span class="toggle-slider"></span>
                     </label>
+                </div>
+            </div>
+
+            <!-- Software Updates Card -->
+            <div style="margin-top: 18px; border-top: 1px solid var(--border-color); padding-top: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                    <div>
+                        <span style="font-size: 13px; color: var(--text-main); font-weight: 700; display: block;">🚀 VoxStream Software Updates</span>
+                        <span id="updater-version-info" style="font-size: 11.5px; color: var(--text-muted);">Current: v1.0.0 (Checking...)</span>
+                    </div>
+                    <button type="button" id="btn-check-updates" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 5px;">
+                        <span id="check-updates-spinner" style="display: none;">🔄</span>
+                        <span id="check-updates-label">Check for Updates</span>
+                    </button>
+                </div>
+                <div id="updater-status-banner" style="display: none; background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 8px; padding: 10px 14px; margin-top: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                        <div id="updater-banner-text" style="font-size: 12.5px; color: #6EE7B7;">
+                            <!-- Populated dynamically -->
+                        </div>
+                        <button type="button" id="btn-apply-update" class="btn btn-primary btn-sm" style="background: #10B981; border: none; font-weight: 700; color: #fff; display: inline-flex; align-items: center; gap: 6px;">
+                            <span>⬇️ Download &amp; Update Now</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 

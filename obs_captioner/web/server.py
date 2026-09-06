@@ -60,6 +60,7 @@ class WebOverlayServer:
         get_app_status: Optional[Callable[[], dict]] = None,
         obs_client: Optional[any] = None,
         audio_capture: Optional[any] = None,
+        updater: Optional[any] = None,
     ):
         self.config = config
         self.history = history or TranscriptHistory()
@@ -71,6 +72,8 @@ class WebOverlayServer:
         self.get_app_status = get_app_status
         self.obs_client = obs_client
         self.audio_capture = audio_capture
+        self.updater = updater
+        self._updater_task: Optional[asyncio.Task] = None
         self.translator = SubtitleTranslator(self.config.translation)
         self.server_start_time = time.time()
         self.instance_id = str(uuid.uuid4())[:8]
@@ -220,6 +223,11 @@ class WebOverlayServer:
         self.app.router.add_get("/api/bible/lookup", self._handle_bible_lookup)
         self.app.router.add_post("/api/bible/display", self._handle_bible_display)
         self.app.router.add_post("/api/bible/dismiss", self._handle_bible_dismiss)
+
+        # Software Updater
+        self.app.router.add_get("/api/updater/status", self._handle_updater_status)
+        self.app.router.add_post("/api/updater/check", self._handle_updater_check)
+        self.app.router.add_post("/api/updater/apply", self._handle_updater_apply)
 
         # Static Assets
         self.app.router.add_static("/static/", path=str(static_dir), name="static")
@@ -1127,6 +1135,8 @@ class WebOverlayServer:
                 
                 logger.info(f"✅ Web Control Dashboard live at: http://{host}:{current_port}/dashboard")
                 logger.info(f"✅ Overlay URL: http://{host}:{current_port}/")
+                if getattr(self.config, "update", None) and self.config.update.auto_check and self.updater:
+                    self._updater_task = asyncio.create_task(self._auto_check_updates_loop())
                 return True
             except OSError as e:
                 logger.debug(f"Port {current_port} busy ({e}), trying next port...")
@@ -1140,6 +1150,10 @@ class WebOverlayServer:
 
     async def stop(self):
         """Stop the web server cleanly with fast timeout."""
+        if self._updater_task:
+            self._updater_task.cancel()
+            self._updater_task = None
+
         all_sockets = list(set(self.caption_sockets.keys()) | self.control_sockets)
         self.caption_sockets.clear()
         self.control_sockets.clear()
@@ -1361,3 +1375,61 @@ class WebOverlayServer:
                 await ws.send_json(msg)
             except Exception:
                 pass
+
+    async def _handle_updater_status(self, request: web.Request) -> web.Response:
+        """Return current version and cached update status."""
+        if not self.updater:
+            return web.json_response({"error": "Updater not configured", "update_available": False})
+        force = request.query.get("force", "false").lower() in ("true", "1", "yes")
+        status = await self.updater.check_update(force=force)
+        return web.json_response(status)
+
+    async def _handle_updater_check(self, request: web.Request) -> web.Response:
+        """Force immediate GitHub update check."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        if not self.updater:
+            return web.json_response({"error": "Updater not configured", "update_available": False})
+        status = await self.updater.check_update(force=True)
+        if status.get("update_available"):
+            await self.broadcast_control({"type": "update_available", "status": status})
+        return web.json_response(status)
+
+    async def _handle_updater_apply(self, request: web.Request) -> web.Response:
+        """Download latest updates, sync dependencies, and restart VoxStream."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        if not self.updater:
+            return web.json_response({"error": "Updater not configured"}, status=503)
+
+        def progress_cb(msg: str):
+            asyncio.create_task(self.broadcast_control({"type": "updater_progress", "message": msg}))
+
+        success, message = await self.updater.apply_update(progress_cb=progress_cb)
+        if success:
+            return web.json_response({"status": "restarting", "message": message})
+        else:
+            return web.json_response({"status": "error", "message": message}, status=500)
+
+    async def _auto_check_updates_loop(self):
+        """Background periodic update checker."""
+        try:
+            # Wait 10 seconds after server startup
+            await asyncio.sleep(10.0)
+            while True:
+                try:
+                    if self.updater and getattr(self.config, "update", None) and self.config.update.auto_check:
+                        status = await self.updater.check_update(force=False)
+                        if status.get("update_available"):
+                            logger.info(
+                                f"✨ [UPDATER] New VoxStream version available: {status.get('latest_commit')} "
+                                f"('{status.get('commit_message')}')"
+                            )
+                            await self.broadcast_control({"type": "update_available", "status": status})
+                except Exception as e:
+                    logger.debug(f"Background update check failed: {e}")
+                hours = getattr(getattr(self.config, "update", None), "check_interval_hours", 6) or 6
+                await asyncio.sleep(max(1, hours) * 3600)
+        except asyncio.CancelledError:
+            pass
+

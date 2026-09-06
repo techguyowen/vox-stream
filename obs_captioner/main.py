@@ -14,6 +14,7 @@ from .history import TranscriptHistory
 from .obs import OBSWebSocketClient, CaptionSink
 from .twitch_bot import TwitchCaptionBot
 from .web import WebOverlayServer
+from .updater import UpdateManager
 
 logger = logging.getLogger("obs_captioner")
 
@@ -260,8 +261,9 @@ async def main_async(args):
         logger.info("Application shutdown triggered via API/Dashboard.")
         shutdown_event.set()
 
-    # 3. Initialize Web Overlay & Dashboard Server
+    # 3. Initialize Web Overlay, Dashboard Server, and GitHub Updater
     web_server = None
+    updater = UpdateManager(on_restart_requested=on_restart_requested)
     if config.overlay.enabled:
         web_server = WebOverlayServer(
             config=config,
@@ -274,6 +276,7 @@ async def main_async(args):
             get_app_status=get_app_status,
             obs_client=obs_client,
             audio_capture=audio_capture,
+            updater=updater,
         )
         await web_server.start()
 

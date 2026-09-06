@@ -203,6 +203,14 @@ class APIConfig:
 
 
 @dataclass
+class UpdateConfig:
+    enabled: bool = True
+    auto_check: bool = True
+    check_interval_hours: int = 6
+    channel: str = "main"
+
+
+@dataclass
 class AppConfig:
     general: GeneralConfig = field(default_factory=GeneralConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
@@ -221,6 +229,7 @@ class AppConfig:
     overlay: OverlayConfig = field(default_factory=OverlayConfig)
     bible: BibleConfig = field(default_factory=BibleConfig)
     api: APIConfig = field(default_factory=APIConfig)
+    update: UpdateConfig = field(default_factory=UpdateConfig)
 
 
 _current_config_path: Optional[str] = None
@@ -289,7 +298,7 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         overlay=_safe_dataclass_load(OverlayConfig, data.get("overlay")),
         bible=_safe_dataclass_load(BibleConfig, data.get("bible")),
         api=_safe_dataclass_load(APIConfig, data.get("api")),
-
+        update=_safe_dataclass_load(UpdateConfig, data.get("update")),
     )
 
     # Environment variable overrides
