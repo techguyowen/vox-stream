@@ -269,6 +269,38 @@ class AudioCapture:
         self.current_rms_db = -100.0
         logger.info("Audio capture stream stopped.")
 
+    def update_device(self, new_config: AudioConfig) -> bool:
+        """Hot-switch input device without breaking continuous speech recognition loop."""
+        self.config = new_config
+        new_idx, new_info = find_audio_device(new_config)
+
+        if new_idx == self.device_index and self._running:
+            logger.debug(f"Audio device unchanged (index {self.device_index}).")
+            return True
+
+        dev_title = new_info["name"] if new_info else f"Index {new_idx}"
+        logger.info(f"Hot-switching audio capture device from [{self.device_index}] to [{new_idx}]: '{dev_title}'...")
+
+        was_running = self._running
+        stored_loop = self._loop
+
+        # Stop existing hardware stream
+        if self.stream is not None:
+            try:
+                self.stream.stop()
+                self.stream.close()
+            except Exception as e:
+                logger.debug(f"Error closing previous stream during device switch: {e}")
+            self.stream = None
+
+        self.device_index = new_idx
+        self.device_info = new_info
+
+        if was_running:
+            self._running = False
+            return self.start(stored_loop)
+        return True
+
     class AudioStreamError(Exception):
         pass
 

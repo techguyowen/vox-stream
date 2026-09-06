@@ -1185,12 +1185,22 @@ async function loadAudioDevices() {
             data.devices.forEach(dev => {
                 const opt = document.createElement("option");
                 opt.value = dev.name;
+                opt.dataset.deviceIndex = dev.index;
                 opt.textContent = `[${dev.index}] ${dev.name} (${dev.hostapi})`;
                 select.appendChild(opt);
             });
 
-            if (currentConfig && currentConfig.audio && currentConfig.audio.device_name_filter) {
-                select.value = currentConfig.audio.device_name_filter;
+            if (currentConfig && currentConfig.audio) {
+                if (currentConfig.audio.device_index !== null && currentConfig.audio.device_index !== undefined) {
+                    const matchByIdx = Array.from(select.options).find(o => o.dataset && o.dataset.deviceIndex === String(currentConfig.audio.device_index));
+                    if (matchByIdx) {
+                        select.value = matchByIdx.value;
+                    } else if (currentConfig.audio.device_name_filter) {
+                        select.value = currentConfig.audio.device_name_filter;
+                    }
+                } else if (currentConfig.audio.device_name_filter) {
+                    select.value = currentConfig.audio.device_name_filter;
+                }
             }
         }
     } catch (e) {
@@ -2013,6 +2023,13 @@ document.getElementById("btn-save-audio").addEventListener("click", async () => 
         },
         audio: {
             device_name_filter: document.getElementById("audio_device_select").value,
+            device_index: (() => {
+                const sel = document.getElementById("audio_device_select");
+                const opt = sel && sel.selectedOptions ? sel.selectedOptions[0] : null;
+                if (!opt || opt.value === "default" || opt.dataset.deviceIndex === undefined) return null;
+                const parsed = parseInt(opt.dataset.deviceIndex, 10);
+                return isNaN(parsed) ? null : parsed;
+            })(),
             noise_gate_db: parseFloat(document.getElementById("noise_gate_slider").value),
             vad_threshold: parseFloat(document.getElementById("vad_slider").value),
             sentence_break_ms: parseInt(document.getElementById("sentence_break_slider").value, 10),

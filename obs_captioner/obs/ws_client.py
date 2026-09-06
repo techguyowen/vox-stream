@@ -11,6 +11,15 @@ from ..config import OBSConfig
 logger = logging.getLogger("obs_captioner.obs")
 
 
+def _generate_auth_string(password: str, salt: str, challenge: str) -> str:
+    import base64
+    import hashlib
+    secret_hash = hashlib.sha256((password + salt).encode("utf-8")).digest()
+    secret_base64 = base64.b64encode(secret_hash).decode("utf-8")
+    auth_hash = hashlib.sha256((secret_base64 + challenge).encode("utf-8")).digest()
+    return base64.b64encode(auth_hash).decode("utf-8")
+
+
 class OBSWebSocketClient:
     """Async client for OBS Studio WebSocket v5 protocol."""
 
@@ -18,6 +27,8 @@ class OBSWebSocketClient:
         self.config = config
         self.ws = None
         self.is_connected = False
+        self.last_connect_error = None
+        self.last_projector_error = None
         self._message_id = 1
         self._pending_requests = {}
         self._listen_task: Optional[asyncio.Task] = None
@@ -29,38 +40,73 @@ class OBSWebSocketClient:
         if not self.config.enabled:
             return False
 
+        if self.is_connected and self.ws:
+            return True
+
         uri = f"ws://{self.config.host}:{self.config.port}"
         logger.info(f"Connecting to OBS WebSocket at {uri}...")
 
         try:
             self.ws = await websockets.connect(uri, ping_interval=10, ping_timeout=5)
+
+            # 1. Wait for OpCode 0 (Hello)
+            raw_hello = await asyncio.wait_for(self.ws.recv(), timeout=3.0)
+            hello_data = json.loads(raw_hello)
+            if hello_data.get("op") != 0:
+                self.last_connect_error = f"Expected OpCode 0 (Hello), got: {hello_data}"
+                logger.warning(self.last_connect_error)
+                await self.ws.close()
+                return False
+
+            hello_d = hello_data.get("d", {})
+            auth_info = hello_d.get("authentication")
+
+            # 2. Build OpCode 1 (Identify)
+            identify_d = {
+                "rpcVersion": 1,
+                "eventSubscriptions": 1 | 64,  # General | Outputs
+            }
+
+            if auth_info:
+                salt = auth_info.get("salt", "")
+                challenge = auth_info.get("challenge", "")
+                password = self.config.password or ""
+                if not password:
+                    self.last_connect_error = (
+                        "OBS WebSocket has authentication enabled, but no password is configured in VoxStream! "
+                        "In OBS Studio, go to Tools -> WebSocket Server Settings and uncheck 'Enable Authentication' "
+                        "or enter your OBS password in VoxStream."
+                    )
+                    logger.warning(self.last_connect_error)
+                else:
+                    identify_d["authentication"] = _generate_auth_string(password, salt, challenge)
+
+            # Send Identify
+            await self.ws.send(json.dumps({"op": 1, "d": identify_d}))
+
+            # 3. Wait for OpCode 2 (Identified)
+            raw_identified = await asyncio.wait_for(self.ws.recv(), timeout=3.0)
+            identified_data = json.loads(raw_identified)
+            if identified_data.get("op") != 2:
+                self.last_connect_error = f"OBS Identification failed: {identified_data}"
+                logger.warning(self.last_connect_error)
+                await self.ws.close()
+                return False
+
+            self.is_connected = True
+            self.last_connect_error = None
+            logger.info("Connected and authenticated with OBS Studio WebSocket successfully.")
+
+            # 4. Start background listener loop for events & requests
+            if self._listen_task and not self._listen_task.done():
+                self._listen_task.cancel()
             self._listen_task = asyncio.create_task(self._listen_loop())
 
-            # Perform OBS v5 handshake
-            # 1. Wait for OpCode 0 (Hello)
-            # 2. Send OpCode 1 (Identify) with event subscriptions
-            identify_payload = {
-                "op": 1,
-                "d": {
-                    "rpcVersion": 1,
-                    # EventSubscription: General (1) | Outputs (64)
-                    "eventSubscriptions": 1 | 64,
-                },
-            }
-            if self.config.password:
-                import base64
-                import hashlib
-                # Simple password identification (if OBS requests auth)
-                # Note: Full auth challenge resolution if salt/challenge present in Hello
-                identify_payload["d"]["authentication"] = self.config.password
-
-            await self.ws.send(json.dumps(identify_payload))
-            self.is_connected = True
-            logger.info("Connected to OBS Studio WebSocket successfully.")
             if self.config.auto_open_projector:
                 asyncio.create_task(self.handle_auto_projector())
             return True
         except Exception as e:
+            self.last_connect_error = str(e)
             logger.warning(f"Could not connect to OBS WebSocket: {e}. (Is OBS running and WebSocket server enabled?)")
             self.is_connected = False
             return False
