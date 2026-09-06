@@ -14,10 +14,10 @@ echo   VoxStream Live Captioner Launcher
 echo =======================================================
 echo.
 
-:: 1. Verify or create virtual environment
+:: 1. Verify virtual environment exists
 if not exist ".venv\Scripts\activate.bat" (
     echo [INFO] Virtual environment not found or incomplete.
-    echo [INFO] Running initial Windows setup first...
+    echo [INFO] Launching setup_windows.bat now...
     echo.
     call setup_windows.bat
 )
@@ -39,9 +39,11 @@ if not exist ".venv\Scripts\activate.bat" (
 call .venv\Scripts\activate.bat
 
 :: 3. Prepend NVIDIA CUDA/cuDNN DLLs into PATH if present
-for /d %%D in (".venv\Lib\site-packages\nvidia\*") do (
-    if exist "%%D\bin" (
-        set "PATH=%%D\bin;!PATH!"
+if exist ".venv\Lib\site-packages\nvidia" (
+    for /d %%D in (.venv\Lib\site-packages\nvidia\*) do (
+        if exist "%%D\bin" (
+            set "PATH=%%D\bin;!PATH!"
+        )
     )
 )
 

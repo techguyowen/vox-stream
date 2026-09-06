@@ -13,32 +13,40 @@ echo   VoxStream: OBS Live Captioner Suite - Windows Setup
 echo =======================================================
 echo.
 
-:: 1. Check for existing Python installation
+:: 1. Detect Python executable
 set "PY_CMD="
 
 where python >nul 2>&1
-if %errorlevel% equ 0 (
-    set "PY_CMD=python"
-)
+if %errorlevel% equ 0 set "PY_CMD=python"
 
 if not defined PY_CMD (
     where py >nul 2>&1
-    if %errorlevel% equ 0 (
-        set "PY_CMD=py -3"
-    )
+    if %errorlevel% equ 0 set "PY_CMD=py -3"
 )
 
 if not defined PY_CMD (
     if exist "%LocalAppData%\Programs\Python\Python311\python.exe" (
         set "PY_CMD=%LocalAppData%\Programs\Python\Python311\python.exe"
         set "PATH=%LocalAppData%\Programs\Python\Python311;%LocalAppData%\Programs\Python\Python311\Scripts;%PATH%"
-    ) else if exist "%LocalAppData%\Programs\Python\Python312\python.exe" (
+    )
+)
+
+if not defined PY_CMD (
+    if exist "%LocalAppData%\Programs\Python\Python312\python.exe" (
         set "PY_CMD=%LocalAppData%\Programs\Python\Python312\python.exe"
         set "PATH=%LocalAppData%\Programs\Python\Python312;%LocalAppData%\Programs\Python\Python312\Scripts;%PATH%"
-    ) else if exist "%ProgramFiles%\Python311\python.exe" (
+    )
+)
+
+if not defined PY_CMD (
+    if exist "%ProgramFiles%\Python311\python.exe" (
         set "PY_CMD=%ProgramFiles%\Python311\python.exe"
         set "PATH=%ProgramFiles%\Python311;%ProgramFiles%\Python311\Scripts;%PATH%"
-    ) else if exist "%ProgramFiles%\Python312\python.exe" (
+    )
+)
+
+if not defined PY_CMD (
+    if exist "%ProgramFiles%\Python312\python.exe" (
         set "PY_CMD=%ProgramFiles%\Python312\python.exe"
         set "PATH=%ProgramFiles%\Python312;%ProgramFiles%\Python312\Scripts;%PATH%"
     )
@@ -52,39 +60,41 @@ if not defined PY_CMD (
 
     where winget >nul 2>&1
     if %errorlevel% equ 0 (
-        echo [INFO] Installing Python 3.11 via Windows Package Manager (winget)...
+        echo [INFO] Installing Python 3.11 via Windows Package Manager...
         winget install --id Python.Python.3.11 -e --silent --accept-package-agreements --accept-source-agreements
     )
 
     if exist "%LocalAppData%\Programs\Python\Python311\python.exe" (
         set "PY_CMD=%LocalAppData%\Programs\Python\Python311\python.exe"
         set "PATH=%LocalAppData%\Programs\Python\Python311;%LocalAppData%\Programs\Python\Python311\Scripts;%PATH%"
-    ) else (
-        echo [INFO] Downloading official Python 3.11 from python.org...
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe' -OutFile '%TEMP%\python-3.11.9-amd64.exe'"
-        if exist "%TEMP%\python-3.11.9-amd64.exe" (
-            echo [INFO] Installing Python 3.11.9 (please wait 30-60 seconds)...
-            start /wait "" "%TEMP%\python-3.11.9-amd64.exe" /passive InstallAllUsers=0 PrependPath=1 Include_pip=1 Include_test=0 Shortcuts=0 TargetDir="%LocalAppData%\Programs\Python\Python311"
-            del "%TEMP%\python-3.11.9-amd64.exe" 2>nul
-        ) else (
-            echo [ERROR] Failed to download Python installer automatically.
-            echo Please manually download and install Python 3.11 from: https://www.python.org/downloads/
-            echo (Make sure to check the box Add Python to PATH)
-            start https://www.python.org/downloads/
-            pause
-            exit /b 1
-        )
     )
+)
 
+if not defined PY_CMD (
+    echo [INFO] Downloading official Python 3.11 installer from python.org...
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe' -OutFile '%TEMP%\python-3.11.9-amd64.exe'"
+    if exist "%TEMP%\python-3.11.9-amd64.exe" (
+        echo [INFO] Installing Python 3.11.9 - please wait 30 to 60 seconds...
+        start /wait "" "%TEMP%\python-3.11.9-amd64.exe" /passive InstallAllUsers=0 PrependPath=1 Include_pip=1 Include_test=0 Shortcuts=0 TargetDir="%LocalAppData%\Programs\Python\Python311"
+        del "%TEMP%\python-3.11.9-amd64.exe" 2>nul
+    )
     if exist "%LocalAppData%\Programs\Python\Python311\python.exe" (
         set "PY_CMD=%LocalAppData%\Programs\Python\Python311\python.exe"
         set "PATH=%LocalAppData%\Programs\Python\Python311;%LocalAppData%\Programs\Python\Python311\Scripts;%PATH%"
-    ) else if exist "%ProgramFiles%\Python311\python.exe" (
-        set "PY_CMD=%ProgramFiles%\Python311\python.exe"
-        set "PATH=%ProgramFiles%\Python311;%ProgramFiles%\Python311\Scripts;%PATH%"
-    ) else (
-        set "PY_CMD=python"
     )
+)
+
+if not defined PY_CMD (
+    echo.
+    echo =======================================================
+    echo   [ERROR] Python is not installed on this system!
+    echo   Please install Python 3.11 from: https://www.python.org/downloads/
+    echo   Make sure to check: Add Python to PATH
+    echo =======================================================
+    echo.
+    start https://www.python.org/downloads/
+    pause
+    exit /b 1
 )
 
 echo [SUCCESS] Using Python:
@@ -95,19 +105,18 @@ echo.
 echo [1/6] Setting up virtual environment (.venv)...
 if not exist ".venv\Scripts\activate.bat" (
     if exist ".venv" (
-        echo [INFO] Cleaning up incomplete virtual environment folder...
+        echo [INFO] Removing broken virtual environment folder...
         rmdir /s /q ".venv" >nul 2>&1
     )
     %PY_CMD% -m venv .venv
-    if %errorlevel% neq 0 (
-        echo [ERROR] Failed to create virtual environment with %PY_CMD%.
-        pause
-        exit /b 1
-    )
 )
 
 if not exist ".venv\Scripts\activate.bat" (
-    echo [ERROR] .venv\Scripts\activate.bat was not created successfully.
+    echo.
+    echo =======================================================
+    echo   [ERROR] Failed to create virtual environment with %PY_CMD%.
+    echo   Please ensure Python is functional and try again.
+    echo =======================================================
     pause
     exit /b 1
 )
@@ -125,14 +134,12 @@ call .venv\Scripts\python.exe -m pip uninstall -y torchaudio >nul 2>&1
 :: 6. Check for NVIDIA GPU and install CUDA acceleration automatically
 echo [4/6] Checking for NVIDIA GPU acceleration...
 set "HAS_NVIDIA=0"
-nvidia-smi >nul 2>&1
-if %errorlevel% equ 0 (
-    set "HAS_NVIDIA=1"
-) else (
+where nvidia-smi >nul 2>&1
+if %errorlevel% equ 0 set "HAS_NVIDIA=1"
+
+if "!HAS_NVIDIA!"=="0" (
     powershell -NoProfile -Command "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name" 2>nul | findstr /i "NVIDIA GeForce RTX GTX Quadro" >nul 2>&1
-    if %errorlevel% equ 0 (
-        set "HAS_NVIDIA=1"
-    )
+    if %errorlevel% equ 0 set "HAS_NVIDIA=1"
 )
 
 if "!HAS_NVIDIA!"=="1" (
