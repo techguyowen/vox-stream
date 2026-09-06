@@ -229,6 +229,9 @@ class WebOverlayServer:
         self.app.router.add_post("/api/updater/check", self._handle_updater_check)
         self.app.router.add_post("/api/updater/apply", self._handle_updater_apply)
 
+        # Hardware & Memory System Controls
+        self.app.router.add_post("/api/system/trim_memory", self._handle_trim_memory)
+
         # Static Assets
         self.app.router.add_static("/static/", path=str(static_dir), name="static")
 
@@ -273,6 +276,7 @@ class WebOverlayServer:
         if not self.rate_limiter.is_allowed(client_ip):
             return web.json_response({"error": "Rate limit exceeded"}, status=429)
 
+        from ..hardware import get_ram_usage_mb, get_gpu_info
         status_info = {
             "engine": self.config.general.engine,
             "language": self.config.general.language,
@@ -284,6 +288,8 @@ class WebOverlayServer:
             "instance_id": self.instance_id,
             "server_start_time": self.server_start_time,
             "uptime_seconds": round(time.time() - self.server_start_time, 1),
+            "ram_usage_mb": get_ram_usage_mb(),
+            "gpu": get_gpu_info(),
         }
         if self.history:
             status_info.update(self.history.get_stats())
@@ -295,6 +301,16 @@ class WebOverlayServer:
         # Never report "running" unless the app-status hook confirmed it
         status_info.setdefault("is_running", False)
         return web.json_response(status_info)
+
+    async def _handle_trim_memory(self, request: web.Request) -> web.Response:
+        """Trigger on-demand garbage collection and physical working set memory trim."""
+        from ..hardware import release_stt_memory, get_ram_usage_mb
+        freed = release_stt_memory(log_details=True)
+        return web.json_response({
+            "status": "success",
+            "freed_mb": freed,
+            "current_ram_mb": get_ram_usage_mb(),
+        })
 
     async def _handle_get_transcript_stats(self, request: web.Request) -> web.Response:
         """Return live Words Per Minute (WPM), total words, and speaking session statistics."""
@@ -1432,4 +1448,8 @@ class WebOverlayServer:
                 await asyncio.sleep(max(1, hours) * 3600)
         except asyncio.CancelledError:
             pass
+
+
+# Convenience alias
+WebServer = WebOverlayServer
 

@@ -257,4 +257,6 @@ class VoskEngine(BaseSTTEngine):
             self.tokenizer = None
         if hasattr(self, 'processor'):
             self.processor = None
-        logger.info(f"STT engine stopped and memory freed.")
+        from ..hardware import release_stt_memory
+        release_stt_memory()
+        logger.info("Vosk engine stopped and memory freed.")

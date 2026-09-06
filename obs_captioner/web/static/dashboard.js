@@ -2550,6 +2550,16 @@ async function refreshEngineStatus() {
                     heroBadge.style.borderColor = "rgba(16, 185, 129, 0.4)";
                     heroBadge.innerHTML = `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#10B981;"></span> LIVE IN MEMORY`;
                 }
+            // Update Hardware GPU & RAM footprint badges
+            const gpuText = document.getElementById("hardware-gpu-text");
+            const ramText = document.getElementById("hardware-ram-text");
+            if (gpuText && data.gpu) {
+                const vendorEmoji = (data.gpu.vendor === "AMD") ? "🔴" : (data.gpu.vendor === "NVIDIA") ? "🟢" : (data.gpu.vendor === "Apple") ? "🍎" : "💻";
+                gpuText.textContent = `${vendorEmoji} ${data.gpu.name || 'CPU'}`;
+                gpuText.title = `GPU: ${data.gpu.name} (${data.gpu.backend || 'CPU'}) • VRAM: ${data.gpu.vram_mb || 0} MB`;
+            }
+            if (ramText && data.ram_usage_mb !== undefined) {
+                ramText.textContent = `🧠 ${data.ram_usage_mb} MB`;
             }
 
             if (cachedBenchmarkData && data.engine) {
@@ -2564,6 +2574,36 @@ async function refreshEngineStatus() {
     } catch (e) {
         console.debug("Status poll error:", e);
     }
+}
+
+// On-demand RAM Flush Handler
+const btnTrimRam = document.getElementById("btn-trim-ram");
+if (btnTrimRam) {
+    btnTrimRam.addEventListener("click", async () => {
+        btnTrimRam.textContent = "Purging...";
+        btnTrimRam.disabled = true;
+        try {
+            const res = await fetch("/api/system/trim_memory", { method: "POST" });
+            if (res.ok) {
+                const trimData = await res.json();
+                const ramText = document.getElementById("hardware-ram-text");
+                if (ramText && trimData.current_ram_mb !== undefined) {
+                    ramText.textContent = `🧠 ${trimData.current_ram_mb} MB`;
+                }
+                btnTrimRam.textContent = `Freed ${trimData.freed_mb}MB!`;
+                setTimeout(() => {
+                    btnTrimRam.textContent = "Flush RAM";
+                    btnTrimRam.disabled = false;
+                }, 2500);
+            } else {
+                btnTrimRam.textContent = "Flush RAM";
+                btnTrimRam.disabled = false;
+            }
+        } catch (e) {
+            btnTrimRam.textContent = "Flush RAM";
+            btnTrimRam.disabled = false;
+        }
+    });
 }
 
 function updateWpmUI(stats) {

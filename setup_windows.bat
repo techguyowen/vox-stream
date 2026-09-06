@@ -131,9 +131,11 @@ call .venv\Scripts\python.exe -m pip install --upgrade pip
 call .venv\Scripts\python.exe -m pip install -r requirements.txt
 call .venv\Scripts\python.exe -m pip uninstall -y torchaudio >nul 2>&1
 
-:: 6. Check for NVIDIA GPU and install CUDA acceleration automatically
-echo [4/6] Checking for NVIDIA GPU acceleration...
+:: 6. Check for Dedicated GPU Acceleration (NVIDIA / AMD Radeon / DirectML)
+echo [4/6] Detecting GPU Hardware (NVIDIA / AMD Radeon / Intel)...
 set "HAS_NVIDIA=0"
+set "HAS_AMD=0"
+
 where nvidia-smi >nul 2>&1
 if %errorlevel% equ 0 set "HAS_NVIDIA=1"
 
@@ -142,13 +144,21 @@ if "!HAS_NVIDIA!"=="0" (
     if %errorlevel% equ 0 set "HAS_NVIDIA=1"
 )
 
+powershell -NoProfile -Command "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name" 2>nul | findstr /i "AMD Radeon RX" >nul 2>&1
+if %errorlevel% equ 0 set "HAS_AMD=1"
+
 if "!HAS_NVIDIA!"=="1" (
     echo [SUCCESS] NVIDIA GPU detected!
     echo [INFO] Installing CUDA and cuDNN runtime packages for Faster-Whisper...
     call .venv\Scripts\python.exe -m pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
     echo [SUCCESS] NVIDIA GPU acceleration installed!
+) else if "!HAS_AMD!"=="1" (
+    echo [SUCCESS] AMD Radeon GPU detected! (e.g. Radeon RX 580)
+    echo [INFO] Installing DirectML runtime packages for AMD GPU acceleration...
+    call .venv\Scripts\python.exe -m pip install onnxruntime-directml
+    echo [SUCCESS] AMD Radeon GPU DirectML & OpenMP CPU acceleration configured!
 ) else (
-    echo [INFO] No dedicated NVIDIA GPU detected. Configured for fast CPU int8 inference.
+    echo [INFO] Standard CPU environment detected. Configured for fast CPU int8 inference.
 )
 
 :: 7. Setup Configuration

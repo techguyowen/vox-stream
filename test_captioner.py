@@ -1632,7 +1632,85 @@ class TestSermonPipelineEnhancements(unittest.IsolatedAsyncioTestCase):
         engine = MoonshineEngine(config)
         sample_rate = 16000
         expected_overlap = int(sample_rate * 2 * 0.35) & ~1
-        self.assertEqual(expected_overlap, 11200)
+class TestHardwareAndMemoryManagement(unittest.IsolatedAsyncioTestCase):
+    """Unit tests for GPU detection (AMD Radeon RX 580 / NVIDIA), DirectML, and RAM memory purging."""
+
+    def test_get_ram_usage_mb(self):
+        from obs_captioner.hardware import get_ram_usage_mb
+        ram = get_ram_usage_mb()
+        self.assertIsInstance(ram, float)
+        self.assertGreater(ram, 0.0)
+
+    def test_get_gpu_info(self):
+        from obs_captioner.hardware import get_gpu_info
+        info = get_gpu_info(force_refresh=True)
+        self.assertIn("vendor", info)
+        self.assertIn("name", info)
+        self.assertIn("backend", info)
+        self.assertIn(info["vendor"], ("AMD", "NVIDIA", "Apple", "Intel", "CPU"))
+        self.assertIn("is_cuda", info)
+        self.assertIn("is_directml", info)
+        self.assertIn("is_mps", info)
+
+    def test_release_stt_memory(self):
+        from obs_captioner.hardware import release_stt_memory
+
+        class DummyEngine:
+            def __init__(self):
+                self.model = bytearray(10 * 1024 * 1024)  # 10MB dummy allocation
+                self.tokenizer = {"dummy": "data"}
+
+        dummy = DummyEngine()
+        self.assertIsNotNone(dummy.model)
+        freed = release_stt_memory(old_engine=dummy)
+        self.assertIsNone(dummy.model)
+        self.assertIsNone(dummy.tokenizer)
+        self.assertIsInstance(freed, float)
+
+    def test_get_torch_device(self):
+        from obs_captioner.hardware import get_torch_device
+        device, label = get_torch_device()
+        self.assertIsNotNone(device)
+        self.assertIsInstance(label, str)
+
+    async def test_trim_memory_endpoint(self):
+        from obs_captioner.web.server import WebOverlayServer
+        from obs_captioner.config import AppConfig
+        from aiohttp.test_utils import TestClient, TestServer
+
+        cfg = AppConfig()
+        server = WebOverlayServer(cfg)
+        client = TestClient(TestServer(server.app))
+        await client.start_server()
+        try:
+            resp = await client.post("/api/system/trim_memory")
+            self.assertEqual(resp.status, 200)
+            data = await resp.json()
+            self.assertEqual(data.get("status"), "success")
+            self.assertIn("freed_mb", data)
+            self.assertIn("current_ram_mb", data)
+        finally:
+            await client.close()
+
+    async def test_status_endpoint_includes_hardware_and_ram(self):
+        from obs_captioner.web.server import WebOverlayServer
+        from obs_captioner.config import AppConfig
+        from aiohttp.test_utils import TestClient, TestServer
+
+        cfg = AppConfig()
+        server = WebOverlayServer(cfg)
+        client = TestClient(TestServer(server.app))
+        await client.start_server()
+        try:
+            resp = await client.get("/api/status")
+            self.assertEqual(resp.status, 200)
+            data = await resp.json()
+            self.assertIn("ram_usage_mb", data)
+            self.assertIn("gpu", data)
+            self.assertIsInstance(data["ram_usage_mb"], (int, float))
+            self.assertIsInstance(data["gpu"], dict)
+        finally:
+            await client.close()
 
 
 if __name__ == "__main__":

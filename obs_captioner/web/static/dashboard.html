@@ -66,6 +66,14 @@
                     <span id="live-wpm-badge-text">⚡ 0 WPM (Idle)</span>
                 </div>
 
+                <!-- Live Hardware GPU & RAM Badge -->
+                <div class="hardware-pill" id="hardware-pill" title="Detected GPU Hardware & Process RAM Footprint" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--text-main); white-space: nowrap;">
+                    <span id="hardware-gpu-text">🎮 GPU: Detecting...</span>
+                    <span style="color: var(--border-color); opacity: 0.5;">|</span>
+                    <span id="hardware-ram-text" title="Active memory occupied by speech recognition models">🧠 ...</span>
+                    <button type="button" id="btn-trim-ram" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; padding: 1px 6px; cursor: pointer; color: #38BDF8; font-size: 11px; font-weight: 600;" title="Release cached model memory and flush unused working set RAM back to the operating system">Flush RAM</button>
+                </div>
+
                 <div class="status-pill" id="status-pill">
                     <span class="status-dot online"></span>
                     <span id="status-text">Active</span>

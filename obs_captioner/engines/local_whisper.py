@@ -89,28 +89,47 @@ class LocalWhisperEngine(BaseSTTEngine):
             from faster_whisper import WhisperModel
             import torch
 
+            from ..hardware import get_gpu_info
+            gpu_info = get_gpu_info()
+            is_amd = gpu_info.get("vendor") == "AMD"
+
             device = (self.config.local_whisper.device or "auto").strip().lower()
             compute_type = (self.config.local_whisper.compute_type or "auto").strip().lower()
 
-            # CTranslate2 supports NVIDIA CUDA and CPU (Apple Accelerate / NEON). It does not support MPS.
-            if device == "mps":
-                logger.info("CTranslate2 / Faster-Whisper does not support Apple MPS. Using high-performance CPU (Accelerate/NEON).")
+            # CTranslate2 supports NVIDIA CUDA and CPU (x86_64 AVX2 / ARM NEON / Accelerate).
+            # On AMD Radeon / Apple Silicon / non-CUDA systems, CTranslate2 uses multi-threaded CPU int8.
+            if device in ("mps", "directml"):
                 device = "cpu"
             elif device == "auto":
-                device = "cuda" if torch.cuda.is_available() else "cpu"
+                if torch.cuda.is_available():
+                    device = "cuda"
+                else:
+                    device = "cpu"
 
             if compute_type == "auto":
                 compute_type = "float16" if device == "cuda" else "int8"
 
             model_size = self.config.local_whisper.model_size or "base.en"
-            device_label = "NVIDIA CUDA GPU" if device == "cuda" else "CPU (Accelerate)"
+            if device == "cuda":
+                device_label = f"NVIDIA CUDA GPU ({gpu_info.get('name', 'NVIDIA')})"
+            elif is_amd:
+                device_label = f"CPU int8 ({gpu_info.get('name', 'AMD Radeon')} Host)"
+            else:
+                device_label = "CPU int8 (Accelerate)"
+
             logger.info(f"Faster-Whisper loading on {device_label} [device={device}, compute_type={compute_type}]")
             if status_callback:
                 status_callback(f"Loading Faster-Whisper '{model_size}' on {device_label} ({compute_type})...")
 
             def _load_whisper():
                 try:
-                    return WhisperModel(model_size, device=device, compute_type=compute_type)
+                    threads = max(2, min(8, (os.cpu_count() or 4) - 1)) if device == "cpu" else 0
+                    return WhisperModel(
+                        model_size,
+                        device=device,
+                        compute_type=compute_type,
+                        cpu_threads=threads,
+                    )
                 except Exception as first_err:
                     if device == "cuda":
                         logger.warning(f"CUDA initialization failed ({first_err}). Falling back to CPU...")
@@ -290,4 +309,6 @@ class LocalWhisperEngine(BaseSTTEngine):
             self.tokenizer = None
         if hasattr(self, 'processor'):
             self.processor = None
-        logger.info(f"STT engine stopped and memory freed.")
+        from ..hardware import release_stt_memory
+        release_stt_memory()
+        logger.info("Faster-Whisper engine stopped and memory freed.")

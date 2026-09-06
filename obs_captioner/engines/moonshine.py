@@ -66,23 +66,18 @@ class MoonshineEngine(BaseSTTEngine):
 
             self.model, self.tokenizer = await loop.run_in_executor(None, _load)
 
-            # Select best available device: NVIDIA CUDA → Apple MPS → CPU
-            import torch
-            if torch.cuda.is_available():
-                self._device = "cuda"
-            elif torch.backends.mps.is_available():
-                self._device = "mps"
-            else:
-                self._device = "cpu"
+            # Select optimal device: DirectML (AMD Radeon RX 580 / Intel Arc) → NVIDIA CUDA → Apple MPS → CPU
+            from ..hardware import get_torch_device
+            self._device, device_label = get_torch_device()
             try:
                 self.model = self.model.to(self._device)
-                logger.info(f"Moonshine model moved to device: {self._device}")
+                logger.info(f"Moonshine model moved to device: {device_label}")
             except Exception as dev_err:
                 logger.warning(f"Could not move Moonshine to {self._device}, using cpu: {dev_err}")
                 self._device = "cpu"
+                device_label = "CPU"
 
             if status_callback:
-                device_label = self._device.upper()
                 status_callback(f"✅ Moonshine ({model_name}) ready on {device_label}!")
             logger.info("Moonshine model and tokenizer loaded successfully.")
             return True
@@ -228,4 +223,6 @@ class MoonshineEngine(BaseSTTEngine):
             self.tokenizer = None
         if hasattr(self, 'processor'):
             self.processor = None
-        logger.info(f"STT engine stopped and memory freed.")
+        from ..hardware import release_stt_memory
+        release_stt_memory()
+        logger.info("Moonshine engine stopped and memory freed.")

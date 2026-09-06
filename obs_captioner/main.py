@@ -102,6 +102,7 @@ async def main_async(args):
     engine_switch_error = None
 
     def get_app_status():
+        from .hardware import get_ram_usage_mb, get_gpu_info
         return {
             "is_running": not is_paused,
             "obs_connected": obs_client.is_connected if obs_client else False,
@@ -113,6 +114,8 @@ async def main_async(args):
             "engine_switch_status": engine_switch_status,
             "engine_switch_target": engine_switch_target,
             "engine_switch_error": engine_switch_error,
+            "ram_usage_mb": get_ram_usage_mb(),
+            "gpu_info": get_gpu_info(),
         }
 
     async def switch_engine_async(new_cfg: AppConfig):
@@ -144,10 +147,13 @@ async def main_async(args):
                 asyncio.run_coroutine_threadsafe(broadcast_status(msg, is_err="❌" in msg), loop)
 
             try:
-                await broadcast_status("Stopping previous recognition engine...")
+                await broadcast_status("Stopping previous recognition engine & releasing RAM...")
                 if engine:
                     logger.info(f"Stopping active engine: {engine.name}...")
                     await engine.stop()
+                    engine = None
+                    from .hardware import release_stt_memory
+                    release_stt_memory()
                     await asyncio.sleep(0.1)
 
                 await broadcast_status(f"Initializing {target_name} (checking cache / downloading weights)...")
@@ -178,6 +184,10 @@ async def main_async(args):
                     err_msg = engine_switch_error or f"Failed to initialize '{target_name}'. See server logs for details."
                     await broadcast_status(err_msg, is_err=True)
                     logger.error(f"Failed to initialize engine '{new_eng.name}'. Restoring previous working engine...")
+                    await new_eng.stop()
+                    new_eng = None
+                    from .hardware import release_stt_memory
+                    release_stt_memory()
                     try:
                         fallback_eng = create_engine(config)
                         if await fallback_eng.initialize():
