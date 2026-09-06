@@ -38,6 +38,7 @@ class AudioConfig:
     sentence_break_ms: int = 450  # Pause/silence duration in ms to trigger a sentence break (default 450ms, range 200-1500ms)
     max_sentence_duration_seconds: float = 4.5  # Max duration of continuous speech in seconds before forcing a break (default 4.5s)
     max_sentence_words: int = 18  # Max word count before forcing a sentence break (default 18 words)
+    suppress_music: bool = True  # Stop/pause captioning when worship music, preludes, or singing is detected
 
 
 @dataclass
@@ -132,6 +133,7 @@ class OverlayConfig:
     text_shadow: str = "2px 2px 5px rgba(0, 0, 0, 0.95)"
     text_stroke: str = "2px #000000"
     auto_hide_seconds: float = 4.0
+    min_display_seconds: float = 2.0  # Minimum time a caption remains visible on screen (default 2.0s)
     use_italics: bool = False  # Accessibility: False = upright text, True = italic slant
     reduce_motion: bool = False  # Accessibility: False = animated, True = instant/no motion
     high_contrast_outline: bool = False  # Accessibility: False = normal stroke, True = heavy 3.5px black outline

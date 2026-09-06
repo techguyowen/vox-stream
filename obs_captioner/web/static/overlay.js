@@ -1,50 +1,44 @@
 
-// 🐢 OBS Overlay Paced Reading Governor
-let overlayPaceQueue = [];
-let overlayPacingTimer = null;
-let overlayPacedText = "";
+// ⏱️ Minimum On-Screen Caption Governor
+let lastLineDisplayedAt = 0;
+let deferredHideTimer = null;
+let pendingFinalQueue = [];
+let queueAdvanceTimer = null;
 
-function processOverlayPacingQueue() {
-    if (overlayPaceQueue.length === 0) {
-        overlayPacingTimer = null;
-        if (overlayPacedText.trim()) {
-            finalLines.push(overlayPacedText.trim());
-            while (finalLines.length > config.max_lines) finalLines.shift();
-            overlayPacedText = "";
-            renderFinalLines(false);
-            renderInterim("");
-            showBox();
+function processPendingQueue() {
+    queueAdvanceTimer = null;
+    if (pendingFinalQueue.length === 0) return;
+
+    const minDisp = Math.max(0, parseFloat(config.min_display_seconds) || 0);
+
+    // If box has reached max_lines, ensure oldest line has met min_display_seconds
+    if (finalLines.length >= config.max_lines && finalLines.length > 0) {
+        const oldest = finalLines[0];
+        const age = (Date.now() - (oldest.displayedAt || 0)) / 1000;
+        const wait = minDisp - age;
+        if (wait > 0.05) {
+            queueAdvanceTimer = setTimeout(processPendingQueue, Math.max(50, wait * 1000));
+            return;
         }
-        return;
+        finalLines.shift();
     }
 
-    const word = overlayPaceQueue.shift();
-    if (word === "___SENTENCE_BREAK___") {
-        if (overlayPacedText.trim()) {
-            finalLines.push(overlayPacedText.trim());
-            while (finalLines.length > config.max_lines) finalLines.shift();
-            overlayPacedText = "";
-            renderFinalLines(false);
-            renderInterim("");
-            showBox();
-        }
-        overlayPacingTimer = setTimeout(processOverlayPacingQueue, 500);
-        return;
+    const next = pendingFinalQueue.shift();
+    next.displayedAt = Date.now();
+    lastLineDisplayedAt = next.displayedAt;
+    finalLines.push(next);
+    while (finalLines.length > config.max_lines) {
+        finalLines.shift();
     }
 
+    renderFinalLines(false);
+    interimLineEl.innerHTML = "";
     showBox();
-    overlayPacedText = overlayPacedText ? `${overlayPacedText} ${word}` : word;
-    renderInterim(overlayPacedText);
 
-    overlayPacingTimer = setTimeout(processOverlayPacingQueue, 440);
-}
-
-function queueOverlayPacedText(text) {
-    const words = text.trim().split(/\s+/).filter(Boolean);
-    if (words.length === 0) return;
-    overlayPaceQueue.push(...words, "___SENTENCE_BREAK___");
-    if (!overlayPacingTimer) {
-        processOverlayPacingQueue();
+    // If more items remain in queue, pace them smoothly
+    if (pendingFinalQueue.length > 0) {
+        const pace = pendingFinalQueue.length > 2 ? Math.min(minDisp, 1.2) : minDisp;
+        queueAdvanceTimer = setTimeout(processPendingQueue, Math.max(50, pace * 1000));
     }
 }
 
@@ -82,6 +76,7 @@ function dismissScriptureVerse() {
 let config = {
     max_lines: 2,
     auto_hide_seconds: 4.0,
+    min_display_seconds: 2.0,
     animation_style: "word_pop",
     vertical_align: "bottom",
     final_only: false,
@@ -159,6 +154,9 @@ function applyStyles(ov) {
             }
         }
     }
+    if (ov.min_display_seconds !== undefined) {
+        config.min_display_seconds = Math.max(0, parseFloat(ov.min_display_seconds) || 0);
+    }
 }
 
 async function loadConfig() {
@@ -186,26 +184,55 @@ function clearTimers() {
         clearTimeout(fadeWipeTimer);
         fadeWipeTimer = null;
     }
+    if (deferredHideTimer) {
+        clearTimeout(deferredHideTimer);
+        deferredHideTimer = null;
+    }
 }
 
 function showBox() {
     captionBox.classList.remove("hidden");
     clearTimers();
-    if (config.auto_hide_seconds > 0) {
+    const autoHide = parseFloat(config.auto_hide_seconds) || 0;
+    const minDisp = parseFloat(config.min_display_seconds) || 0;
+    const hideDelay = Math.max(autoHide, minDisp);
+
+    if (hideDelay > 0) {
         hideTimer = setTimeout(() => {
             captionBox.classList.add("hidden");
             fadeWipeTimer = setTimeout(() => {
                 finalLines = [];
+                pendingFinalQueue = [];
                 renderFinalLines(false);
                 interimLineEl.innerHTML = "";
                 fadeWipeTimer = null;
             }, 400);
-        }, config.auto_hide_seconds * 1000);
+        }, hideDelay * 1000);
     }
 }
 
-function hideBoxNow() {
+function hideBoxNow(force = false) {
+    if (!force) {
+        const minDisp = Math.max(0, parseFloat(config.min_display_seconds) || 0);
+        const elapsed = (Date.now() - lastLineDisplayedAt) / 1000;
+        const remaining = minDisp - elapsed;
+        if (remaining > 0.05) {
+            if (!deferredHideTimer) {
+                deferredHideTimer = setTimeout(() => {
+                    deferredHideTimer = null;
+                    hideBoxNow(true);
+                }, remaining * 1000);
+            }
+            return;
+        }
+    }
+
     clearTimers();
+    if (queueAdvanceTimer) {
+        clearTimeout(queueAdvanceTimer);
+        queueAdvanceTimer = null;
+    }
+    pendingFinalQueue = [];
     captionBox.classList.add("hidden");
     finalLines = [];
     renderFinalLines(false);
@@ -267,13 +294,16 @@ function handleCaption(data) {
     // the server's recent final lines.
     if (data.type === "snapshot") {
         finalLines = [];
+        pendingFinalQueue = [];
         interimLineEl.innerHTML = "";
+        const now = Date.now();
         for (const line of data.lines || []) {
             const t = (line.text || "").trim();
-            if (t) finalLines.push({ text: t, translated: line.translated_text || null });
+            if (t) finalLines.push({ text: t, translated: line.translated_text || null, displayedAt: now });
         }
         while (finalLines.length > config.max_lines) finalLines.shift();
         if (finalLines.length) {
+            lastLineDisplayedAt = now;
             renderFinalLines(false);
             showBox();
         }
@@ -285,17 +315,59 @@ function handleCaption(data) {
 
     if (data.is_final) {
         if (text) {
-            showBox();
-            interimLineEl.innerHTML = "";
-            finalLines.push({ text: text, translated: translated });
-            while (finalLines.length > config.max_lines) {
-                finalLines.shift();
+            if (deferredHideTimer) {
+                clearTimeout(deferredHideTimer);
+                deferredHideTimer = null;
             }
-            renderFinalLines(false);
+
+            const lineItem = { text: text, translated: translated, displayedAt: 0 };
+            const minDisp = Math.max(0, parseFloat(config.min_display_seconds) || 0);
+
+            // If box has space and no lines are waiting in queue, display immediately
+            if (finalLines.length < config.max_lines && pendingFinalQueue.length === 0) {
+                lineItem.displayedAt = Date.now();
+                lastLineDisplayedAt = lineItem.displayedAt;
+                finalLines.push(lineItem);
+                interimLineEl.innerHTML = "";
+                renderFinalLines(false);
+                showBox();
+            } else if (minDisp > 0) {
+                // When box is full, check if oldest line has satisfied min_display_seconds
+                const oldest = finalLines[0];
+                const age = oldest ? (Date.now() - (oldest.displayedAt || 0)) / 1000 : 999;
+                if (age >= minDisp && pendingFinalQueue.length === 0) {
+                    finalLines.shift();
+                    lineItem.displayedAt = Date.now();
+                    lastLineDisplayedAt = lineItem.displayedAt;
+                    finalLines.push(lineItem);
+                    interimLineEl.innerHTML = "";
+                    renderFinalLines(false);
+                    showBox();
+                } else {
+                    pendingFinalQueue.push(lineItem);
+                    if (pendingFinalQueue.length > 5) {
+                        pendingFinalQueue.shift();
+                    }
+                    if (!queueAdvanceTimer) {
+                        const wait = Math.max(0.05, minDisp - age);
+                        queueAdvanceTimer = setTimeout(processPendingQueue, wait * 1000);
+                    }
+                }
+            } else {
+                // Instant shift when min_display_seconds == 0
+                lineItem.displayedAt = Date.now();
+                lastLineDisplayedAt = lineItem.displayedAt;
+                finalLines.push(lineItem);
+                while (finalLines.length > config.max_lines) {
+                    finalLines.shift();
+                }
+                interimLineEl.innerHTML = "";
+                renderFinalLines(false);
+                showBox();
+            }
         } else {
-            // Empty final = silence auto-clear signal → hide immediately
-            // (never re-show an empty box)
-            hideBoxNow();
+            // Empty final = silence auto-clear signal
+            hideBoxNow(false);
         }
     } else {
         if (config.final_only) {

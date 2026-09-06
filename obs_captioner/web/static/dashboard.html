@@ -254,10 +254,17 @@
                             </div>
                         </div>
 
-                        <div class="form-group">
-                            <label for="auto_hide_slider">Auto-Hide on Silence (<span id="val-auto-hide">4s</span>)</label>
-                            <input type="range" id="auto_hide_slider" min="0" max="15" step="0.5" value="4" class="slider">
-                            <span class="hint">Fades out captions when speech pauses (0s = stay visible continuously).</span>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="auto_hide_slider">Auto-Hide on Silence (<span id="val-auto-hide">4s</span>)</label>
+                                <input type="range" id="auto_hide_slider" min="0" max="15" step="0.5" value="4" class="slider">
+                                <span class="hint">Fades out captions when speech pauses (0s = stay visible continuously).</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="min_display_slider">⏱️ Minimum Time on Screen (<span id="val-min-display">2s</span>)</label>
+                                <input type="range" id="min_display_slider" min="0" max="10" step="0.5" value="2" class="slider">
+                                <span class="hint">Keeps captions visible long enough for viewers to read (0s = instant update/vanish).</span>
+                            </div>
                         </div>
 
                         <div class="form-row colors-grid">
@@ -945,6 +952,12 @@
                             <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #FCD34D; font-size: 13px; font-weight: 600;">
                                 <input type="checkbox" id="church_mode" checked style="width: 17px; height: 17px; cursor: pointer; accent-color: #F59E0B;">
                                 <span>⛪ Church &amp; Scripture Mode ("John 3:16", Sacred Names)</span>
+                            </label>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0; min-width: 260px;">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #38BDF8; font-size: 13px; font-weight: 600;">
+                                <input type="checkbox" id="suppress_music" checked style="width: 17px; height: 17px; cursor: pointer; accent-color: #0284C7;">
+                                <span>🎵 Stop Captioning on Music / Worship</span>
                             </label>
                         </div>
                     </div>

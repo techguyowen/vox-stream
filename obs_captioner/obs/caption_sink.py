@@ -10,6 +10,7 @@ from ..engines.base import TranscriptEvent
 from ..censor import ContentFilter
 from ..formatter import TextFormatter
 from ..history import TranscriptHistory
+from ..music import is_music_text
 from ..translator import SubtitleTranslator
 from ..twitch_bot import TwitchCaptionBot
 from ..vocabulary import VocabularyReplacer
@@ -72,6 +73,18 @@ class CaptionSink:
         self._last_caption_time = time.time()
         raw_text = event.text.strip()
         if not raw_text:
+            return
+
+        # Music Suppression Check
+        if getattr(self.config.audio, "suppress_music", True) and is_music_text(raw_text):
+            if event.is_final:
+                logger.info(f"✓ [FINAL]   🎵 [MUSIC SUPPRESSED] {raw_text}")
+                self._utterance_active = False
+                self._last_partial_text = None
+                if self.web_server:
+                    await self.web_server.broadcast_caption(
+                        {"text": "", "is_final": False, "is_censored": False, "timestamp": event.timestamp}
+                    )
             return
 
         if event.is_final:
@@ -180,9 +193,14 @@ class CaptionSink:
             self._auto_clear_task = asyncio.create_task(self._auto_clear_worker())
 
     async def _auto_clear_worker(self):
-        """Clear OBS Text Source and web overlay after silence timeout."""
+        """Clear OBS Text Source and web overlay after silence timeout, respecting min_display_seconds."""
         try:
-            await asyncio.sleep(self.config.overlay.auto_hide_seconds)
+            auto_hide = getattr(self.config.overlay, "auto_hide_seconds", 4.0) or 0.0
+            min_disp = getattr(self.config.overlay, "min_display_seconds", 2.0) or 0.0
+            sleep_duration = max(auto_hide, min_disp)
+            if sleep_duration <= 0:
+                return
+            await asyncio.sleep(sleep_duration)
             # Clear OBS text source
             if self.obs_client and self.obs_client.is_connected:
                 if self.config.obs.update_text_source and self.config.obs.text_source_name:

@@ -1054,5 +1054,130 @@ class TestSentenceBreakConfiguration(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(len(finals), 0)
 
 
+class TestMusicSuppressionAndOverlayMinimumDuration(unittest.IsolatedAsyncioTestCase):
+    def test_audio_config_suppress_music_default(self):
+        from obs_captioner.config import AudioConfig, OverlayConfig
+        ac = AudioConfig()
+        self.assertTrue(ac.suppress_music)
+
+        oc = OverlayConfig()
+        self.assertEqual(oc.min_display_seconds, 2.0)
+
+    def test_music_text_detection(self):
+        from obs_captioner.music import is_music_text
+
+        # Musical notes
+        self.assertTrue(is_music_text("♪"))
+        self.assertTrue(is_music_text("♫ ♫"))
+        self.assertTrue(is_music_text("♪ Amazing grace how sweet the sound ♪"))
+        self.assertTrue(is_music_text("♬ Holy, Holy, Holy"))
+
+        # Tags
+        self.assertTrue(is_music_text("[music]"))
+        self.assertTrue(is_music_text("(music)"))
+        self.assertTrue(is_music_text("[singing]"))
+        self.assertTrue(is_music_text("(instrumental)"))
+        self.assertTrue(is_music_text("[choir singing]"))
+        self.assertTrue(is_music_text("[organ playing]"))
+
+        # Repetition hallucination loops
+        self.assertTrue(is_music_text("Thank you. Thank you. Thank you. Thank you."))
+        self.assertTrue(is_music_text("you you you you you you"))
+        self.assertTrue(is_music_text("Hallelujah Amen Hallelujah Amen Hallelujah Amen"))
+
+        # Legitimate speech / sermons should NOT be flagged
+        self.assertFalse(is_music_text("Let us open our Bibles to the book of Romans chapter 8."))
+        self.assertFalse(is_music_text("For God so loved the world that he gave his only begotten Son."))
+        self.assertFalse(is_music_text("Good morning church, welcome to our Sunday service."))
+
+    async def test_caption_sink_suppresses_music_when_enabled(self):
+        from obs_captioner.config import AppConfig
+        from obs_captioner.obs.caption_sink import CaptionSink
+        from obs_captioner.engines.base import TranscriptEvent
+        from obs_captioner.history import TranscriptHistory
+
+        cfg = AppConfig()
+        cfg.audio.suppress_music = True
+        hist = TranscriptHistory()
+        sink = CaptionSink(cfg, history=hist)
+
+        # 1. Music event with suppress_music=True -> dropped
+        music_event = TranscriptEvent(text="♪ Amazing Grace ♪", is_final=True)
+        await sink.handle_transcript(music_event)
+        self.assertEqual(len(hist.entries), 0)
+
+        # 2. Normal preaching event -> kept
+        speech_event = TranscriptEvent(text="Grace and peace be multiplied to you.", is_final=True)
+        await sink.handle_transcript(speech_event)
+        self.assertEqual(len(hist.entries), 1)
+
+        # 3. Disable suppress_music -> music events allowed through
+        cfg.audio.suppress_music = False
+        sink.update_config(cfg)
+        music_event_allowed = TranscriptEvent(text="♪ Great is Thy Faithfulness ♪", is_final=True)
+        await sink.handle_transcript(music_event_allowed)
+        self.assertEqual(len(hist.entries), 2)
+
+    def test_acoustic_music_detection(self):
+        import numpy as np
+        from obs_captioner.music import AcousticMusicDetector
+
+        detector = AcousticMusicDetector(window_frames=8)
+        sr = 16000
+        duration = 0.1  # 100ms per frame
+        t = np.linspace(0, duration, int(sr * duration), endpoint=False)
+
+        # Generate a sustained 3-note worship chord (C major: 261.6Hz, 329.6Hz, 392.0Hz)
+        chord = (
+            0.25 * np.sin(2 * np.pi * 261.6 * t)
+            + 0.25 * np.sin(2 * np.pi * 329.6 * t)
+            + 0.25 * np.sin(2 * np.pi * 392.0 * t)
+        )
+        chord_bytes = (chord * 32767).astype(np.int16).tobytes()
+
+        # Feed 8 consecutive frames of chord (sustained tone)
+        is_music = False
+        for _ in range(8):
+            is_music = detector.process_chunk(chord_bytes, sample_rate=sr, noise_gate_db=-45.0)
+
+        self.assertTrue(is_music)
+
+        # Now feed turbulent noise / consonant frames
+        detector.reset()
+        noise = np.random.normal(0, 0.2, len(t))
+        noise_bytes = (noise * 32767).astype(np.int16).tobytes()
+        is_noise_music = False
+        for _ in range(8):
+            is_noise_music = detector.process_chunk(noise_bytes, sample_rate=sr, noise_gate_db=-45.0)
+
+        self.assertFalse(is_noise_music)
+
+    def test_vad_suppress_music_update_config(self):
+        from obs_captioner.vad import VoiceActivityDetector
+        from obs_captioner.config import AudioConfig
+
+        vad = VoiceActivityDetector(suppress_music=True)
+        self.assertTrue(vad.suppress_music)
+
+        vad.update_config(AudioConfig(suppress_music=False))
+        self.assertFalse(vad.suppress_music)
+
+    async def test_auto_clear_respects_min_display_seconds(self):
+        import time
+        from obs_captioner.config import AppConfig
+        from obs_captioner.obs.caption_sink import CaptionSink
+
+        cfg = AppConfig()
+        cfg.overlay.auto_hide_seconds = 0.05
+        cfg.overlay.min_display_seconds = 0.2
+        sink = CaptionSink(cfg)
+
+        t_start = time.time()
+        await sink._auto_clear_worker()
+        elapsed = time.time() - t_start
+        self.assertGreaterEqual(elapsed, 0.18)
+
+
 if __name__ == "__main__":
     unittest.main()
+

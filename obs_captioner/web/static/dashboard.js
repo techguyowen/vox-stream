@@ -1270,6 +1270,12 @@ function populateFormFields(cfg) {
             document.getElementById("auto_hide_slider").value = ov.auto_hide_seconds;
             document.getElementById("val-auto-hide").textContent = `${ov.auto_hide_seconds}s`;
         }
+        if (ov.min_display_seconds !== undefined) {
+            const mEl = document.getElementById("min_display_slider");
+            if (mEl) mEl.value = ov.min_display_seconds;
+            const vEl = document.getElementById("val-min-display");
+            if (vEl) vEl.textContent = `${ov.min_display_seconds}s`;
+        }
         if (ov.text_color) document.getElementById("text_color").value = ov.text_color;
         if (ov.interim_color) document.getElementById("interim_color").value = ov.interim_color;
         if (ov.highlight_color) document.getElementById("highlight_color").value = ov.highlight_color;
@@ -1329,6 +1335,11 @@ function populateFormFields(cfg) {
         if (sMaxEl) sMaxEl.value = maxSentenceVal;
         const vMaxEl = document.getElementById("val-max-sentence");
         if (vMaxEl) vMaxEl.textContent = `${maxSentenceVal}s`;
+
+        if (cfg.audio.suppress_music !== undefined) {
+            const smEl = document.getElementById("suppress_music");
+            if (smEl) smEl.checked = !!cfg.audio.suppress_music;
+        }
     }
     if (cfg.google_stt) {
         document.getElementById("google_creds_path").value = cfg.google_stt.credentials_path || "";
@@ -1395,6 +1406,7 @@ function buildOverlayStylePayload() {
         vertical_align: document.getElementById("vertical_align") ? document.getElementById("vertical_align").value : "bottom",
         animation_style: document.getElementById("animation_style").value,
         auto_hide_seconds: parseFloat(document.getElementById("auto_hide_slider").value) || 0,
+        min_display_seconds: parseFloat(document.getElementById("min_display_slider") ? document.getElementById("min_display_slider").value : 2.0) || 0,
         text_color: document.getElementById("text_color").value,
         interim_color: document.getElementById("interim_color").value,
         highlight_color: document.getElementById("highlight_color").value,
@@ -1499,6 +1511,14 @@ document.getElementById("auto_hide_slider").addEventListener("input", (e) => {
     document.getElementById("val-auto-hide").textContent = `${e.target.value}s`;
     autoSyncStyleChanges();
 });
+const minDispSlider = document.getElementById("min_display_slider");
+if (minDispSlider) {
+    minDispSlider.addEventListener("input", (e) => {
+        const v = document.getElementById("val-min-display");
+        if (v) v.textContent = `${e.target.value}s`;
+        autoSyncStyleChanges();
+    });
+}
 document.getElementById("noise_gate_slider").addEventListener("input", (e) => {
     document.getElementById("val-noise-gate").textContent = `${e.target.value} dB`;
 });
@@ -2034,6 +2054,7 @@ document.getElementById("btn-save-audio").addEventListener("click", async () => 
             vad_threshold: parseFloat(document.getElementById("vad_slider").value),
             sentence_break_ms: parseInt(document.getElementById("sentence_break_slider").value, 10),
             max_sentence_duration_seconds: parseFloat(document.getElementById("max_sentence_slider").value),
+            suppress_music: document.getElementById("suppress_music") ? document.getElementById("suppress_music").checked : true,
         },
         bandwidth: {
             api_key: document.getElementById("bandwidth_api_key") ? document.getElementById("bandwidth_api_key").value.trim() : "",

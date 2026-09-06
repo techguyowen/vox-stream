@@ -14,7 +14,8 @@
     "chunk_duration_ms": 100,
     "enable_vad": true,
     "vad_threshold": 0.5,
-    "noise_gate_db": -45
+    "noise_gate_db": -45,
+    "suppress_music": true
   },
   "vocabulary": {
     "enabled": true,
@@ -142,6 +143,7 @@
     "text_shadow": "2px 2px 5px rgba(0, 0, 0, 0.95)",
     "text_stroke": "2px #000000",
     "auto_hide_seconds": 4.0,
+    "min_display_seconds": 2.0,
     "letter_spacing": "normal",
     "use_italics": false,
     "reduce_motion": false,

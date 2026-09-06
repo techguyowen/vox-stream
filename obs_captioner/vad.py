@@ -9,6 +9,8 @@ try:
 except ImportError:
     np = None
 
+from .music import AcousticMusicDetector
+
 logger = logging.getLogger("obs_captioner.vad")
 
 # Module-level cache so Silero VAD is only loaded from disk once across all engine instances.
@@ -18,12 +20,21 @@ _SILERO_CACHE: dict = {}
 
 
 class VoiceActivityDetector:
-    """Detects voice activity in audio chunks using energy gating and optional Silero VAD."""
+    """Detects voice activity in audio chunks using energy gating, Silero VAD, and music tonality detection."""
 
-    def __init__(self, sample_rate: int = 16000, noise_gate_db: float = -45.0, vad_threshold: float = 0.5, enable_silero: bool = True):
+    def __init__(
+        self,
+        sample_rate: int = 16000,
+        noise_gate_db: float = -45.0,
+        vad_threshold: float = 0.5,
+        enable_silero: bool = True,
+        suppress_music: bool = True,
+    ):
         self.sample_rate = sample_rate
         self.noise_gate_db = noise_gate_db
         self.vad_threshold = vad_threshold
+        self.suppress_music = suppress_music
+        self.music_detector = AcousticMusicDetector()
         self.silero_model = None
         self.silero_mode = None  # "torch" or "onnx"
         self._onnx_state = None
@@ -81,10 +92,19 @@ class VoiceActivityDetector:
                 logger.debug(f"Silero VAD not available ({e}). Using energy-based VAD.")
 
     def update_config(self, audio_config) -> None:
-        """Live update threshold and noise gate parameters."""
+        """Live update threshold, noise gate, and music suppression parameters."""
         self.sample_rate = getattr(audio_config, "sample_rate", self.sample_rate)
         self.noise_gate_db = getattr(audio_config, "noise_gate_db", self.noise_gate_db)
         self.vad_threshold = getattr(audio_config, "vad_threshold", self.vad_threshold)
+        self.suppress_music = getattr(audio_config, "suppress_music", self.suppress_music)
+
+    def is_music(self, audio_chunk_bytes: bytes) -> bool:
+        """Return True if sustained acoustic music (chords, organ, worship pads) is detected."""
+        return self.music_detector.process_chunk(
+            audio_chunk_bytes,
+            sample_rate=self.sample_rate,
+            noise_gate_db=self.noise_gate_db,
+        )
 
     def calculate_rms_db(self, audio_chunk_bytes: bytes) -> float:
         """Calculate Root Mean Square (RMS) energy in decibels (dBFS) for 16-bit linear PCM."""
@@ -117,9 +137,15 @@ class VoiceActivityDetector:
         # 1. Noise gate check
         db = self.calculate_rms_db(audio_chunk_bytes)
         if db < self.noise_gate_db:
+            self.music_detector.reset()
             return False
 
-        # 2. Silero VAD check if available
+        # 2. Acoustic music detection if suppress_music is enabled
+        is_music_active = False
+        if self.suppress_music:
+            is_music_active = self.is_music(audio_chunk_bytes)
+
+        # 3. Silero VAD check if available
         if self.silero_model is not None:
             try:
                 audio_array = np.frombuffer(audio_chunk_bytes, dtype=np.int16).astype(np.float32) / 32768.0
@@ -146,11 +172,21 @@ class VoiceActivityDetector:
                         if prob > max_prob:
                             max_prob = prob
 
+                # If sustained music is detected and speech confidence is not decisively high, suppress speech
+                if is_music_active and max_prob < 0.75:
+                    return False
+
                 return max_prob >= self.vad_threshold
             except Exception as e:
                 logger.debug(f"Silero inference error: {e}")
+                if is_music_active:
+                    return False
                 # Fallback to energy check if Silero fails
                 return db >= self.noise_gate_db
+
+        # If no Silero and music detected, suppress
+        if is_music_active:
+            return False
 
         # If no Silero, energy above noise gate is considered active
         return True
