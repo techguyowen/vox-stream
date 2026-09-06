@@ -1713,6 +1713,78 @@ class TestHardwareAndMemoryManagement(unittest.IsolatedAsyncioTestCase):
             await client.close()
 
 
+class TestVersioningAndSemanticUpdater(unittest.TestCase):
+    """Unit tests for semantic versioning, bump helpers, and multi-source updater."""
+
+    def test_parse_version(self):
+        from obs_captioner.version import parse_version
+        self.assertEqual(parse_version("1.1.0"), (1, 1, 0))
+        self.assertEqual(parse_version("v1.1.0"), (1, 1, 0))
+        self.assertEqual(parse_version("V2.0.4"), (2, 0, 4))
+        self.assertEqual(parse_version("1.2"), (1, 2, 0))
+        self.assertEqual(parse_version("1.1.0-beta.2"), (1, 1, 0))
+        self.assertEqual(parse_version(""), (0, 0, 0))
+        self.assertEqual(parse_version(None), (0, 0, 0))
+
+    def test_compare_versions_and_is_newer(self):
+        from obs_captioner.version import compare_versions, is_version_newer
+        self.assertEqual(compare_versions("1.1.0", "1.0.0"), 1)
+        self.assertEqual(compare_versions("1.0.0", "1.1.0"), -1)
+        self.assertEqual(compare_versions("1.1.0", "1.1.0"), 0)
+        self.assertEqual(compare_versions("2.0.0", "1.9.9"), 1)
+        self.assertEqual(compare_versions("1.1.1", "1.1.0"), 1)
+
+        self.assertTrue(is_version_newer("1.1.0", "1.0.0"))
+        self.assertFalse(is_version_newer("1.0.0", "1.1.0"))
+        self.assertFalse(is_version_newer("1.1.0", "1.1.0"))
+        self.assertTrue(is_version_newer("v2.0.0", "v1.9.9"))
+
+    def test_get_version_bump_type(self):
+        from obs_captioner.version import get_version_bump_type
+        self.assertEqual(get_version_bump_type("2.0.0", "1.1.0"), "major")
+        self.assertEqual(get_version_bump_type("1.2.0", "1.1.0"), "minor")
+        self.assertEqual(get_version_bump_type("1.1.1", "1.1.0"), "patch")
+        self.assertEqual(get_version_bump_type("1.1.0", "1.1.0"), "none")
+
+    def test_bump_version_string(self):
+        from obs_captioner.version import bump_version_string
+        self.assertEqual(bump_version_string("1.1.0", "patch"), "1.1.1")
+        self.assertEqual(bump_version_string("1.1.0", "minor"), "1.2.0")
+        self.assertEqual(bump_version_string("1.1.0", "medium"), "1.2.0")
+        self.assertEqual(bump_version_string("1.1.0", "major"), "2.0.0")
+
+    def test_bump_version_cli_dry_run(self):
+        from scripts.bump_version import bump_version
+        self.assertEqual(bump_version(bump_type="patch", dry_run=True), "1.1.1")
+        self.assertEqual(bump_version(bump_type="minor", dry_run=True), "1.2.0")
+        self.assertEqual(bump_version(bump_type="major", dry_run=True), "2.0.0")
+        self.assertEqual(bump_version(custom_version="3.5.0", dry_run=True), "3.5.0")
+
+    def test_updater_sync_check_detects_semantic_version_update(self):
+        from unittest.mock import patch, MagicMock
+        from obs_captioner.updater import UpdateManager
+        import io
+
+        updater = UpdateManager()
+
+        # Mock urllib.request.urlopen returning version.json with version 1.2.0
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = b'{"version": "1.2.0"}'
+        mock_resp.__enter__.return_value = mock_resp
+
+        with patch("urllib.request.urlopen", return_value=mock_resp), \
+             patch.object(updater, "is_git_repo", return_value=False), \
+             patch.object(updater, "get_local_commit", return_value="unknown"), \
+             patch.object(updater, "get_local_full_commit", return_value="unknown"):
+
+            status = updater._sync_check_update()
+            self.assertTrue(status["update_available"])
+            self.assertEqual(status["latest_version"], "1.2.0")
+            self.assertEqual(status["update_type"], "minor")
+            self.assertEqual(status["current_version"], "1.1.0")
+
+
 if __name__ == "__main__":
     unittest.main()
 

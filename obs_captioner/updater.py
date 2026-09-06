@@ -11,16 +11,27 @@ import subprocess
 import sys
 import time
 import urllib.request
+import re
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
-from . import __version__
+from .version import (
+    VERSION,
+    compare_versions,
+    get_version_bump_type,
+    is_version_newer,
+    parse_version,
+)
 
 logger = logging.getLogger("obs_captioner.updater")
 
 GITHUB_REPO = "techguyowen/vox-stream"
 GITHUB_BRANCH = "main"
+GITHUB_RAW_VERSION = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{GITHUB_BRANCH}/version.json"
+GITHUB_RAW_VERSION_PY = f"https://raw.githubusercontent.com/{GITHUB_REPO}/{GITHUB_BRANCH}/obs_captioner/version.py"
 GITHUB_API_COMMITS = f"https://api.github.com/repos/{GITHUB_REPO}/commits/{GITHUB_BRANCH}"
+GITHUB_API_RELEASES = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+GITHUB_API_TAGS = f"https://api.github.com/repos/{GITHUB_REPO}/tags"
 GITHUB_ZIP_URL = f"https://github.com/{GITHUB_REPO}/archive/refs/heads/{GITHUB_BRANCH}.zip"
 
 APP_ROOT = Path(__file__).resolve().parent.parent
@@ -36,7 +47,13 @@ class UpdateManager:
         self._last_checked_time = 0.0
         self._cached_status: Optional[Dict[str, Any]] = None
         self._is_updating = False
-        self._update_lock = asyncio.Lock()
+        self._update_lock: Optional[asyncio.Lock] = None
+
+    @property
+    def update_lock(self) -> asyncio.Lock:
+        if self._update_lock is None:
+            self._update_lock = asyncio.Lock()
+        return self._update_lock
 
     def is_git_repo(self) -> bool:
         """Check whether current installation is a Git clone and git binary is present."""
@@ -92,27 +109,67 @@ class UpdateManager:
         return res
 
     def _sync_check_update(self) -> Dict[str, Any]:
-        """Synchronous update check logic executed in worker thread."""
+        """Synchronous update check logic executed in worker thread.
+
+        Performs semantic version comparison against GitHub raw repo / releases,
+        plus Git commit comparison when git is active.
+        """
         local_short = self.get_local_commit()
         local_full = self.get_local_full_commit()
         is_git = self.is_git_repo()
+        local_version = VERSION
 
-        result: Dict[str, Any] = {
-            "current_version": __version__,
-            "current_commit": local_short,
-            "current_commit_full": local_full,
-            "is_git": is_git,
-            "update_available": False,
-            "latest_commit": local_short,
-            "latest_commit_full": local_full,
-            "commit_message": "",
-            "commit_date": "",
-            "commit_author": "",
-            "error": None,
-            "last_checked": time.time(),
-        }
+        # 1. Look up remote semantic version from GitHub
+        remote_version = None
+        # 1a. Try raw version.json (fast, light, not rate-limited)
+        try:
+            req = urllib.request.Request(
+                GITHUB_RAW_VERSION,
+                headers={"User-Agent": f"VoxStream-Captioner/{local_version}"},
+            )
+            with urllib.request.urlopen(req, timeout=6) as resp:
+                if resp.status == 200:
+                    v_data = json.loads(resp.read().decode("utf-8"))
+                    remote_version = str(v_data.get("version", "")).strip() or None
+        except Exception as e:
+            logger.debug(f"GitHub raw version.json query failed: {e}")
 
-        # 1. Query remote commit via git ls-remote if git is available
+        # 1b. Fallback to raw obs_captioner/version.py
+        if not remote_version:
+            try:
+                req = urllib.request.Request(
+                    GITHUB_RAW_VERSION_PY,
+                    headers={"User-Agent": f"VoxStream-Captioner/{local_version}"},
+                )
+                with urllib.request.urlopen(req, timeout=6) as resp:
+                    if resp.status == 200:
+                        text = resp.read().decode("utf-8")
+                        m = re.search(r'VERSION\s*=\s*"([^"]+)"', text)
+                        if m:
+                            remote_version = m.group(1).strip()
+            except Exception as e:
+                logger.debug(f"GitHub raw version.py query failed: {e}")
+
+        # 1c. Fallback to GitHub Releases / Tags API
+        if not remote_version:
+            try:
+                req = urllib.request.Request(
+                    GITHUB_API_RELEASES,
+                    headers={
+                        "User-Agent": f"VoxStream-Captioner/{local_version}",
+                        "Accept": "application/vnd.github.v3+json",
+                    },
+                )
+                with urllib.request.urlopen(req, timeout=6) as resp:
+                    if resp.status == 200:
+                        rel_data = json.loads(resp.read().decode("utf-8"))
+                        tag = str(rel_data.get("tag_name", "")).strip()
+                        if tag and tag.lower() != "latest":
+                            remote_version = tag.lstrip("vV")
+            except Exception as e:
+                logger.debug(f"GitHub Releases API query failed: {e}")
+
+        # 2. Query remote commit via git ls-remote if git is available
         remote_full = None
         if is_git:
             try:
@@ -128,13 +185,13 @@ class UpdateManager:
             except Exception as e:
                 logger.debug(f"git ls-remote check failed ({e}). Falling back to GitHub REST API...")
 
-        # 2. Query GitHub REST API (fetches commit metadata, message, date)
+        # 3. Query GitHub Commits REST API (fetches commit metadata, message, date)
         api_data = None
         try:
             req = urllib.request.Request(
                 GITHUB_API_COMMITS,
                 headers={
-                    "User-Agent": f"VoxStream-Captioner/{__version__}",
+                    "User-Agent": f"VoxStream-Captioner/{local_version}",
                     "Accept": "application/vnd.github.v3+json",
                 },
             )
@@ -142,36 +199,62 @@ class UpdateManager:
                 if resp.status == 200:
                     api_data = json.loads(resp.read().decode("utf-8"))
         except Exception as e:
-            logger.debug(f"GitHub API query error: {e}")
+            logger.debug(f"GitHub API commits query error: {e}")
 
+        latest_sha = ""
+        message = ""
+        author = ""
+        date_str = ""
         if api_data:
             latest_sha = api_data.get("sha", "")
             commit_info = api_data.get("commit", {})
             message = commit_info.get("message", "").split("\n")[0]
             author = commit_info.get("author", {}).get("name", "techguyowen")
             date_str = commit_info.get("author", {}).get("date", "")
-
-            result["latest_commit_full"] = latest_sha
-            result["latest_commit"] = latest_sha[:7] if latest_sha else "unknown"
-            result["commit_message"] = message
-            result["commit_date"] = date_str
-            result["commit_author"] = author
-
-            if local_full != "unknown" and latest_sha:
-                result["update_available"] = (local_full.lower() != latest_sha.lower())
-            elif local_short != "unknown" and latest_sha:
-                result["update_available"] = not latest_sha.startswith(local_short)
         elif remote_full:
-            result["latest_commit_full"] = remote_full
-            result["latest_commit"] = remote_full[:7]
-            result["update_available"] = (local_full.lower() != remote_full.lower())
-            result["commit_message"] = "New update available on GitHub"
+            latest_sha = remote_full
+            message = "New update available on GitHub"
+
+        # 4. Evaluate whether update is available
+        latest_version = remote_version or local_version
+        update_available = False
+        update_type = "none"
+
+        # Check semantic version precedence first (Major / Medium / Minor)
+        if remote_version and is_version_newer(remote_version, local_version):
+            update_available = True
+            update_type = get_version_bump_type(remote_version, local_version)
+        elif is_git and latest_sha:
+            # Even if semantic version is identical (e.g. unreleased commits on main)
+            if local_full != "unknown" and local_full.lower() != latest_sha.lower():
+                update_available = True
+                update_type = "commit"
+            elif local_short != "unknown" and not latest_sha.startswith(local_short):
+                update_available = True
+                update_type = "commit"
+
+        result: Dict[str, Any] = {
+            "current_version": local_version,
+            "latest_version": latest_version,
+            "current_commit": local_short,
+            "current_commit_full": local_full,
+            "is_git": is_git,
+            "update_available": update_available,
+            "update_type": update_type,
+            "latest_commit": latest_sha[:7] if latest_sha else local_short,
+            "latest_commit_full": latest_sha or local_full,
+            "commit_message": message or ("New update available on GitHub" if update_available else ""),
+            "commit_date": date_str,
+            "commit_author": author,
+            "error": None,
+            "last_checked": time.time(),
+        }
 
         return result
 
     async def apply_update(self, progress_cb: Optional[Callable[[str], None]] = None) -> Tuple[bool, str]:
         """Download latest updates, sync dependencies, and schedule restart."""
-        async with self._update_lock:
+        async with self.update_lock:
             if self._is_updating:
                 return False, "An update is already in progress."
 
@@ -292,7 +375,7 @@ class UpdateManager:
                 # Download zip
                 req = urllib.request.Request(
                     GITHUB_ZIP_URL,
-                    headers={"User-Agent": f"VoxStream-Captioner/{__version__}"},
+                    headers={"User-Agent": f"VoxStream-Captioner/{VERSION}"},
                 )
                 with urllib.request.urlopen(req, timeout=30) as resp, open(zip_path, "wb") as f:
                     shutil.copyfileobj(resp, f)
@@ -325,11 +408,17 @@ class UpdateManager:
                         continue
                     dest = self.app_root / item.name
                     if item.is_dir():
-                        if dest.exists():
-                            shutil.rmtree(dest, ignore_errors=True)
-                        shutil.copytree(item, dest)
+                        shutil.copytree(
+                            item,
+                            dest,
+                            dirs_exist_ok=True,
+                            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.tmp"),
+                        )
                     else:
-                        shutil.copy2(item, dest)
+                        try:
+                            shutil.copy2(item, dest)
+                        except Exception as copy_err:
+                            logger.warning(f"Could not overwrite file {item.name}: {copy_err}")
 
                 # Update dependencies
                 req_file = self.app_root / "requirements.txt"

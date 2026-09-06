@@ -3006,10 +3006,11 @@ let isCheckingUpdates = false;
 function renderUpdateUI(status) {
     if (!status) return;
     const versionEl = document.getElementById("updater-version-info");
+    const currentV = status.current_version || "1.1.0";
+    const latestV = status.latest_version || currentV;
+    const currentC = status.current_commit ? ` (${status.current_commit})` : "";
     if (versionEl) {
-        const v = status.current_version || "1.0.0";
-        const c = status.current_commit ? ` (${status.current_commit})` : "";
-        versionEl.textContent = `Current: v${v}${c}`;
+        versionEl.textContent = `Current: v${currentV}${currentC}`;
     }
 
     const headerBadge = document.getElementById("btn-header-update");
@@ -3017,10 +3018,20 @@ function renderUpdateUI(status) {
     const bannerText = document.getElementById("updater-banner-text");
 
     if (status.update_available) {
+        const updateType = (status.update_type || "minor").toLowerCase();
+        let typeBadge = "";
+        if (updateType === "major") {
+            typeBadge = '<span style="background:rgba(239,68,68,0.2);color:#FCA5A5;border:1px solid rgba(239,68,68,0.4);padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700;">MAJOR UPDATE</span>';
+        } else if (updateType === "minor") {
+            typeBadge = '<span style="background:rgba(56,189,248,0.2);color:#7DD3FC;border:1px solid rgba(56,189,248,0.4);padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700;">MEDIUM UPDATE</span>';
+        } else if (updateType === "patch") {
+            typeBadge = '<span style="background:rgba(16,185,129,0.2);color:#A7F3D0;border:1px solid rgba(16,185,129,0.4);padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700;">PATCH</span>';
+        }
+
         if (headerBadge) {
             headerBadge.style.display = "inline-flex";
-            const commitBadge = status.latest_commit ? ` (${escapeHtml(status.latest_commit)})` : "";
-            headerBadge.innerHTML = `<span>🚀 Update Available${commitBadge}</span>`;
+            const targetLabel = (latestV !== currentV) ? `v${latestV}` : (status.latest_commit || "New");
+            headerBadge.innerHTML = `<span>🚀 Update Available (${escapeHtml(targetLabel)})</span>`;
         }
         if (banner) {
             banner.style.display = "block";
@@ -3029,10 +3040,15 @@ function renderUpdateUI(status) {
             const commitMsg = escapeHtml(status.commit_message || "Latest enhancements, bug fixes, and improvements");
             const commitAuthor = status.commit_author ? ` • by ${escapeHtml(status.commit_author)}` : "";
             const commitHash = escapeHtml(status.latest_commit || "");
+            const versionTransition = (latestV !== currentV)
+                ? `v${escapeHtml(currentV)} ➔ <strong style="color: #A7F3D0; font-size: 13px;">v${escapeHtml(latestV)}</strong>`
+                : `<code style="background: rgba(16, 185, 129, 0.2); color: #A7F3D0; padding: 1px 6px; border-radius: 4px; font-size: 11px;">${commitHash}</code>`;
+
             bannerText.innerHTML = `
-                <div style="font-weight: 700; display: flex; align-items: center; gap: 6px;">
+                <div style="font-weight: 700; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                     <span>✨ New Update Available:</span>
-                    <code style="background: rgba(16, 185, 129, 0.2); color: #A7F3D0; padding: 1px 6px; border-radius: 4px; font-size: 11px;">${commitHash}</code>
+                    <span>${versionTransition}</span>
+                    ${typeBadge}
                 </div>
                 <div style="font-size: 11.5px; opacity: 0.9; margin-top: 3px; max-width: 460px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${commitMsg}">
                     ${commitMsg}${commitAuthor}
@@ -3115,9 +3131,11 @@ function handleUpdaterProgress(message) {
 }
 
 async function applyVoxStreamUpdate() {
-    const latestCommit = currentUpdateStatus?.latest_commit ? ` (${currentUpdateStatus.latest_commit})` : "";
-    const confirmMsg = `Are you sure you want to download and install the latest update${latestCommit}?\n\n` +
-        `VoxStream will update its application code from GitHub, install any new dependencies, and restart automatically.\n` +
+    const curV = currentUpdateStatus?.current_version || "1.1.0";
+    const newV = currentUpdateStatus?.latest_version || curV;
+    const versionLabel = (newV !== curV) ? `v${newV}` : (currentUpdateStatus?.latest_commit ? `(${currentUpdateStatus.latest_commit})` : "latest");
+    const confirmMsg = `Are you sure you want to download and install VoxStream ${versionLabel}?\n\n` +
+        `VoxStream will upgrade from v${curV} to ${versionLabel}, sync dependencies, and restart automatically.\n` +
         `Your audio settings, AI models, custom vocabulary, and credentials will be preserved.`;
 
     if (!confirm(confirmMsg)) {

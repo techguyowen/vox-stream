@@ -3,11 +3,12 @@
 # VoxStream - Release Packager
 # ==============================================================================
 
-VERSION="1.0.0"
+# Dynamically extract version from obs_captioner
+VERSION=$(python3 -c "import json; print(json.load(open('version.json'))['version'])" 2>/dev/null || python3 -c "from obs_captioner.version import VERSION; print(VERSION)" 2>/dev/null || echo "1.1.0")
 RELEASE_NAME="voxstream-v$VERSION"
 ZIP_NAME="$RELEASE_NAME.zip"
 
-echo "📦 Building Release Package: $ZIP_NAME..."
+echo "📦 Building Release Package: $ZIP_NAME (Version: $VERSION)..."
 
 # Create a temporary staging directory
 mkdir -p "$RELEASE_NAME"
@@ -18,6 +19,7 @@ cp -R obs_script "$RELEASE_NAME/"
 cp -R integrations "$RELEASE_NAME/" 2>/dev/null || true
 cp -R obs_native_plugin "$RELEASE_NAME/" 2>/dev/null || true
 cp requirements.txt "$RELEASE_NAME/"
+cp version.json "$RELEASE_NAME/" 2>/dev/null || true
 cp config.json.example "$RELEASE_NAME/"
 cp README.md "$RELEASE_NAME/"
 cp INSTALL_GUIDE.md "$RELEASE_NAME/"
