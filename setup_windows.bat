@@ -6,6 +6,8 @@ chcp 65001 >nul 2>&1
 set "PYTHONIOENCODING=utf-8"
 set "PYTHONUTF8=1"
 
+cd /d "%~dp0"
+
 echo =======================================================
 echo   VoxStream: OBS Live Captioner Suite - Windows Setup
 echo =======================================================
@@ -14,13 +16,13 @@ echo.
 :: 1. Check for existing Python installation
 set "PY_CMD="
 
-python --version >nul 2>&1
+where python >nul 2>&1
 if %errorlevel% equ 0 (
     set "PY_CMD=python"
 )
 
 if not defined PY_CMD (
-    py -3 --version >nul 2>&1
+    where py >nul 2>&1
     if %errorlevel% equ 0 (
         set "PY_CMD=py -3"
     )
@@ -36,18 +38,21 @@ if not defined PY_CMD (
     ) else if exist "%ProgramFiles%\Python311\python.exe" (
         set "PY_CMD=%ProgramFiles%\Python311\python.exe"
         set "PATH=%ProgramFiles%\Python311;%ProgramFiles%\Python311\Scripts;%PATH%"
+    ) else if exist "%ProgramFiles%\Python312\python.exe" (
+        set "PY_CMD=%ProgramFiles%\Python312\python.exe"
+        set "PATH=%ProgramFiles%\Python312;%ProgramFiles%\Python312\Scripts;%PATH%"
     )
 )
 
-:: 2. If Python is missing, attempt automatic installation
+:: 2. If Python is still not found, download and install Python 3.11 automatically
 if not defined PY_CMD (
     echo [INFO] Python was not detected on your system.
     echo [INFO] Attempting automatic installation of Python 3.11...
     echo.
 
-    winget --version >nul 2>&1
+    where winget >nul 2>&1
     if %errorlevel% equ 0 (
-        echo [INFO] Found winget. Attempting installation via Windows Package Manager...
+        echo [INFO] Installing Python 3.11 via Windows Package Manager (winget)...
         winget install --id Python.Python.3.11 -e --silent --accept-package-agreements --accept-source-agreements
     )
 
@@ -56,12 +61,11 @@ if not defined PY_CMD (
         set "PATH=%LocalAppData%\Programs\Python\Python311;%LocalAppData%\Programs\Python\Python311\Scripts;%PATH%"
     ) else (
         echo [INFO] Downloading official Python 3.11 from python.org...
-        set "INSTALLER_PATH=%TEMP%\python-3.11.9-amd64.exe"
-        powershell -NoProfile -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object Net.WebClient).DownloadFile('https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe', '%INSTALLER_PATH%')"
-        if exist "%INSTALLER_PATH%" (
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe' -OutFile '%TEMP%\python-3.11.9-amd64.exe'"
+        if exist "%TEMP%\python-3.11.9-amd64.exe" (
             echo [INFO] Installing Python 3.11.9 (please wait 30-60 seconds)...
-            start /wait "" "%INSTALLER_PATH%" /passive InstallAllUsers=0 PrependPath=1 Include_pip=1 Include_test=0 Shortcuts=0 TargetDir="%LocalAppData%\Programs\Python\Python311"
-            del "%INSTALLER_PATH%" 2>nul
+            start /wait "" "%TEMP%\python-3.11.9-amd64.exe" /passive InstallAllUsers=0 PrependPath=1 Include_pip=1 Include_test=0 Shortcuts=0 TargetDir="%LocalAppData%\Programs\Python\Python311"
+            del "%TEMP%\python-3.11.9-amd64.exe" 2>nul
         ) else (
             echo [ERROR] Failed to download Python installer automatically.
             echo Please manually download and install Python 3.11 from: https://www.python.org/downloads/
@@ -87,15 +91,25 @@ echo [SUCCESS] Using Python:
 %PY_CMD% --version
 echo.
 
-:: 3. Create virtual environment
+:: 3. Setup or repair virtual environment
 echo [1/6] Setting up virtual environment (.venv)...
-if not exist ".venv" (
+if not exist ".venv\Scripts\activate.bat" (
+    if exist ".venv" (
+        echo [INFO] Cleaning up incomplete virtual environment folder...
+        rmdir /s /q ".venv" >nul 2>&1
+    )
     %PY_CMD% -m venv .venv
     if %errorlevel% neq 0 (
-        echo [ERROR] Failed to create virtual environment.
+        echo [ERROR] Failed to create virtual environment with %PY_CMD%.
         pause
         exit /b 1
     )
+)
+
+if not exist ".venv\Scripts\activate.bat" (
+    echo [ERROR] .venv\Scripts\activate.bat was not created successfully.
+    pause
+    exit /b 1
 )
 
 :: 4. Activate virtual environment
@@ -104,9 +118,9 @@ call .venv\Scripts\activate.bat
 
 :: 5. Install dependencies
 echo [3/6] Upgrading pip and installing required packages...
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python -m pip uninstall -y torchaudio >nul 2>&1
+call .venv\Scripts\python.exe -m pip install --upgrade pip
+call .venv\Scripts\python.exe -m pip install -r requirements.txt
+call .venv\Scripts\python.exe -m pip uninstall -y torchaudio >nul 2>&1
 
 :: 6. Check for NVIDIA GPU and install CUDA acceleration automatically
 echo [4/6] Checking for NVIDIA GPU acceleration...
@@ -124,7 +138,7 @@ if %errorlevel% equ 0 (
 if "!HAS_NVIDIA!"=="1" (
     echo [SUCCESS] NVIDIA GPU detected!
     echo [INFO] Installing CUDA and cuDNN runtime packages for Faster-Whisper...
-    python -m pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+    call .venv\Scripts\python.exe -m pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
     echo [SUCCESS] NVIDIA GPU acceleration installed!
 ) else (
     echo [INFO] No dedicated NVIDIA GPU detected. Configured for fast CPU int8 inference.
@@ -141,17 +155,17 @@ if not exist "config.json" (
 
 :: 8. Preload default offline AI models
 echo [6/6] Pre-caching default offline AI speech models...
-python -m obs_captioner.model_downloader --preload-defaults
+call .venv\Scripts\python.exe -m obs_captioner.model_downloader --preload-defaults
 
 echo.
 echo =======================================================
 echo   Available Audio Input Devices on your PC:
 echo =======================================================
-python -m obs_captioner.main --list-devices
+call .venv\Scripts\python.exe -m obs_captioner.main --list-devices
 echo.
 echo =======================================================
 echo   [SUCCESS] Setup Complete!
-echo   1. Double-click run_captioner.bat to start.
+echo   1. Double-click run_captioner.bat to start VoxStream.
 echo   2. Open In-OBS Dock at: http://127.0.0.1:8765/dashboard
 echo =======================================================
 pause

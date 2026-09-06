@@ -1,6 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
-set VOXSTREAM_RUNNER=bat
+set "VOXSTREAM_RUNNER=bat"
 
 :: Ensure console and Python use UTF-8 encoding on Windows
 chcp 65001 >nul 2>&1
@@ -9,43 +9,72 @@ set "PYTHONUTF8=1"
 
 cd /d "%~dp0"
 
+echo =======================================================
+echo   VoxStream Live Captioner Launcher
+echo =======================================================
+echo.
+
+:: 1. Verify or create virtual environment
 if not exist ".venv\Scripts\activate.bat" (
-    echo [INFO] Virtual environment not found. Running setup first...
+    echo [INFO] Virtual environment not found or incomplete.
+    echo [INFO] Running initial Windows setup first...
+    echo.
     call setup_windows.bat
 )
 
+if not exist ".venv\Scripts\activate.bat" (
+    echo.
+    echo =======================================================
+    echo   [ERROR] Virtual environment is missing or incomplete!
+    echo   Setup did not finish creating .venv\Scripts\activate.bat.
+    echo.
+    echo   Please run setup_windows.bat directly to see the error.
+    echo =======================================================
+    echo.
+    pause
+    exit /b 1
+)
+
+:: 2. Activate virtual environment
 call .venv\Scripts\activate.bat
 
-:: Safeguard: Prepend NVIDIA CUDA/cuDNN DLLs into PATH if present
+:: 3. Prepend NVIDIA CUDA/cuDNN DLLs into PATH if present
 for /d %%D in (".venv\Lib\site-packages\nvidia\*") do (
     if exist "%%D\bin" (
         set "PATH=%%D\bin;!PATH!"
     )
 )
 
-:: Safeguard: Remove conflicting torchaudio binaries if present
+:: 4. Resolve library conflict: remove torchaudio if present
 if exist ".venv\Lib\site-packages\torchaudio" (
     echo [INFO] Resolving library conflict: removing torchaudio...
-    call python -m pip uninstall -y torchaudio >nul 2>&1
+    call .venv\Scripts\python.exe -m pip uninstall -y torchaudio >nul 2>&1
 )
 
+:: 5. Main application loop (supports exit code 42 instant reload)
 :app_loop
 echo =======================================================
-echo   Starting VoxStream Live Captioner...
+echo   Starting VoxStream Live Captioner Backend...
 echo =======================================================
-python -m obs_captioner.main %*
-set APP_EXIT_CODE=%errorlevel%
+call .venv\Scripts\python.exe -m obs_captioner.main %*
+set "APP_EXIT_CODE=!errorlevel!"
 
 :: Exit code 42 indicates an intentional application restart
-if %APP_EXIT_CODE% EQU 42 (
+if "!APP_EXIT_CODE!"=="42" (
     echo.
     echo [VoxStream] Application restart requested. Reloading...
     timeout /t 1 /nobreak >nul
     goto app_loop
 )
 
-if %APP_EXIT_CODE% NEQ 0 (
-    echo.
-    echo [ERROR] Captioner stopped with an error code: %APP_EXIT_CODE%
-    pause
+:: Any other exit code (including 0 or crash) - ALWAYS pause so the window does not close!
+echo.
+echo =======================================================
+if not "!APP_EXIT_CODE!"=="0" (
+    echo   [ERROR] VoxStream stopped with exit code: !APP_EXIT_CODE!
+) else (
+    echo   [INFO] VoxStream stopped normally.
 )
+echo   Press any key to close this window...
+echo =======================================================
+pause >nul
