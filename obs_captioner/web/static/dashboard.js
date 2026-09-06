@@ -2550,6 +2550,8 @@ async function refreshEngineStatus() {
                     heroBadge.style.borderColor = "rgba(16, 185, 129, 0.4)";
                     heroBadge.innerHTML = `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#10B981;"></span> LIVE IN MEMORY`;
                 }
+            }
+
             // Update Hardware GPU & RAM footprint badges
             const gpuText = document.getElementById("hardware-gpu-text");
             const ramText = document.getElementById("hardware-ram-text");

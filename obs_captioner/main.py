@@ -334,9 +334,38 @@ async def main_async(args):
         return
 
     logger.info(f"Initializing {engine.name}...")
-    initialized = await engine.initialize()
+    def initial_status_cb(msg: str):
+        nonlocal engine_switch_status
+        engine_switch_status = msg
+        logger.info(f"Engine startup status: {msg}")
+        if web_server:
+            asyncio.run_coroutine_threadsafe(
+                web_server.broadcast_control({
+                    "type": "engine_switching_status",
+                    "is_switching": True,
+                    "status_text": msg,
+                    "target_engine": config.general.engine,
+                    "target_name": engine.name,
+                }),
+                loop,
+            )
+
+    initialized = await engine.initialize(status_callback=initial_status_cb)
     if not initialized:
         logger.error(f"Failed to initialize engine '{engine.name}'. Please check API keys / credentials in Dashboard or config.json.")
+    else:
+        engine_switch_status = f"✅ {engine.name} ready!"
+        if web_server:
+            asyncio.run_coroutine_threadsafe(
+                web_server.broadcast_control({
+                    "type": "engine_switching_status",
+                    "is_switching": False,
+                    "status_text": engine_switch_status,
+                    "target_engine": config.general.engine,
+                    "target_name": engine.name,
+                }),
+                loop,
+            )
 
     # 6. Initialize Audio Capture
     if not audio_capture.start(loop=loop):

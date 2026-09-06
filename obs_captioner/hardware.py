@@ -91,45 +91,80 @@ def get_gpu_info(force_refresh: bool = False) -> Dict[str, Any]:
     except Exception:
         pass
 
-    # 4. On Windows, query Win32_VideoController via PowerShell if vendor is still CPU
+    # 4. On Windows, query Display Class in Registry (instant 0ms lookup, no subprocess)
     if sys.platform == "win32" and info["vendor"] == "CPU":
         try:
-            cmd = [
-                "powershell",
-                "-NoProfile",
-                "-Command",
-                "Get-CimInstance Win32_VideoController | Select-Object -Property Name, AdapterRAM | ConvertTo-Json",
-            ]
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=2.0)
-            if res.returncode == 0 and res.stdout.strip():
-                data = json.loads(res.stdout.strip())
-                items = data if isinstance(data, list) else [data]
-                discrete_item = None
-                for it in items:
-                    c_name = str(it.get("Name", "")).strip()
-                    if any(k in c_name.lower() for k in ["radeon", "amd", "geforce", "nvidia", "rtx", "gtx"]):
-                        discrete_item = it
-                        break
-                selected = discrete_item or items[0]
-                detected_name = str(selected.get("Name", "")).strip()
-                if detected_name:
-                    info["name"] = detected_name
-                    lower = detected_name.lower()
-                    if "radeon" in lower or "amd" in lower:
-                        info["vendor"] = "AMD"
-                        info["backend"] = "DirectML / OpenMP CPU"
-                    elif "nvidia" in lower or "geforce" in lower:
-                        info["vendor"] = "NVIDIA"
-                        info["backend"] = "CUDA"
-                    elif "intel" in lower:
-                        info["vendor"] = "Intel"
-                        info["backend"] = "DirectML / CPU"
-
-                    raw_ram = selected.get("AdapterRAM")
-                    if raw_ram and isinstance(raw_ram, (int, float)) and raw_ram > 0:
-                        info["vram_mb"] = int(raw_ram / (1024 * 1024))
+            import winreg
+            class_path = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, class_path) as class_key:
+                num_subkeys = winreg.QueryInfoKey(class_key)[0]
+                for i in range(num_subkeys):
+                    try:
+                        subkey_name = winreg.EnumKey(class_key, i)
+                        if not subkey_name.isdigit():
+                            continue
+                        with winreg.OpenKey(class_key, subkey_name) as dev_key:
+                            try:
+                                desc, _ = winreg.QueryValueEx(dev_key, "DriverDesc")
+                            except OSError:
+                                continue
+                            desc_lower = str(desc).lower()
+                            if any(k in desc_lower for k in ["radeon", "amd", "geforce", "nvidia", "rtx", "gtx", "intel", "arc"]):
+                                info["name"] = str(desc).strip()
+                                if "radeon" in desc_lower or "amd" in desc_lower:
+                                    info["vendor"] = "AMD"
+                                    info["backend"] = "DirectML / OpenMP CPU"
+                                elif "nvidia" in desc_lower or "geforce" in desc_lower:
+                                    info["vendor"] = "NVIDIA"
+                                    info["backend"] = "CUDA"
+                                elif "intel" in desc_lower:
+                                    info["vendor"] = "Intel"
+                                    info["backend"] = "DirectML / CPU"
+                                break
+                    except Exception:
+                        pass
         except Exception as e:
-            logger.debug(f"PowerShell GPU detection fallback: {e}")
+            logger.debug(f"winreg GPU detection: {e}")
+
+        # 4b. PowerShell fallback if registry didn't find a recognized GPU
+        if info["vendor"] == "CPU":
+            try:
+                cmd = [
+                    "powershell",
+                    "-NoProfile",
+                    "-Command",
+                    "Get-CimInstance Win32_VideoController | Select-Object -Property Name, AdapterRAM | ConvertTo-Json",
+                ]
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=2.5)
+                if res.returncode == 0 and res.stdout.strip():
+                    data = json.loads(res.stdout.strip())
+                    items = data if isinstance(data, list) else [data]
+                    discrete_item = None
+                    for it in items:
+                        c_name = str(it.get("Name", "")).strip()
+                        if any(k in c_name.lower() for k in ["radeon", "amd", "geforce", "nvidia", "rtx", "gtx"]):
+                            discrete_item = it
+                            break
+                    selected = discrete_item or items[0]
+                    detected_name = str(selected.get("Name", "")).strip()
+                    if detected_name:
+                        info["name"] = detected_name
+                        lower = detected_name.lower()
+                        if "radeon" in lower or "amd" in lower:
+                            info["vendor"] = "AMD"
+                            info["backend"] = "DirectML / OpenMP CPU"
+                        elif "nvidia" in lower or "geforce" in lower:
+                            info["vendor"] = "NVIDIA"
+                            info["backend"] = "CUDA"
+                        elif "intel" in lower:
+                            info["vendor"] = "Intel"
+                            info["backend"] = "DirectML / CPU"
+
+                        raw_ram = selected.get("AdapterRAM")
+                        if raw_ram and isinstance(raw_ram, (int, float)) and raw_ram > 0:
+                            info["vram_mb"] = int(raw_ram / (1024 * 1024))
+            except Exception as e:
+                logger.debug(f"PowerShell GPU detection fallback: {e}")
 
     _CACHED_GPU_INFO = info
     return info
