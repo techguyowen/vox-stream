@@ -5,7 +5,10 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import os
+import sys
 import time
+from pathlib import Path
 from typing import AsyncGenerator, Callable, Optional
 
 try:
@@ -18,6 +21,52 @@ from ..config import AppConfig
 from ..vad import VoiceActivityDetector
 
 logger = logging.getLogger("obs_captioner.engine.local_whisper")
+
+
+def _setup_windows_cuda_dlls():
+    """Ensure Windows Python 3.8+ finds NVIDIA CUDA/cuDNN DLLs installed in site-packages."""
+    if sys.platform != "win32":
+        return
+    import site
+
+    search_roots = []
+    try:
+        search_roots.extend(site.getsitepackages())
+    except Exception:
+        pass
+    try:
+        user_site = site.getusersitepackages()
+        if user_site:
+            search_roots.append(user_site)
+    except Exception:
+        pass
+
+    try:
+        venv_site = Path(sys.prefix) / "Lib" / "site-packages"
+        if venv_site.is_dir():
+            search_roots.append(str(venv_site))
+    except Exception:
+        pass
+
+    seen_dirs = set()
+    for root in search_roots:
+        if not root:
+            continue
+        nv_path = Path(root) / "nvidia"
+        if nv_path.is_dir():
+            for bin_dir in nv_path.glob("*/bin"):
+                bin_str = str(bin_dir.resolve())
+                if bin_str not in seen_dirs and bin_dir.is_dir():
+                    seen_dirs.add(bin_str)
+                    try:
+                        if hasattr(os, "add_dll_directory"):
+                            os.add_dll_directory(bin_str)
+                        current_path = os.environ.get("PATH", "")
+                        if bin_str not in current_path:
+                            os.environ["PATH"] = bin_str + os.pathsep + current_path
+                        logger.debug(f"Added NVIDIA DLL directory: {bin_str}")
+                    except Exception as e:
+                        logger.debug(f"Failed adding DLL dir {bin_str}: {e}")
 
 
 class LocalWhisperEngine(BaseSTTEngine):
@@ -36,6 +85,7 @@ class LocalWhisperEngine(BaseSTTEngine):
     async def initialize(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
         """Load Faster-Whisper model into memory (GPU or CPU) with live progress reporting."""
         try:
+            _setup_windows_cuda_dlls()
             from faster_whisper import WhisperModel
             import torch
 

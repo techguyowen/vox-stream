@@ -2119,7 +2119,10 @@ document.getElementById("btn-save-projector").addEventListener("click", async ()
         obs: {
             auto_open_projector: document.getElementById("obs_auto_projector").checked,
             projector_type: document.getElementById("obs_projector_type").value,
-            projector_monitor_index: parseInt(document.getElementById("obs_projector_monitor").value) || 1,
+            projector_monitor_index: (() => {
+                const p = parseInt(document.getElementById("obs_projector_monitor").value, 10);
+                return isNaN(p) ? 0 : p;
+            })(),
             projector_source_name: document.getElementById("obs_projector_source_name").value.trim(),
         }
     };
@@ -2127,11 +2130,14 @@ document.getElementById("btn-save-projector").addEventListener("click", async ()
 });
 
 document.getElementById("btn-quick-open-projector").addEventListener("click", async () => {
-    const monitorIndex = parseInt(document.getElementById("quick_projector_monitor").value) || 1;
+    const rawVal = document.getElementById("quick_projector_monitor").value;
+    const parsed = parseInt(rawVal, 10);
+    const monitorIndex = isNaN(parsed) ? 0 : parsed;
     const statusMsg = document.getElementById("projector-status-msg");
     statusMsg.style.display = "block";
     statusMsg.style.color = "#38BDF8";
-    statusMsg.textContent = `Opening Preview Projector on Monitor ${monitorIndex}...`;
+    const targetLabel = monitorIndex === -1 ? "Windowed Projector" : `Monitor ${monitorIndex}`;
+    statusMsg.textContent = `Opening Preview Projector on ${targetLabel}...`;
 
     try {
         const res = await fetch("/api/obs/projector/open", {
@@ -2145,7 +2151,7 @@ document.getElementById("btn-quick-open-projector").addEventListener("click", as
         const data = await res.json();
         if (res.ok && data.status === "success") {
             statusMsg.style.color = "#10B981";
-            statusMsg.textContent = `✅ Successfully projected to Screen (Monitor ${monitorIndex})!`;
+            statusMsg.textContent = `✅ Successfully projected to ${targetLabel}!`;
         } else {
             statusMsg.style.color = "#EF4444";
             statusMsg.textContent = `❌ ${data.message || "Failed to open projector. Check OBS WebSocket."}`;
@@ -2167,14 +2173,22 @@ async function loadObsMonitors() {
                     if (!sel) return;
                     const prev = sel.value;
                     sel.innerHTML = "";
-                    data.monitors.forEach(m => {
+                    data.monitors.forEach((m, idx) => {
                         const opt = document.createElement("option");
-                        opt.value = m.monitorIndex;
-                        const name = m.monitorName || `Display ${m.monitorIndex}`;
-                        opt.textContent = `Monitor ${m.monitorIndex}: ${name} (${m.monitorWidth}x${m.monitorHeight})`;
+                        const monIdx = (m.monitorIndex !== undefined) ? m.monitorIndex : idx;
+                        opt.value = monIdx;
+                        const name = m.monitorName || `Display ${monIdx + 1}`;
+                        opt.textContent = `Screen ${monIdx + 1}: ${name} (${m.monitorWidth || '?'}x${m.monitorHeight || '?'})`;
                         sel.appendChild(opt);
                     });
-                    if (prev !== undefined) sel.value = prev;
+                    const windowedOpt = document.createElement("option");
+                    windowedOpt.value = "-1";
+                    windowedOpt.textContent = "🪟 Windowed Projector (Floating Window)";
+                    sel.appendChild(windowedOpt);
+
+                    if (prev !== undefined && prev !== "") {
+                        sel.value = prev;
+                    }
                 };
                 populate("quick_projector_monitor");
                 populate("obs_projector_monitor");
@@ -2262,8 +2276,10 @@ if (btnReopenProjector) {
         showToast("🔄 Connecting to OBS and sending preview to Screen...", "info", 3000);
 
         try {
-            // 1. Determine target monitor index (default to 1 / LONTIUM)
-            const targetMon = parseInt(document.getElementById("obs_projector_monitor")?.value || document.getElementById("quick_projector_monitor")?.value) || 1;
+            // 1. Determine target monitor index (default to 0)
+            const rawMon = document.getElementById("obs_projector_monitor")?.value || document.getElementById("quick_projector_monitor")?.value;
+            const parsedMon = parseInt(rawMon, 10);
+            const targetMon = isNaN(parsedMon) ? 0 : parsedMon;
 
             // 2. Trigger OBS Projector Open
             const projRes = await fetch("/api/obs/projector/open", {

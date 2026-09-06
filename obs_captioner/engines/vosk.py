@@ -12,6 +12,7 @@ from typing import AsyncGenerator, Callable, Optional
 from .base import BaseSTTEngine, CaptionCallback, TranscriptEvent
 from ..config import AppConfig
 from ..vad import VoiceActivityDetector
+from ..model_downloader import find_cached_vosk_model
 
 logger = logging.getLogger("obs_captioner.engine.vosk")
 
@@ -58,8 +59,8 @@ class VoskEngine(BaseSTTEngine):
 
                 # 2. Named model presets
                 if is_accurate:
-                    acc_cache = Path.home() / ".cache" / "vosk" / "vosk-model-en-us-0.22"
-                    if acc_cache.exists():
+                    acc_cache = find_cached_vosk_model("vosk-model-en-us-0.22")
+                    if acc_cache:
                         if status_callback:
                             status_callback("Loading cached Vosk accurate model (~1.8GB)...")
                         return vosk.Model(model_path=str(acc_cache))
@@ -68,8 +69,8 @@ class VoskEngine(BaseSTTEngine):
                     logger.info("Loading accurate Vosk model (vosk-model-en-us-0.22)...")
                     return vosk.Model(model_name="vosk-model-en-us-0.22")
                 else:
-                    small_cache = Path.home() / ".cache" / "vosk" / "vosk-model-small-en-us-0.15"
-                    if small_cache.exists():
+                    small_cache = find_cached_vosk_model("vosk-model-small-en-us-0.15")
+                    if small_cache:
                         if status_callback:
                             status_callback("Loading cached Vosk small model (~40MB)...")
                         return vosk.Model(model_path=str(small_cache))

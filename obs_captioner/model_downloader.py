@@ -12,7 +12,36 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 logger = logging.getLogger("obs_captioner.model_downloader")
 
 # Pre-set environment so torch / keras doesn't complain
-os.environ["KERAS_BACKEND"] = "torch"
+
+def get_vosk_search_dirs() -> List[Path]:
+    """Return all directories where Vosk models may be stored across platforms."""
+    dirs: List[Path] = []
+    # Windows LocalAppData
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        p = Path(local_app_data) / "vosk"
+        if p not in dirs:
+            dirs.append(p)
+
+    win_appdata = Path.home() / "AppData" / "Local" / "vosk"
+    if win_appdata not in dirs:
+        dirs.append(win_appdata)
+
+    # Standard POSIX / XDG cache (~/.cache/vosk)
+    cache_vosk = Path.home() / ".cache" / "vosk"
+    if cache_vosk not in dirs:
+        dirs.append(cache_vosk)
+
+    return dirs
+
+
+def find_cached_vosk_model(model_name: str) -> Optional[Path]:
+    """Find the path to an unpacked Vosk model directory if it exists."""
+    for base in get_vosk_search_dirs():
+        candidate = base / model_name
+        if candidate.is_dir() and any(candidate.iterdir()):
+            return candidate
+    return None
 
 
 @dataclass
@@ -113,9 +142,9 @@ class ModelDownloadManager:
     def check_model_cached(self, item: ModelCatalogItem) -> Tuple[bool, Optional[str]]:
         """Check if a model exists in the local disk cache without making network requests."""
         if item.engine == "vosk":
-            vosk_dir = Path.home() / ".cache" / "vosk" / item.model_key
-            if vosk_dir.exists() and any(vosk_dir.iterdir()):
-                return True, str(vosk_dir)
+            found = find_cached_vosk_model(item.model_key)
+            if found:
+                return True, str(found)
             return False, None
 
         elif item.engine == "local_whisper":
@@ -341,17 +370,20 @@ class ModelDownloadManager:
 
         try:
             if item.engine == "vosk":
-                vosk_dir = Path.home() / ".cache" / "vosk" / item.model_key
-                zip_path = Path.home() / ".cache" / "vosk" / f"{item.model_key}.zip"
                 deleted = False
-                if vosk_dir.exists():
-                    shutil.rmtree(vosk_dir, ignore_errors=True)
-                    deleted = True
-                if zip_path.exists():
-                    zip_path.unlink(missing_ok=True)
-                    deleted = True
-                logger.info(f"Deleted Vosk model '{item.name}' from {vosk_dir}")
-                return True, f"Deleted {item.name} from local cache (freed ~{freed_mb} MB).", freed_mb
+                for base in get_vosk_search_dirs():
+                    vosk_dir = base / item.model_key
+                    zip_path = base / f"{item.model_key}.zip"
+                    if vosk_dir.exists():
+                        shutil.rmtree(vosk_dir, ignore_errors=True)
+                        deleted = True
+                    if zip_path.exists():
+                        zip_path.unlink(missing_ok=True)
+                        deleted = True
+                if deleted:
+                    logger.info(f"Deleted Vosk model '{item.name}' from local cache")
+                    return True, f"Deleted {item.name} from local cache (freed ~{freed_mb} MB).", freed_mb
+                return False, f"Model directory for {item.name} not found in cache.", 0
 
             elif item.engine == "local_whisper":
                 hf_dir = Path.home() / ".cache" / "huggingface" / "hub" / f"models--Systran--faster-whisper-{item.model_key}"

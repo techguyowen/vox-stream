@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import mimetypes
 import re
 import time
 import uuid
@@ -11,6 +12,17 @@ from pathlib import Path
 from typing import Callable, Optional, Set
 
 from aiohttp import web
+
+# Explicit MIME mappings to guard against corrupted Windows registry MIME associations
+mimetypes.add_type("application/javascript", ".js")
+mimetypes.add_type("text/css", ".css")
+mimetypes.add_type("application/json", ".json")
+mimetypes.add_type("image/svg+xml", ".svg")
+mimetypes.add_type("image/png", ".png")
+mimetypes.add_type("image/jpeg", ".jpg")
+mimetypes.add_type("image/webp", ".webp")
+mimetypes.add_type("font/woff2", ".woff2")
+mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 from ..config import AppConfig, save_config
 from ..audio_capture import list_audio_devices

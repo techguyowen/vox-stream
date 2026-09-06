@@ -1234,6 +1234,78 @@ class TestMusicSuppressionAndOverlayMinimumDuration(unittest.IsolatedAsyncioTest
         self.assertEqual(len(server.control_sockets), 0)
 
 
+class TestWindowsAuditAndResilience(unittest.IsolatedAsyncioTestCase):
+    """Unit tests for Windows platform resilience, mic switching, and projector integration."""
+
+    def test_audio_capture_update_device_maintains_running_state(self):
+        from obs_captioner.audio_capture import AudioCapture
+        from obs_captioner.config import AudioConfig
+
+        ac = AudioCapture(AudioConfig())
+        ac._running = True
+        # update_device must NOT reset _running to False
+        ac.update_device(None)
+        self.assertTrue(ac._running)
+
+    async def test_obs_open_projector_payloads(self):
+        from obs_captioner.obs.ws_client import OBSWebSocketClient
+        from obs_captioner.config import AppConfig
+        from unittest.mock import AsyncMock
+
+        client = OBSWebSocketClient(AppConfig())
+        client.is_connected = True
+        client.get_monitors = AsyncMock(return_value=[{"monitorIndex": 0}, {"monitorIndex": 1}, {"monitorIndex": 2}])
+        client.send_request = AsyncMock(return_value={"requestStatus": {"result": True}})
+
+        # 1. Preview mix projector
+        res = await client.open_projector(monitor_index=1, mix_type="preview")
+        self.assertTrue(res)
+        client.send_request.assert_called_with(
+            "OpenVideoMixProjector",
+            {"videoMixType": "OBS_WEBSOCKET_VIDEO_MIX_TYPE_PREVIEW", "monitorIndex": 1}
+        )
+
+        # 2. Program mix projector
+        res = await client.open_projector(monitor_index=0, mix_type="program")
+        self.assertTrue(res)
+        client.send_request.assert_called_with(
+            "OpenVideoMixProjector",
+            {"videoMixType": "OBS_WEBSOCKET_VIDEO_MIX_TYPE_PROGRAM", "monitorIndex": 0}
+        )
+
+        # 3. Source projector
+        res = await client.open_projector(monitor_index=2, mix_type="source", source_name="Test Source")
+        self.assertTrue(res)
+        client.send_request.assert_called_with(
+            "OpenSourceProjector",
+            {"sourceName": "Test Source", "monitorIndex": 2}
+        )
+
+    def test_vosk_search_dirs(self):
+        from obs_captioner.model_downloader import get_vosk_search_dirs
+        dirs = get_vosk_search_dirs()
+        self.assertIsInstance(dirs, list)
+        self.assertGreaterEqual(len(dirs), 1)
+        dir_names = [str(d) for d in dirs]
+        self.assertTrue(any("vosk" in d for d in dir_names))
+
+    def test_cuda_dll_discovery_runs_clean(self):
+        from obs_captioner.engines.local_whisper import _setup_windows_cuda_dlls
+        # Must execute cleanly on all platforms without raising
+        _setup_windows_cuda_dlls()
+
+    def test_mimetypes_registered(self):
+        import mimetypes
+        import obs_captioner.web.server  # Ensures registration runs
+        js_type, _ = mimetypes.guess_type("test.js")
+        css_type, _ = mimetypes.guess_type("test.css")
+        json_type, _ = mimetypes.guess_type("test.json")
+        self.assertEqual(js_type, "application/javascript")
+        self.assertEqual(css_type, "text/css")
+        self.assertEqual(json_type, "application/json")
+
+
 if __name__ == "__main__":
     unittest.main()
+
 

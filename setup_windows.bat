@@ -1,6 +1,11 @@
 @echo off
 setlocal enabledelayedexpansion
 
+:: Ensure UTF-8 encoding is enabled for Windows terminal and Python output
+chcp 65001 >nul 2>&1
+set "PYTHONIOENCODING=utf-8"
+set "PYTHONUTF8=1"
+
 echo =======================================================
 echo   🎙️ VoxStream: OBS Live Captioner Suite - Windows Setup
 echo =======================================================

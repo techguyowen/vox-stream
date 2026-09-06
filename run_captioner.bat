@@ -1,6 +1,11 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 set VOXSTREAM_RUNNER=bat
+
+:: Ensure console and Python use UTF-8 encoding on Windows
+chcp 65001 >nul 2>&1
+set "PYTHONIOENCODING=utf-8"
+set "PYTHONUTF8=1"
 
 cd /d "%~dp0"
 
@@ -10,6 +15,13 @@ if not exist ".venv\Scripts\activate.bat" (
 )
 
 call .venv\Scripts\activate.bat
+
+:: Safeguard: Prepend NVIDIA CUDA/cuDNN DLLs into PATH if present
+for /d %%D in (".venv\Lib\site-packages\nvidia\*") do (
+    if exist "%%D\bin" (
+        set "PATH=%%D\bin;!PATH!"
+    )
+)
 
 :: Safeguard: Remove conflicting torchaudio binaries if present
 if exist ".venv\Lib\site-packages\torchaudio" (

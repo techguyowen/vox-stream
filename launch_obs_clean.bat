@@ -16,7 +16,7 @@ echo.
 :: Launch OBS Studio
 :: Assumes default 64-bit installation path
 if exist "C:\Program Files\obs-studio\bin\64bit\obs64.exe" (
-    start "" "C:\Program Files\obs-studio\bin\64bit\obs64.exe" --disable-shutdown-check
+    start "" /D "C:\Program Files\obs-studio\bin\64bit" "C:\Program Files\obs-studio\bin\64bit\obs64.exe" --disable-shutdown-check
     echo OBS Studio started successfully.
 ) else (
     echo [ERROR] OBS Studio not found at C:\Program Files\obs-studio\bin\64bit\obs64.exe

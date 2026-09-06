@@ -21,7 +21,7 @@ def _generate_auth_string(password: str, salt: str, challenge: str) -> str:
 
 
 class OBSWebSocketClient:
-    """Async client for OBS Studio WebSocket v5 protocol."""
+    """Async client for OBS Studio WebSocket v5 protocol with auto-reconnection."""
 
     def __init__(self, config: OBSConfig):
         self.config = config
@@ -32,19 +32,27 @@ class OBSWebSocketClient:
         self._message_id = 1
         self._pending_requests = {}
         self._listen_task: Optional[asyncio.Task] = None
+        self._reconnect_task: Optional[asyncio.Task] = None
+        self._closing = False
         self.on_stream_state_changed: Optional[Callable[[bool], None]] = None
         self.on_record_state_changed: Optional[Callable[[bool], None]] = None
 
     async def connect(self) -> bool:
-        """Connect and authenticate with OBS WebSocket v5."""
+        """Connect and authenticate with OBS WebSocket v5, starting auto-reconnector."""
         if not self.config.enabled:
             return False
 
+        if not self._reconnect_task or self._reconnect_task.done():
+            self._reconnect_task = asyncio.create_task(self._reconnect_loop())
+
+        return await self._attempt_connect()
+
+    async def _attempt_connect(self) -> bool:
+        """Single connection and authentication attempt."""
         if self.is_connected and self.ws:
             return True
 
         uri = f"ws://{self.config.host}:{self.config.port}"
-        logger.info(f"Connecting to OBS WebSocket at {uri}...")
 
         try:
             self.ws = await websockets.connect(uri, ping_interval=10, ping_timeout=5)
@@ -107,9 +115,18 @@ class OBSWebSocketClient:
             return True
         except Exception as e:
             self.last_connect_error = str(e)
-            logger.warning(f"Could not connect to OBS WebSocket: {e}. (Is OBS running and WebSocket server enabled?)")
             self.is_connected = False
             return False
+
+    async def _reconnect_loop(self):
+        """Silently attempt background reconnection to OBS Studio if disconnected."""
+        while not self._closing and self.config.enabled:
+            if not self.is_connected:
+                try:
+                    await self._attempt_connect()
+                except Exception:
+                    pass
+            await asyncio.sleep(4.0)
 
     async def _listen_loop(self):
         """Listen for incoming OBS WebSocket events and responses."""
@@ -213,7 +230,7 @@ class OBSWebSocketClient:
     async def open_projector(
         self,
         mix_type: str = "preview",
-        monitor_index: int = 1,
+        monitor_index: int = 0,
         source_name: Optional[str] = None,
     ) -> bool:
         """Open a Fullscreen or Windowed Projector in OBS Studio."""
@@ -221,37 +238,60 @@ class OBSWebSocketClient:
             logger.warning("Cannot open projector: OBS WebSocket is not connected.")
             return False
 
-        mix_type = (mix_type or "preview").lower()
+        mix_type = (mix_type or "preview").lower().strip()
 
-        # Source Projector (e.g. for Captions Overlay source)
-        if mix_type == "source" or source_name:
+        # Validate and clamp monitor_index
+        # -1 indicates Windowed mode in OBS WebSocket v5
+        target_mon = monitor_index if monitor_index is not None else 0
+        monitors = await self.get_monitors()
+        if target_mon >= 0 and monitors:
+            if target_mon >= len(monitors):
+                logger.warning(f"Requested monitor index {target_mon} exceeds available monitors ({len(monitors)}). Clamping to 0.")
+                target_mon = 0
+
+        # 1. Source Projector (ONLY if explicitly mix_type == "source")
+        if mix_type == "source":
             target_source = source_name or self.config.projector_source_name or "Captions Overlay"
-            logger.info(f"Opening OBS Source Projector for '{target_source}' on monitor index {monitor_index}...")
+            logger.info(f"Opening OBS Source Projector for '{target_source}' on monitor index {target_mon}...")
             res = await self.send_request(
                 "OpenSourceProjector",
                 {
                     "sourceName": target_source,
-                    "monitorIndex": monitor_index,
+                    "monitorIndex": target_mon,
                 },
             )
-            return res is not None and res.get("requestStatus", {}).get("result", False)
+            success = res is not None and res.get("requestStatus", {}).get("result", False)
+            if not success and target_mon > 0:
+                logger.warning(f"Failed to open source projector on monitor {target_mon}. Retrying on monitor 0...")
+                res = await self.send_request("OpenSourceProjector", {"sourceName": target_source, "monitorIndex": 0})
+                success = res is not None and res.get("requestStatus", {}).get("result", False)
+            return success
 
-        # Video Mix Projector (Preview / Program / Multiview)
+        # 2. Video Mix Projector (Preview / Program / Multiview)
         obs_mix_type = "OBS_WEBSOCKET_VIDEO_MIX_TYPE_PREVIEW"
         if mix_type in ("program", "output"):
             obs_mix_type = "OBS_WEBSOCKET_VIDEO_MIX_TYPE_PROGRAM"
         elif mix_type == "multiview":
             obs_mix_type = "OBS_WEBSOCKET_VIDEO_MIX_TYPE_MULTIVIEW"
 
-        logger.info(f"Opening OBS Video Mix Projector ({obs_mix_type}) on monitor index {monitor_index}...")
+        logger.info(f"Opening OBS Video Mix Projector ({obs_mix_type}) on monitor index {target_mon}...")
         res = await self.send_request(
             "OpenVideoMixProjector",
             {
                 "videoMixType": obs_mix_type,
-                "monitorIndex": monitor_index,
+                "monitorIndex": target_mon,
             },
         )
-        return res is not None and res.get("requestStatus", {}).get("result", False)
+        success = res is not None and res.get("requestStatus", {}).get("result", False)
+        if not success and target_mon > 0:
+            logger.warning(f"Failed to open video mix projector on monitor {target_mon}. Retrying on monitor 0...")
+            res = await self.send_request("OpenVideoMixProjector", {"videoMixType": obs_mix_type, "monitorIndex": 0})
+            success = res is not None and res.get("requestStatus", {}).get("result", False)
+        if not success and target_mon != -1:
+            logger.warning("Retrying with windowed projector (monitorIndex -1)...")
+            res = await self.send_request("OpenVideoMixProjector", {"videoMixType": obs_mix_type, "monitorIndex": -1})
+            success = res is not None and res.get("requestStatus", {}).get("result", False)
+        return success
 
     async def get_monitors(self) -> list:
         """Query list of connected monitors from OBS."""
@@ -260,7 +300,12 @@ class OBSWebSocketClient:
 
         res = await self.send_request("GetMonitorList", {})
         if res and res.get("requestStatus", {}).get("result", False):
-            return res.get("responseData", {}).get("monitors", [])
+            monitors = res.get("responseData", {}).get("monitors", [])
+            # Inject monitorIndex if missing (OBS v5 provides array indices)
+            for idx, m in enumerate(monitors):
+                if "monitorIndex" not in m:
+                    m["monitorIndex"] = idx
+            return monitors
         return []
 
     async def handle_auto_projector(self):
@@ -274,8 +319,11 @@ class OBSWebSocketClient:
             )
 
     async def close(self):
-        """Close WebSocket connection."""
+        """Close WebSocket connection and stop reconnect loop."""
+        self._closing = True
         self.is_connected = False
+        if self._reconnect_task:
+            self._reconnect_task.cancel()
         if self._listen_task:
             self._listen_task.cancel()
         if self.ws:

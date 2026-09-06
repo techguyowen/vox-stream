@@ -112,9 +112,131 @@ class AudioCapture:
         self.current_rms_db: float = -100.0
         self.on_level_meter: Optional[Callable[[float], None]] = None
 
+    def _open_stream(self) -> bool:
+        """Attempt to open hardware audio stream with 4-tier fallback for multi-channel / ASIO interfaces."""
+        if sd is None:
+            return False
+
+        dev_name = self.device_info["name"] if self.device_info else "Default"
+        dev_api = self.device_info["hostapi"] if self.device_info else ""
+        native_rate = int(self.device_info.get("default_samplerate", self.target_rate)) if self.device_info else self.target_rate
+        is_loopback = self.device_info.get("is_loopback", False) if self.device_info else False
+        max_in = int(self.device_info.get("channels", 1)) if self.device_info else 1
+
+        extra_settings = None
+        if is_loopback:
+            try:
+                if hasattr(sd, "WasapiSettings"):
+                    extra_settings = sd.WasapiSettings(loopback=True)
+                    logger.info(f"🔊 WASAPI Loopback active: capturing audio playing to '{dev_name}' ({max_in}ch @ {native_rate}Hz)")
+            except Exception as we:
+                logger.debug(f"WASAPI loopback settings exception: {we}")
+
+        # Tiered attempts:
+        # Tier 1: 16kHz Mono int16 (Standard / lowest overhead)
+        # Tier 2: Native rate Mono int16 (If device clock doesn't support 16kHz)
+        # Tier 3: Native rate Stereo/Multichannel int16 (If ASIO/interface rejects mono)
+        # Tier 4: Native rate Stereo/Multichannel float32 (Universal compatibility)
+        attempts = []
+        if not is_loopback:
+            attempts.append({"rate": self.target_rate, "channels": 1, "dtype": np.int16, "tier": "16kHz Mono"})
+            if native_rate != self.target_rate:
+                attempts.append({"rate": native_rate, "channels": 1, "dtype": np.int16, "tier": f"Native {native_rate}Hz Mono"})
+            if max_in > 1:
+                stereo_ch = min(2, max_in)
+                attempts.append({"rate": native_rate, "channels": stereo_ch, "dtype": np.int16, "tier": f"Native {native_rate}Hz Stereo ({stereo_ch}ch)"})
+                attempts.append({"rate": native_rate, "channels": stereo_ch, "dtype": np.float32, "tier": f"Native {native_rate}Hz Float32 ({stereo_ch}ch)"})
+        else:
+            loop_ch = max(1, max_in)
+            attempts.append({"rate": native_rate, "channels": loop_ch, "dtype": np.int16, "tier": f"WASAPI Loopback {loop_ch}ch"})
+            attempts.append({"rate": native_rate, "channels": loop_ch, "dtype": np.float32, "tier": f"WASAPI Loopback Float32 {loop_ch}ch"})
+
+        for plan in attempts:
+            stream_rate = plan["rate"]
+            plan_channels = plan["channels"]
+            plan_dtype = plan["dtype"]
+            plan_tier = plan["tier"]
+
+            def make_audio_callback(s_rate):
+                def audio_callback(indata, frames, time_info, status):
+                    if not self._running:
+                        return
+
+                    # Compute RMS Level for VU Meter
+                    try:
+                        if indata.dtype == np.float32:
+                            rms = np.sqrt(np.mean(indata ** 2))
+                        else:
+                            audio_f = indata.astype(np.float32) / 32768.0
+                            rms = np.sqrt(np.mean(audio_f ** 2))
+                        db = 20 * math.log10(rms) if rms > 1e-5 else -100.0
+                        self.current_rms_db = max(-100.0, min(0.0, float(db)))
+                        if self.on_level_meter:
+                            self.on_level_meter(self.current_rms_db)
+                    except Exception:
+                        pass
+
+                    # Convert to 16-bit linear PCM bytes
+                    if indata.dtype == np.float32:
+                        clipped = np.clip(indata, -1.0, 1.0)
+                        pcm16 = (clipped * 32767.0).astype(np.int16)
+                    elif indata.dtype == np.int16:
+                        pcm16 = indata
+                    else:
+                        pcm16 = indata.astype(np.int16)
+
+                    # Downmix multi-channel to mono
+                    if pcm16.ndim > 1 and pcm16.shape[1] > 1:
+                        pcm16 = np.mean(pcm16, axis=1).astype(np.int16)
+
+                    # Resample down to 16kHz if captured at native rate (e.g. 48kHz -> 16kHz)
+                    if s_rate != self.target_rate and len(pcm16) > 0:
+                        step = int(s_rate / self.target_rate)
+                        if step > 1 and s_rate % self.target_rate == 0:
+                            pcm16 = pcm16[::step]
+                        else:
+                            target_len = int(len(pcm16) * (self.target_rate / s_rate))
+                            if target_len > 0:
+                                indices = np.linspace(0, len(pcm16) - 1, target_len).astype(int)
+                                pcm16 = pcm16[indices]
+
+                    pcm_bytes = pcm16.tobytes()
+                    try:
+                        self._queue.put_nowait(pcm_bytes)
+                    except queue.Full:
+                        try:
+                            self._queue.get_nowait()
+                            self._queue.put_nowait(pcm_bytes)
+                        except Exception:
+                            pass
+
+                return audio_callback
+
+            try:
+                block_size = self.chunk_samples if stream_rate == self.target_rate else int(stream_rate * (self.config.chunk_duration_ms / 1000.0))
+                stream = sd.InputStream(
+                    device=self.device_index,
+                    channels=plan_channels,
+                    samplerate=stream_rate,
+                    blocksize=block_size,
+                    dtype=plan_dtype,
+                    extra_settings=extra_settings,
+                    callback=make_audio_callback(stream_rate),
+                )
+                stream.start()
+                self.stream = stream
+                logger.info(f"✅ Audio capture stream started using [{plan_tier}] on '{dev_name}' ({dev_api})")
+                return True
+            except Exception as e:
+                logger.debug(f"Plan [{plan_tier}] on '{dev_name}' failed: {e}")
+                continue
+
+        logger.error(f"❌ Failed to open audio device '{dev_name}' ({dev_api}) with any supported format.")
+        return False
+
     def start(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> bool:
         """Start the audio capture stream."""
-        if self._running:
+        if self._running and self.stream is not None:
             return True
 
         if sd is None:
@@ -122,112 +244,11 @@ class AudioCapture:
             return False
 
         self._loop = loop or asyncio.get_event_loop()
-        dev_name = self.device_info["name"] if self.device_info else "Default"
-        dev_api = self.device_info["hostapi"] if self.device_info else ""
-        logger.info(f"Opening audio input [{self.device_index}]: '{dev_name}' ({dev_api}) at {self.target_rate}Hz mono")
-
-        native_rate = int(self.device_info["default_samplerate"]) if self.device_info else self.target_rate
-        is_loopback = self.device_info.get("is_loopback", False) if self.device_info else False
-        stream_rate = self.target_rate
-        channels = 1
-        extra_settings = None
-
-        if is_loopback:
-            try:
-                if hasattr(sd, "WasapiSettings"):
-                    extra_settings = sd.WasapiSettings(loopback=True)
-                    channels = max(1, int(self.device_info.get("channels", 2)))
-                    stream_rate = native_rate
-                    logger.info(f"🔊 WASAPI Loopback active: capturing audio playing to '{dev_name}' ({channels}ch @ {native_rate}Hz)")
-            except Exception as we:
-                logger.debug(f"WASAPI loopback settings exception: {we}")
-
-        def audio_callback(indata, frames, time_info, status):
-            if not self._running:
-                return
-
-            # Compute RMS Level for VU Meter
-            try:
-                if indata.dtype == np.float32:
-                    rms = np.sqrt(np.mean(indata ** 2))
-                    db = 20 * math.log10(rms) if rms > 1e-5 else -100.0
-                else:
-                    audio_f = indata.astype(np.float32) / 32768.0
-                    rms = np.sqrt(np.mean(audio_f ** 2))
-                    db = 20 * math.log10(rms) if rms > 1e-5 else -100.0
-                self.current_rms_db = max(-100.0, min(0.0, float(db)))
-                if self.on_level_meter:
-                    self.on_level_meter(self.current_rms_db)
-            except Exception:
-                pass
-
-            # Convert numpy float32/int16 array to 16-bit linear PCM bytes
-            if indata.dtype == np.float32:
-                clipped = np.clip(indata, -1.0, 1.0)
-                pcm16 = (clipped * 32767.0).astype(np.int16)
-            elif indata.dtype == np.int16:
-                pcm16 = indata
-            else:
-                pcm16 = indata.astype(np.int16)
-
-            # Downmix multi-channel to mono
-            if pcm16.ndim > 1 and pcm16.shape[1] > 1:
-                pcm16 = np.mean(pcm16, axis=1).astype(np.int16)
-
-            # Resample down to 16kHz if captured at native rate (e.g. 48kHz -> 16kHz)
-            if stream_rate != self.target_rate and len(pcm16) > 0:
-                step = int(stream_rate / self.target_rate)
-                if step > 1 and stream_rate % self.target_rate == 0:
-                    pcm16 = pcm16[::step]
-                else:
-                    target_len = int(len(pcm16) * (self.target_rate / stream_rate))
-                    if target_len > 0:
-                        indices = np.linspace(0, len(pcm16) - 1, target_len).astype(int)
-                        pcm16 = pcm16[indices]
-
-            pcm_bytes = pcm16.tobytes()
-            try:
-                self._queue.put_nowait(pcm_bytes)
-            except queue.Full:
-                try:
-                    self._queue.get_nowait()
-                    self._queue.put_nowait(pcm_bytes)
-                except Exception:
-                    pass
-
-        try:
-            self.stream = sd.InputStream(
-                device=self.device_index,
-                channels=channels,
-                samplerate=stream_rate,
-                blocksize=self.chunk_samples if stream_rate == self.target_rate else int(stream_rate * (self.config.chunk_duration_ms / 1000.0)),
-                dtype=np.int16,
-                extra_settings=extra_settings,
-                callback=audio_callback,
-            )
-            self.stream.start()
-            self._running = True
-            logger.info("Audio capture stream started.")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to open audio stream at {stream_rate}Hz: {e}")
-            try:
-                stream_rate = native_rate
-                self.stream = sd.InputStream(
-                    device=self.device_index,
-                    channels=channels,
-                    samplerate=native_rate,
-                    dtype=np.float32,
-                    extra_settings=extra_settings,
-                    callback=audio_callback,
-                )
-                self.stream.start()
-                self._running = True
-                logger.info(f"Audio capture stream started at native rate {native_rate}Hz.")
-                return True
-            except Exception as e2:
-                logger.error(f"Failed to open audio stream at native rate: {e2}")
-                return False
+        self._running = True
+        ok = self._open_stream()
+        if not ok:
+            self._running = False
+        return ok
 
     def inject_audio_chunk(self, pcm_bytes: bytes):
         """Directly inject 16kHz 16-bit linear PCM audio chunk (e.g. from OBS native filter or network stream)."""
@@ -275,36 +296,40 @@ class AudioCapture:
         self.current_rms_db = -100.0
         logger.info("Audio capture stream stopped.")
 
-    def update_device(self, new_config: AudioConfig) -> bool:
+    def update_device(self, new_config: Optional[AudioConfig] = None) -> bool:
         """Hot-switch input device without breaking continuous speech recognition loop."""
-        self.config = new_config
-        new_idx, new_info = find_audio_device(new_config)
+        if new_config is not None:
+            self.config = new_config
+        new_idx, new_info = find_audio_device(self.config)
 
-        if new_idx == self.device_index and self._running:
+        if new_idx == self.device_index and self.stream is not None:
             logger.debug(f"Audio device unchanged (index {self.device_index}).")
             return True
 
         dev_title = new_info["name"] if new_info else f"Index {new_idx}"
         logger.info(f"Hot-switching audio capture device from [{self.device_index}] to [{new_idx}]: '{dev_title}'...")
 
-        was_running = self._running
-        stored_loop = self._loop
-
-        # Stop existing hardware stream
+        # Stop previous hardware stream
         if self.stream is not None:
+            s = self.stream
+            self.stream = None
             try:
-                self.stream.stop()
-                self.stream.close()
+                s.stop()
+                s.close()
             except Exception as e:
                 logger.debug(f"Error closing previous stream during device switch: {e}")
-            self.stream = None
 
         self.device_index = new_idx
         self.device_info = new_info
 
-        if was_running:
-            self._running = False
-            return self.start(stored_loop)
+        # Reopen hardware stream with new device while KEEPING self._running = True
+        # This ensures stream_generator() never terminates its loop!
+        if self._running:
+            ok = self._open_stream()
+            if not ok:
+                logger.error(f"Could not open newly selected audio device [{new_idx}].")
+                return False
+            return True
         return True
 
     class AudioStreamError(Exception):
