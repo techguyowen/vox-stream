@@ -217,8 +217,11 @@ async def main_async(args):
             sink.update_config(new_cfg)
         if audio_capture:
             audio_capture.update_device(new_cfg.audio)
-        if engine and hasattr(engine, "vad"):
-            engine.vad.update_config(new_cfg.audio)
+        if engine:
+            if hasattr(engine, "config"):
+                engine.config = new_cfg
+            if hasattr(engine, "vad"):
+                engine.vad.update_config(new_cfg.audio)
         logger.info("Configuration hot-reloaded.")
 
         needs_engine_reload = (

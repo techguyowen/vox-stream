@@ -344,6 +344,7 @@ function handleCaption(data) {
                     renderFinalLines(false);
                     showBox();
                 } else {
+                    interimLineEl.innerHTML = "";
                     pendingFinalQueue.push(lineItem);
                     if (pendingFinalQueue.length > 5) {
                         pendingFinalQueue.shift();

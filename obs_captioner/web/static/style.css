@@ -62,6 +62,9 @@ html, body {
     font-family: var(--font-family);
     user-select: none;
     -webkit-user-select: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
 }
 
 body.align-top {
@@ -90,6 +93,7 @@ body.align-top {
     transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.18, 0.89, 0.32, 1.28);
     opacity: 1;
     transform: translateY(0);
+    text-wrap: balance;
 }
 
 .caption-box.hidden {
@@ -110,6 +114,7 @@ body.align-top .caption-box.hidden {
     -webkit-text-stroke: var(--text-stroke);
     paint-order: stroke fill;
     word-break: break-word;
+    text-wrap: balance;
 }
 
 .final-line-item {
@@ -141,6 +146,7 @@ body.align-top .caption-box.hidden {
     paint-order: stroke fill;
     word-break: break-word;
     font-style: var(--font-style, normal);
+    text-wrap: balance;
 }
 
 /* Animations */
@@ -172,7 +178,7 @@ body.align-top .caption-box.hidden {
    ============================================================================== */
 .scripture-card {
     position: fixed;
-    bottom: 36px;
+    bottom: 160px;
     left: 50%;
     transform: translateX(-50%) translateY(0);
     max-width: min(1200px, 88vw);
@@ -192,7 +198,7 @@ body.align-top .caption-box.hidden {
 
 body.align-top .scripture-card {
     bottom: auto;
-    top: 36px;
+    top: 160px;
 }
 
 .scripture-card.hidden {
@@ -230,6 +236,7 @@ body.align-top .scripture-card.hidden {
     color: #FFFBEB;
     text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.9);
     font-style: var(--font-style, normal);
+    text-wrap: pretty;
 }
 
 
