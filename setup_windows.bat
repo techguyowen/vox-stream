@@ -114,6 +114,7 @@ call .venv\Scripts\activate.bat
 echo [3/6] Upgrading pip and installing required packages...
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
+python -m pip uninstall -y torchaudio >nul 2>&1
 
 :: 6. Check for NVIDIA GPU and install CUDA acceleration automatically
 echo [4/6] Checking for NVIDIA GPU acceleration...

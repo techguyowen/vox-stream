@@ -22,9 +22,9 @@ vosk>=0.3.44
 useful-moonshine
 keras>=3.0.0
 
-# Voice Activity Detection (VAD)
-silero-vad>=5.1.0
+# Voice Activity Detection (VAD) & Neural Inference
 torch>=2.0.0
+onnxruntime>=1.16.0
 
 # Utility & CLI
 colorama>=0.4.6

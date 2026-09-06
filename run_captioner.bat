@@ -10,6 +10,12 @@ if not exist ".venv\Scripts\activate.bat" (
 
 call .venv\Scripts\activate.bat
 
+:: Safeguard: Remove conflicting torchaudio binaries if present
+if exist ".venv\Lib\site-packages\torchaudio" (
+    echo [INFO] Resolving library conflict: removing torchaudio...
+    call python -m pip uninstall -y torchaudio >nul 2>&1
+)
+
 :app_loop
 echo =======================================================
 echo   Starting VoxStream Live Captioner...

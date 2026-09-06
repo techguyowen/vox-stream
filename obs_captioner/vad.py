@@ -25,32 +25,58 @@ class VoiceActivityDetector:
         self.noise_gate_db = noise_gate_db
         self.vad_threshold = vad_threshold
         self.silero_model = None
-        self.silero_utils = None
+        self.silero_mode = None  # "torch" or "onnx"
+        self._onnx_state = None
 
         if enable_silero:
             try:
-                import torch
-                # Suppress torch / hub download noise
-                torch.set_num_threads(1)
                 if _SILERO_CACHE:
-                    # Reuse already-loaded model — avoids repeated disk I/O on engine switches
                     self.silero_model = _SILERO_CACHE["model"]
-                    self.silero_utils = _SILERO_CACHE["utils"]
-                    logger.debug("Silero VAD reused from module cache (no reload needed).")
+                    self.silero_mode = _SILERO_CACHE.get("mode", "torch")
+                    if self.silero_mode == "onnx":
+                        self._onnx_state = np.zeros((2, 1, 128), dtype=np.float32)
+                    logger.debug("Silero VAD reused from module cache.")
                 else:
-                    model, utils = torch.hub.load(
-                        repo_or_dir="snakers4/silero-vad",
-                        model="silero_vad",
-                        force_reload=False,
-                        onnx=False,
-                        trust_repo=True,
-                        verbose=False,
-                    )
-                    _SILERO_CACHE["model"] = model
-                    _SILERO_CACHE["utils"] = utils
-                    self.silero_model = model
-                    self.silero_utils = utils
-                    logger.info("Silero VAD model loaded and cached successfully.")
+                    from pathlib import Path
+                    data_dir = Path(__file__).parent / "data"
+                    jit_path = data_dir / "silero_vad.jit"
+                    onnx_path = data_dir / "silero_vad.onnx"
+
+                    # 1. Primary: Bundled JIT model (PyTorch native, zero torchaudio dependency)
+                    if jit_path.exists():
+                        try:
+                            import torch
+                            torch.set_num_threads(1)
+                            model = torch.jit.load(str(jit_path), map_location="cpu")
+                            model.eval()
+                            _SILERO_CACHE["model"] = model
+                            _SILERO_CACHE["mode"] = "torch"
+                            self.silero_model = model
+                            self.silero_mode = "torch"
+                            logger.info("Silero VAD loaded successfully from bundled JIT model.")
+                        except Exception as e:
+                            logger.debug(f"Could not load JIT Silero model: {e}")
+
+                    # 2. Fallback: Bundled ONNX model (pure onnxruntime, zero PyTorch/Torchaudio dependency)
+                    if self.silero_model is None and onnx_path.exists():
+                        try:
+                            import onnxruntime as ort
+                            opts = ort.SessionOptions()
+                            opts.inter_op_num_threads = 1
+                            opts.intra_op_num_threads = 1
+                            session = ort.InferenceSession(str(onnx_path), sess_options=opts, providers=["CPUExecutionProvider"])
+                            _SILERO_CACHE["model"] = session
+                            _SILERO_CACHE["mode"] = "onnx"
+                            self.silero_model = session
+                            self.silero_mode = "onnx"
+                            self._onnx_state = np.zeros((2, 1, 128), dtype=np.float32)
+                            logger.info("Silero VAD loaded successfully from bundled ONNX model.")
+                        except Exception as e:
+                            logger.debug(f"Could not load ONNX Silero model: {e}")
+
+                    if self.silero_model is None:
+                        logger.debug("Silero VAD bundled models not found; using energy-based VAD.")
+
             except Exception as e:
                 logger.debug(f"Silero VAD not available ({e}). Using energy-based VAD.")
 
@@ -96,15 +122,30 @@ class VoiceActivityDetector:
         # 2. Silero VAD check if available
         if self.silero_model is not None:
             try:
-                import torch
                 audio_array = np.frombuffer(audio_chunk_bytes, dtype=np.int16).astype(np.float32) / 32768.0
                 window_size = 512 if self.sample_rate == 16000 else 256
                 max_prob = 0.0
-                for i in range(0, len(audio_array) - window_size + 1, window_size):
-                    slice_tensor = torch.from_numpy(audio_array[i : i + window_size])
-                    prob = self.silero_model(slice_tensor, self.sample_rate).item()
-                    if prob > max_prob:
-                        max_prob = prob
+
+                if self.silero_mode == "onnx":
+                    if self._onnx_state is None:
+                        self._onnx_state = np.zeros((2, 1, 128), dtype=np.float32)
+                    sr_val = np.array(self.sample_rate, dtype=np.int64)
+                    for i in range(0, len(audio_array) - window_size + 1, window_size):
+                        chunk_slice = audio_array[i : i + window_size].reshape(1, -1)
+                        out, self._onnx_state = self.silero_model.run(
+                            None, {"input": chunk_slice, "state": self._onnx_state, "sr": sr_val}
+                        )
+                        prob = float(out[0][0])
+                        if prob > max_prob:
+                            max_prob = prob
+                else:
+                    import torch
+                    for i in range(0, len(audio_array) - window_size + 1, window_size):
+                        slice_tensor = torch.from_numpy(audio_array[i : i + window_size])
+                        prob = self.silero_model(slice_tensor, self.sample_rate).item()
+                        if prob > max_prob:
+                            max_prob = prob
+
                 return max_prob >= self.vad_threshold
             except Exception as e:
                 logger.debug(f"Silero inference error: {e}")
