@@ -1521,11 +1521,9 @@ class TestSermonPipelineEnhancements(unittest.IsolatedAsyncioTestCase):
         fmt = TextFormatter(auto_capitalization=True, auto_punctuation=True, church_mode=True)
 
         # Pastoral & Leadership
-        self.assertIn("Ben Luthi", fmt.format_text("ben lut is our pastor"))
-        self.assertIn("Ben Luthi", fmt.format_text("ben luthi preached today"))
-        self.assertIn("Pastor Donnie", fmt.format_text("astrodani will join us"))
-        self.assertIn("Dave Benton", fmt.format_text("dave benton spoke today"))
-        self.assertIn("Lawrence and Gina", fmt.format_text("lawrence and gina are here"))
+        self.assertIn("Ben Uthe", fmt.format_text("ben lut is our pastor"))
+        self.assertIn("Ben Uthe", fmt.format_text("ben luthi preached today"))
+        self.assertIn("Ben Uthe", fmt.format_text("ben uthe is speaking"))
 
         # Church & Campuses & Events
         self.assertIn("Waypoint Church", fmt.format_text("welcome to way point church"))
@@ -1541,7 +1539,6 @@ class TestSermonPipelineEnhancements(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Raleigh", fmt.format_text("members from raleigh"))
         self.assertIn("South Durham", fmt.format_text("in south durham"))
         self.assertIn("East Chapel Hill", fmt.format_text("in east chapel hill"))
-        self.assertIn("Tucker Hall", fmt.format_text("meeting at tucker hall"))
 
         # Sacred & Liturgical
         self.assertIn("Doxology", fmt.format_text("singing dog solid g"))

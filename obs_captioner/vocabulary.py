@@ -33,12 +33,10 @@ class VocabularyConfig:
         "jim conner": "Gymkhana",
         "jim connaught": "Gymkhana",
         "gymkhana": "Gymkhana",
-        "astrodani": "Pastor Donnie",
-        "astro donnie": "Pastor Donnie",
-        "pastor donnie": "Pastor Donnie",
-        "ben lut": "Ben Luthi",
-        "ben luthi": "Ben Luthi",
-        "ben luther": "Ben Luthi",
+        "ben uthe": "Ben Uthe",
+        "ben lut": "Ben Uthe",
+        "ben luthi": "Ben Uthe",
+        "ben luther": "Ben Uthe",
         "dog solid g": "Doxology",
         "dog. solid g": "Doxology",
         "solid g": "Doxology",
@@ -51,8 +49,6 @@ class VocabularyConfig:
         "try to lure for them": "pray to the Lord for them",
         "a socioplship": "discipleship",
         "the cyber": "disciple",
-        "dave benton": "Dave Benton",
-        "lawrence and gina": "Lawrence and Gina",
     })
 
 

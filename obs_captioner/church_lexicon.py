@@ -345,18 +345,10 @@ class ChurchLexiconFormatter:
         "full armor of god": "full armor of God",
         # ── Sermon Specific Phonetic Corrections & Local Names ────────────────
         # Pastoral & Leadership
-        "ben lut": "Ben Luthi",
-        "ben luthi": "Ben Luthi",
-        "ben luther": "Ben Luthi",
-        "beneath the who's": "Ben Luthi, who's",
-        "beneath the who is": "Ben Luthi, who is",
-        "beneath the who": "Ben Luthi who",
-        "astrodani": "Pastor Donnie",
-        "astro donnie": "Pastor Donnie",
-        "pastor donnie": "Pastor Donnie",
-        "pastor donny": "Pastor Donnie",
-        "dave benton": "Dave Benton",
-        "lawrence and gina": "Lawrence and Gina",
+        "ben uthe": "Ben Uthe",
+        "ben lut": "Ben Uthe",
+        "ben luthi": "Ben Uthe",
+        "ben luther": "Ben Uthe",
         # Church Campuses & Community
         "way point kids": "Waypoint Kids",
         "way point church": "Waypoint Church",
@@ -384,7 +376,6 @@ class ChurchLexiconFormatter:
         "south durham": "South Durham",
         "east chapel hill": "East Chapel Hill",
         "chapel hill": "Chapel Hill",
-        "tucker hall": "Tucker Hall",
         # Sacred & Liturgical Corrections
         "dog solid g": "Doxology",
         "dog. solid g": "Doxology",
