@@ -1324,13 +1324,13 @@ function populateFormFields(cfg) {
         document.getElementById("vad_slider").value = cfg.audio.vad_threshold || 0.5;
         document.getElementById("val-vad").textContent = cfg.audio.vad_threshold || 0.5;
 
-        const breakVal = cfg.audio.sentence_break_ms || 450;
+        const breakVal = cfg.audio.sentence_break_ms ?? 550;
         const sBreakEl = document.getElementById("sentence_break_slider");
         if (sBreakEl) sBreakEl.value = breakVal;
         const vBreakEl = document.getElementById("val-sentence-break");
         if (vBreakEl) vBreakEl.textContent = `${breakVal} ms`;
 
-        const maxSentenceVal = cfg.audio.max_sentence_duration_seconds || 4.5;
+        const maxSentenceVal = cfg.audio.max_sentence_duration_seconds ?? 7.0;
         const sMaxEl = document.getElementById("max_sentence_slider");
         if (sMaxEl) sMaxEl.value = maxSentenceVal;
         const vMaxEl = document.getElementById("val-max-sentence");

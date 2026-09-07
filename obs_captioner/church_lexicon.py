@@ -358,6 +358,8 @@ class ChurchLexiconFormatter:
         "dave benton": "Dave Benton",
         "lawrence and gina": "Lawrence and Gina",
         # Church Campuses & Community
+        "way point kids": "Waypoint Kids",
+        "way point church": "Waypoint Church",
         "way point": "Waypoint",
         "way poi": "Waypoint",
         "wave once": "Waypoint",

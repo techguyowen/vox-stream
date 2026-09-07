@@ -1528,8 +1528,9 @@ class TestSermonPipelineEnhancements(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Lawrence and Gina", fmt.format_text("lawrence and gina are here"))
 
         # Church & Campuses & Events
-        self.assertIn("Waypoint", fmt.format_text("welcome to way point church"))
+        self.assertIn("Waypoint Church", fmt.format_text("welcome to way point church"))
         self.assertIn("Waypoint Kids", fmt.format_text("waypoint kids volunteer appreciation"))
+        self.assertIn("Waypoint Kids", fmt.format_text("we love way point kids"))
         self.assertIn("Gymkhana", fmt.format_text("our men's event is jim conna"))
         self.assertIn("The Journey Church", fmt.format_text("partnering with the journey church"))
         self.assertIn("Church Center", fmt.format_text("download the church centre app"))
