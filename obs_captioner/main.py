@@ -120,6 +120,7 @@ async def main_async(args):
 
     async def switch_engine_async(new_cfg: AppConfig):
         nonlocal engine, initialized, is_switching_engine, engine_switch_status, engine_switch_target, engine_switch_error
+        nonlocal active_engine_type, active_vosk_model, active_whisper_model, active_moonshine_model, active_gemini_key, active_gemini_model, active_bandwidth_key
         async with engine_lock:
             is_switching_engine = True
             engine_switch_error = None
