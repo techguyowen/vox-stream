@@ -272,8 +272,8 @@
                                 <span class="hint">Fades out captions when speech pauses (0s = stay visible continuously).</span>
                             </div>
                             <div class="form-group">
-                                <label for="min_display_slider">⏱️ Minimum Time on Screen (<span id="val-min-display">2s</span>)</label>
-                                <input type="range" id="min_display_slider" min="0" max="10" step="0.5" value="2" class="slider">
+                                <label for="min_display_slider">⏱️ Minimum Time on Screen (<span id="val-min-display">2.5s</span>)</label>
+                                <input type="range" id="min_display_slider" min="0" max="10" step="0.5" value="2.5" class="slider">
                                 <span class="hint">Keeps captions visible long enough for viewers to read (0s = instant update/vanish).</span>
                             </div>
                         </div>
@@ -982,22 +982,22 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label for="noise_gate_slider" style="display: flex; justify-content: space-between; align-items: center;">
-                                <span>Noise Gate Threshold (<span id="val-noise-gate">-45 dB</span>)</span>
+                                <span>Noise Gate Threshold (<span id="val-noise-gate">-52 dB</span>)</span>
                                 <span style="font-size: 11px; color: #9CA3AF; font-weight: normal;">Volume Cutoff</span>
                             </label>
-                            <input type="range" id="noise_gate_slider" min="-80" max="-10" value="-45" class="slider">
+                            <input type="range" id="noise_gate_slider" min="-80" max="-10" value="-52" class="slider">
                             <span class="subtext" style="margin-top: 4px; font-size: 11px; color: #9CA3AF; display: block;">
-                                Drops raw audio below this volume (e.g. air conditioners, room hum, computer fans).
+                                Drops raw audio below this volume. <strong>-52 dB</strong>: Preserves solemn whispered prayers while cutting hum.
                             </span>
                         </div>
                         <div class="form-group">
                             <label for="vad_slider" style="display: flex; justify-content: space-between; align-items: center;">
-                                <span>VAD Sensitivity (<span id="val-vad">0.5</span>)</span>
+                                <span>VAD Sensitivity (<span id="val-vad">0.35</span>)</span>
                                 <span style="font-size: 11px; color: #A5B4FC; font-weight: 600;">🧠 AI Voice Detector</span>
                             </label>
-                            <input type="range" id="vad_slider" min="0.1" max="0.9" step="0.05" value="0.5" class="slider">
+                            <input type="range" id="vad_slider" min="0.1" max="0.9" step="0.05" value="0.35" class="slider">
                             <span class="subtext" style="margin-top: 4px; font-size: 11px; color: #9CA3AF; display: block;">
-                                <strong>Voice Activity Detection</strong> (Silero AI): Filters out non-speech sounds like typing, breathing, coughing, or paper shuffling. (<strong>0.1–0.3</strong>: Catches soft whispers; <strong>0.5</strong>: Balanced default; <strong>0.7–0.9</strong>: Strict speech only).
+                                <strong>Voice Activity Detection</strong> (Silero AI): <strong>0.35</strong>: Catches soft whispers, prayer, and dynamic preaching.
                             </span>
                         </div>
                     </div>
@@ -1005,12 +1005,12 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label for="sentence_break_slider" style="display: flex; justify-content: space-between; align-items: center;">
-                                <span>⏱️ Sentence Break Pause (<span id="val-sentence-break">550 ms</span>)</span>
+                                <span>⏱️ Sentence Break Pause (<span id="val-sentence-break">650 ms</span>)</span>
                                 <span style="font-size: 11px; color: #34D399; font-weight: 600;">Breath &amp; Pause Cutoff</span>
                             </label>
-                            <input type="range" id="sentence_break_slider" min="200" max="1500" step="50" value="550" class="slider">
+                            <input type="range" id="sentence_break_slider" min="200" max="1500" step="50" value="650" class="slider">
                             <span class="subtext" style="margin-top: 4px; font-size: 11px; color: #9CA3AF; display: block;">
-                                Duration of speech pause (taking a breath, clause boundary) required to finalize a sentence. <strong>250–400ms</strong>: Fast/punchy breaks for rapid preaching; <strong>550ms</strong>: Balanced church default; <strong>600–1000ms</strong>: Holds long compound thoughts.
+                                Duration of speech pause required to finalize a sentence. <strong>650ms</strong>: Charismatic preaching default; preserves dramatic pregnant pauses without slicing thoughts in half.
                             </span>
                         </div>
                         <div class="form-group">

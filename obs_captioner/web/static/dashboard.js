@@ -1270,11 +1270,12 @@ function populateFormFields(cfg) {
             document.getElementById("auto_hide_slider").value = ov.auto_hide_seconds;
             document.getElementById("val-auto-hide").textContent = `${ov.auto_hide_seconds}s`;
         }
-        if (ov.min_display_seconds !== undefined) {
+        if (ov.min_display_seconds !== undefined || true) {
+            const minDisp = ov.min_display_seconds ?? 2.5;
             const mEl = document.getElementById("min_display_slider");
-            if (mEl) mEl.value = ov.min_display_seconds;
+            if (mEl) mEl.value = minDisp;
             const vEl = document.getElementById("val-min-display");
-            if (vEl) vEl.textContent = `${ov.min_display_seconds}s`;
+            if (vEl) vEl.textContent = `${minDisp}s`;
         }
         if (ov.text_color) document.getElementById("text_color").value = ov.text_color;
         if (ov.interim_color) document.getElementById("interim_color").value = ov.interim_color;
@@ -1319,12 +1320,15 @@ function populateFormFields(cfg) {
         toggleEngineFields(cfg.general.engine || "vosk");
     }
     if (cfg.audio) {
-        document.getElementById("noise_gate_slider").value = cfg.audio.noise_gate_db || -45;
-        document.getElementById("val-noise-gate").textContent = `${cfg.audio.noise_gate_db || -45} dB`;
-        document.getElementById("vad_slider").value = cfg.audio.vad_threshold || 0.5;
-        document.getElementById("val-vad").textContent = cfg.audio.vad_threshold || 0.5;
+        const ngVal = cfg.audio.noise_gate_db ?? -52.0;
+        document.getElementById("noise_gate_slider").value = ngVal;
+        document.getElementById("val-noise-gate").textContent = `${ngVal} dB`;
 
-        const breakVal = cfg.audio.sentence_break_ms ?? 550;
+        const vadVal = cfg.audio.vad_threshold ?? 0.35;
+        document.getElementById("vad_slider").value = vadVal;
+        document.getElementById("val-vad").textContent = vadVal;
+
+        const breakVal = cfg.audio.sentence_break_ms ?? 650;
         const sBreakEl = document.getElementById("sentence_break_slider");
         if (sBreakEl) sBreakEl.value = breakVal;
         const vBreakEl = document.getElementById("val-sentence-break");

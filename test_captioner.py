@@ -1075,11 +1075,16 @@ class TestCaptionSinkFinalOnly(unittest.IsolatedAsyncioTestCase):
 
 class TestSentenceBreakConfiguration(unittest.IsolatedAsyncioTestCase):
     def test_audio_config_sentence_break_defaults(self):
-        from obs_captioner.config import AudioConfig
+        from obs_captioner.config import AudioConfig, OverlayConfig
         ac = AudioConfig()
-        self.assertEqual(ac.sentence_break_ms, 550)
+        self.assertEqual(ac.sentence_break_ms, 650)
         self.assertEqual(ac.max_sentence_duration_seconds, 7.0)
         self.assertEqual(ac.max_sentence_words, 24)
+        self.assertEqual(ac.noise_gate_db, -52.0)
+        self.assertEqual(ac.vad_threshold, 0.35)
+
+        oc = OverlayConfig()
+        self.assertEqual(oc.min_display_seconds, 2.5)
 
     def test_vad_update_config(self):
         from obs_captioner.vad import VoiceActivityDetector
@@ -1135,7 +1140,7 @@ class TestMusicSuppressionAndOverlayMinimumDuration(unittest.IsolatedAsyncioTest
         self.assertTrue(ac.suppress_music)
 
         oc = OverlayConfig()
-        self.assertEqual(oc.min_display_seconds, 2.0)
+        self.assertEqual(oc.min_display_seconds, 2.5)
 
     def test_music_text_detection(self):
         from obs_captioner.music import is_music_text

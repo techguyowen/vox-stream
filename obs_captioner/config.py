@@ -33,9 +33,9 @@ class AudioConfig:
     sample_rate: int = 16000
     chunk_duration_ms: int = 100
     enable_vad: bool = True
-    vad_threshold: float = 0.5
-    noise_gate_db: float = -45.0
-    sentence_break_ms: int = 550  # Pause/silence duration in ms to trigger a sentence break (default 550ms, range 200-1500ms)
+    vad_threshold: float = 0.35  # AI voice detection sensitivity (0.35 catches soft prayers and whispers)
+    noise_gate_db: float = -52.0  # Drops ambient noise while preserving whispered prayers (default -52.0 dB)
+    sentence_break_ms: int = 650  # Pause/silence duration in ms to trigger a sentence break (650ms preserves dramatic preaching pauses)
     max_sentence_duration_seconds: float = 7.0  # Max duration of continuous speech in seconds before forcing a break (default 7.0s)
     max_sentence_words: int = 24  # Max word count before forcing a sentence break (default 24 words)
     suppress_music: bool = True  # Stop/pause captioning when worship music, preludes, or singing is detected
@@ -133,7 +133,7 @@ class OverlayConfig:
     text_shadow: str = "2px 2px 5px rgba(0, 0, 0, 0.95)"
     text_stroke: str = "2px #000000"
     auto_hide_seconds: float = 4.0
-    min_display_seconds: float = 2.0  # Minimum time a caption remains visible on screen (default 2.0s)
+    min_display_seconds: float = 2.5  # Minimum time a caption remains visible on screen (default 2.5s)
     use_italics: bool = False  # Accessibility: False = upright text, True = italic slant
     reduce_motion: bool = False  # Accessibility: False = animated, True = instant/no motion
     high_contrast_outline: bool = False  # Accessibility: False = normal stroke, True = heavy 3.5px black outline
