@@ -2563,6 +2563,10 @@ async function refreshEngineStatus() {
             if (ramText && data.ram_usage_mb !== undefined) {
                 ramText.textContent = `🧠 ${data.ram_usage_mb} MB`;
             }
+            const heroRamText = document.getElementById("hero-ram-text");
+            if (heroRamText && data.ram_usage_mb !== undefined) {
+                heroRamText.textContent = `${data.ram_usage_mb} MB`;
+            }
 
             if (cachedBenchmarkData && data.engine) {
                 renderBenchmarkRankings(cachedBenchmarkData, data.engine);
@@ -2578,35 +2582,52 @@ async function refreshEngineStatus() {
     }
 }
 
-// On-demand RAM Flush Handler
-const btnTrimRam = document.getElementById("btn-trim-ram");
-if (btnTrimRam) {
-    btnTrimRam.addEventListener("click", async () => {
-        btnTrimRam.textContent = "Purging...";
-        btnTrimRam.disabled = true;
-        try {
-            const res = await fetch("/api/system/trim_memory", { method: "POST" });
-            if (res.ok) {
-                const trimData = await res.json();
-                const ramText = document.getElementById("hardware-ram-text");
-                if (ramText && trimData.current_ram_mb !== undefined) {
-                    ramText.textContent = `🧠 ${trimData.current_ram_mb} MB`;
+// On-demand RAM Flush Handlers (Header Badge & Audio Tab Hero Card)
+function initTrimRamHandlers() {
+    const trimButtons = document.querySelectorAll(".btn-trim-ram, #btn-trim-ram");
+    trimButtons.forEach(btn => {
+        btn.addEventListener("click", async () => {
+            trimButtons.forEach(b => {
+                b.textContent = "Purging...";
+                b.disabled = true;
+            });
+            try {
+                const res = await fetch("/api/system/trim_memory", { method: "POST" });
+                if (res.ok) {
+                    const trimData = await res.json();
+                    const ramText = document.getElementById("hardware-ram-text");
+                    if (ramText && trimData.current_ram_mb !== undefined) {
+                        ramText.textContent = `🧠 ${trimData.current_ram_mb} MB`;
+                    }
+                    const heroRamText = document.getElementById("hero-ram-text");
+                    if (heroRamText && trimData.current_ram_mb !== undefined) {
+                        heroRamText.textContent = `${trimData.current_ram_mb} MB`;
+                    }
+                    trimButtons.forEach(b => {
+                        b.textContent = `Freed ${trimData.freed_mb}MB!`;
+                    });
+                    setTimeout(() => {
+                        trimButtons.forEach(b => {
+                            b.textContent = b.getAttribute("data-default-text") || "Flush RAM";
+                            b.disabled = false;
+                        });
+                    }, 2500);
+                } else {
+                    trimButtons.forEach(b => {
+                        b.textContent = b.getAttribute("data-default-text") || "Flush RAM";
+                        b.disabled = false;
+                    });
                 }
-                btnTrimRam.textContent = `Freed ${trimData.freed_mb}MB!`;
-                setTimeout(() => {
-                    btnTrimRam.textContent = "Flush RAM";
-                    btnTrimRam.disabled = false;
-                }, 2500);
-            } else {
-                btnTrimRam.textContent = "Flush RAM";
-                btnTrimRam.disabled = false;
+            } catch (e) {
+                trimButtons.forEach(b => {
+                    b.textContent = b.getAttribute("data-default-text") || "Flush RAM";
+                    b.disabled = false;
+                });
             }
-        } catch (e) {
-            btnTrimRam.textContent = "Flush RAM";
-            btnTrimRam.disabled = false;
-        }
+        });
     });
 }
+initTrimRamHandlers();
 
 function updateWpmUI(stats) {
     if (!stats) return;
