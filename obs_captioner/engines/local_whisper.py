@@ -72,6 +72,24 @@ def _setup_windows_cuda_dlls():
 class LocalWhisperEngine(BaseSTTEngine):
     """Local, offline speech recognition using faster-whisper (CTranslate2)."""
 
+    MODEL_ALIASES = {
+        "large-v3-turbo": "large-v3-turbo",
+        "turbo": "large-v3-turbo",
+        "whisper-turbo": "large-v3-turbo",
+        "distil-large": "distil-large-v3",
+        "distil-large-v3": "distil-large-v3",
+        "distil-medium": "distil-medium.en",
+        "distil-medium.en": "distil-medium.en",
+        "distil-small": "distil-small.en",
+        "distil-small.en": "distil-small.en",
+    }
+
+    @classmethod
+    def resolve_model_name(cls, name: Optional[str]) -> str:
+        """Resolve model alias to official Faster-Whisper / Hugging Face model identifier."""
+        raw = (name or "base.en").strip()
+        return cls.MODEL_ALIASES.get(raw.lower(), raw)
+
     def __init__(self, config: AppConfig):
         super().__init__("Local Faster-Whisper")
         self.config = config
@@ -109,7 +127,7 @@ class LocalWhisperEngine(BaseSTTEngine):
             if compute_type == "auto":
                 compute_type = "float16" if device == "cuda" else "int8"
 
-            model_size = self.config.local_whisper.model_size or "base.en"
+            model_size = self.resolve_model_name(self.config.local_whisper.model_size)
             if device == "cuda":
                 device_label = f"NVIDIA CUDA GPU ({gpu_info.get('name', 'NVIDIA')})"
             elif is_amd:

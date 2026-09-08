@@ -9,6 +9,9 @@ from .local_whisper import LocalWhisperEngine
 from .vosk import VoskEngine
 from .moonshine import MoonshineEngine
 from .bandwidth import BandwidthEngine
+from .sherpa_engine import SherpaEngine
+from .parakeet_engine import ParakeetEngine
+from .sensevoice_engine import SenseVoiceEngine
 from ..config import AppConfig
 
 
@@ -30,9 +33,15 @@ def create_engine(config: AppConfig) -> BaseSTTEngine:
         return MoonshineEngine(config)
     elif engine_type in ("bandwidth", "labs.bandwidth.com", "bandwidth_labs"):
         return BandwidthEngine(config)
+    elif engine_type in ("sherpa", "sherpa_onnx", "zipformer"):
+        return SherpaEngine(config)
+    elif engine_type in ("parakeet", "nemo", "nemo_parakeet", "fastconformer"):
+        return ParakeetEngine(config)
+    elif engine_type in ("sensevoice", "funasr"):
+        return SenseVoiceEngine(config)
     else:
         raise ValueError(
-            f"Unknown engine '{engine_type}'. Supported engines are: 'google_web', 'gemini_live', 'google_stt', 'local_whisper', 'vosk', 'moonshine', 'bandwidth'"
+            f"Unknown engine '{engine_type}'. Supported engines are: 'google_web', 'gemini_live', 'google_stt', 'local_whisper', 'vosk', 'moonshine', 'bandwidth', 'sherpa', 'parakeet', 'sensevoice'"
         )
 
 
@@ -47,5 +56,8 @@ __all__ = [
     "VoskEngine",
     "MoonshineEngine",
     "BandwidthEngine",
+    "SherpaEngine",
+    "ParakeetEngine",
+    "SenseVoiceEngine",
     "create_engine",
 ]

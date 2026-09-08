@@ -1370,6 +1370,32 @@ function populateFormFields(cfg) {
     if (cfg.moonshine) {
         document.getElementById("moonshine_model").value = cfg.moonshine.model_name || "moonshine/tiny";
     }
+    if (cfg.sherpa) {
+        const sm = document.getElementById("sherpa_model");
+        if (sm && cfg.sherpa.model_name) sm.value = cfg.sherpa.model_name;
+        const sp = document.getElementById("sherpa_model_path");
+        if (sp) sp.value = cfg.sherpa.model_path || "";
+        const st = document.getElementById("sherpa_threads");
+        if (st && cfg.sherpa.num_threads) st.value = cfg.sherpa.num_threads;
+    }
+    if (cfg.parakeet) {
+        const pm = document.getElementById("parakeet_model");
+        if (pm && cfg.parakeet.model_name) pm.value = cfg.parakeet.model_name;
+        const pd = document.getElementById("parakeet_device");
+        if (pd && cfg.parakeet.device) pd.value = cfg.parakeet.device;
+        const pp = document.getElementById("parakeet_model_path");
+        if (pp) pp.value = cfg.parakeet.model_path || "";
+    }
+    if (cfg.sensevoice) {
+        const svm = document.getElementById("sensevoice_model");
+        if (svm && cfg.sensevoice.model_name) svm.value = cfg.sensevoice.model_name;
+        const svd = document.getElementById("sensevoice_device");
+        if (svd && cfg.sensevoice.device) svd.value = cfg.sensevoice.device;
+        const svl = document.getElementById("sensevoice_language");
+        if (svl && cfg.sensevoice.language) svl.value = cfg.sensevoice.language;
+        const sve = document.getElementById("sensevoice_detect_events");
+        if (sve && cfg.sensevoice.detect_events !== undefined) sve.checked = !!cfg.sensevoice.detect_events;
+    }
 
     // Projector & OBS Display Automation tab
     if (cfg.obs) {
@@ -1552,6 +1578,12 @@ function toggleEngineFields(engine) {
     document.getElementById("moonshine-fields").style.display = (engine === "moonshine" || engine === "local_moonshine") ? "block" : "none";
     const bwFields = document.getElementById("bandwidth-fields");
     if (bwFields) bwFields.style.display = engine === "bandwidth" ? "block" : "none";
+    const sherpaFields = document.getElementById("sherpa-fields");
+    if (sherpaFields) sherpaFields.style.display = (engine === "sherpa" || engine === "sherpa_onnx" || engine === "zipformer") ? "block" : "none";
+    const parakeetFields = document.getElementById("parakeet-fields");
+    if (parakeetFields) parakeetFields.style.display = (engine === "parakeet" || engine === "nemo" || engine === "fastconformer") ? "block" : "none";
+    const sensevoiceFields = document.getElementById("sensevoice-fields");
+    if (sensevoiceFields) sensevoiceFields.style.display = (engine === "sensevoice" || engine === "funasr") ? "block" : "none";
 }
 
 document.getElementById("engine_select").addEventListener("change", (e) => {
@@ -1596,6 +1628,10 @@ function updateWhisperStats() {
         vram = "~3.8 GB";
         latency = "~280ms";
         headroom = "~2.2 GB Free";
+    } else if (model.includes("distil-large") || model.includes("turbo")) {
+        vram = "~1.5 GB";
+        latency = "~110ms";
+        headroom = "~4.5 GB Free";
     } else if (model.includes("large")) {
         vram = "~4.5 GB";
         latency = "~380ms";
@@ -2084,6 +2120,22 @@ document.getElementById("btn-save-audio").addEventListener("click", async () => 
         },
         moonshine: {
             model_name: document.getElementById("moonshine_model").value,
+        },
+        sherpa: {
+            model_name: document.getElementById("sherpa_model") ? document.getElementById("sherpa_model").value : "sherpa-onnx-streaming-zipformer-en-2023-06-26",
+            model_path: document.getElementById("sherpa_model_path") ? document.getElementById("sherpa_model_path").value.trim() : "",
+            num_threads: parseInt(document.getElementById("sherpa_threads") ? document.getElementById("sherpa_threads").value : "4", 10) || 4,
+        },
+        parakeet: {
+            model_name: document.getElementById("parakeet_model") ? document.getElementById("parakeet_model").value : "parakeet-tdt-0.6b",
+            device: document.getElementById("parakeet_device") ? document.getElementById("parakeet_device").value : "auto",
+            model_path: document.getElementById("parakeet_model_path") ? document.getElementById("parakeet_model_path").value.trim() : "",
+        },
+        sensevoice: {
+            model_name: document.getElementById("sensevoice_model") ? document.getElementById("sensevoice_model").value : "sensevoice-small",
+            device: document.getElementById("sensevoice_device") ? document.getElementById("sensevoice_device").value : "auto",
+            language: document.getElementById("sensevoice_language") ? document.getElementById("sensevoice_language").value : "auto",
+            detect_events: document.getElementById("sensevoice_detect_events") ? document.getElementById("sensevoice_detect_events").checked : true,
         }
     };
 

@@ -936,6 +936,9 @@
                                 <option value="gemini_live">✨ Gemini 3.5 Transcribe Live (Google AI Studio / Live API)</option>
                                 <option value="google_stt">Google Cloud STT Streaming (v1 / Chirp)</option>
                                 <option value="bandwidth">🌐 Bandwidth Labs Live STT (Streaming)</option>
+                                <option value="sherpa">⚡ Sherpa-ONNX Zipformer (Streaming &lt;100ms, CPU/ONNX)</option>
+                                <option value="parakeet">🦅 NVIDIA Parakeet (FastConformer SOTA Accuracy)</option>
+                                <option value="sensevoice">🎭 SenseVoice (Audio Events: Applause &amp; Laughter)</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -1132,6 +1135,7 @@
                                     <option value="medium.en">medium.en (High accuracy English - 4GB VRAM)</option>
                                     <option value="tiny.en">tiny.en (Fastest / Lowest CPU)</option>
                                     <option value="large-v3-turbo">large-v3-turbo (State-of-the-art Multilingual / GPU)</option>
+                                    <option value="distil-large-v3">distil-large-v3 (Anti-Hallucination, 6x Speed)</option>
                                 </select>
                             </div>
                             <div class="form-group">
@@ -1166,6 +1170,98 @@
 
                         <div class="whisper-stat-banner" id="whisper-stat-banner">
                             Estimated VRAM: <strong id="val-est-vram">~1.8 GB</strong> &bull; Latency: <strong id="val-est-latency">~120ms</strong> &bull; GPU Headroom for OBS/Games: <strong id="val-est-headroom">~4.2 GB Free</strong>
+                        </div>
+                    </div>
+
+                    <!-- SHERPA-ONNX ZIPFORMER SETTINGS PANEL -->
+                    <div id="sherpa-fields" class="engine-fields">
+                        <h3>⚡ Sherpa-ONNX Streaming Zipformer Settings (Sub-100ms Offline)</h3>
+                        <p class="subtext">Next-Gen Kaldi streaming transducer. Extreme low-latency (&lt;100ms) with full punctuation. Runs effortlessly on CPU or GPU via ONNX Runtime.</p>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="sherpa_model">Zipformer Model Preset</label>
+                                <select id="sherpa_model" class="form-control">
+                                    <option value="sherpa-onnx-streaming-zipformer-en-2023-06-26" selected>streaming-zipformer-en-2023-06-26 (Bilingual / Fast)</option>
+                                    <option value="sherpa-onnx-streaming-zipformer-en-20M-2023-02-17">streaming-zipformer-en-20M (Ultra Lightweight CPU)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="sherpa_threads">CPU Threads</label>
+                                <input type="number" id="sherpa_threads" value="4" min="1" max="16" class="form-control">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="sherpa_model_path">Custom Model Directory Path (Optional)</label>
+                            <input type="text" id="sherpa_model_path" placeholder="Leave blank for ~/.cache/sherpa-onnx/..." class="form-control">
+                        </div>
+                    </div>
+
+                    <!-- NVIDIA PARAKEET SETTINGS PANEL -->
+                    <div id="parakeet-fields" class="engine-fields">
+                        <h3>🦅 NVIDIA Parakeet Settings (NeMo FastConformer TDT)</h3>
+                        <p class="subtext">State-of-the-art English speech recognition accuracy. Highly resilient to accents, rapid charismatic preaching, and background noise.</p>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="parakeet_model">Parakeet Model</label>
+                                <select id="parakeet_model" class="form-control">
+                                    <option value="parakeet-tdt-0.6b" selected>parakeet-tdt-0.6b (FastConformer TDT - Recommended)</option>
+                                    <option value="parakeet-ctc-0.6b">parakeet-ctc-0.6b (FastConformer CTC)</option>
+                                    <option value="parakeet-tdt-1.1b">parakeet-tdt-1.1b (Ultra High Precision 1.1B)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="parakeet_device">Inference Device</label>
+                                <select id="parakeet_device" class="form-control">
+                                    <option value="auto" selected>Auto (Detect GPU else CPU)</option>
+                                    <option value="cuda">NVIDIA GPU (CUDA)</option>
+                                    <option value="cpu">CPU Only</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="parakeet_model_path">Custom Model Path / ONNX Directory (Optional)</label>
+                            <input type="text" id="parakeet_model_path" placeholder="Leave blank for auto-detect ~/.cache/parakeet/..." class="form-control">
+                        </div>
+                    </div>
+
+                    <!-- SENSEVOICE SETTINGS PANEL -->
+                    <div id="sensevoice-fields" class="engine-fields">
+                        <h3>🎭 SenseVoice Settings (Audio Event &amp; Emotion Detection)</h3>
+                        <p class="subtext">Ultra-fast non-autoregressive speech recognition with rich audio event detection: [Applause], [Laughter], [Music], [Cough].</p>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="sensevoice_model">SenseVoice Model</label>
+                                <select id="sensevoice_model" class="form-control">
+                                    <option value="sensevoice-small" selected>SenseVoice-Small (~230M params - Sub-100ms Non-AR)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="sensevoice_device">Inference Device</label>
+                                <select id="sensevoice_device" class="form-control">
+                                    <option value="auto" selected>Auto (Detect GPU else CPU)</option>
+                                    <option value="cuda">NVIDIA GPU (CUDA)</option>
+                                    <option value="cpu">CPU Only</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="sensevoice_language">Language</label>
+                                <select id="sensevoice_language" class="form-control">
+                                    <option value="auto" selected>Auto Detect (English, Spanish, etc.)</option>
+                                    <option value="en">English (en)</option>
+                                    <option value="es">Spanish (es)</option>
+                                    <option value="zh">Chinese (zh)</option>
+                                    <option value="ja">Japanese (ja)</option>
+                                    <option value="ko">Korean (ko)</option>
+                                </select>
+                            </div>
+                            <div class="form-group toggle-row" style="margin-top: 24px;">
+                                <label class="switch-label">
+                                    <input type="checkbox" id="sensevoice_detect_events" checked>
+                                    <span class="switch-text"><strong>Detect Audio Events</strong> (Format [Applause], [Laughter], [Music] in live captions)</span>
+                                </label>
+                            </div>
                         </div>
                     </div>
 

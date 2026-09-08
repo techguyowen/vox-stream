@@ -91,6 +91,32 @@ class MoonshineConfig:
 
 
 @dataclass
+class SherpaConfig:
+    model_name: str = "streaming-zipformer-en"  # "streaming-zipformer-en" (sub-100ms streaming)
+    model_path: str = ""  # Optional custom local ONNX folder path
+    sample_rate: int = 16000
+    num_threads: int = 4
+
+
+@dataclass
+class ParakeetConfig:
+    model_name: str = "parakeet-tdt-0.6b"  # "parakeet-tdt-0.6b", "parakeet-ctc-0.6b", "parakeet-tdt-1.1b"
+    model_path: str = ""  # Optional custom local model path
+    device: str = "auto"  # "auto", "cuda", "cpu"
+    sample_rate: int = 16000
+
+
+@dataclass
+class SenseVoiceConfig:
+    model_name: str = "sensevoice-small"
+    model_path: str = ""  # Optional custom local path
+    detect_events: bool = True  # Detect applause, laughter, music
+    language: str = "auto"  # "auto", "en", "zh", "es", "ja", "ko"
+    device: str = "auto"  # "auto", "cuda", "cpu"
+    sample_rate: int = 16000
+
+
+@dataclass
 class OBSConfig:
     enabled: bool = True
     host: str = "127.0.0.1"
@@ -224,6 +250,9 @@ class AppConfig:
     local_whisper: LocalWhisperConfig = field(default_factory=LocalWhisperConfig)
     vosk: VoskConfig = field(default_factory=VoskConfig)
     moonshine: MoonshineConfig = field(default_factory=MoonshineConfig)
+    sherpa: SherpaConfig = field(default_factory=SherpaConfig)
+    parakeet: ParakeetConfig = field(default_factory=ParakeetConfig)
+    sensevoice: SenseVoiceConfig = field(default_factory=SenseVoiceConfig)
     bandwidth: BandwidthConfig = field(default_factory=BandwidthConfig)
     obs: OBSConfig = field(default_factory=OBSConfig)
     overlay: OverlayConfig = field(default_factory=OverlayConfig)
@@ -293,6 +322,9 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         local_whisper=_safe_dataclass_load(LocalWhisperConfig, data.get("local_whisper")),
         vosk=_safe_dataclass_load(VoskConfig, data.get("vosk")),
         moonshine=_safe_dataclass_load(MoonshineConfig, data.get("moonshine")),
+        sherpa=_safe_dataclass_load(SherpaConfig, data.get("sherpa")),
+        parakeet=_safe_dataclass_load(ParakeetConfig, data.get("parakeet")),
+        sensevoice=_safe_dataclass_load(SenseVoiceConfig, data.get("sensevoice")),
         bandwidth=_safe_dataclass_load(BandwidthConfig, data.get("bandwidth")),
         obs=_safe_dataclass_load(OBSConfig, data.get("obs")),
         overlay=_safe_dataclass_load(OverlayConfig, data.get("overlay")),

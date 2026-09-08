@@ -18,6 +18,9 @@ from obs_captioner.engines import (
     VoskEngine,
     MoonshineEngine,
     BandwidthEngine,
+    SherpaEngine,
+    ParakeetEngine,
+    SenseVoiceEngine,
 )
 from obs_captioner.engines.base import TranscriptEvent
 from obs_captioner.themes import THEME_PRESETS, get_all_presets
@@ -312,6 +315,18 @@ class TestConfigAndEngines(unittest.TestCase):
         eng_moonshine = create_engine(cfg)
         self.assertIsInstance(eng_moonshine, MoonshineEngine)
         self.assertTrue(cfg.moonshine.model_name.startswith("moonshine/"))
+
+        cfg.general.engine = "sherpa"
+        eng_sherpa = create_engine(cfg)
+        self.assertIsInstance(eng_sherpa, SherpaEngine)
+
+        cfg.general.engine = "parakeet"
+        eng_parakeet = create_engine(cfg)
+        self.assertIsInstance(eng_parakeet, ParakeetEngine)
+
+        cfg.general.engine = "sensevoice"
+        eng_sensevoice = create_engine(cfg)
+        self.assertIsInstance(eng_sensevoice, SenseVoiceEngine)
 
     def test_gemini_live_packet_processing(self):
         """Verify GeminiLiveEngine cumulative input_transcription handling and generation_complete finalization."""
@@ -1986,6 +2001,66 @@ class TestVersioningAndSemanticUpdater(unittest.TestCase):
         title2 = hist._synthesize_chapter_title("You know, I think that hope transforms everything.")
         self.assertNotIn("...", title2)
         self.assertIn("Hope Transforms Everything", title2)
+
+    def test_local_whisper_turbo_and_distil_models(self):
+        """Verify Faster-Whisper model alias resolution for large-v3-turbo and distil models."""
+        self.assertEqual(LocalWhisperEngine.resolve_model_name("large-v3-turbo"), "large-v3-turbo")
+        self.assertEqual(LocalWhisperEngine.resolve_model_name("turbo"), "large-v3-turbo")
+        self.assertEqual(LocalWhisperEngine.resolve_model_name("distil-large-v3"), "distil-large-v3")
+        self.assertEqual(LocalWhisperEngine.resolve_model_name("distil-medium.en"), "distil-medium.en")
+        self.assertEqual(LocalWhisperEngine.resolve_model_name("distil-small.en"), "distil-small.en")
+        self.assertEqual(LocalWhisperEngine.resolve_model_name("base.en"), "base.en")
+        self.assertEqual(LocalWhisperEngine.resolve_model_name("small.en"), "small.en")
+
+    def test_sensevoice_audio_events(self):
+        """Verify SenseVoice audio event detection tag parsing and stripping."""
+        cfg = AppConfig()
+        cfg.sensevoice.detect_events = True
+        engine = SenseVoiceEngine(cfg)
+
+        raw = "<|en|><|APPLAUSE|> Hallelujah! The Lord is good! <|LAUGHTER|><|HAPPY|>"
+        cleaned = engine._clean_audio_events(raw)
+        self.assertIn("[Applause]", cleaned)
+        self.assertIn("[Laughter]", cleaned)
+        self.assertIn("Hallelujah! The Lord is good!", cleaned)
+        self.assertNotIn("<|", cleaned)
+        self.assertNotIn("|>", cleaned)
+
+        # Test music tags
+        raw_music = "<|MUSIC|> Praise to the King of Kings <|BGM|>"
+        cleaned_music = engine._clean_audio_events(raw_music)
+        self.assertIn("[Music]", cleaned_music)
+        self.assertNotIn("<|", cleaned_music)
+
+        # Test with detect_events disabled
+        cfg.sensevoice.detect_events = False
+        engine_no_events = SenseVoiceEngine(cfg)
+        cleaned_no_events = engine_no_events._clean_audio_events("<|APPLAUSE|> Hallelujah! <|LAUGHTER|>")
+        self.assertNotIn("[Applause]", cleaned_no_events)
+        self.assertNotIn("[Laughter]", cleaned_no_events)
+        self.assertEqual(cleaned_no_events, "Hallelujah!")
+
+    def test_sherpa_and_parakeet_initialization(self):
+        """Verify Sherpa-ONNX and NVIDIA Parakeet engines initialize and report status cleanly."""
+        cfg = AppConfig()
+        loop = asyncio.new_event_loop()
+
+        # Sherpa-ONNX
+        sherpa = SherpaEngine(cfg)
+        messages_sherpa = []
+        res_sherpa = loop.run_until_complete(sherpa.initialize(status_callback=messages_sherpa.append))
+        self.assertIsInstance(res_sherpa, bool)
+        sherpa.stop()
+
+        # NVIDIA Parakeet
+        parakeet = ParakeetEngine(cfg)
+        messages_parakeet = []
+        res_parakeet = loop.run_until_complete(parakeet.initialize(status_callback=messages_parakeet.append))
+        self.assertTrue(res_parakeet)
+        self.assertTrue(len(messages_parakeet) > 0)
+        parakeet.stop()
+
+        loop.close()
 
 
 if __name__ == "__main__":
