@@ -16,7 +16,7 @@ echo.
 :: ---------------------------------------------------------------------------
 :: STEP 1: Detect or Install Git for Windows
 :: ---------------------------------------------------------------------------
-echo [1/8] Verifying Git for Windows installation...
+echo [1/8] Checking Git for Windows (fast 1-click updates, no login required)...
 set "HAS_GIT=0"
 where git >nul 2>&1
 if %errorlevel% equ 0 set "HAS_GIT=1"
@@ -29,11 +29,20 @@ if "!HAS_GIT!"=="0" (
 )
 
 if "!HAS_GIT!"=="0" (
-    echo [INFO] Git for Windows was not found on your system.
-    echo [INFO] Installing Git for Windows automatically...
+    echo [INFO] Git for Windows not found. Installing automatically for fast updates...
     where winget >nul 2>&1
     if !errorlevel! equ 0 (
+        echo [INFO] Installing Git via Windows Package Manager...
         winget install --id Git.Git -e --source winget --silent --accept-package-agreements --accept-source-agreements
+    )
+    if not exist "%ProgramFiles%\Git\cmd\git.exe" (
+        echo [INFO] Downloading official Git for Windows installer...
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri 'https://github.com/git-for-windows/git/releases/download/v2.46.0.windows.1/Git-2.46.0-64-bit.exe' -OutFile '%TEMP%\git_installer.exe'"
+        if exist "%TEMP%\git_installer.exe" (
+            echo [INFO] Installing Git for Windows (silent)...
+            start /wait "" "%TEMP%\git_installer.exe" /VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS
+            del "%TEMP%\git_installer.exe" 2>nul
+        )
     )
     if exist "%ProgramFiles%\Git\cmd\git.exe" (
         set "PATH=%ProgramFiles%\Git\cmd;!PATH!"
@@ -42,9 +51,18 @@ if "!HAS_GIT!"=="0" (
 )
 
 if "!HAS_GIT!"=="1" (
-    echo [SUCCESS] Git for Windows is active.
+    echo [SUCCESS] Git for Windows is active (No GitHub login required).
+    :: If user downloaded as a ZIP, link to the public GitHub repository automatically
+    if not exist ".git" (
+        echo [INFO] Linking installation to official GitHub repository for 1-click updates...
+        git init -q
+        git remote add origin https://github.com/techguyowen/vox-stream.git >nul 2>&1
+        git fetch origin main --depth=1 -q >nul 2>&1
+        git reset --soft origin/main >nul 2>&1
+        echo [SUCCESS] Repository linked! Future updates will pull in 2 seconds.
+    )
 ) else (
-    echo [NOTE] Git not found; auto-updater will use direct GitHub archive fallback.
+    echo [NOTE] Git installation skipped or unavailable. Auto-updater will use direct ZIP download.
 )
 echo.
 
