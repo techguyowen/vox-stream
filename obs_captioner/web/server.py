@@ -549,12 +549,47 @@ class WebOverlayServer:
                 min_interval = max(10.0, min(3600.0, raw_interval))
         except (ValueError, TypeError):
             min_interval = 45.0
-        chapters = self.history.generate_chapters(min_interval_seconds=min_interval)
-        formatted = self.history.export_youtube_chapters()
+
+        try:
+            raw_offset = float(request.query.get("offset", 0.0))
+            if re.search(r"nan|inf", str(raw_offset).lower()):
+                offset = 0.0
+            else:
+                offset = max(-86400.0, min(86400.0, raw_offset))
+        except (ValueError, TypeError):
+            offset = 0.0
+
+        anchor = sanitize_text(request.query.get("anchor", "first_speech")).strip().lower()
+        if anchor not in ("first_speech", "session"):
+            anchor = "first_speech"
+
+        format_style = sanitize_text(request.query.get("format", "hhmmss")).strip().lower()
+        if format_style not in ("hhmmss", "mmss", "auto"):
+            format_style = "hhmmss"
+
+        chapters = self.history.generate_chapters(
+            min_interval_seconds=min_interval,
+            time_offset_seconds=offset,
+            anchor=anchor,
+            format_style=format_style,
+        )
+        formatted = self.history.export_youtube_chapters(
+            min_interval_seconds=min_interval,
+            time_offset_seconds=offset,
+            anchor=anchor,
+            format_style=format_style,
+        )
+        youtube_compliant = len(chapters) >= 3 and (chapters[0]["seconds"] == 0.0 if chapters else False)
+
         return web.json_response({
             "chapters": chapters,
             "formatted": formatted,
-            "count": len(chapters)
+            "count": len(chapters),
+            "youtube_compliant": youtube_compliant,
+            "min_interval": min_interval,
+            "offset": offset,
+            "anchor": anchor,
+            "format": format_style,
         })
 
     async def _handle_translate_text(self, request: web.Request) -> web.Response:

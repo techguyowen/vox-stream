@@ -1400,16 +1400,61 @@
                 <div class="panel">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
                         <div>
-                            <h2>📑 Automated YouTube Chapter Markers</h2>
-                            <p class="subtext" style="margin-bottom: 0;">Automatically detects scripture readings, sermon points, prayer invocations, and time blocks into YouTube-ready video description chapters.</p>
+                            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                                <h2 style="margin-bottom: 0;">📑 Automated YouTube Chapter Markers</h2>
+                                <span id="youtube-chapters-badge" class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.35); font-size: 11px; padding: 3px 8px; border-radius: 6px; font-weight: 600;">✅ YouTube Ready</span>
+                            </div>
+                            <p class="subtext" style="margin-top: 4px; margin-bottom: 0;">Automatically detects scripture readings, sermon points, prayers, and liturgy into YouTube-ready video description chapters.</p>
                         </div>
-                        <div style="display: flex; gap: 8px;">
-                            <button id="btn-copy-chapters" class="btn btn-secondary btn-sm">📋 Copy Chapters</button>
-                            <button id="btn-refresh-chapters" class="btn btn-secondary btn-sm">🔄 Refresh</button>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button id="btn-copy-chapters" class="btn btn-secondary btn-sm" title="Copy chapters to clipboard">📋 Copy Chapters</button>
+                            <button id="btn-download-chapters" class="btn btn-secondary btn-sm" title="Download chapters as a .txt file">💾 Download .txt</button>
+                            <button id="btn-refresh-chapters" class="btn btn-secondary btn-sm" title="Recalculate chapters from live history">🔄 Refresh</button>
                         </div>
                     </div>
 
-                    <textarea id="youtube-chapters-text" class="form-control" rows="6" readonly style="font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.6; background: rgba(0, 0, 0, 0.4); color: #A5B4FC; resize: vertical;" placeholder="00:00:00 - Introduction & Welcome&#10;00:05:22 - Scripture Reading (John 3:16)&#10;00:18:45 - Sermon Discussion&#10;00:45:10 - Benediction & Closing"></textarea>
+                    <!-- Filter / Offset / Format Controls -->
+                    <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 10px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); padding: 10px 12px; border-radius: 8px;">
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <label for="select-chapter-anchor" style="font-size: 11px; font-weight: 500; color: var(--text-muted);">Sync Anchor:</label>
+                            <select id="select-chapter-anchor" class="form-control" style="font-size: 12px; padding: 4px 8px; height: 32px; min-width: 170px;">
+                                <option value="first_speech" selected>First Spoken Word (Best)</option>
+                                <option value="session">App Launch Time</option>
+                            </select>
+                        </div>
+
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <label for="select-chapter-interval" style="font-size: 11px; font-weight: 500; color: var(--text-muted);">Min Chapter Spacing:</label>
+                            <select id="select-chapter-interval" class="form-control" style="font-size: 12px; padding: 4px 8px; height: 32px; min-width: 130px;">
+                                <option value="30">30 seconds</option>
+                                <option value="45" selected>45 seconds (Default)</option>
+                                <option value="60">1 minute</option>
+                                <option value="120">2 minutes</option>
+                                <option value="300">5 minutes</option>
+                            </select>
+                        </div>
+
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <label for="input-chapter-offset" style="font-size: 11px; font-weight: 500; color: var(--text-muted);" title="Preshow countdown offset to shift all chapters">Preshow Offset (sec):</label>
+                            <input type="number" id="input-chapter-offset" class="form-control" value="0" min="-86400" max="86400" step="10" style="font-size: 12px; padding: 4px 8px; height: 32px; width: 110px;" placeholder="0 (e.g. 300)">
+                        </div>
+
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <label for="select-chapter-format" style="font-size: 11px; font-weight: 500; color: var(--text-muted);">Timecode Format:</label>
+                            <select id="select-chapter-format" class="form-control" style="font-size: 12px; padding: 4px 8px; height: 32px; min-width: 130px;">
+                                <option value="hhmmss" selected>HH:MM:SS (00:00:00)</option>
+                                <option value="mmss">MM:SS (00:00)</option>
+                                <option value="auto">Auto (Adaptive)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <textarea id="youtube-chapters-text" class="form-control" rows="8" style="font-family: 'JetBrains Mono', monospace; font-size: 13px; line-height: 1.6; background: rgba(0, 0, 0, 0.4); color: #A5B4FC; resize: vertical;" placeholder="00:00:00 - Introduction & Welcome&#10;00:05:22 - Scripture Reading (John 3:16)&#10;00:18:45 - Sermon Discussion&#10;00:45:10 - Benediction & Closing"></textarea>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 11px; color: var(--text-muted); flex-wrap: wrap; gap: 6px;">
+                        <span>💡 <em>Tip: You can edit, add, or refine any chapter titles directly in the box above before copying into your YouTube description.</em></span>
+                        <span id="youtube-chapters-char-count">0 chapters</span>
+                    </div>
                 </div>
             </div>
 

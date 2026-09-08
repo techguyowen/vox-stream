@@ -2844,15 +2844,101 @@ document.getElementById("btn-clear-transcript").addEventListener("click", async 
 async function loadYouTubeChapters() {
     const chaptersTextEl = document.getElementById("youtube-chapters-text");
     if (!chaptersTextEl) return;
+
+    const anchorEl = document.getElementById("select-chapter-anchor");
+    const intervalEl = document.getElementById("select-chapter-interval");
+    const offsetEl = document.getElementById("input-chapter-offset");
+    const formatEl = document.getElementById("select-chapter-format");
+    const badgeEl = document.getElementById("youtube-chapters-badge");
+    const countEl = document.getElementById("youtube-chapters-char-count");
+
+    const anchor = anchorEl ? anchorEl.value : "first_speech";
+    const interval = intervalEl ? intervalEl.value : "45";
+    const offset = offsetEl ? (parseFloat(offsetEl.value) || 0) : 0;
+    const format = formatEl ? formatEl.value : "hhmmss";
+
     try {
-        const res = await fetch("/api/transcript/chapters");
+        const url = `/api/transcript/chapters?anchor=${encodeURIComponent(anchor)}&min_interval=${encodeURIComponent(interval)}&offset=${encodeURIComponent(offset)}&format=${encodeURIComponent(format)}`;
+        const res = await fetch(url);
         if (res.ok) {
             const data = await res.json();
             chaptersTextEl.value = data.formatted || "00:00:00 - Introduction & Welcome";
+            
+            // Update YouTube Compliance Badge
+            if (badgeEl) {
+                if (data.youtube_compliant) {
+                    badgeEl.textContent = `✅ YouTube Ready (${data.count} Chapters)`;
+                    badgeEl.style.background = "rgba(16, 185, 129, 0.15)";
+                    badgeEl.style.color = "#10B981";
+                    badgeEl.style.border = "1px solid rgba(16, 185, 129, 0.35)";
+                } else {
+                    badgeEl.textContent = `⚠️ YouTube requires ≥ 3 chapters (${data.count} found)`;
+                    badgeEl.style.background = "rgba(245, 158, 11, 0.15)";
+                    badgeEl.style.color = "#F59E0B";
+                    badgeEl.style.border = "1px solid rgba(245, 158, 11, 0.35)";
+                }
+            }
+
+            // Update line count
+            if (countEl) {
+                const lines = (chaptersTextEl.value || "").split("\n").filter(l => l.trim().length > 0);
+                countEl.textContent = `${lines.length} chapter${lines.length === 1 ? "" : "s"}`;
+            }
         }
     } catch (e) {
         console.debug("Could not query chapters:", e);
     }
+}
+
+// Re-generate chapters on control adjustments
+["select-chapter-anchor", "select-chapter-interval", "select-chapter-format"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+        el.addEventListener("change", async () => {
+            await loadYouTubeChapters();
+            showToast("🔄 Chapter markers recalculated!", "info", 1500);
+        });
+    }
+});
+
+const offsetInput = document.getElementById("input-chapter-offset");
+if (offsetInput) {
+    let offsetTimeout = null;
+    offsetInput.addEventListener("input", () => {
+        clearTimeout(offsetTimeout);
+        offsetTimeout = setTimeout(async () => {
+            await loadYouTubeChapters();
+            showToast("⏱️ Preshow offset applied!", "info", 1500);
+        }, 500);
+    });
+}
+
+// Live line counter when user edits chapter text directly
+const chaptersTextarea = document.getElementById("youtube-chapters-text");
+if (chaptersTextarea) {
+    chaptersTextarea.addEventListener("input", () => {
+        const countEl = document.getElementById("youtube-chapters-char-count");
+        const badgeEl = document.getElementById("youtube-chapters-badge");
+        if (countEl) {
+            const lines = (chaptersTextarea.value || "").split("\n").filter(l => l.trim().length > 0);
+            countEl.textContent = `${lines.length} chapter${lines.length === 1 ? "" : "s"} (edited)`;
+            
+            if (badgeEl) {
+                const validTimecodes = lines.filter(l => /^\s*\d+:\d+/.test(l));
+                if (validTimecodes.length >= 3 && /^\s*0{1,2}:00/.test(lines[0] || "")) {
+                    badgeEl.textContent = `✅ YouTube Ready (${validTimecodes.length} Chapters)`;
+                    badgeEl.style.background = "rgba(16, 185, 129, 0.15)";
+                    badgeEl.style.color = "#10B981";
+                    badgeEl.style.border = "1px solid rgba(16, 185, 129, 0.35)";
+                } else {
+                    badgeEl.textContent = `⚠️ YouTube requires ≥ 3 chapters starting at 00:00 (${validTimecodes.length} valid)`;
+                    badgeEl.style.background = "rgba(245, 158, 11, 0.15)";
+                    badgeEl.style.color = "#F59E0B";
+                    badgeEl.style.border = "1px solid rgba(245, 158, 11, 0.35)";
+                }
+            }
+        }
+    });
 }
 
 const btnRefreshChapters = document.getElementById("btn-refresh-chapters");
@@ -2877,6 +2963,31 @@ if (btnCopyChapters) {
                 showToast("📋 YouTube chapters copied to clipboard!", "success", 3000);
             }
         }
+    });
+}
+
+const btnDownloadChapters = document.getElementById("btn-download-chapters");
+if (btnDownloadChapters) {
+    btnDownloadChapters.addEventListener("click", () => {
+        const chaptersTextEl = document.getElementById("youtube-chapters-text");
+        if (!chaptersTextEl || !chaptersTextEl.value.trim()) {
+            showToast("No chapters to download yet.", "warning", 2000);
+            return;
+        }
+        const text = chaptersTextEl.value.trim();
+        const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+        const now = new Date();
+        const dateStr = now.toISOString().slice(0, 10);
+        const fileName = `youtube_chapters_${dateStr}.txt`;
+
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+        showToast(`💾 Downloaded ${fileName}!`, "success", 3000);
     });
 }
 

@@ -829,6 +829,21 @@ class TestServerEndpoints(AioHTTPTestCase):
         data = await resp.json()
         self.assertIn('chapters', data)
         self.assertIn('formatted', data)
+        self.assertIn('youtube_compliant', data)
+        self.assertIn('count', data)
+
+    async def test_chapters_endpoint_query_params(self):
+        resp = await self.client.request(
+            'GET',
+            '/api/transcript/chapters?anchor=first_speech&min_interval=60&offset=300&format=mmss'
+        )
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertEqual(data['anchor'], 'first_speech')
+        self.assertEqual(data['min_interval'], 60.0)
+        self.assertEqual(data['offset'], 300.0)
+        self.assertEqual(data['format'], 'mmss')
+        self.assertIn('youtube_compliant', data)
 
     async def test_vocabulary_test_and_clear_api(self):
         # Test vocabulary sandbox
@@ -1872,6 +1887,105 @@ class TestVersioningAndSemanticUpdater(unittest.TestCase):
             self.assertIsInstance(res, dict)
             self.assertFalse(res["update_available"])
             self.assertEqual(res["current_version"], "1.1.0")
+
+    def test_generate_youtube_chapters_expanded_liturgy(self):
+        from obs_captioner.history import TranscriptHistory
+        hist = TranscriptHistory()
+        t0 = hist.session_start_time
+
+        # Simulate full church broadcast service
+        hist.add_entry("Welcome to church this morning, so glad you are here.", start_time=t0 + 2.0, end_time=t0 + 6.0)
+        hist.add_entry("Let us stand and worship the Lord together in praise and worship.", start_time=t0 + 60.0, end_time=t0 + 65.0)
+        hist.add_entry("Please turn in your Bibles to Psalm 23.", start_time=t0 + 130.0, end_time=t0 + 135.0)
+        hist.add_entry("We will now worship through giving with our tithes and offerings.", start_time=t0 + 200.0, end_time=t0 + 205.0)
+        hist.add_entry("Today's message is from Romans 8 verse 28 through 30.", start_time=t0 + 270.0, end_time=t0 + 275.0)
+        hist.add_entry("Point one is covenant faithfulness.", start_time=t0 + 340.0, end_time=t0 + 345.0)
+        hist.add_entry("Point two is living by faith.", start_time=t0 + 410.0, end_time=t0 + 415.0)
+        hist.add_entry("The big idea is that God's grace is sufficient.", start_time=t0 + 480.0, end_time=t0 + 485.0)
+        hist.add_entry("We now come to the Lord's table for Holy Communion.", start_time=t0 + 550.0, end_time=t0 + 555.0)
+        hist.add_entry("Every head bowed, come to the altar for prayer ministry.", start_time=t0 + 620.0, end_time=t0 + 625.0)
+        hist.add_entry("Go in peace, have a blessed week, and may the Lord bless you.", start_time=t0 + 700.0, end_time=t0 + 705.0)
+
+        chapters = hist.generate_chapters(min_interval_seconds=30.0)
+        self.assertGreaterEqual(len(chapters), 8)
+
+        titles = [c["title"] for c in chapters]
+        self.assertTrue(any("Praise & Worship" in t for t in titles))
+        self.assertTrue(any("Psalm 23" in t for t in titles))
+        self.assertTrue(any("Tithes & Offering" in t for t in titles))
+        self.assertTrue(any("Point 1" in t for t in titles))
+        self.assertTrue(any("Point 2" in t for t in titles))
+        self.assertTrue(any("Key Takeaway" in t for t in titles))
+        self.assertTrue(any("Holy Communion" in t for t in titles))
+        self.assertTrue(any("Altar Call" in t for t in titles))
+        self.assertTrue(any("Benediction & Closing" in t for t in titles))
+
+    def test_youtube_chapters_anchoring_and_offset(self):
+        from obs_captioner.history import TranscriptHistory
+        hist = TranscriptHistory()
+        t0 = hist.session_start_time
+
+        # Simulate app opened 20 minutes before speaking starts
+        speech_start = t0 + 1200.0
+        hist.add_entry("Good morning church, welcome to our service.", start_time=speech_start, end_time=speech_start + 4.0)
+        hist.add_entry("Let us pray together.", start_time=speech_start + 60.0, end_time=speech_start + 65.0)
+        hist.add_entry("Turn with me to Matthew 5:3-12.", start_time=speech_start + 150.0, end_time=speech_start + 155.0)
+
+        # 1. Default anchor="first_speech": starts at 00:00:00 relative to speech, NOT 00:20:00!
+        chapters = hist.generate_chapters(anchor="first_speech", min_interval_seconds=30.0)
+        self.assertEqual(chapters[0]["timecode"], "00:00:00")
+        self.assertEqual(chapters[1]["timecode"], "00:01:00")
+        self.assertEqual(chapters[2]["timecode"], "00:02:30")
+
+        # 2. Preshow offset +300s (5-minute countdown): Preshow at 00:00:00, speech intro at 00:05:00
+        preshow_chapters = hist.generate_chapters(
+            anchor="first_speech",
+            time_offset_seconds=300.0,
+            min_interval_seconds=30.0
+        )
+        self.assertEqual(preshow_chapters[0]["timecode"], "00:00:00")
+        self.assertEqual(preshow_chapters[0]["title"], "Preshow / Welcome")
+        self.assertEqual(preshow_chapters[1]["timecode"], "00:05:00")
+        self.assertEqual(preshow_chapters[1]["title"], "Introduction & Welcome")
+        self.assertEqual(preshow_chapters[2]["timecode"], "00:06:00")
+
+        # 3. Format MM:SS
+        mmss_chapters = hist.generate_chapters(
+            anchor="first_speech",
+            min_interval_seconds=30.0,
+            format_style="mmss"
+        )
+        self.assertEqual(mmss_chapters[0]["timecode"], "00:00")
+        self.assertEqual(mmss_chapters[1]["timecode"], "01:00")
+        self.assertEqual(mmss_chapters[2]["timecode"], "02:30")
+
+    def test_youtube_chapters_minimum_three_guarantee(self):
+        from obs_captioner.history import TranscriptHistory
+        hist = TranscriptHistory()
+        t0 = hist.session_start_time
+
+        # Short session with only 1 spoken entry across 120s
+        hist.add_entry("General discussion about community outreach.", start_time=t0, end_time=t0 + 120.0)
+
+        chapters = hist.generate_chapters(min_interval_seconds=45.0)
+        # YouTube requires at least 3 chapters to activate video player chapters
+        self.assertGreaterEqual(len(chapters), 3)
+        self.assertEqual(chapters[0]["timecode"], "00:00:00")
+        self.assertTrue(chapters[0]["seconds"] < chapters[1]["seconds"] < chapters[2]["seconds"])
+
+    def test_youtube_chapters_title_synthesizer(self):
+        from obs_captioner.history import TranscriptHistory
+        hist = TranscriptHistory()
+
+        # Strip filler words and synthesize readable title
+        title1 = hist._synthesize_chapter_title("And so because of that we see walking in righteousness and peace.")
+        self.assertNotIn("...", title1)
+        self.assertFalse(title1.lower().startswith("message: and"))
+        self.assertIn("Walking In Righteousness", title1)
+
+        title2 = hist._synthesize_chapter_title("You know, I think that hope transforms everything.")
+        self.assertNotIn("...", title2)
+        self.assertIn("Hope Transforms Everything", title2)
 
 
 if __name__ == "__main__":
