@@ -2179,6 +2179,61 @@ class TestVersioningAndSemanticUpdater(unittest.TestCase):
             self.assertEqual(eng.vad.vad_threshold, 0.72, f"Failed on {eng.name}")
             self.assertTrue(eng.vad.suppress_music, f"Failed on {eng.name}")
 
+    def test_formatter_all_caps_normalization(self):
+        """Verify that all-caps raw transcripts (e.g. Sherpa Zipformer CTC) normalize to broadcast casing."""
+        from obs_captioner.formatter import TextFormatter
+        formatter = TextFormatter(
+            church_mode=True,
+            auto_punctuation=True,
+            auto_capitalization=True,
+        )
+
+        # Standard all-caps speech from Zipformer
+        out = formatter.format_text("GOOD MORNING EVERYONE AND WELCOME TO CHURCH", is_final=True)
+        self.assertEqual(out, "Good morning everyone and welcome to church.")
+
+        # Proper noun / church terms in all-caps
+        out2 = formatter.format_text("JESUS CHRIST IS LORD", is_final=True)
+        self.assertEqual(out2, "Jesus Christ is Lord.")
+
+        # Acronyms and custom replacements
+        out3 = formatter.format_text("OBS AND YOUTUBE ARE STREAMING", is_final=True)
+        self.assertEqual(out3, "OBS and YouTube are streaming.")
+
+        # Short isolated acronyms (< 5 chars) should NOT be force-lowercased
+        out4 = formatter.format_text("OBS", is_final=True)
+        self.assertEqual(out4, "OBS.")
+
+    def test_engine_stop_and_lifecycle_parity(self):
+        """Verify all new engines clean up their model references and release RAM on stop()."""
+        import asyncio
+        from obs_captioner.engines.parakeet_engine import ParakeetEngine
+        from obs_captioner.engines.sensevoice_engine import SenseVoiceEngine
+        from obs_captioner.engines.sherpa_engine import SherpaEngine
+
+        loop = asyncio.new_event_loop()
+        try:
+            cfg = AppConfig()
+            p_eng = ParakeetEngine(cfg)
+            p_eng.model = object()
+            loop.run_until_complete(p_eng.stop())
+            self.assertIsNone(p_eng.model)
+            self.assertFalse(p_eng.is_running)
+
+            sv_eng = SenseVoiceEngine(cfg)
+            sv_eng.model = object()
+            loop.run_until_complete(sv_eng.stop())
+            self.assertIsNone(sv_eng.model)
+            self.assertFalse(sv_eng.is_running)
+
+            sh_eng = SherpaEngine(cfg)
+            sh_eng.recognizer = object()
+            loop.run_until_complete(sh_eng.stop())
+            self.assertIsNone(sh_eng.recognizer)
+            self.assertFalse(sh_eng.is_running)
+        finally:
+            loop.close()
+
 
 if __name__ == "__main__":
     unittest.main()

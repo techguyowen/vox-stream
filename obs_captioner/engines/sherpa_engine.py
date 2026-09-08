@@ -149,15 +149,23 @@ class SherpaEngine(BaseSTTEngine):
 
                 tokens = str(model_dir / "tokens.txt")
 
+                sentence_break_ms = getattr(self.config.audio, "sentence_break_ms", 650) or 650
+                max_duration = getattr(self.config.audio, "max_sentence_duration_seconds", 7.0) or 7.0
+                provider = "cuda" if getattr(self.config.sherpa, "device", "cpu") == "cuda" else "cpu"
+
                 return sherpa_onnx.OnlineRecognizer.from_transducer(
                     tokens=tokens,
                     encoder=encoder,
                     decoder=decoder,
                     joiner=joiner,
-                    num_threads=getattr(self.config.sherpa, "num_threads", 4),
+                    num_threads=int(getattr(self.config.sherpa, "num_threads", 4) or 4),
                     sample_rate=self.config.audio.sample_rate,
                     feature_dim=80,
                     decoding_method="greedy_search",
+                    enable_endpoint_detection=True,
+                    rule2_min_trailing_silence=float(sentence_break_ms) / 1000.0,
+                    rule3_min_utterance_length=float(max_duration),
+                    provider=provider,
                 )
 
             self.recognizer = await loop.run_in_executor(None, _load)
@@ -212,7 +220,10 @@ class SherpaEngine(BaseSTTEngine):
                 res = self.recognizer.get_result(stream)
                 text = (res.text if hasattr(res, "text") else str(res)).strip()
 
-                if is_endpoint:
+                max_words = getattr(self.config.audio, "max_sentence_words", 24) or 24
+                word_count = len(text.split()) if text else 0
+
+                if is_endpoint or (word_count >= max_words):
                     if text:
                         await on_transcript(
                             TranscriptEvent(
@@ -254,6 +265,12 @@ class SherpaEngine(BaseSTTEngine):
             logger.info("Sherpa-ONNX audio streaming stopped.")
 
     async def stop(self) -> None:
-        """Stop streaming."""
+        """Stop streaming and release recognizer resources."""
         self._running = False
         self.is_running = False
+        self.recognizer = None
+        try:
+            from ..hardware import release_stt_memory
+            release_stt_memory()
+        except Exception:
+            pass

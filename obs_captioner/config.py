@@ -96,6 +96,7 @@ class SherpaConfig:
     model_path: str = ""  # Optional custom local ONNX folder path
     sample_rate: int = 16000
     num_threads: int = 4
+    device: str = "auto"  # "auto", "cuda", "cpu"
 
 
 @dataclass
@@ -103,6 +104,7 @@ class ParakeetConfig:
     model_name: str = "parakeet-tdt-0.6b"  # "parakeet-tdt-0.6b", "parakeet-ctc-0.6b", "parakeet-tdt-1.1b"
     model_path: str = ""  # Optional custom local model path
     device: str = "auto"  # "auto", "cuda", "cpu"
+    num_threads: int = 4
     sample_rate: int = 16000
 
 
@@ -113,6 +115,7 @@ class SenseVoiceConfig:
     detect_events: bool = True  # Detect applause, laughter, music
     language: str = "auto"  # "auto", "en", "zh", "es", "ja", "ko"
     device: str = "auto"  # "auto", "cuda", "cpu"
+    num_threads: int = 4
     sample_rate: int = 16000
 
 

@@ -182,11 +182,14 @@ async def main_async(args):
                     active_bandwidth_key = new_cfg.bandwidth.api_key
                     active_sherpa_model = new_cfg.sherpa.model_name
                     active_sherpa_path = new_cfg.sherpa.model_path
+                    active_sherpa_threads = new_cfg.sherpa.num_threads
+                    active_sherpa_device = new_cfg.sherpa.device
                     active_parakeet_model = new_cfg.parakeet.model_name
                     active_parakeet_device = new_cfg.parakeet.device
                     active_sensevoice_model = new_cfg.sensevoice.model_name
                     active_sensevoice_device = new_cfg.sensevoice.device
                     active_sensevoice_events = new_cfg.sensevoice.detect_events
+                    active_sensevoice_language = new_cfg.sensevoice.language
                     logger.info(f"✅ STT engine switched to: {engine.name} ({get_model_detail(new_cfg)})")
                     if web_server:
                         await web_server.broadcast_control({
@@ -236,15 +239,20 @@ async def main_async(args):
     active_bandwidth_key = config.bandwidth.api_key
     active_sherpa_model = config.sherpa.model_name
     active_sherpa_path = config.sherpa.model_path
+    active_sherpa_threads = config.sherpa.num_threads
+    active_sherpa_device = config.sherpa.device
     active_parakeet_model = config.parakeet.model_name
     active_parakeet_device = config.parakeet.device
     active_sensevoice_model = config.sensevoice.model_name
     active_sensevoice_device = config.sensevoice.device
     active_sensevoice_events = config.sensevoice.detect_events
+    active_sensevoice_language = config.sensevoice.language
 
     def on_config_updated(new_cfg: AppConfig):
         nonlocal config, active_engine_type, active_vosk_model, active_whisper_model, active_moonshine_model, active_gemini_key, active_gemini_model, active_bandwidth_key
-        nonlocal active_sherpa_model, active_sherpa_path, active_parakeet_model, active_parakeet_device, active_sensevoice_model, active_sensevoice_device, active_sensevoice_events
+        nonlocal active_sherpa_model, active_sherpa_path, active_sherpa_threads, active_sherpa_device
+        nonlocal active_parakeet_model, active_parakeet_device
+        nonlocal active_sensevoice_model, active_sensevoice_device, active_sensevoice_events, active_sensevoice_language
 
         config = new_cfg
         if sink:
@@ -265,9 +273,9 @@ async def main_async(args):
             or (new_cfg.general.engine == "moonshine" and new_cfg.moonshine.model_name != active_moonshine_model)
             or (new_cfg.general.engine == "gemini_live" and (new_cfg.gemini_live.api_key != active_gemini_key or new_cfg.gemini_live.model != active_gemini_model))
             or (new_cfg.general.engine == "bandwidth" and new_cfg.bandwidth.api_key != active_bandwidth_key)
-            or (new_cfg.general.engine in ("sherpa", "sherpa_onnx", "zipformer") and (new_cfg.sherpa.model_name != active_sherpa_model or new_cfg.sherpa.model_path != active_sherpa_path))
+            or (new_cfg.general.engine in ("sherpa", "sherpa_onnx", "zipformer") and (new_cfg.sherpa.model_name != active_sherpa_model or new_cfg.sherpa.model_path != active_sherpa_path or new_cfg.sherpa.num_threads != active_sherpa_threads or new_cfg.sherpa.device != active_sherpa_device))
             or (new_cfg.general.engine in ("parakeet", "nemo", "nemo_parakeet", "fastconformer") and (new_cfg.parakeet.model_name != active_parakeet_model or new_cfg.parakeet.device != active_parakeet_device))
-            or (new_cfg.general.engine in ("sensevoice", "funasr") and (new_cfg.sensevoice.model_name != active_sensevoice_model or new_cfg.sensevoice.device != active_sensevoice_device or new_cfg.sensevoice.detect_events != active_sensevoice_events))
+            or (new_cfg.general.engine in ("sensevoice", "funasr") and (new_cfg.sensevoice.model_name != active_sensevoice_model or new_cfg.sensevoice.device != active_sensevoice_device or new_cfg.sensevoice.detect_events != active_sensevoice_events or new_cfg.sensevoice.language != active_sensevoice_language))
             or (engine_switch_error is not None)
         )
 

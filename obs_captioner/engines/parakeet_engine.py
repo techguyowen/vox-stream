@@ -268,6 +268,12 @@ class ParakeetEngine(BaseSTTEngine):
             logger.debug(f"Parakeet utterance transcription error: {e}")
 
     async def stop(self) -> None:
-        """Stop streaming."""
+        """Stop streaming and release model resources."""
         self._running = False
         self.is_running = False
+        self.model = None
+        try:
+            from ..hardware import release_stt_memory
+            release_stt_memory()
+        except Exception:
+            pass

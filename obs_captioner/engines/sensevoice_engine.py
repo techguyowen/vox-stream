@@ -43,7 +43,8 @@ class SenseVoiceEngine(BaseSTTEngine):
         self.config = config
         self.model = None
         self._running = False
-        self._device = "cpu"
+        self.device = getattr(config.sensevoice, "device", "auto") or "auto"
+        self._device = self.device
         self.vad = VoiceActivityDetector(
             sample_rate=config.audio.sample_rate,
             noise_gate_db=config.audio.noise_gate_db,
@@ -116,7 +117,13 @@ class SenseVoiceEngine(BaseSTTEngine):
     async def initialize(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
         """Initialize SenseVoice model via FunASR / ONNX Runtime."""
         from ..hardware import get_torch_device
-        self._device, device_label = get_torch_device()
+        torch_dev, device_label = get_torch_device()
+        if self.device == "auto":
+            self.device = torch_dev
+            self._device = torch_dev
+        else:
+            self._device = self.device
+            device_label = "CUDA GPU" if self.device == "cuda" else ("MPS (Apple Silicon)" if self.device == "mps" else "CPU")
 
         model_name = self.config.sensevoice.model_name or self.DEFAULT_MODEL_NAME
         if status_callback:
@@ -151,15 +158,20 @@ class SenseVoiceEngine(BaseSTTEngine):
                 tokens = model_dir / "tokens.txt"
 
                 if onnx_model.exists() and tokens.exists():
+                    sv_lang = getattr(self.config.sensevoice, "language", "auto") or "auto"
+                    sv_threads = int(getattr(self.config.sensevoice, "num_threads", 4) or 4)
+                    provider = "cuda" if self.device == "cuda" else "cpu"
                     loop = asyncio.get_event_loop()
 
                     def _load_sherpa_sv():
                         return sherpa_onnx.OfflineRecognizer.from_sense_voice(
                             model=str(onnx_model),
                             tokens=str(tokens),
-                            num_threads=4,
+                            num_threads=sv_threads,
                             use_itn=getattr(self.config.sensevoice, "use_itn", True),
                             sample_rate=self.config.audio.sample_rate,
+                            language=sv_lang,
+                            provider=provider,
                         )
 
                     self.model = await loop.run_in_executor(None, _load_sherpa_sv)
@@ -307,6 +319,12 @@ class SenseVoiceEngine(BaseSTTEngine):
             logger.debug(f"SenseVoice utterance error: {e}")
 
     async def stop(self) -> None:
-        """Stop streaming."""
+        """Stop streaming and release model resources."""
         self._running = False
         self.is_running = False
+        self.model = None
+        try:
+            from ..hardware import release_stt_memory
+            release_stt_memory()
+        except Exception:
+            pass

@@ -282,6 +282,10 @@ class TextFormatter:
         # 0. De-duplicate stutters and repeated sentences
         text = self.de_duplicate_phrases(text)
 
+        # 0b. Normalize all-caps transcription output (e.g. Sherpa-ONNX Zipformer CTC tokens)
+        if text.isupper() and len(text) > 4:
+            text = text.lower()
+
         # 1. Fast scripture reference parsing (if digits, book names, or citation markers present)
         if self.church_mode and self.church_formatter:
             if any(c.isdigit() for c in text) or getattr(self.church_formatter, "_citation_trigger_pattern", None) and self.church_formatter._citation_trigger_pattern.search(text):
