@@ -47,6 +47,14 @@ if exist ".venv\Lib\site-packages\nvidia" (
     )
 )
 
+:: 3b. Prepend DirectML DLLs for AMD Radeon GPUs if present
+if exist ".venv\Lib\site-packages\torch_directml" (
+    set "PATH=.venv\Lib\site-packages\torch_directml;!PATH!"
+)
+if exist ".venv\Lib\site-packages\onnxruntime\capi" (
+    set "PATH=.venv\Lib\site-packages\onnxruntime\capi;!PATH!"
+)
+
 :: 4. Resolve library conflict: remove torchaudio if present
 if exist ".venv\Lib\site-packages\torchaudio" (
     echo [INFO] Resolving library conflict: removing torchaudio...
@@ -64,7 +72,10 @@ set "APP_EXIT_CODE=!errorlevel!"
 :: Exit code 42 indicates an intentional application restart
 if "!APP_EXIT_CODE!"=="42" (
     echo.
-    echo [VoxStream] Application restart requested. Reloading...
+    echo [VoxStream] Application restart requested. Verifying dependencies and reloading...
+    if exist "requirements.txt" (
+        call .venv\Scripts\python.exe -m pip install -q -r requirements.txt
+    )
     timeout /t 1 /nobreak >nul
     goto app_loop
 )

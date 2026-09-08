@@ -55,19 +55,34 @@ class UpdateManager:
             self._update_lock = asyncio.Lock()
         return self._update_lock
 
+    def get_git_cmd(self) -> Optional[str]:
+        """Return git binary command or path, checking Windows default install locations if not in PATH."""
+        if shutil.which("git") is not None:
+            return "git"
+        if sys.platform == "win32":
+            for p in (
+                r"C:\Program Files\Git\cmd\git.exe",
+                r"C:\Program Files (x86)\Git\cmd\git.exe",
+                os.path.expandvars(r"%LocalAppData%\Programs\Git\cmd\git.exe"),
+            ):
+                if os.path.exists(p):
+                    return p
+        return None
+
     def is_git_repo(self) -> bool:
         """Check whether current installation is a Git clone and git binary is present."""
         git_dir = self.app_root / ".git"
         if not git_dir.exists():
             return False
-        return shutil.which("git") is not None
+        return self.get_git_cmd() is not None
 
     def get_local_commit(self) -> str:
         """Return the current local Git commit SHA or a fallback placeholder."""
-        if self.is_git_repo():
+        git_cmd = self.get_git_cmd()
+        if self.is_git_repo() and git_cmd:
             try:
                 res = subprocess.run(
-                    ["git", "rev-parse", "--short", "HEAD"],
+                    [git_cmd, "rev-parse", "--short", "HEAD"],
                     cwd=str(self.app_root),
                     capture_output=True,
                     text=True,
@@ -81,10 +96,11 @@ class UpdateManager:
 
     def get_local_full_commit(self) -> str:
         """Return full 40-character local commit SHA."""
-        if self.is_git_repo():
+        git_cmd = self.get_git_cmd()
+        if self.is_git_repo() and git_cmd:
             try:
                 res = subprocess.run(
-                    ["git", "rev-parse", "HEAD"],
+                    [git_cmd, "rev-parse", "HEAD"],
                     cwd=str(self.app_root),
                     capture_output=True,
                     text=True,
@@ -171,10 +187,11 @@ class UpdateManager:
 
         # 2. Query remote commit via git ls-remote if git is available
         remote_full = None
-        if is_git:
+        git_cmd = self.get_git_cmd()
+        if is_git and git_cmd:
             try:
                 res = subprocess.run(
-                    ["git", "ls-remote", "origin", f"refs/heads/{GITHUB_BRANCH}"],
+                    [git_cmd, "ls-remote", "origin", f"refs/heads/{GITHUB_BRANCH}"],
                     cwd=str(self.app_root),
                     capture_output=True,
                     text=True,
@@ -298,9 +315,10 @@ class UpdateManager:
                 progress_cb("⬇️ Downloading latest updates from GitHub (git pull)...")
             logger.info("Executing git pull origin main...")
 
+            git_cmd = self.get_git_cmd() or "git"
             # 1. Stash any accidental local modifications and untracked files
             subprocess.run(
-                ["git", "stash", "--include-untracked"],
+                [git_cmd, "stash", "--include-untracked"],
                 cwd=str(self.app_root),
                 capture_output=True,
                 text=True,
@@ -309,7 +327,7 @@ class UpdateManager:
 
             # 2. Pull from origin main
             pull_res = subprocess.run(
-                ["git", "pull", "--ff-only", "origin", GITHUB_BRANCH],
+                [git_cmd, "pull", "--ff-only", "origin", GITHUB_BRANCH],
                 cwd=str(self.app_root),
                 capture_output=True,
                 text=True,
@@ -320,14 +338,14 @@ class UpdateManager:
             if pull_res.returncode != 0:
                 logger.warning(f"git pull --ff-only failed ({pull_res.stderr.strip()}). Attempting clean fetch and reset...")
                 subprocess.run(
-                    ["git", "fetch", "--all"],
+                    [git_cmd, "fetch", "--all"],
                     cwd=str(self.app_root),
                     capture_output=True,
                     text=True,
                     timeout=30,
                 )
                 reset_res = subprocess.run(
-                    ["git", "reset", "--hard", f"origin/{GITHUB_BRANCH}"],
+                    [git_cmd, "reset", "--hard", f"origin/{GITHUB_BRANCH}"],
                     cwd=str(self.app_root),
                     capture_output=True,
                     text=True,
@@ -422,6 +440,34 @@ class UpdateManager:
                         return True
                     return False
 
+                def _safe_copy_file(src_path: Path, dst_path: Path):
+                    try:
+                        shutil.copy2(src_path, dst_path)
+                    except (PermissionError, OSError) as copy_err:
+                        if sys.platform == "win32":
+                            try:
+                                temp_bak = dst_path.with_name(f"{dst_path.name}.old_{int(time.time())}")
+                                if temp_bak.exists():
+                                    temp_bak.unlink(missing_ok=True)
+                                dst_path.rename(temp_bak)
+                                shutil.copy2(src_path, dst_path)
+                                return
+                            except Exception:
+                                pass
+                        logger.warning(f"Could not overwrite file {dst_path.name}: {copy_err}")
+
+                def _safe_copy_tree(src_dir: Path, dst_dir: Path):
+                    dst_dir.mkdir(parents=True, exist_ok=True)
+                    for root, dirs, files in os.walk(str(src_dir)):
+                        dirs[:] = [d for d in dirs if d not in ("__pycache__", ".git", ".venv", "venv")]
+                        rel = Path(root).relative_to(src_dir)
+                        target_sub = dst_dir / rel
+                        target_sub.mkdir(parents=True, exist_ok=True)
+                        for f in files:
+                            if f.endswith((".pyc", ".tmp")):
+                                continue
+                            _safe_copy_file(Path(root) / f, target_sub / f)
+
                 if progress_cb:
                     progress_cb("🔄 Updating application files...")
                 for item in source_dir.iterdir():
@@ -429,17 +475,9 @@ class UpdateManager:
                         continue
                     dest = self.app_root / item.name
                     if item.is_dir():
-                        shutil.copytree(
-                            item,
-                            dest,
-                            dirs_exist_ok=True,
-                            ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.tmp"),
-                        )
+                        _safe_copy_tree(item, dest)
                     else:
-                        try:
-                            shutil.copy2(item, dest)
-                        except Exception as copy_err:
-                            logger.warning(f"Could not overwrite file {item.name}: {copy_err}")
+                        _safe_copy_file(item, dest)
 
                 # Update dependencies
                 req_file = self.app_root / "requirements.txt"
