@@ -37,6 +37,8 @@ class GoogleWebEngine(BaseSTTEngine):
             sample_rate=config.audio.sample_rate,
             noise_gate_db=config.audio.noise_gate_db,
             vad_threshold=config.audio.vad_threshold,
+            enable_silero=getattr(config.audio, "enable_vad", True),
+            suppress_music=getattr(config.audio, "suppress_music", True),
         )
         self._recognizer = sr.Recognizer() if sr is not None else None
 
@@ -115,7 +117,10 @@ class GoogleWebEngine(BaseSTTEngine):
         audio_buffer = bytearray()
         silence_start_time = None
         min_bytes = int(self.config.audio.sample_rate * 2 * 0.3)  # ~300ms minimum speech
-        max_buffer_bytes = int(self.config.audio.sample_rate * 2 * 10.0)  # 10s max phrase
+        sentence_break_s = (getattr(self.config.audio, "sentence_break_ms", 650) or 650) / 1000.0
+        max_sentence_s = getattr(self.config.audio, "max_sentence_duration_seconds", 7.0) or 7.0
+        max_sentence_words = getattr(self.config.audio, "max_sentence_words", 24) or 24
+        max_buffer_bytes = int(self.config.audio.sample_rate * 2 * max_sentence_s)
 
         async for chunk in audio_stream:
             if not self.is_running:
@@ -127,6 +132,11 @@ class GoogleWebEngine(BaseSTTEngine):
             has_speech = self.vad.is_speech(chunk)
             now = time.time()
 
+            sentence_break_s = (getattr(self.config.audio, "sentence_break_ms", 650) or 650) / 1000.0
+            max_sentence_s = getattr(self.config.audio, "max_sentence_duration_seconds", 7.0) or 7.0
+            max_sentence_words = getattr(self.config.audio, "max_sentence_words", 24) or 24
+            max_buffer_bytes = int(self.config.audio.sample_rate * 2 * max_sentence_s)
+
             if has_speech:
                 audio_buffer.extend(chunk)
                 silence_start_time = None
@@ -137,8 +147,9 @@ class GoogleWebEngine(BaseSTTEngine):
                     if silence_start_time is None:
                         silence_start_time = now
 
-            is_silence_pause = (silence_start_time is not None) and (now - silence_start_time > 0.4)
-            is_full = len(audio_buffer) >= max_buffer_bytes
+            approx_words = (len(audio_buffer) / (self.config.audio.sample_rate * 2)) * 2.5
+            is_silence_pause = (silence_start_time is not None) and (now - silence_start_time >= sentence_break_s)
+            is_full = len(audio_buffer) >= max_buffer_bytes or approx_words >= max_sentence_words
 
             if (is_silence_pause or is_full) and len(audio_buffer) >= min_bytes:
                 even_len = len(audio_buffer) & ~1

@@ -1581,7 +1581,7 @@ function toggleEngineFields(engine) {
     const sherpaFields = document.getElementById("sherpa-fields");
     if (sherpaFields) sherpaFields.style.display = (engine === "sherpa" || engine === "sherpa_onnx" || engine === "zipformer") ? "block" : "none";
     const parakeetFields = document.getElementById("parakeet-fields");
-    if (parakeetFields) parakeetFields.style.display = (engine === "parakeet" || engine === "nemo" || engine === "fastconformer") ? "block" : "none";
+    if (parakeetFields) parakeetFields.style.display = (engine === "parakeet" || engine === "nemo" || engine === "nemo_parakeet" || engine === "fastconformer") ? "block" : "none";
     const sensevoiceFields = document.getElementById("sensevoice-fields");
     if (sensevoiceFields) sensevoiceFields.style.display = (engine === "sensevoice" || engine === "funasr") ? "block" : "none";
 }

@@ -2140,6 +2140,45 @@ class TestVersioningAndSemanticUpdater(unittest.TestCase):
         self.assertEqual(engine.vad.noise_gate_db, -35.0)
         self.assertTrue(engine.vad.suppress_music)
 
+    def test_all_engines_audio_settings_and_vad_parity(self):
+        """Verify that all engines with local VAD inherit enable_vad, suppress_music, and audio thresholds."""
+        from obs_captioner.config import AudioConfig, AppConfig
+        from obs_captioner.engines.vosk import VoskEngine
+        from obs_captioner.engines.moonshine import MoonshineEngine
+        from obs_captioner.engines.local_whisper import LocalWhisperEngine
+        from obs_captioner.engines.google_web import GoogleWebEngine
+        from obs_captioner.engines.parakeet_engine import ParakeetEngine
+        from obs_captioner.engines.sensevoice_engine import SenseVoiceEngine
+        from obs_captioner.engines.sherpa_engine import SherpaEngine
+
+        cfg = AppConfig()
+        cfg.audio.enable_vad = False
+        cfg.audio.suppress_music = False
+        cfg.audio.vad_threshold = 0.44
+        cfg.audio.noise_gate_db = -47.0
+
+        engines = [
+            VoskEngine(cfg),
+            MoonshineEngine(cfg),
+            LocalWhisperEngine(cfg),
+            GoogleWebEngine(cfg),
+            ParakeetEngine(cfg),
+            SenseVoiceEngine(cfg),
+            SherpaEngine(cfg),
+        ]
+
+        for eng in engines:
+            self.assertEqual(eng.vad.noise_gate_db, -47.0, f"Failed on {eng.name}")
+            self.assertEqual(eng.vad.vad_threshold, 0.44, f"Failed on {eng.name}")
+            self.assertFalse(eng.vad.suppress_music, f"Failed on {eng.name}")
+
+            # Verify dynamic live update
+            new_audio = AudioConfig(noise_gate_db=-32.0, vad_threshold=0.72, suppress_music=True)
+            eng.vad.update_config(new_audio)
+            self.assertEqual(eng.vad.noise_gate_db, -32.0, f"Failed on {eng.name}")
+            self.assertEqual(eng.vad.vad_threshold, 0.72, f"Failed on {eng.name}")
+            self.assertTrue(eng.vad.suppress_music, f"Failed on {eng.name}")
+
 
 if __name__ == "__main__":
     unittest.main()
