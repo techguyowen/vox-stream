@@ -957,14 +957,14 @@ class TestServerEndpoints(AioHTTPTestCase):
         are preserved with sentinel '•••', can be updated with new values, and can be cleared explicitly."""
         # 1. Set initial credentials
         resp1 = await self.client.request('POST', '/api/config', json={
-            'gemini_live': {'api_key': 'AIzaSy_ORIGINAL_KEY_123'},
-            'bandwidth': {'api_key': 'bwa_ORIGINAL_KEY_456'},
-            'twitch': {'oauth_token': 'oauth:ORIGINAL_TOKEN_789'}
+            'gemini_live': {'api_key': 'test_mock_gemini_key_123'},
+            'bandwidth': {'api_key': 'test_mock_bandwidth_key_456'},
+            'twitch': {'oauth_token': 'oauth:test_mock_twitch_token_789'}
         })
         self.assertEqual(resp1.status, 200)
-        self.assertEqual(self.overlay_server.config.gemini_live.api_key, 'AIzaSy_ORIGINAL_KEY_123')
-        self.assertEqual(self.overlay_server.config.bandwidth.api_key, 'bwa_ORIGINAL_KEY_456')
-        self.assertEqual(self.overlay_server.config.twitch.oauth_token, 'oauth:ORIGINAL_TOKEN_789')
+        self.assertEqual(self.overlay_server.config.gemini_live.api_key, 'test_mock_gemini_key_123')
+        self.assertEqual(self.overlay_server.config.bandwidth.api_key, 'test_mock_bandwidth_key_456')
+        self.assertEqual(self.overlay_server.config.twitch.oauth_token, 'oauth:test_mock_twitch_token_789')
 
         # Verify GET /api/config returns masked sentinel
         get1 = await self.client.request('GET', '/api/config')
@@ -980,9 +980,9 @@ class TestServerEndpoints(AioHTTPTestCase):
             'twitch': {'oauth_token': '•••'}
         })
         self.assertEqual(resp2.status, 200)
-        self.assertEqual(self.overlay_server.config.gemini_live.api_key, 'AIzaSy_ORIGINAL_KEY_123')
-        self.assertEqual(self.overlay_server.config.bandwidth.api_key, 'bwa_ORIGINAL_KEY_456')
-        self.assertEqual(self.overlay_server.config.twitch.oauth_token, 'oauth:ORIGINAL_TOKEN_789')
+        self.assertEqual(self.overlay_server.config.gemini_live.api_key, 'test_mock_gemini_key_123')
+        self.assertEqual(self.overlay_server.config.bandwidth.api_key, 'test_mock_bandwidth_key_456')
+        self.assertEqual(self.overlay_server.config.twitch.oauth_token, 'oauth:test_mock_twitch_token_789')
 
         # 3. Submit empty string or None - must NOT wipe stored secrets
         resp3 = await self.client.request('POST', '/api/config', json={
@@ -991,18 +991,18 @@ class TestServerEndpoints(AioHTTPTestCase):
             'twitch': {'oauth_token': ''}
         })
         self.assertEqual(resp3.status, 200)
-        self.assertEqual(self.overlay_server.config.gemini_live.api_key, 'AIzaSy_ORIGINAL_KEY_123')
-        self.assertEqual(self.overlay_server.config.bandwidth.api_key, 'bwa_ORIGINAL_KEY_456')
-        self.assertEqual(self.overlay_server.config.twitch.oauth_token, 'oauth:ORIGINAL_TOKEN_789')
+        self.assertEqual(self.overlay_server.config.gemini_live.api_key, 'test_mock_gemini_key_123')
+        self.assertEqual(self.overlay_server.config.bandwidth.api_key, 'test_mock_bandwidth_key_456')
+        self.assertEqual(self.overlay_server.config.twitch.oauth_token, 'oauth:test_mock_twitch_token_789')
 
         # 4. Update with a new key - must update successfully
         resp4 = await self.client.request('POST', '/api/config', json={
-            'gemini_live': {'api_key': 'AIzaSy_NEW_UPDATED_KEY_999'}
+            'gemini_live': {'api_key': 'test_mock_gemini_key_updated_999'}
         })
         self.assertEqual(resp4.status, 200)
-        self.assertEqual(self.overlay_server.config.gemini_live.api_key, 'AIzaSy_NEW_UPDATED_KEY_999')
+        self.assertEqual(self.overlay_server.config.gemini_live.api_key, 'test_mock_gemini_key_updated_999')
         # Other keys should still be untouched
-        self.assertEqual(self.overlay_server.config.bandwidth.api_key, 'bwa_ORIGINAL_KEY_456')
+        self.assertEqual(self.overlay_server.config.bandwidth.api_key, 'test_mock_bandwidth_key_456')
 
         # 5. Explicit clear using __CLEAR__ - must wipe the key
         resp5 = await self.client.request('POST', '/api/config', json={

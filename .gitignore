@@ -11,12 +11,24 @@ __pycache__/
 *.so
 .pytest_cache/
 
-# User Configurations & Secrets
+# User Configurations, API Keys & Secrets
 config.json
+config.*.json
+*.local.json
+*.tmp
+*.bak
 google_credentials.json
+credentials*.json
+client_secret*.json
+token*.json
 *.key
 *.pem
+*.p12
+*.pfx
 .env
+.env.*
+.env*.local
+*.env
 
 # Build Artifacts (C++ OBS Plugin)
 obs_native_plugin/build/

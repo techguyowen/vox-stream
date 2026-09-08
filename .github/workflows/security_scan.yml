@@ -1,0 +1,25 @@
+name: Security Secret Scan
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  secret-scan:
+    name: Scan for Exposed Credentials
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Run Secret Leak Audit
+        run: |
+          chmod +x scripts/check_secrets.py
+          python3 scripts/check_secrets.py

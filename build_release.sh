@@ -41,6 +41,9 @@ find "$RELEASE_NAME" -type d -name ".pytest_cache" -exec rm -r {} + 2>/dev/null
 find "$RELEASE_NAME" -type f -name "*.pyc" -delete 2>/dev/null
 find "$RELEASE_NAME" -type f -name ".DS_Store" -delete 2>/dev/null
 
+# Strict security guard: ensure no user configs, secrets, or API keys are ever packaged
+rm -f "$RELEASE_NAME/config.json" "$RELEASE_NAME/config."*".json" "$RELEASE_NAME/"*credentials*.json "$RELEASE_NAME/"*.key "$RELEASE_NAME/"*.pem "$RELEASE_NAME/.env"* "$RELEASE_NAME/"*.tmp
+
 # Zip the staging directory
 if command -v zip &> /dev/null; then
     zip -r -q "$ZIP_NAME" "$RELEASE_NAME"
