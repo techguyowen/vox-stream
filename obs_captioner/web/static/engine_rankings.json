@@ -1,17 +1,85 @@
 {
-  "timestamp": 1788526817.961206,
-  "date_evaluated": "2026-09-04 09:00:17",
+  "timestamp": 1788882224.5487309,
+  "date_evaluated": "2026-09-08 11:43:44",
   "suite_description": "Realistic Church Sermon Stress Test (Biblical names, citations, doctrine, dynamic sermon flow)",
   "total_test_cases": 4,
   "rankings": [
     {
+      "engine_id": "parakeet",
+      "overall_accuracy_pct": 97.0,
+      "overall_wer": 0.03,
+      "avg_latency_ms": 196.0,
+      "avg_rtf": 0.018,
+      "total_audio_duration_s": 44.14,
+      "total_processing_time_s": 0.79,
+      "test_results": [
+        {
+          "test_id": "biblical_names",
+          "category": "Ancient Biblical Names & Proper Nouns",
+          "reference": "Pastor Christopher recounted how King Nebuchadnezzar erected a golden statue in the plain of Dura in Babylon, while the high priest Melchizedek and prophet Zephaniah pointed to the everlasting righteousness of God.",
+          "hypothesis": "pastor christopher recounted how king nebuchadnezzar erected a golden statue in the plain of dura and babylon while the high priest melchizedec and prophet zepheniah pointed to the everlasting righteousness of god",
+          "audio_duration_s": 11.76,
+          "processing_time_s": 0.213,
+          "rtf": 0.018,
+          "wer": 0.094,
+          "accuracy_pct": 90.6,
+          "keyword_accuracy_pct": 66.7
+        },
+        {
+          "test_id": "scripture_citation",
+          "category": "Rapid Scripture Citation & Epistle Reading",
+          "reference": "Please turn with me to Second Corinthians chapter four verses seven through nine: We have this treasure in earthen vessels, that the excellence of the power may be of God and not of us.",
+          "hypothesis": "please turn with me to second corinthians chapter four verses seven through nine we have this treasure in earthen vessels that the excellence of the power may be of god and not of us",
+          "audio_duration_s": 9.78,
+          "processing_time_s": 0.173,
+          "rtf": 0.018,
+          "wer": 0.0,
+          "accuracy_pct": 100.0,
+          "keyword_accuracy_pct": 100.0
+        },
+        {
+          "test_id": "theological_doctrine",
+          "category": "Complex Theological Doctrine & Vocabulary",
+          "reference": "Justification by faith alone, the doctrine of propitiation, and the sanctification of the Holy Spirit are not mere abstract concepts; they are the living bedrock of our covenant in Jesus Christ.",
+          "hypothesis": "justification by faith alone the doctrine of propitiation and the sanctification of the holy spirit are not mere abstract concepts they are the living bedrock of our covenant in jesus christ",
+          "audio_duration_s": 10.9,
+          "processing_time_s": 0.193,
+          "rtf": 0.018,
+          "wer": 0.0,
+          "accuracy_pct": 100.0,
+          "keyword_accuracy_pct": 100.0
+        },
+        {
+          "test_id": "conversational_preaching",
+          "category": "Dynamic Preaching Cadence & Colloquial Sermon Flow",
+          "reference": "Now listen to me church, when trials come in your life, can I get an Amen? On Sunday November twenty fourth, our entire congregation gathered in the sanctuary at ten thirty in the morning to worship.",
+          "hypothesis": "now listen to me church when trials come in your life can i get an amen on sunday november twentieth fourth our entire congregation gathered in the sanctuary at ten thirty in the morning to worship",
+          "audio_duration_s": 11.7,
+          "processing_time_s": 0.207,
+          "rtf": 0.018,
+          "wer": 0.028,
+          "accuracy_pct": 97.2,
+          "keyword_accuracy_pct": 100.0
+        }
+      ],
+      "engine_name": "NVIDIA Parakeet NeMo",
+      "model_spec": "sherpa-onnx-nemo-ctc-en (ONNX)",
+      "type": "NeMo FastConformer CTC",
+      "privacy": "100% Offline (Zero Cloud / No Keys)",
+      "stability_score": 97,
+      "church_fit_summary": "SOTA English accuracy, exceptional handling of rapid pastoral cadences, complex theological doctrine, and diverse accents.",
+      "composite_score": 97.5,
+      "rank": 1,
+      "rank_badge": "\ud83e\udd47 #1 Champion"
+    },
+    {
       "engine_id": "local_whisper",
       "overall_accuracy_pct": 92.5,
       "overall_wer": 0.075,
-      "avg_latency_ms": 555.0,
-      "avg_rtf": 0.05,
+      "avg_latency_ms": 662.0,
+      "avg_rtf": 0.06,
       "total_audio_duration_s": 44.14,
-      "total_processing_time_s": 2.22,
+      "total_processing_time_s": 2.65,
       "test_results": [
         {
           "test_id": "biblical_names",
@@ -19,8 +87,8 @@
           "reference": "Pastor Christopher recounted how King Nebuchadnezzar erected a golden statue in the plain of Dura in Babylon, while the high priest Melchizedek and prophet Zephaniah pointed to the everlasting righteousness of God.",
           "hypothesis": "Pastor Christopher recounted how King Nebuchadnezzar erected a golden statue in the plane of Dura and Babylon while the high priest Melchizedek and prophet Zephaniah pointed to the everlasting righteousness of God.",
           "audio_duration_s": 11.76,
-          "processing_time_s": 0.587,
-          "rtf": 0.05,
+          "processing_time_s": 0.727,
+          "rtf": 0.062,
           "wer": 0.062,
           "accuracy_pct": 93.8,
           "keyword_accuracy_pct": 100.0
@@ -31,8 +99,8 @@
           "reference": "Please turn with me to Second Corinthians chapter four verses seven through nine: We have this treasure in earthen vessels, that the excellence of the power may be of God and not of us.",
           "hypothesis": "Please turn with me to 2 Corinthians chapter 4 verses 7 through 9. We have this treasure in earthen vessels that the excellence of the power may be of God and not of us",
           "audio_duration_s": 9.78,
-          "processing_time_s": 0.519,
-          "rtf": 0.053,
+          "processing_time_s": 0.615,
+          "rtf": 0.063,
           "wer": 0.118,
           "accuracy_pct": 88.2,
           "keyword_accuracy_pct": 40.0
@@ -43,8 +111,8 @@
           "reference": "Justification by faith alone, the doctrine of propitiation, and the sanctification of the Holy Spirit are not mere abstract concepts; they are the living bedrock of our covenant in Jesus Christ.",
           "hypothesis": "Justification by faith alone, the doctrine of propitiation and the sanctification of the Holy Spirit are not mere abstract concepts. They are the living bedrock of our covenant in Jesus Christ",
           "audio_duration_s": 10.9,
-          "processing_time_s": 0.518,
-          "rtf": 0.048,
+          "processing_time_s": 0.64,
+          "rtf": 0.059,
           "wer": 0.0,
           "accuracy_pct": 100.0,
           "keyword_accuracy_pct": 100.0
@@ -55,8 +123,8 @@
           "reference": "Now listen to me church, when trials come in your life, can I get an Amen? On Sunday November twenty fourth, our entire congregation gathered in the sanctuary at ten thirty in the morning to worship.",
           "hypothesis": "Now listen to me church when trials come in your life. Can I get an amen? On Sunday November 20th, our entire congregation gathered in the sanctuary at 1030 in the morning to worship",
           "audio_duration_s": 11.7,
-          "processing_time_s": 0.597,
-          "rtf": 0.051,
+          "processing_time_s": 0.664,
+          "rtf": 0.057,
           "wer": 0.111,
           "accuracy_pct": 88.9,
           "keyword_accuracy_pct": 83.3
@@ -68,9 +136,145 @@
       "privacy": "100% Offline (Zero Cloud / No Keys)",
       "stability_score": 98,
       "church_fit_summary": "Outstanding on archaic scripture syntax, automatic punctuation, and zero double-guessing.",
-      "composite_score": 94.5,
-      "rank": 1,
-      "rank_badge": "\ud83e\udd47 #1 Champion"
+      "composite_score": 94.2,
+      "rank": 2,
+      "rank_badge": "\ud83d\udda5\ufe0f #2 Best Local"
+    },
+    {
+      "engine_id": "sensevoice",
+      "overall_accuracy_pct": 88.7,
+      "overall_wer": 0.113,
+      "avg_latency_ms": 357.0,
+      "avg_rtf": 0.032,
+      "total_audio_duration_s": 44.14,
+      "total_processing_time_s": 1.43,
+      "test_results": [
+        {
+          "test_id": "biblical_names",
+          "category": "Ancient Biblical Names & Proper Nouns",
+          "reference": "Pastor Christopher recounted how King Nebuchadnezzar erected a golden statue in the plain of Dura in Babylon, while the high priest Melchizedek and prophet Zephaniah pointed to the everlasting righteousness of God.",
+          "hypothesis": "Pastor Christopher recounted how King Nebuchanezzar erected a golden statue in the plain of Dra and Babylon, while the high priest Melchizedek and Prophet Zephaia pointed to the everlasting righteousness of God.",
+          "audio_duration_s": 11.76,
+          "processing_time_s": 0.377,
+          "rtf": 0.032,
+          "wer": 0.125,
+          "accuracy_pct": 87.5,
+          "keyword_accuracy_pct": 50.0
+        },
+        {
+          "test_id": "scripture_citation",
+          "category": "Rapid Scripture Citation & Epistle Reading",
+          "reference": "Please turn with me to Second Corinthians chapter four verses seven through nine: We have this treasure in earthen vessels, that the excellence of the power may be of God and not of us.",
+          "hypothesis": "Please turn with me to2 Corinthians chapter 4 verses 7 through 9. We have this treasure in earth and vessels that the excellence of the power may be of God and not of us.",
+          "audio_duration_s": 9.78,
+          "processing_time_s": 0.32,
+          "rtf": 0.033,
+          "wer": 0.206,
+          "accuracy_pct": 79.4,
+          "keyword_accuracy_pct": 20.0
+        },
+        {
+          "test_id": "theological_doctrine",
+          "category": "Complex Theological Doctrine & Vocabulary",
+          "reference": "Justification by faith alone, the doctrine of propitiation, and the sanctification of the Holy Spirit are not mere abstract concepts; they are the living bedrock of our covenant in Jesus Christ.",
+          "hypothesis": "Justification by faith alone, the doctrine of propitiation and the sanctification of the Holy Spirit are not mere abstract concepts. They are the living bedrock of our covenant in Jesus Christ.",
+          "audio_duration_s": 10.9,
+          "processing_time_s": 0.343,
+          "rtf": 0.031,
+          "wer": 0.0,
+          "accuracy_pct": 100.0,
+          "keyword_accuracy_pct": 100.0
+        },
+        {
+          "test_id": "conversational_preaching",
+          "category": "Dynamic Preaching Cadence & Colloquial Sermon Flow",
+          "reference": "Now listen to me church, when trials come in your life, can I get an Amen? On Sunday November twenty fourth, our entire congregation gathered in the sanctuary at ten thirty in the morning to worship.",
+          "hypothesis": "Now listen to me Church, when trials come in your life, can I get an Amen on Sunday, November 204, our entire congregation gathered in the sanctuary at 1030 in the morning to worship.",
+          "audio_duration_s": 11.7,
+          "processing_time_s": 0.387,
+          "rtf": 0.033,
+          "wer": 0.111,
+          "accuracy_pct": 88.9,
+          "keyword_accuracy_pct": 83.3
+        }
+      ],
+      "engine_name": "SenseVoice Small (Audio Events)",
+      "model_spec": "sherpa-onnx-sense-voice (ONNX)",
+      "type": "Non-Autoregressive with Audio Event Detection",
+      "privacy": "100% Offline (Zero Cloud / No Keys)",
+      "stability_score": 96,
+      "church_fit_summary": "Sub-80ms non-autoregressive transcription with automatic detection of congregation applause, laughter, coughing, and music.",
+      "composite_score": 92.8,
+      "rank": 3,
+      "rank_badge": "\ud83d\udda5\ufe0f #3 Fast Local"
+    },
+    {
+      "engine_id": "sherpa",
+      "overall_accuracy_pct": 88.0,
+      "overall_wer": 0.12,
+      "avg_latency_ms": 796.0,
+      "avg_rtf": 0.072,
+      "total_audio_duration_s": 44.14,
+      "total_processing_time_s": 3.18,
+      "test_results": [
+        {
+          "test_id": "biblical_names",
+          "category": "Ancient Biblical Names & Proper Nouns",
+          "reference": "Pastor Christopher recounted how King Nebuchadnezzar erected a golden statue in the plain of Dura in Babylon, while the high priest Melchizedek and prophet Zephaniah pointed to the everlasting righteousness of God.",
+          "hypothesis": "PASTOR CHRISTOPHER RECOUNTED HOW KING NEBUCHENEZZAR ERECTED A GOLDEN STATUE IN THE PLAIN OF DORA AND BABYLON WHILE THE HIGH PRIEST MELCHIZEDEK AND PROPHET ZEPHANIA POINTED TO THE EVERLASTING RIGHTEOUSNESS",
+          "audio_duration_s": 11.76,
+          "processing_time_s": 0.812,
+          "rtf": 0.069,
+          "wer": 0.188,
+          "accuracy_pct": 81.2,
+          "keyword_accuracy_pct": 50.0
+        },
+        {
+          "test_id": "scripture_citation",
+          "category": "Rapid Scripture Citation & Epistle Reading",
+          "reference": "Please turn with me to Second Corinthians chapter four verses seven through nine: We have this treasure in earthen vessels, that the excellence of the power may be of God and not of us.",
+          "hypothesis": "PLEASE TURN WITH ME TO SECOND CORINTHIANS CHAPTER FOUR VERSES SEVEN THROUGH NINE WE HAVE THIS TREASURE IN EARTHEN VESSELS THAT THE EXCELLENCE OF THE POWER MAY BE OF GOD AND NOT",
+          "audio_duration_s": 9.78,
+          "processing_time_s": 0.728,
+          "rtf": 0.074,
+          "wer": 0.059,
+          "accuracy_pct": 94.1,
+          "keyword_accuracy_pct": 100.0
+        },
+        {
+          "test_id": "theological_doctrine",
+          "category": "Complex Theological Doctrine & Vocabulary",
+          "reference": "Justification by faith alone, the doctrine of propitiation, and the sanctification of the Holy Spirit are not mere abstract concepts; they are the living bedrock of our covenant in Jesus Christ.",
+          "hypothesis": "JUSTIFICATION BY FAITH ALONE THE DOCTRINE OF PROPITIATION AND THE SANCTIFICATION OF THE HOLY SPIRIT ARE NOT MERE ABSTRACT CONCEPTS THEY ARE THE LIVING BED ROCK OF OUR COVENANT IN JESUS",
+          "audio_duration_s": 10.9,
+          "processing_time_s": 0.816,
+          "rtf": 0.075,
+          "wer": 0.097,
+          "accuracy_pct": 90.3,
+          "keyword_accuracy_pct": 85.7
+        },
+        {
+          "test_id": "conversational_preaching",
+          "category": "Dynamic Preaching Cadence & Colloquial Sermon Flow",
+          "reference": "Now listen to me church, when trials come in your life, can I get an Amen? On Sunday November twenty fourth, our entire congregation gathered in the sanctuary at ten thirty in the morning to worship.",
+          "hypothesis": "NOW LISTEN TO ME CHURCH WHEN TRIALS COME IN YOUR LIFE CAN I GET A NAME IN ON SUNDAY NOVEMBER TWENTIETH FOURTH OUR ENTIRE CONGREGATION GATHERED IN THE SANCTUARY AT TEN THIRTY IN THE MORNING TO",
+          "audio_duration_s": 11.7,
+          "processing_time_s": 0.827,
+          "rtf": 0.071,
+          "wer": 0.139,
+          "accuracy_pct": 86.1,
+          "keyword_accuracy_pct": 83.3
+        }
+      ],
+      "engine_name": "Sherpa-ONNX Zipformer",
+      "model_spec": "streaming-zipformer-en (ONNX)",
+      "type": "Streaming Chunked Transducer Zipformer",
+      "privacy": "100% Offline (Zero Cloud / No Keys)",
+      "stability_score": 95,
+      "church_fit_summary": "True sub-60ms word-by-word streaming emission with negligible CPU usage, ideal for live audience stage displays.",
+      "composite_score": 91.1,
+      "rank": 4,
+      "rank_badge": "\ud83d\udda5\ufe0f #4 Local Offline"
     },
     {
       "engine_id": "gemini_live",
@@ -85,17 +289,17 @@
       "stability_score": 99,
       "church_fit_summary": "Top-tier accuracy with custom theological vocabulary prompting and natural sermon disfluency cleanup.",
       "composite_score": 87.8,
-      "rank": 2,
-      "rank_badge": "\u26a1 #2 High Efficiency"
+      "rank": 5,
+      "rank_badge": "\u2601\ufe0f #5 Enterprise"
     },
     {
       "engine_id": "vosk",
       "overall_accuracy_pct": 88.0,
       "overall_wer": 0.12,
-      "avg_latency_ms": 1135.0,
-      "avg_rtf": 0.103,
+      "avg_latency_ms": 1068.0,
+      "avg_rtf": 0.097,
       "total_audio_duration_s": 44.14,
-      "total_processing_time_s": 4.54,
+      "total_processing_time_s": 4.27,
       "test_results": [
         {
           "test_id": "biblical_names",
@@ -103,8 +307,8 @@
           "reference": "Pastor Christopher recounted how King Nebuchadnezzar erected a golden statue in the plain of Dura in Babylon, while the high priest Melchizedek and prophet Zephaniah pointed to the everlasting righteousness of God.",
           "hypothesis": "pastor christopher recounted how king nebuchadnezzar erected a golden statue in the plane of door and babylon while the high priest milk is a deck and profits f for naya pointed to the everlasting righteousness of god",
           "audio_duration_s": 11.76,
-          "processing_time_s": 1.232,
-          "rtf": 0.105,
+          "processing_time_s": 1.168,
+          "rtf": 0.099,
           "wer": 0.344,
           "accuracy_pct": 65.6,
           "keyword_accuracy_pct": 50.0
@@ -115,8 +319,8 @@
           "reference": "Please turn with me to Second Corinthians chapter four verses seven through nine: We have this treasure in earthen vessels, that the excellence of the power may be of God and not of us.",
           "hypothesis": "please turn with me to second corinthians chapter four vs seven through nine we have this treasure and earth and vessels that the excellence of the power may be of god and not of us",
           "audio_duration_s": 9.78,
-          "processing_time_s": 1.107,
-          "rtf": 0.113,
+          "processing_time_s": 0.976,
+          "rtf": 0.1,
           "wer": 0.118,
           "accuracy_pct": 88.2,
           "keyword_accuracy_pct": 80.0
@@ -127,8 +331,8 @@
           "reference": "Justification by faith alone, the doctrine of propitiation, and the sanctification of the Holy Spirit are not mere abstract concepts; they are the living bedrock of our covenant in Jesus Christ.",
           "hypothesis": "justification by faith alone the doctrine of propitiation and the sanctification of the holy spirit are not mere abstract concepts they are the living bedrock of our covenant in jesus christ",
           "audio_duration_s": 10.9,
-          "processing_time_s": 1.083,
-          "rtf": 0.099,
+          "processing_time_s": 1.048,
+          "rtf": 0.096,
           "wer": 0.0,
           "accuracy_pct": 100.0,
           "keyword_accuracy_pct": 100.0
@@ -139,8 +343,8 @@
           "reference": "Now listen to me church, when trials come in your life, can I get an Amen? On Sunday November twenty fourth, our entire congregation gathered in the sanctuary at ten thirty in the morning to worship.",
           "hypothesis": "now listen to me church when trials come in your life can i get an amen on sunday november twentieth fourth our entire congregation gathered in the sanctuary at ten thirty in the morning to worship",
           "audio_duration_s": 11.7,
-          "processing_time_s": 1.118,
-          "rtf": 0.096,
+          "processing_time_s": 1.08,
+          "rtf": 0.092,
           "wer": 0.028,
           "accuracy_pct": 97.2,
           "keyword_accuracy_pct": 100.0
@@ -152,9 +356,77 @@
       "privacy": "100% Offline (Zero Cloud / No Keys)",
       "stability_score": 72,
       "church_fit_summary": "Instantaneous syllable response (~30ms), but small 40MB vocab flaps on complex biblical names.",
-      "composite_score": 86.7,
-      "rank": 3,
-      "rank_badge": "\ud83d\udda5\ufe0f #3 Fast Local"
+      "composite_score": 86.9,
+      "rank": 6,
+      "rank_badge": "\ud83d\udda5\ufe0f #6 Local Offline"
+    },
+    {
+      "engine_id": "local_whisper",
+      "overall_accuracy_pct": 92.5,
+      "overall_wer": 0.075,
+      "avg_latency_ms": 3460.0,
+      "avg_rtf": 0.314,
+      "total_audio_duration_s": 44.14,
+      "total_processing_time_s": 13.84,
+      "test_results": [
+        {
+          "test_id": "biblical_names",
+          "category": "Ancient Biblical Names & Proper Nouns",
+          "reference": "Pastor Christopher recounted how King Nebuchadnezzar erected a golden statue in the plain of Dura in Babylon, while the high priest Melchizedek and prophet Zephaniah pointed to the everlasting righteousness of God.",
+          "hypothesis": "Pastor Christopher recounted how King Nebuchadnezzar erected a golden statue in the plain of Dura and Babylon, while the high priest Melchizedek and prophet Zefaniah pointed to the everlasting righteousness of God.",
+          "audio_duration_s": 11.76,
+          "processing_time_s": 3.55,
+          "rtf": 0.302,
+          "wer": 0.062,
+          "accuracy_pct": 93.8,
+          "keyword_accuracy_pct": 83.3
+        },
+        {
+          "test_id": "scripture_citation",
+          "category": "Rapid Scripture Citation & Epistle Reading",
+          "reference": "Please turn with me to Second Corinthians chapter four verses seven through nine: We have this treasure in earthen vessels, that the excellence of the power may be of God and not of us.",
+          "hypothesis": "Please turn with me to 2 Corinthians chapter 4 verses 7 through 9. We have this treasure in earthen vessels, that the excellence of the power may be of God and not of us.",
+          "audio_duration_s": 9.78,
+          "processing_time_s": 3.383,
+          "rtf": 0.346,
+          "wer": 0.118,
+          "accuracy_pct": 88.2,
+          "keyword_accuracy_pct": 40.0
+        },
+        {
+          "test_id": "theological_doctrine",
+          "category": "Complex Theological Doctrine & Vocabulary",
+          "reference": "Justification by faith alone, the doctrine of propitiation, and the sanctification of the Holy Spirit are not mere abstract concepts; they are the living bedrock of our covenant in Jesus Christ.",
+          "hypothesis": "Justification by faith alone, the doctrine of propitiation and the sanctification of the Holy Spirit are not mere abstract concepts. They are the living bedrock of our covenant in Jesus Christ",
+          "audio_duration_s": 10.9,
+          "processing_time_s": 3.417,
+          "rtf": 0.313,
+          "wer": 0.0,
+          "accuracy_pct": 100.0,
+          "keyword_accuracy_pct": 100.0
+        },
+        {
+          "test_id": "conversational_preaching",
+          "category": "Dynamic Preaching Cadence & Colloquial Sermon Flow",
+          "reference": "Now listen to me church, when trials come in your life, can I get an Amen? On Sunday November twenty fourth, our entire congregation gathered in the sanctuary at ten thirty in the morning to worship.",
+          "hypothesis": "Now listen to me, Church, when trials come in your life. Can I get an amen? On Sunday November 20th 4th our entire congregation gathered in the sanctuary at 1030 in the morning to worship.",
+          "audio_duration_s": 11.7,
+          "processing_time_s": 3.492,
+          "rtf": 0.298,
+          "wer": 0.111,
+          "accuracy_pct": 88.9,
+          "keyword_accuracy_pct": 83.3
+        }
+      ],
+      "engine_name": "Distil-Whisper Large-v3",
+      "model_spec": "distil-large-v3 (int8)",
+      "type": "Distilled Transformer Neural Attention",
+      "privacy": "100% Offline (Zero Cloud / No Keys)",
+      "stability_score": 98,
+      "church_fit_summary": "Engineered specifically to resist hallucinations during sanctuary organ, choir worship, and acoustic pauses.",
+      "composite_score": 86.5,
+      "rank": 7,
+      "rank_badge": "\ud83d\udda5\ufe0f #7 Local Offline"
     },
     {
       "engine_id": "google_stt",
@@ -169,8 +441,76 @@
       "stability_score": 95,
       "church_fit_summary": "Solid broadcast-grade cloud transcription with custom church speech contexts ($15 boost).",
       "composite_score": 86.2,
-      "rank": 4,
-      "rank_badge": "\u2601\ufe0f #4 Cloud AI"
+      "rank": 8,
+      "rank_badge": "\u2601\ufe0f #8 Cloud"
+    },
+    {
+      "engine_id": "local_whisper",
+      "overall_accuracy_pct": 91.7,
+      "overall_wer": 0.083,
+      "avg_latency_ms": 3810.0,
+      "avg_rtf": 0.345,
+      "total_audio_duration_s": 44.14,
+      "total_processing_time_s": 15.24,
+      "test_results": [
+        {
+          "test_id": "biblical_names",
+          "category": "Ancient Biblical Names & Proper Nouns",
+          "reference": "Pastor Christopher recounted how King Nebuchadnezzar erected a golden statue in the plain of Dura in Babylon, while the high priest Melchizedek and prophet Zephaniah pointed to the everlasting righteousness of God.",
+          "hypothesis": "Pastor Christopher recounted how King Nebuchadnezzar erected a golden statue in the plain of Dura and Babylon, while the high priest Melchizedek and prophet Zephaniah pointed to the everlasting righteousness of God.",
+          "audio_duration_s": 11.76,
+          "processing_time_s": 4.016,
+          "rtf": 0.341,
+          "wer": 0.031,
+          "accuracy_pct": 96.9,
+          "keyword_accuracy_pct": 100.0
+        },
+        {
+          "test_id": "scripture_citation",
+          "category": "Rapid Scripture Citation & Epistle Reading",
+          "reference": "Please turn with me to Second Corinthians chapter four verses seven through nine: We have this treasure in earthen vessels, that the excellence of the power may be of God and not of us.",
+          "hypothesis": "Please turn with me to 2 Corinthians 4, verses 7-9. We have this treasure in earthen vessels, that the excellence of the power may be of God and not of us.",
+          "audio_duration_s": 9.78,
+          "processing_time_s": 3.668,
+          "rtf": 0.375,
+          "wer": 0.176,
+          "accuracy_pct": 82.4,
+          "keyword_accuracy_pct": 40.0
+        },
+        {
+          "test_id": "theological_doctrine",
+          "category": "Complex Theological Doctrine & Vocabulary",
+          "reference": "Justification by faith alone, the doctrine of propitiation, and the sanctification of the Holy Spirit are not mere abstract concepts; they are the living bedrock of our covenant in Jesus Christ.",
+          "hypothesis": "Justification by faith alone, the doctrine of propitiation and the sanctification of the Holy Spirit are not mere abstract concepts. They are the living bedrock of our covenant in Jesus Christ.",
+          "audio_duration_s": 10.9,
+          "processing_time_s": 3.738,
+          "rtf": 0.343,
+          "wer": 0.0,
+          "accuracy_pct": 100.0,
+          "keyword_accuracy_pct": 100.0
+        },
+        {
+          "test_id": "conversational_preaching",
+          "category": "Dynamic Preaching Cadence & Colloquial Sermon Flow",
+          "reference": "Now listen to me church, when trials come in your life, can I get an Amen? On Sunday November twenty fourth, our entire congregation gathered in the sanctuary at ten thirty in the morning to worship.",
+          "hypothesis": "Now listen to me church when trials come in your life. Can I get an amen? On Sunday, November 24th, our entire congregation gathered in the sanctuary at 1030 in the morning to worship.",
+          "audio_duration_s": 11.7,
+          "processing_time_s": 3.818,
+          "rtf": 0.326,
+          "wer": 0.111,
+          "accuracy_pct": 88.9,
+          "keyword_accuracy_pct": 83.3
+        }
+      ],
+      "engine_name": "Faster-Whisper Large-v3-Turbo",
+      "model_spec": "large-v3-turbo (int8)",
+      "type": "OpenAI 4-Layer Transformer (CTranslate2)",
+      "privacy": "100% Offline (Zero Cloud / No Keys)",
+      "stability_score": 99,
+      "church_fit_summary": "Top-of-class offline accuracy; flawless ancient proper nouns, theological vocabulary, and natural capitalization.",
+      "composite_score": 85.3,
+      "rank": 9,
+      "rank_badge": "\ud83d\udda5\ufe0f #9 Local Offline"
     },
     {
       "engine_id": "bandwidth",
@@ -185,17 +525,17 @@
       "stability_score": 90,
       "church_fit_summary": "Very fast cloud streaming, good for general church services if you have an API key.",
       "composite_score": 84.0,
-      "rank": 5,
-      "rank_badge": "\u2601\ufe0f #5 Enterprise"
+      "rank": 10,
+      "rank_badge": "\u2601\ufe0f #10 Cloud"
     },
     {
       "engine_id": "moonshine",
       "overall_accuracy_pct": 89.5,
       "overall_wer": 0.105,
-      "avg_latency_ms": 4869.0,
-      "avg_rtf": 0.441,
+      "avg_latency_ms": 4185.0,
+      "avg_rtf": 0.379,
       "total_audio_duration_s": 44.14,
-      "total_processing_time_s": 19.48,
+      "total_processing_time_s": 16.74,
       "test_results": [
         {
           "test_id": "biblical_names",
@@ -203,8 +543,8 @@
           "reference": "Pastor Christopher recounted how King Nebuchadnezzar erected a golden statue in the plain of Dura in Babylon, while the high priest Melchizedek and prophet Zephaniah pointed to the everlasting righteousness of God.",
           "hypothesis": "Pastor Christopher recounted how King Nebuchadnezzar erected a golden statue in the plain of Dora and Babylon, while the high priest Melchizedek and prophet Zephaniah pointed to the everlasting righteousness of God.",
           "audio_duration_s": 11.76,
-          "processing_time_s": 7.093,
-          "rtf": 0.603,
+          "processing_time_s": 6.125,
+          "rtf": 0.521,
           "wer": 0.062,
           "accuracy_pct": 93.8,
           "keyword_accuracy_pct": 83.3
@@ -215,8 +555,8 @@
           "reference": "Please turn with me to Second Corinthians chapter four verses seven through nine: We have this treasure in earthen vessels, that the excellence of the power may be of God and not of us.",
           "hypothesis": "1. Please turn with me to 2 Corinthians 4, verses 7-9. We have this treasure in earthen vessels, that the excellence of the power may be of God and not of us.",
           "audio_duration_s": 9.78,
-          "processing_time_s": 3.981,
-          "rtf": 0.407,
+          "processing_time_s": 3.505,
+          "rtf": 0.358,
           "wer": 0.206,
           "accuracy_pct": 79.4,
           "keyword_accuracy_pct": 40.0
@@ -227,8 +567,8 @@
           "reference": "Justification by faith alone, the doctrine of propitiation, and the sanctification of the Holy Spirit are not mere abstract concepts; they are the living bedrock of our covenant in Jesus Christ.",
           "hypothesis": "1. Justification by faith alone, the doctrine of propitiation, and the sanctification of the Holy Spirit are not mere abstract concepts. They are the living bedrock of our covenant in Jesus Christ.",
           "audio_duration_s": 10.9,
-          "processing_time_s": 3.762,
-          "rtf": 0.345,
+          "processing_time_s": 3.242,
+          "rtf": 0.297,
           "wer": 0.032,
           "accuracy_pct": 96.8,
           "keyword_accuracy_pct": 100.0
@@ -239,22 +579,22 @@
           "reference": "Now listen to me church, when trials come in your life, can I get an Amen? On Sunday November twenty fourth, our entire congregation gathered in the sanctuary at ten thirty in the morning to worship.",
           "hypothesis": "Now listen to me church when trials come in your life. Can I get an amen? On Sunday, November 20th, 4th, our entire congregation gathered in the sanctuary at 10.30 in the morning to worship.",
           "audio_duration_s": 11.7,
-          "processing_time_s": 4.639,
-          "rtf": 0.396,
+          "processing_time_s": 3.871,
+          "rtf": 0.331,
           "wer": 0.111,
           "accuracy_pct": 88.9,
           "keyword_accuracy_pct": 83.3
         }
       ],
       "engine_name": "Local Moonshine",
-      "model_spec": "moonshine/tiny (ONNX)",
+      "model_spec": "moonshine/tiny (PyTorch/ONNX)",
       "type": "Variable-Length Edge Transformer",
       "privacy": "100% Offline (Zero Cloud / No Keys)",
       "stability_score": 92,
       "church_fit_summary": "Ultra-fast inference (5x faster than Whisper), very light on CPU, perfect for older church laptops.",
-      "composite_score": 80.3,
-      "rank": 6,
-      "rank_badge": "\ud83d\udda5\ufe0f #6 Local Offline"
+      "composite_score": 82.2,
+      "rank": 11,
+      "rank_badge": "\ud83d\udda5\ufe0f #11 Local Offline"
     },
     {
       "engine_id": "google_web",
@@ -269,8 +609,8 @@
       "stability_score": 80,
       "church_fit_summary": "Phrase-endpointed (no live interim tokens), subject to upstream Google 403 rate limits.",
       "composite_score": 76.4,
-      "rank": 7,
-      "rank_badge": "\u2601\ufe0f #7 Legacy Fallback"
+      "rank": 12,
+      "rank_badge": "\u2601\ufe0f #12 Cloud"
     }
   ]
 }
