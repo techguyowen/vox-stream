@@ -5,7 +5,8 @@
     "log_level": "INFO",
     "auto_capitalization": true,
     "auto_punctuation": true,
-    "church_mode": true
+    "church_mode": true,
+    "church_name": "Waypoint Church"
   },
   "audio": {
     "device_name_filter": "default",

@@ -34,7 +34,7 @@
                 </div>
                 <div>
                     <div class="brand-title-row">
-                        <h1 class="brand-title">Waypoint VoxStream</h1>
+                        <h1 class="brand-title" id="brand-church-title">Waypoint VoxStream</h1>
                         <span class="brand-app-pill badge-captions">PRO DOCK</span>
                     </div>
                     <div class="subtext">
@@ -620,7 +620,12 @@
             <!-- TAB: CUSTOM GLOSSARY & VOCABULARY -->
             <div id="tab-vocabulary" class="tab-pane">
                 <div class="panel">
-                    <h2>📖 Custom Vocabulary &amp; Phonetic Glossary</h2>
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                        <h2>📖 Custom Vocabulary &amp; Phonetic Glossary</h2>
+                        <span style="font-size: 12px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.3); color: #FCD34D; padding: 4px 10px; border-radius: 6px; font-weight: 600;">
+                            ⛪ Active Church: <strong id="vocab-active-church-name">Waypoint Church</strong>
+                        </span>
+                    </div>
                     <p class="subtext">Automatically replace misheard phrases, proper nouns, brand names, slang, speaker names, and specialized jargon in real time across all engines.</p>
 
                     <div class="crud-section" style="margin-top: 16px;">
@@ -983,7 +988,24 @@
                         </div>
                     </div>
 
-                    <div class="form-row">
+                    <!-- UNIVERSAL CHURCH / ORGANIZATION SETTING -->
+                    <div class="church-name-banner" style="margin-top: 14px; background: rgba(245, 158, 11, 0.07); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 8px; padding: 12px 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
+                            <label for="church_name" style="margin: 0; display: flex; align-items: center; gap: 6px; font-weight: 700; color: #FCD34D; font-size: 13.5px;">
+                                <span>⛪ Church Name / Organization</span>
+                            </label>
+                            <span style="font-size: 11.5px; color: var(--text-muted);">Auto-formats your church &amp; ministry names in live captions</span>
+                        </div>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <input type="text" id="church_name" class="form-control" placeholder="e.g. Waypoint Church, Grace Community Church, First Baptist" value="Waypoint Church" style="border-color: rgba(245, 158, 11, 0.4);">
+                            <button type="button" id="btn-save-church-name" class="btn btn-secondary btn-sm" style="white-space: nowrap; font-weight: 600; border-color: rgba(245, 158, 11, 0.4); color: #FCD34D;">Save Church Name</button>
+                        </div>
+                        <span class="subtext" style="margin-top: 6px; font-size: 11px; color: #9CA3AF; display: block;">
+                            ✨ <strong>Universal Church Ready:</strong> Any church can enter their name here. VoxStream will automatically recognize and capitalize your church name, kids ministry (e.g. <em>[Name] Kids</em>), youth groups, and campus references, while keeping all built-in scripture citations and liturgical autocorrect words (Doxology, 2 Corinthians, discipleship, etc.) 100% active.
+                        </span>
+                    </div>
+
+                    <div class="form-row" style="margin-top: 14px;">
                         <div class="form-group">
                             <label for="noise_gate_slider" style="display: flex; justify-content: space-between; align-items: center;">
                                 <span>Noise Gate Threshold (<span id="val-noise-gate">-52 dB</span>)</span>

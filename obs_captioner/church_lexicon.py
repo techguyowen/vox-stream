@@ -398,8 +398,64 @@ class ChurchLexiconFormatter:
         "pissed back up": "picked back up",
     }
 
-    def __init__(self, enabled: bool = True):
+    @classmethod
+    def generate_church_name_terms(cls, church_name: str) -> Dict[str, str]:
+        """Generates intelligent phonetic variations, campus, and ministry phrases for any church name.
+        
+        Allows any church to configure their organization name in settings while
+        preserving all liturgical autocorrect words, doctrinal terms, and scripture formatting.
+        """
+        terms: Dict[str, str] = {}
+        if not church_name or not church_name.strip():
+            return terms
+
+        names = [n.strip() for n in church_name.split(",") if n.strip()]
+        for name in names:
+            words = name.split()
+            proper_name = " ".join(w[0].upper() + w[1:] if len(w) > 1 else w.upper() for w in words)
+            lower_name = proper_name.lower()
+
+            # 1. Full church name (e.g. "grace community church" -> "Grace Community Church")
+            terms[lower_name] = proper_name
+
+            # 2. Base name without trailing church designations
+            base_name = re.sub(
+                r"\s+(?:church|chapel|fellowship|parish|cathedral|assembly|ministries|ministry)$",
+                "",
+                proper_name,
+                flags=re.IGNORECASE,
+            ).strip()
+            base_lower = base_name.lower()
+
+            if base_lower and base_lower != lower_name:
+                terms[base_lower] = base_name
+
+            # 3. Ministry & campus phrases for the church
+            target_bases = [proper_name]
+            if base_name and base_name != proper_name:
+                target_bases.append(base_name)
+
+            for b in target_bases:
+                b_lower = b.lower()
+                for suffix in ["Kids", "Youth", "Students", "Ministries", "Ministry", "Worship", "Choir", "Campus", "Center", "Online"]:
+                    terms[f"{b_lower} {suffix.lower()}"] = f"{b} {suffix}"
+
+            # 4. Spacing variations for multi-word or compound names
+            for b in target_bases:
+                b_parts = b.split()
+                if len(b_parts) > 1:
+                    combined_lower = "".join(b_parts).lower()
+                    combined_proper = "".join(b_parts)
+                    terms[combined_lower] = combined_proper
+                    if not b.lower().endswith("church"):
+                        terms[f"{combined_lower} church"] = f"{combined_proper} Church"
+                    terms[f"{combined_lower} kids"] = f"{combined_proper} Kids"
+
+        return terms
+
+    def __init__(self, enabled: bool = True, church_name: str = "Waypoint Church"):
         self.enabled = enabled
+        self.church_name = (church_name or "Waypoint Church").strip()
         self._compiled_church_patterns: List[Tuple[re.Pattern, str]] = []
         books_sorted = sorted(self.BOOKS_OF_BIBLE.keys(), key=len, reverse=True)
         self._citation_trigger_pattern = re.compile(
@@ -408,13 +464,20 @@ class ChurchLexiconFormatter:
         )
         self._build_patterns()
 
+    def get_all_church_terms(self) -> Dict[str, str]:
+        """Return combined church terms including built-in autocorrects and configured church name variations."""
+        terms = dict(self.CHURCH_TERMS)
+        if self.church_name:
+            terms.update(self.generate_church_name_terms(self.church_name))
+        return terms
+
     def _build_patterns(self):
         # 1. Church phrases and terms (sorted by phrase length descending).
         # Ambiguous book words are excluded here; they are still formatted by
         # the citation regexes when chapter/verse context is present.
         all_terms = {}
         all_terms.update({k: v for k, v in self.BOOKS_OF_BIBLE.items() if k not in self.AMBIGUOUS_BOOK_WORDS})
-        all_terms.update(self.CHURCH_TERMS)
+        all_terms.update(self.get_all_church_terms())
 
         sorted_terms = sorted(all_terms.items(), key=lambda x: len(x[0]), reverse=True)
         self._compiled_church_patterns = []

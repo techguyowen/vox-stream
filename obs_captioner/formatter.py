@@ -208,11 +208,13 @@ class TextFormatter:
         auto_capitalization: bool = True,
         auto_punctuation: bool = True,
         church_mode: bool = True,
+        church_name: str = "Waypoint Church",
     ):
         self.auto_capitalization = auto_capitalization
         self.auto_punctuation = auto_punctuation
         self.church_mode = church_mode
-        self.church_formatter = ChurchLexiconFormatter(enabled=church_mode)
+        self.church_name = church_name
+        self.church_formatter = ChurchLexiconFormatter(enabled=church_mode, church_name=church_name)
 
         # Compile unified master dictionary for single-pass replacement
         master_dict = {}
@@ -226,7 +228,7 @@ class TextFormatter:
                 k: v for k, v in ChurchLexiconFormatter.BOOKS_OF_BIBLE.items()
                 if k not in ChurchLexiconFormatter.AMBIGUOUS_BOOK_WORDS
             })
-            master_dict.update(ChurchLexiconFormatter.CHURCH_TERMS)
+            master_dict.update(self.church_formatter.get_all_church_terms())
 
         self._lookup = {k.lower(): v for k, v in master_dict.items()}
         sorted_keys = sorted(self._lookup.keys(), key=len, reverse=True)

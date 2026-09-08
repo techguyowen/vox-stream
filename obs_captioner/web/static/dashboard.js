@@ -1283,6 +1283,20 @@ function populateFormFields(cfg) {
         if (cfg.general.church_mode !== undefined) {
             document.getElementById("church_mode").checked = !!cfg.general.church_mode;
         }
+        const churchName = cfg.general.church_name || "Waypoint Church";
+        const cNameEl = document.getElementById("church_name");
+        if (cNameEl && document.activeElement !== cNameEl) {
+            cNameEl.value = churchName;
+        }
+        const brandEl = document.getElementById("brand-church-title");
+        if (brandEl) {
+            const shortName = churchName.replace(/\s+church$/i, "").trim();
+            brandEl.textContent = shortName ? `${shortName} VoxStream` : "VoxStream";
+        }
+        const vBadgeEl = document.getElementById("vocab-active-church-name");
+        if (vBadgeEl) {
+            vBadgeEl.textContent = churchName;
+        }
         toggleEngineFields(cfg.general.engine || "vosk");
     }
     if (cfg.audio) {
@@ -2098,6 +2112,7 @@ document.getElementById("btn-save-audio").addEventListener("click", async () => 
             auto_capitalization: document.getElementById("auto_capitalization").checked,
             auto_punctuation: document.getElementById("auto_punctuation").checked,
             church_mode: document.getElementById("church_mode").checked,
+            church_name: (document.getElementById("church_name") ? document.getElementById("church_name").value.trim() : "") || "Waypoint Church",
         },
         audio: {
             device_name_filter: document.getElementById("audio_device_select").value,
@@ -3521,6 +3536,53 @@ function initSecretClearHandlers() {
     }
 }
 
+function initChurchNameHandlers() {
+    const btnSaveChurch = document.getElementById("btn-save-church-name");
+    const churchInput = document.getElementById("church_name");
+
+    async function doSaveChurch() {
+        const churchName = (churchInput ? churchInput.value.trim() : "") || "Waypoint Church";
+        if (churchInput) churchInput.value = churchName;
+
+        // Update UI immediately
+        const brandEl = document.getElementById("brand-church-title");
+        if (brandEl) {
+            const shortName = churchName.replace(/\s+church$/i, "").trim();
+            brandEl.textContent = shortName ? `${shortName} VoxStream` : "VoxStream";
+        }
+        const vBadgeEl = document.getElementById("vocab-active-church-name");
+        if (vBadgeEl) {
+            vBadgeEl.textContent = churchName;
+        }
+
+        if (currentConfig && currentConfig.general) {
+            currentConfig.general.church_name = churchName;
+        }
+
+        await saveConfigPayload(
+            {
+                general: {
+                    ...(currentConfig && currentConfig.general ? currentConfig.general : {}),
+                    church_name: churchName,
+                }
+            },
+            `⛪ Church name set to "${churchName}"! Auto-corrections updated.`
+        );
+    }
+
+    if (btnSaveChurch) {
+        btnSaveChurch.addEventListener("click", doSaveChurch);
+    }
+    if (churchInput) {
+        churchInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                doSaveChurch();
+            }
+        });
+    }
+}
+
 // Initialize on page load
 window.addEventListener("DOMContentLoaded", async () => {
     // Initialize Models Status
@@ -3559,6 +3621,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     initFeatureManagerHandlers();
     setupA11yPresets();
     initSecretClearHandlers();
+    initChurchNameHandlers();
     await loadAudioDevices();
     await loadObsMonitors();
     await loadVocabularyState();

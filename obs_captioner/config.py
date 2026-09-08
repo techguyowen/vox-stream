@@ -24,6 +24,7 @@ class GeneralConfig:
     auto_capitalization: bool = True
     auto_punctuation: bool = True
     church_mode: bool = True
+    church_name: str = "Waypoint Church"
 
 
 @dataclass

@@ -1649,6 +1649,50 @@ class TestSermonPipelineEnhancements(unittest.IsolatedAsyncioTestCase):
         self.assertIn("he took a cup", fmt.format_text("when he took a cop and broke it"))
         self.assertIn("receive this pardon", fmt.format_text("come to receive this part in"))
 
+    def test_custom_church_name_and_autocorrect_retention(self):
+        from obs_captioner.formatter import TextFormatter
+        from obs_captioner.config import AppConfig, GeneralConfig
+        from obs_captioner.obs.caption_sink import CaptionSink
+
+        # 1. Custom church name formatter
+        fmt = TextFormatter(
+            auto_capitalization=True,
+            auto_punctuation=True,
+            church_mode=True,
+            church_name="Grace Community Church",
+        )
+
+        # Custom church name & ministry phrases are formatted properly
+        self.assertIn("Grace Community Church", fmt.format_text("welcome to grace community church"))
+        self.assertIn("Grace Community Kids", fmt.format_text("join us at grace community kids"))
+        self.assertIn("Grace Community Youth", fmt.format_text("our grace community youth"))
+        self.assertIn("Grace Community", fmt.format_text("partnering with grace community"))
+
+        # ALL liturgical, doctrinal, and phonetic autocorrect words are 100% kept
+        self.assertIn("Doxology", fmt.format_text("singing dog solid g"))
+        self.assertIn("2 Corinthians", fmt.format_text("turn to said corinthians"))
+        self.assertIn("intinction", fmt.format_text("communion via entinction"))
+        self.assertIn("Luke 24", fmt.format_text("as written in top 24"))
+        self.assertIn("he took a cup", fmt.format_text("when he took a cop and broke it"))
+        self.assertIn("receive this pardon", fmt.format_text("come to receive this part in"))
+        self.assertIn("discipleship", fmt.format_text("deepening our a socioplship"))
+        self.assertIn("disciple", fmt.format_text("walking as a the cyber of Jesus"))
+        self.assertIn("picked back up", fmt.format_text("we pissed back up"))
+
+        # 2. Dynamic live config switching via CaptionSink
+        cfg = AppConfig(general=GeneralConfig(church_name="Hope Fellowship"))
+        sink = CaptionSink(cfg)
+        self.assertIn("Hope Fellowship", sink.formatter.format_text("welcome to hope fellowship"))
+        self.assertIn("Hope Fellowship Kids", sink.formatter.format_text("bringing our children to hope fellowship kids"))
+        self.assertIn("Doxology", sink.formatter.format_text("singing dog solid g"))
+
+        # Hot-switch to another church without restart
+        new_cfg = AppConfig(general=GeneralConfig(church_name="Cornerstone Chapel"))
+        sink.update_config(new_cfg)
+        self.assertIn("Cornerstone Chapel", sink.formatter.format_text("welcome to cornerstone chapel"))
+        self.assertIn("Cornerstone Chapel Kids", sink.formatter.format_text("cornerstone chapel kids"))
+        self.assertIn("Doxology", sink.formatter.format_text("singing dog solid g"))
+
     def test_vulgar_mishearing_safeguard(self):
         from obs_captioner.formatter import TextFormatter
         from obs_captioner.vocabulary import VocabularyReplacer, VocabularyConfig

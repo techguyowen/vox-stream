@@ -50,10 +50,12 @@ class CaptionSink:
         self.is_paused = is_paused  # optional callable; engines keep running, but events are dropped while paused
         self.vocabulary = VocabularyReplacer(config.vocabulary)
         church_mode = getattr(config.general, "church_mode", True)
+        church_name = getattr(config.general, "church_name", "Waypoint Church")
         self.formatter = TextFormatter(
             auto_capitalization=getattr(config.general, "auto_capitalization", True),
             auto_punctuation=getattr(config.general, "auto_punctuation", True),
             church_mode=church_mode,
+            church_name=church_name,
         )
         self.content_filter = ContentFilter(config.censor, church_mode=church_mode)
         self.translator = SubtitleTranslator(config.translation)
@@ -71,10 +73,12 @@ class CaptionSink:
         self.config = new_config
         self.vocabulary = VocabularyReplacer(new_config.vocabulary)
         church_mode = getattr(new_config.general, "church_mode", True)
+        church_name = getattr(new_config.general, "church_name", "Waypoint Church")
         self.formatter = TextFormatter(
             auto_capitalization=getattr(new_config.general, "auto_capitalization", True),
             auto_punctuation=getattr(new_config.general, "auto_punctuation", True),
             church_mode=church_mode,
+            church_name=church_name,
         )
         self.content_filter = ContentFilter(new_config.censor, church_mode=church_mode)
         self.translator = SubtitleTranslator(new_config.translation)
