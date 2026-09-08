@@ -125,6 +125,18 @@ if not exist ".venv\Scripts\activate.bat" (
 echo [2/6] Activating virtual environment...
 call .venv\Scripts\activate.bat
 
+:: 4b. Check for Microsoft Visual C++ 2015-2022 Redistributable (x64)
+if not exist "%SystemRoot%\System32\vcruntime140.dll" (
+    echo [INFO] Microsoft Visual C++ 2015-2022 Redistributable not detected.
+    echo [INFO] Downloading and installing VC++ runtime (required by AI models)...
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile '%TEMP%\vc_redist.x64.exe'"
+    if exist "%TEMP%\vc_redist.x64.exe" (
+        start /wait "" "%TEMP%\vc_redist.x64.exe" /install /passive /norestart
+        del "%TEMP%\vc_redist.x64.exe" 2>nul
+        echo [SUCCESS] Visual C++ Redistributable installed.
+    )
+)
+
 :: 5. Install dependencies
 echo [3/6] Upgrading pip and installing required packages...
 call .venv\Scripts\python.exe -m pip install --upgrade pip
@@ -144,7 +156,7 @@ if "!HAS_NVIDIA!"=="0" (
     if %errorlevel% equ 0 set "HAS_NVIDIA=1"
 )
 
-powershell -NoProfile -Command "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name" 2>nul | findstr /i "AMD Radeon RX" >nul 2>&1
+powershell -NoProfile -Command "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name" 2>nul | findstr /i "Radeon AMD RX" >nul 2>&1
 if %errorlevel% equ 0 set "HAS_AMD=1"
 
 if "!HAS_NVIDIA!"=="1" (

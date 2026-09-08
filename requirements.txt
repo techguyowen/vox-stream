@@ -21,6 +21,8 @@ faster-whisper>=1.0.0
 vosk>=0.3.44
 useful-moonshine
 keras>=3.0.0
+sherpa-onnx>=1.10.0
+huggingface-hub>=0.20.0
 
 # Voice Activity Detection (VAD) & Neural Inference
 torch>=2.0.0
