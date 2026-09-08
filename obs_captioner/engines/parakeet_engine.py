@@ -122,17 +122,22 @@ class ParakeetEngine(BaseSTTEngine):
                 if onnx_model.exists() and tokens.exists():
                     loop = asyncio.get_event_loop()
 
+                    cfg_threads = int(getattr(self.config.parakeet, "num_threads", 4) or 4)
+                    configured_device = getattr(self.config.parakeet, "device", "auto") or "auto"
+                    provider = "cuda" if (configured_device == "cuda" or (configured_device == "auto" and self._device == "cuda")) else "cpu"
+
                     def _load_onnx():
                         return sherpa_onnx.OfflineRecognizer.from_nemo_ctc(
                             model=str(onnx_model),
                             tokens=str(tokens),
-                            num_threads=4,
+                            num_threads=cfg_threads,
                             sample_rate=self.config.audio.sample_rate,
+                            provider=provider,
                         )
 
                     self.model = await loop.run_in_executor(None, _load_onnx)
                     if status_callback:
-                        status_callback(f"✅ NVIDIA Parakeet ready on {device_label}!")
+                        status_callback(f"✅ NVIDIA Parakeet ready on {device_label} ({provider.upper()})!")
                     logger.info("Parakeet ONNX model loaded successfully.")
                     return True
         except ImportError:
