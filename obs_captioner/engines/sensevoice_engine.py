@@ -229,12 +229,16 @@ class SenseVoiceEngine(BaseSTTEngine):
 
                 sentence_break_s = (getattr(self.config.audio, "sentence_break_ms", 650) or 650) / 1000.0
                 max_sentence_s = getattr(self.config.audio, "max_sentence_duration_seconds", 7.0) or 7.0
+                max_sentence_words = getattr(self.config.audio, "max_sentence_words", 24) or 24
                 max_bytes = int(self.config.audio.sample_rate * 2 * max_sentence_s)
+                # Approximate word ceiling: ~2.5 words/sec
+                approx_words = (len(audio_buffer) / (self.config.audio.sample_rate * 2)) * 2.5
+                is_word_ceiling = approx_words >= max_sentence_words
 
                 if is_speech:
                     silence_start_time = None
                     audio_buffer.extend(chunk)
-                    if len(audio_buffer) >= max_bytes:
+                    if len(audio_buffer) >= max_bytes or (len(audio_buffer) > 0 and is_word_ceiling):
                         await self._process_utterance(bytes(audio_buffer), on_transcript)
                         audio_buffer.clear()
                         silence_start_time = None
@@ -242,7 +246,7 @@ class SenseVoiceEngine(BaseSTTEngine):
                     if audio_buffer:
                         if silence_start_time is None:
                             silence_start_time = now
-                        elif now - silence_start_time >= sentence_break_s or len(audio_buffer) >= max_bytes:
+                        elif now - silence_start_time >= sentence_break_s or len(audio_buffer) >= max_bytes or is_word_ceiling:
                             await self._process_utterance(bytes(audio_buffer), on_transcript)
                             audio_buffer.clear()
                             silence_start_time = None

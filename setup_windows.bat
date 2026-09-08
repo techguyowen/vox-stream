@@ -156,7 +156,8 @@ if "!HAS_NVIDIA!"=="1" (
     echo [SUCCESS] AMD Radeon GPU detected! (e.g. Radeon RX 580)
     echo [INFO] Installing DirectML runtime packages for AMD GPU acceleration...
     call .venv\Scripts\python.exe -m pip install onnxruntime-directml
-    echo [SUCCESS] AMD Radeon GPU DirectML & OpenMP CPU acceleration configured!
+    call .venv\Scripts\python.exe -m pip install torch-directml
+    echo [SUCCESS] AMD Radeon GPU DirectML ^& OpenMP CPU acceleration configured!
 ) else (
     echo [INFO] Standard CPU environment detected. Configured for fast CPU int8 inference.
 )

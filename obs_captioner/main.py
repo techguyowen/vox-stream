@@ -266,7 +266,7 @@ async def main_async(args):
             or (new_cfg.general.engine == "gemini_live" and (new_cfg.gemini_live.api_key != active_gemini_key or new_cfg.gemini_live.model != active_gemini_model))
             or (new_cfg.general.engine == "bandwidth" and new_cfg.bandwidth.api_key != active_bandwidth_key)
             or (new_cfg.general.engine in ("sherpa", "sherpa_onnx", "zipformer") and (new_cfg.sherpa.model_name != active_sherpa_model or new_cfg.sherpa.model_path != active_sherpa_path))
-            or (new_cfg.general.engine in ("parakeet", "nemo", "fastconformer") and (new_cfg.parakeet.model_name != active_parakeet_model or new_cfg.parakeet.device != active_parakeet_device))
+            or (new_cfg.general.engine in ("parakeet", "nemo", "nemo_parakeet", "fastconformer") and (new_cfg.parakeet.model_name != active_parakeet_model or new_cfg.parakeet.device != active_parakeet_device))
             or (new_cfg.general.engine in ("sensevoice", "funasr") and (new_cfg.sensevoice.model_name != active_sensevoice_model or new_cfg.sensevoice.device != active_sensevoice_device or new_cfg.sensevoice.detect_events != active_sensevoice_events))
             or (engine_switch_error is not None)
         )

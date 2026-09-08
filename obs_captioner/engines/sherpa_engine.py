@@ -212,17 +212,6 @@ class SherpaEngine(BaseSTTEngine):
                 res = self.recognizer.get_result(stream)
                 text = (res.text if hasattr(res, "text") else str(res)).strip()
 
-                if text and text != last_text:
-                    last_text = text
-                    await on_transcript(
-                        TranscriptEvent(
-                            text=text,
-                            is_final=is_endpoint,
-                            confidence=0.95,
-                            timestamp=time.time(),
-                        )
-                    )
-
                 if is_endpoint:
                     if text:
                         await on_transcript(
@@ -235,6 +224,16 @@ class SherpaEngine(BaseSTTEngine):
                         )
                     self.recognizer.reset(stream)
                     last_text = ""
+                elif text and text != last_text:
+                    last_text = text
+                    await on_transcript(
+                        TranscriptEvent(
+                            text=text,
+                            is_final=False,
+                            confidence=0.95,
+                            timestamp=time.time(),
+                        )
+                    )
 
             if last_text:
                 await on_transcript(

@@ -36,6 +36,8 @@ class MoonshineEngine(BaseSTTEngine):
             sample_rate=config.audio.sample_rate,
             noise_gate_db=config.audio.noise_gate_db,
             vad_threshold=config.audio.vad_threshold,
+            enable_silero=getattr(config.audio, "enable_vad", True),
+            suppress_music=getattr(config.audio, "suppress_music", True),
         )
 
     async def initialize(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
@@ -69,11 +71,15 @@ class MoonshineEngine(BaseSTTEngine):
             # Select optimal device: DirectML (AMD Radeon RX 580 / Intel Arc) → NVIDIA CUDA → Apple MPS → CPU
             from ..hardware import get_torch_device
             self._device, device_label = get_torch_device()
-            try:
-                self.model = self.model.to(self._device)
-                logger.info(f"Moonshine model moved to device: {device_label}")
-            except Exception as dev_err:
-                logger.warning(f"Could not move Moonshine to {self._device}, using cpu: {dev_err}")
+            if hasattr(self.model, "to"):
+                try:
+                    self.model = self.model.to(self._device)
+                    logger.info(f"Moonshine model moved to device: {device_label}")
+                except Exception as dev_err:
+                    logger.warning(f"Could not move Moonshine to {self._device}, using cpu: {dev_err}")
+                    self._device = "cpu"
+                    device_label = "CPU"
+            else:
                 self._device = "cpu"
                 device_label = "CPU"
 
@@ -149,8 +155,9 @@ class MoonshineEngine(BaseSTTEngine):
             has_speech = self.vad.is_speech(chunk)
             now = time.time()
 
-            pause_break_seconds = (getattr(self.config.audio, "sentence_break_ms", 550) or 550) / 1000.0
+            pause_break_seconds = (getattr(self.config.audio, "sentence_break_ms", 650) or 650) / 1000.0
             max_sentence_seconds = getattr(self.config.audio, "max_sentence_duration_seconds", 7.0) or 7.0
+            max_sentence_words = getattr(self.config.audio, "max_sentence_words", 24) or 24
             max_bytes = int(self.config.audio.sample_rate * 2 * max_sentence_seconds)
 
             if has_speech:
@@ -170,7 +177,11 @@ class MoonshineEngine(BaseSTTEngine):
             # 3. Buffer length ceiling reached: prefer waiting for at least a brief silence dip before forcing cut
             is_soft_full = len(buffer) >= max_bytes and (silence_start_time is not None or not has_speech)
             is_hard_full = len(buffer) >= int(max_bytes * 1.25)  # Hard ceiling if preacher speaks without any breath
-            is_full = is_soft_full or is_hard_full
+            # 4. Word count ceiling (approximate from buffer size at ~150 WPM average)
+            approx_seconds_buffered = len(buffer) / (self.config.audio.sample_rate * 2)
+            approx_words = approx_seconds_buffered * 2.5  # ~2.5 words/sec average
+            is_word_ceiling = approx_words >= max_sentence_words
+            is_full = is_soft_full or is_hard_full or is_word_ceiling
 
             if (is_silence_timeout or is_interval or is_full) and len(buffer) >= min_bytes:
                 even_len = len(buffer) & ~1

@@ -28,6 +28,8 @@ class VoskEngine(BaseSTTEngine):
             sample_rate=config.audio.sample_rate,
             noise_gate_db=config.audio.noise_gate_db,
             vad_threshold=config.audio.vad_threshold,
+            enable_silero=getattr(config.audio, "enable_vad", True),
+            suppress_music=getattr(config.audio, "suppress_music", True),
         )
 
     async def initialize(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
@@ -133,7 +135,7 @@ class VoskEngine(BaseSTTEngine):
             has_speech = self.vad.is_speech(pcm_chunk)
 
             # Live dynamic thresholds from active config
-            pause_break_seconds = (getattr(self.config.audio, "sentence_break_ms", 550) or 550) / 1000.0
+            pause_break_seconds = (getattr(self.config.audio, "sentence_break_ms", 650) or 650) / 1000.0
             max_sentence_seconds = getattr(self.config.audio, "max_sentence_duration_seconds", 7.0) or 7.0
             max_sentence_words = getattr(self.config.audio, "max_sentence_words", 24) or 24
 

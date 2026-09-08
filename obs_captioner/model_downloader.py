@@ -455,7 +455,8 @@ class ModelDownloadManager:
                 return False, f"Model directory for {item.name} not found in cache.", 0
 
             elif item.engine == "local_whisper":
-                hf_dir = Path.home() / ".cache" / "huggingface" / "hub" / f"models--Systran--faster-whisper-{item.model_key}"
+                hf_cache = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub"
+                hf_dir = hf_cache / f"models--Systran--faster-whisper-{item.model_key}"
                 if hf_dir.exists():
                     shutil.rmtree(hf_dir, ignore_errors=True)
                 logger.info(f"Deleted Faster-Whisper model '{item.name}' from {hf_dir}")
