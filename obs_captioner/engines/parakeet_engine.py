@@ -51,6 +51,14 @@ class ParakeetEngine(BaseSTTEngine):
             Path.home() / "AppData" / "Local" / "parakeet" / model_name,
             Path.home() / ".cache" / "nemo" / model_name,
         ]
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            candidates.append(Path(local_app_data) / "parakeet" / model_name)
+            candidates.append(Path(local_app_data) / "nemo" / model_name)
+        app_data = os.environ.get("APPDATA")
+        if app_data:
+            candidates.append(Path(app_data) / "parakeet" / model_name)
+            candidates.append(Path(app_data) / "nemo" / model_name)
         for c in candidates:
             if c.exists():
                 return c
@@ -207,6 +215,7 @@ class ParakeetEngine(BaseSTTEngine):
         except Exception as e:
             logger.debug(f"Parakeet utterance transcription error: {e}")
 
-    def stop(self):
+    async def stop(self) -> None:
         """Stop streaming."""
         self._running = False
+        self.is_running = False

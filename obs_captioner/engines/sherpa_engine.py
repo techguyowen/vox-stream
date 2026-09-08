@@ -48,8 +48,19 @@ class SherpaEngine(BaseSTTEngine):
             Path.home() / ".cache" / "sherpa-onnx" / model_name,
             Path("models") / model_name,
             Path.home() / "AppData" / "Local" / "sherpa-onnx" / model_name,
-            Path("/tmp") / model_name,
         ]
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            candidates.append(Path(local_app_data) / "sherpa-onnx" / model_name)
+        app_data = os.environ.get("APPDATA")
+        if app_data:
+            candidates.append(Path(app_data) / "sherpa-onnx" / model_name)
+        try:
+            import tempfile
+            candidates.append(Path(tempfile.gettempdir()) / model_name)
+        except Exception:
+            pass
+
         for c in candidates:
             if c.is_dir() and (c / "tokens.txt").exists():
                 return c
@@ -195,6 +206,7 @@ class SherpaEngine(BaseSTTEngine):
             self._running = False
             logger.info("Sherpa-ONNX audio streaming stopped.")
 
-    def stop(self):
+    async def stop(self) -> None:
         """Stop streaming."""
         self._running = False
+        self.is_running = False

@@ -95,6 +95,12 @@ async def main_async(args):
             return f"Gemini 3.5 Live ({cfg.gemini_live.model})"
         elif eng in ("bandwidth", "labs.bandwidth.com", "bandwidth_labs"):
             return "Bandwidth Labs Live STT (Real-Time Cloud)"
+        elif eng in ("sherpa", "sherpa_onnx", "zipformer"):
+            return f"Sherpa-ONNX Zipformer ({cfg.sherpa.model_name})"
+        elif eng in ("parakeet", "nemo", "nemo_parakeet", "fastconformer"):
+            return f"NVIDIA Parakeet ({cfg.parakeet.model_name} • Device: {cfg.parakeet.device})"
+        elif eng in ("sensevoice", "funasr"):
+            return f"SenseVoice ({cfg.sensevoice.model_name} • Device: {cfg.sensevoice.device})"
         return eng
 
     engine_switch_status = ""
@@ -121,6 +127,7 @@ async def main_async(args):
     async def switch_engine_async(new_cfg: AppConfig):
         nonlocal engine, initialized, is_switching_engine, engine_switch_status, engine_switch_target, engine_switch_error
         nonlocal active_engine_type, active_vosk_model, active_whisper_model, active_moonshine_model, active_gemini_key, active_gemini_model, active_bandwidth_key
+        nonlocal active_sherpa_model, active_sherpa_path, active_parakeet_model, active_parakeet_device, active_sensevoice_model, active_sensevoice_device, active_sensevoice_events
         async with engine_lock:
             is_switching_engine = True
             engine_switch_error = None
@@ -173,6 +180,13 @@ async def main_async(args):
                     active_gemini_key = new_cfg.gemini_live.api_key
                     active_gemini_model = new_cfg.gemini_live.model
                     active_bandwidth_key = new_cfg.bandwidth.api_key
+                    active_sherpa_model = new_cfg.sherpa.model_name
+                    active_sherpa_path = new_cfg.sherpa.model_path
+                    active_parakeet_model = new_cfg.parakeet.model_name
+                    active_parakeet_device = new_cfg.parakeet.device
+                    active_sensevoice_model = new_cfg.sensevoice.model_name
+                    active_sensevoice_device = new_cfg.sensevoice.device
+                    active_sensevoice_events = new_cfg.sensevoice.detect_events
                     logger.info(f"✅ STT engine switched to: {engine.name} ({get_model_detail(new_cfg)})")
                     if web_server:
                         await web_server.broadcast_control({
@@ -220,9 +234,17 @@ async def main_async(args):
     active_gemini_key = config.gemini_live.api_key
     active_gemini_model = config.gemini_live.model
     active_bandwidth_key = config.bandwidth.api_key
+    active_sherpa_model = config.sherpa.model_name
+    active_sherpa_path = config.sherpa.model_path
+    active_parakeet_model = config.parakeet.model_name
+    active_parakeet_device = config.parakeet.device
+    active_sensevoice_model = config.sensevoice.model_name
+    active_sensevoice_device = config.sensevoice.device
+    active_sensevoice_events = config.sensevoice.detect_events
 
     def on_config_updated(new_cfg: AppConfig):
         nonlocal config, active_engine_type, active_vosk_model, active_whisper_model, active_moonshine_model, active_gemini_key, active_gemini_model, active_bandwidth_key
+        nonlocal active_sherpa_model, active_sherpa_path, active_parakeet_model, active_parakeet_device, active_sensevoice_model, active_sensevoice_device, active_sensevoice_events
 
         config = new_cfg
         if sink:
@@ -243,6 +265,9 @@ async def main_async(args):
             or (new_cfg.general.engine == "moonshine" and new_cfg.moonshine.model_name != active_moonshine_model)
             or (new_cfg.general.engine == "gemini_live" and (new_cfg.gemini_live.api_key != active_gemini_key or new_cfg.gemini_live.model != active_gemini_model))
             or (new_cfg.general.engine == "bandwidth" and new_cfg.bandwidth.api_key != active_bandwidth_key)
+            or (new_cfg.general.engine in ("sherpa", "sherpa_onnx", "zipformer") and (new_cfg.sherpa.model_name != active_sherpa_model or new_cfg.sherpa.model_path != active_sherpa_path))
+            or (new_cfg.general.engine in ("parakeet", "nemo", "fastconformer") and (new_cfg.parakeet.model_name != active_parakeet_model or new_cfg.parakeet.device != active_parakeet_device))
+            or (new_cfg.general.engine in ("sensevoice", "funasr") and (new_cfg.sensevoice.model_name != active_sensevoice_model or new_cfg.sensevoice.device != active_sensevoice_device or new_cfg.sensevoice.detect_events != active_sensevoice_events))
             or (engine_switch_error is not None)
         )
 

@@ -2050,7 +2050,7 @@ class TestVersioningAndSemanticUpdater(unittest.TestCase):
         messages_sherpa = []
         res_sherpa = loop.run_until_complete(sherpa.initialize(status_callback=messages_sherpa.append))
         self.assertIsInstance(res_sherpa, bool)
-        sherpa.stop()
+        loop.run_until_complete(sherpa.stop())
 
         # NVIDIA Parakeet
         parakeet = ParakeetEngine(cfg)
@@ -2058,9 +2058,61 @@ class TestVersioningAndSemanticUpdater(unittest.TestCase):
         res_parakeet = loop.run_until_complete(parakeet.initialize(status_callback=messages_parakeet.append))
         self.assertTrue(res_parakeet)
         self.assertTrue(len(messages_parakeet) > 0)
-        parakeet.stop()
+        loop.run_until_complete(parakeet.stop())
 
         loop.close()
+
+    def test_windows_paths_and_settings_isolation(self):
+        """Verify Windows backslashes, drive letters, and user AppData paths across all engine configs."""
+        cfg = AppConfig()
+
+        win_vosk_path = r"C:\Users\Pastor Dan\AppData\Local\vosk\vosk-model-small-en-us-0.15"
+        win_sherpa_path = r"D:\OBS Live\models\sherpa-onnx-streaming-zipformer-en"
+        win_parakeet_path = r"C:\Users\Media Team\AppData\Local\parakeet\parakeet-tdt-0.6b"
+        win_sensevoice_path = r"E:\Neural Models\sensevoice-small"
+
+        cfg.vosk.model_path = win_vosk_path
+        cfg.sherpa.model_path = win_sherpa_path
+        cfg.parakeet.model_path = win_parakeet_path
+        cfg.sensevoice.model_path = win_sensevoice_path
+
+        self.assertEqual(cfg.vosk.model_path, win_vosk_path)
+        self.assertEqual(cfg.sherpa.model_path, win_sherpa_path)
+        self.assertEqual(cfg.parakeet.model_path, win_parakeet_path)
+        self.assertEqual(cfg.sensevoice.model_path, win_sensevoice_path)
+
+    def test_config_json_roundtrip_all_engines(self):
+        """Verify that saving and reloading config with all engines preserves all individual settings."""
+        import tempfile
+        import os
+        cfg = AppConfig()
+        cfg.general.engine = "sherpa"
+        cfg.sherpa.model_name = "streaming-zipformer-en-20M"
+        cfg.sherpa.num_threads = 6
+        cfg.parakeet.model_name = "parakeet-tdt-1.1b"
+        cfg.parakeet.device = "cuda"
+        cfg.sensevoice.model_name = "sensevoice-small"
+        cfg.sensevoice.detect_events = False
+        cfg.sensevoice.language = "es"
+
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tf:
+            temp_path = tf.name
+
+        try:
+            save_config(cfg, temp_path)
+            loaded = load_config(temp_path)
+
+            self.assertEqual(loaded.general.engine, "sherpa")
+            self.assertEqual(loaded.sherpa.model_name, "streaming-zipformer-en-20M")
+            self.assertEqual(loaded.sherpa.num_threads, 6)
+            self.assertEqual(loaded.parakeet.model_name, "parakeet-tdt-1.1b")
+            self.assertEqual(loaded.parakeet.device, "cuda")
+            self.assertEqual(loaded.sensevoice.model_name, "sensevoice-small")
+            self.assertFalse(loaded.sensevoice.detect_events)
+            self.assertEqual(loaded.sensevoice.language, "es")
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
 
 
 if __name__ == "__main__":

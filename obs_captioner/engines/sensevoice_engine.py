@@ -62,6 +62,14 @@ class SenseVoiceEngine(BaseSTTEngine):
             Path.home() / "AppData" / "Local" / "sensevoice" / model_name,
             Path.home() / ".cache" / "funasr" / model_name,
         ]
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            candidates.append(Path(local_app_data) / "sensevoice" / model_name)
+            candidates.append(Path(local_app_data) / "funasr" / model_name)
+        app_data = os.environ.get("APPDATA")
+        if app_data:
+            candidates.append(Path(app_data) / "sensevoice" / model_name)
+            candidates.append(Path(app_data) / "funasr" / model_name)
         for c in candidates:
             if c.exists():
                 return c
@@ -244,6 +252,7 @@ class SenseVoiceEngine(BaseSTTEngine):
         except Exception as e:
             logger.debug(f"SenseVoice utterance error: {e}")
 
-    def stop(self):
+    async def stop(self) -> None:
         """Stop streaming."""
         self._running = False
+        self.is_running = False
