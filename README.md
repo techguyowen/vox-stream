@@ -193,7 +193,31 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Mu
 
 ### 🚀 Option 1: Automated 1-Click Setup (Recommended)
 
-#### 🍏 macOS & Linux
+#### 🐧 Linux (Ubuntu, Debian, Fedora, Arch)
+1. **Install system audio & Python packages** (one-time):
+   ```bash
+   # Debian / Ubuntu / Mint / Pop!_OS:
+   sudo apt update && sudo apt install -y python3-venv python3-pip libportaudio2 ffmpeg git
+
+   # Fedora / RHEL:
+   sudo dnf install -y python3-pip portaudio ffmpeg git
+
+   # Arch Linux / Manjaro:
+   sudo pacman -S --needed python python-pip portaudio ffmpeg git
+   ```
+2. **Clone and run the automated Linux setup**:
+   ```bash
+   git clone https://github.com/techguyowen/vox-stream.git
+   cd vox-stream
+   ./setup_linux.sh
+   ```
+   *(Creates isolated `.venv`, installs speech models & CUDA acceleration if NVIDIA GPU detected, pre-caches offline AI models, and creates a desktop launcher in `~/.local/share/applications/voxstream.desktop`)*
+3. **Start VoxStream**:
+   ```bash
+   ./run_captioner.sh
+   ```
+
+#### 🍏 macOS
 ```bash
 # 1. Clone repository
 git clone https://github.com/techguyowen/vox-stream.git
@@ -220,7 +244,7 @@ cd vox-stream
 
 ### 📦 What Gets Installed (Full Manifest)
 
-When running the setup scripts (`setup_windows.bat` / `setup_mac.sh`), here is the complete breakdown of what is installed and configured:
+When running the setup scripts (`setup_windows.bat` / `setup_linux.sh` / `setup_mac.sh`), here is the complete breakdown of what is installed and configured:
 
 | Category | Component | Description & Purpose |
 | :--- | :--- | :--- |

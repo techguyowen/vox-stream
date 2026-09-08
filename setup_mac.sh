@@ -51,7 +51,7 @@ echo "🧠 Pre-caching default speech models (Vosk & Faster-Whisper & Silero VAD
 .venv/bin/python -m obs_captioner.model_downloader --preload-defaults || echo "⚠️ Model pre-cache skipped (will download on first launch)."
 
 # 7. Make scripts executable
-chmod +x run_captioner.sh setup_mac.sh 2>/dev/null || true
+chmod +x run_captioner.sh setup_mac.sh setup_linux.sh 2>/dev/null || true
 
 echo ""
 echo "=================================================="

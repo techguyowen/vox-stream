@@ -10,8 +10,13 @@ export VOXSTREAM_RUNNER=sh
 
 # Check if .venv exists
 if [ ! -d ".venv" ]; then
-    echo "⚠️ Virtual environment not found. Running setup_mac.sh first..."
-    bash "$SCRIPT_DIR/setup_mac.sh"
+    if [ "$(uname -s)" = "Linux" ]; then
+        echo "⚠️ Virtual environment not found. Running setup_linux.sh first..."
+        bash "$SCRIPT_DIR/setup_linux.sh"
+    else
+        echo "⚠️ Virtual environment not found. Running setup_mac.sh first..."
+        bash "$SCRIPT_DIR/setup_mac.sh"
+    fi
 fi
 
 while true; do
@@ -22,7 +27,10 @@ while true; do
     # Exit code 42 indicates an intentional application restart
     if [ $EXIT_CODE -eq 42 ]; then
         echo ""
-        echo "🔄 [VoxStream] Application restart requested. Reloading in 1s..."
+        echo "🔄 [VoxStream] Application restart requested. Updating dependencies and reloading..."
+        if [ -f "$SCRIPT_DIR/requirements.txt" ]; then
+            "$SCRIPT_DIR/.venv/bin/python" -m pip install -q -r "$SCRIPT_DIR/requirements.txt" 2>/dev/null || true
+        fi
         sleep 1
         continue
     else
