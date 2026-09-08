@@ -952,6 +952,65 @@ class TestServerEndpoints(AioHTTPTestCase):
         self.assertEqual(cfg_data['bible']['letter_spacing'], '0.05em')
         self.assertEqual(cfg_data['bible']['use_italics'], False)
 
+    async def test_api_key_and_secrets_persistence(self):
+        """Verify that API keys and secrets are never wiped by empty payloads,
+        are preserved with sentinel '•••', can be updated with new values, and can be cleared explicitly."""
+        # 1. Set initial credentials
+        resp1 = await self.client.request('POST', '/api/config', json={
+            'gemini_live': {'api_key': 'AIzaSy_ORIGINAL_KEY_123'},
+            'bandwidth': {'api_key': 'bwa_ORIGINAL_KEY_456'},
+            'twitch': {'oauth_token': 'oauth:ORIGINAL_TOKEN_789'}
+        })
+        self.assertEqual(resp1.status, 200)
+        self.assertEqual(self.overlay_server.config.gemini_live.api_key, 'AIzaSy_ORIGINAL_KEY_123')
+        self.assertEqual(self.overlay_server.config.bandwidth.api_key, 'bwa_ORIGINAL_KEY_456')
+        self.assertEqual(self.overlay_server.config.twitch.oauth_token, 'oauth:ORIGINAL_TOKEN_789')
+
+        # Verify GET /api/config returns masked sentinel
+        get1 = await self.client.request('GET', '/api/config')
+        data1 = await get1.json()
+        self.assertEqual(data1['gemini_live']['api_key'], '•••')
+        self.assertEqual(data1['bandwidth']['api_key'], '•••')
+        self.assertEqual(data1['twitch']['oauth_token'], '•••')
+
+        # 2. Round-trip masked sentinel from GET - must NOT overwrite stored secrets
+        resp2 = await self.client.request('POST', '/api/config', json={
+            'gemini_live': {'api_key': '•••', 'model': 'gemini-3.5-transcribe-live'},
+            'bandwidth': {'api_key': '•••'},
+            'twitch': {'oauth_token': '•••'}
+        })
+        self.assertEqual(resp2.status, 200)
+        self.assertEqual(self.overlay_server.config.gemini_live.api_key, 'AIzaSy_ORIGINAL_KEY_123')
+        self.assertEqual(self.overlay_server.config.bandwidth.api_key, 'bwa_ORIGINAL_KEY_456')
+        self.assertEqual(self.overlay_server.config.twitch.oauth_token, 'oauth:ORIGINAL_TOKEN_789')
+
+        # 3. Submit empty string or None - must NOT wipe stored secrets
+        resp3 = await self.client.request('POST', '/api/config', json={
+            'gemini_live': {'api_key': '', 'smart_transcription': True},
+            'bandwidth': {'api_key': ''},
+            'twitch': {'oauth_token': ''}
+        })
+        self.assertEqual(resp3.status, 200)
+        self.assertEqual(self.overlay_server.config.gemini_live.api_key, 'AIzaSy_ORIGINAL_KEY_123')
+        self.assertEqual(self.overlay_server.config.bandwidth.api_key, 'bwa_ORIGINAL_KEY_456')
+        self.assertEqual(self.overlay_server.config.twitch.oauth_token, 'oauth:ORIGINAL_TOKEN_789')
+
+        # 4. Update with a new key - must update successfully
+        resp4 = await self.client.request('POST', '/api/config', json={
+            'gemini_live': {'api_key': 'AIzaSy_NEW_UPDATED_KEY_999'}
+        })
+        self.assertEqual(resp4.status, 200)
+        self.assertEqual(self.overlay_server.config.gemini_live.api_key, 'AIzaSy_NEW_UPDATED_KEY_999')
+        # Other keys should still be untouched
+        self.assertEqual(self.overlay_server.config.bandwidth.api_key, 'bwa_ORIGINAL_KEY_456')
+
+        # 5. Explicit clear using __CLEAR__ - must wipe the key
+        resp5 = await self.client.request('POST', '/api/config', json={
+            'gemini_live': {'api_key': '__CLEAR__'}
+        })
+        self.assertEqual(resp5.status, 200)
+        self.assertEqual(self.overlay_server.config.gemini_live.api_key, '')
+
     async def test_bible_route_variants(self):
         # Verify /bible, /bible/, and /bible.html all resolve correctly
         for path in ['/bible', '/bible/', '/bible.html']:

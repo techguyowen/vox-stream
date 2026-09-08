@@ -1046,41 +1046,7 @@ async function applyThemePreset(themeId) {
         });
         if (res.ok) {
             activeThemeId = themeId;
-            // Initialize Models Status
-    const btnDeleteAll = document.getElementById("btn-delete-all-models");
-    if (btnDeleteAll) {
-        btnDeleteAll.addEventListener("click", async () => {
-            if (confirm("Are you sure you want to delete ALL cached offline AI models from disk to free storage space?")) {
-                await triggerModelDelete("all", "All Models");
-            }
-        });
-    }
-
-    const btnDlAll = document.getElementById("btn-download-all-models");
-    if (btnDlAll) {
-        btnDlAll.addEventListener("click", () => triggerModelDownload("all"));
-    }
-    const btnCancelDl = document.getElementById("btn-cancel-models-download");
-    if (btnCancelDl) {
-        btnCancelDl.addEventListener("click", async () => {
-            await fetch("/api/models/cancel", { method: "POST" });
-            showToast("⚠️ Model download canceled.", "info", 3000);
-        });
-    }
-    const btnRefModels = document.getElementById("btn-refresh-models-status");
-    if (btnRefModels) {
-        btnRefModels.addEventListener("click", async () => {
-            await loadModelsStatus();
-            showToast("🔄 Model cache status refreshed.", "info", 2000);
-        });
-    }
-    await loadModelsStatus();
-
-    await loadConfig();
             await loadThemes();
-    initBibleHandlers();
-    initFeatureManagerHandlers();
-    setupA11yPresets();
             showToast("🎨 Theme preset applied!", "success", 2000);
         }
     } catch (e) {
@@ -1355,12 +1321,29 @@ function populateFormFields(cfg) {
         document.getElementById("google_creds_path").value = cfg.google_stt.credentials_path || "";
     }
     if (cfg.gemini_live) {
-        document.getElementById("gemini_api_key").value = cfg.gemini_live.api_key || "";
+        const geminiInput = document.getElementById("gemini_api_key");
+        const geminiStatus = document.getElementById("gemini_key_status");
+        if (geminiInput && document.activeElement !== geminiInput) {
+            geminiInput.value = cfg.gemini_live.api_key || "";
+        }
+        if (geminiStatus) {
+            geminiStatus.style.display = (cfg.gemini_live.api_key && cfg.gemini_live.api_key.length > 0) ? "inline" : "none";
+        }
         if (cfg.gemini_live.model) document.getElementById("gemini_model").value = cfg.gemini_live.model;
         if (cfg.gemini_live.custom_vocabulary) {
             document.getElementById("gemini_custom_vocab").value = cfg.gemini_live.custom_vocabulary.join(", ");
         }
         document.getElementById("gemini_smart_transcription").checked = cfg.gemini_live.smart_transcription !== false;
+    }
+    if (cfg.bandwidth) {
+        const bwInput = document.getElementById("bandwidth_api_key");
+        const bwStatus = document.getElementById("bandwidth_key_status");
+        if (bwInput && document.activeElement !== bwInput) {
+            bwInput.value = cfg.bandwidth.api_key || "";
+        }
+        if (bwStatus) {
+            bwStatus.style.display = (cfg.bandwidth.api_key && cfg.bandwidth.api_key.length > 0) ? "inline" : "none";
+        }
     }
     if (cfg.local_whisper) {
         document.getElementById("whisper_model").value = cfg.local_whisper.model_size || "base.en";
@@ -1426,7 +1409,14 @@ function populateFormFields(cfg) {
         document.getElementById("twitch_enabled").checked = !!cfg.twitch.enabled;
         document.getElementById("twitch_channel").value = cfg.twitch.channel || "";
         document.getElementById("twitch_username").value = cfg.twitch.bot_username || "";
-        document.getElementById("twitch_oauth").value = cfg.twitch.oauth_token || "";
+        const twitchInput = document.getElementById("twitch_oauth");
+        const twitchStatus = document.getElementById("twitch_oauth_status");
+        if (twitchInput && document.activeElement !== twitchInput) {
+            twitchInput.value = cfg.twitch.oauth_token || "";
+        }
+        if (twitchStatus) {
+            twitchStatus.style.display = (cfg.twitch.oauth_token && cfg.twitch.oauth_token.length > 0) ? "inline" : "none";
+        }
     }
 }
 
@@ -2126,13 +2116,27 @@ document.getElementById("btn-save-audio").addEventListener("click", async () => 
             suppress_music: document.getElementById("suppress_music") ? document.getElementById("suppress_music").checked : true,
         },
         bandwidth: {
-            api_key: document.getElementById("bandwidth_api_key") ? document.getElementById("bandwidth_api_key").value.trim() : "",
+            api_key: (() => {
+                const el = document.getElementById("bandwidth_api_key");
+                const val = el ? el.value.trim() : "";
+                if (!val || val === "•••") {
+                    return (currentConfig && currentConfig.bandwidth && currentConfig.bandwidth.api_key) || "•••";
+                }
+                return val;
+            })(),
         },
         google_stt: {
             credentials_path: document.getElementById("google_creds_path").value.trim(),
         },
         gemini_live: {
-            api_key: document.getElementById("gemini_api_key").value.trim(),
+            api_key: (() => {
+                const el = document.getElementById("gemini_api_key");
+                const val = el ? el.value.trim() : "";
+                if (!val || val === "•••") {
+                    return (currentConfig && currentConfig.gemini_live && currentConfig.gemini_live.api_key) || "•••";
+                }
+                return val;
+            })(),
             model: document.getElementById("gemini_model").value,
             custom_vocabulary: document.getElementById("gemini_custom_vocab").value.split(",").map(s => s.trim()).filter(Boolean),
             smart_transcription: document.getElementById("gemini_smart_transcription").checked,
@@ -2187,7 +2191,14 @@ document.getElementById("btn-save-twitch").addEventListener("click", async () =>
             enabled: document.getElementById("twitch_enabled").checked,
             channel: document.getElementById("twitch_channel").value.trim(),
             bot_username: document.getElementById("twitch_username").value.trim(),
-            oauth_token: document.getElementById("twitch_oauth").value.trim(),
+            oauth_token: (() => {
+                const el = document.getElementById("twitch_oauth");
+                const val = el ? el.value.trim() : "";
+                if (!val || val === "•••") {
+                    return (currentConfig && currentConfig.twitch && currentConfig.twitch.oauth_token) || "•••";
+                }
+                return val;
+            })(),
         }
     };
     await saveConfigPayload(payload, "Twitch bot settings saved!");
@@ -2298,37 +2309,16 @@ async function saveConfigPayload(payload, successMsg) {
             if (successMsg) {
                 showToast(successMsg, "success");
             }
-            // Initialize Models Status
-    const btnDeleteAll = document.getElementById("btn-delete-all-models");
-    if (btnDeleteAll) {
-        btnDeleteAll.addEventListener("click", async () => {
-            if (confirm("Are you sure you want to delete ALL cached offline AI models from disk to free storage space?")) {
-                await triggerModelDelete("all", "All Models");
+            // Update in-memory currentConfig without resetting UI fields
+            if (currentConfig) {
+                for (const [sec, vals] of Object.entries(payload)) {
+                    if (typeof vals === "object" && vals !== null && !Array.isArray(vals)) {
+                        currentConfig[sec] = { ...(currentConfig[sec] || {}), ...vals };
+                    } else {
+                        currentConfig[sec] = vals;
+                    }
+                }
             }
-        });
-    }
-
-    const btnDlAll = document.getElementById("btn-download-all-models");
-    if (btnDlAll) {
-        btnDlAll.addEventListener("click", () => triggerModelDownload("all"));
-    }
-    const btnCancelDl = document.getElementById("btn-cancel-models-download");
-    if (btnCancelDl) {
-        btnCancelDl.addEventListener("click", async () => {
-            await fetch("/api/models/cancel", { method: "POST" });
-            showToast("⚠️ Model download canceled.", "info", 3000);
-        });
-    }
-    const btnRefModels = document.getElementById("btn-refresh-models-status");
-    if (btnRefModels) {
-        btnRefModels.addEventListener("click", async () => {
-            await loadModelsStatus();
-            showToast("🔄 Model cache status refreshed.", "info", 2000);
-        });
-    }
-    await loadModelsStatus();
-
-    await loadConfig();
         } else {
             showToast("⚠️ Error saving configuration.", "error");
         }
@@ -3480,6 +3470,57 @@ function initUpdaterHandlers() {
     }
 }
 
+// Handlers to explicitly clear API keys & secrets
+function initSecretClearHandlers() {
+    const btnClearGemini = document.getElementById("btn-clear-gemini-key");
+    if (btnClearGemini) {
+        btnClearGemini.addEventListener("click", async () => {
+            if (confirm("Are you sure you want to remove the saved Gemini API key?")) {
+                const input = document.getElementById("gemini_api_key");
+                if (input) input.value = "";
+                const badge = document.getElementById("gemini_key_status");
+                if (badge) badge.style.display = "none";
+                if (currentConfig && currentConfig.gemini_live) {
+                    currentConfig.gemini_live.api_key = "";
+                }
+                await saveConfigPayload({ gemini_live: { api_key: "__CLEAR__" } }, "🔑 Gemini API key removed.");
+            }
+        });
+    }
+
+    const btnClearBw = document.getElementById("btn-clear-bandwidth-key");
+    if (btnClearBw) {
+        btnClearBw.addEventListener("click", async () => {
+            if (confirm("Are you sure you want to remove the saved Bandwidth API key?")) {
+                const input = document.getElementById("bandwidth_api_key");
+                if (input) input.value = "";
+                const badge = document.getElementById("bandwidth_key_status");
+                if (badge) badge.style.display = "none";
+                if (currentConfig && currentConfig.bandwidth) {
+                    currentConfig.bandwidth.api_key = "";
+                }
+                await saveConfigPayload({ bandwidth: { api_key: "__CLEAR__" } }, "🔑 Bandwidth API key removed.");
+            }
+        });
+    }
+
+    const btnClearTwitch = document.getElementById("btn-clear-twitch-key");
+    if (btnClearTwitch) {
+        btnClearTwitch.addEventListener("click", async () => {
+            if (confirm("Are you sure you want to remove the saved Twitch OAuth token?")) {
+                const input = document.getElementById("twitch_oauth");
+                if (input) input.value = "";
+                const badge = document.getElementById("twitch_oauth_status");
+                if (badge) badge.style.display = "none";
+                if (currentConfig && currentConfig.twitch) {
+                    currentConfig.twitch.oauth_token = "";
+                }
+                await saveConfigPayload({ twitch: { oauth_token: "__CLEAR__" } }, "🔑 Twitch OAuth token removed.");
+            }
+        });
+    }
+}
+
 // Initialize on page load
 window.addEventListener("DOMContentLoaded", async () => {
     // Initialize Models Status
@@ -3517,6 +3558,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     initBibleHandlers();
     initFeatureManagerHandlers();
     setupA11yPresets();
+    initSecretClearHandlers();
     await loadAudioDevices();
     await loadObsMonitors();
     await loadVocabularyState();

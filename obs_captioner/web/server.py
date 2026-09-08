@@ -106,16 +106,6 @@ class WebOverlayServer:
 
         self._setup_routes()
 
-    def _get_masked_config(self) -> dict:
-        from dataclasses import asdict
-        data = asdict(self.config)
-        if data.get("general"):
-            if "openai_api_key" in data["general"] and data["general"]["openai_api_key"]:
-                data["general"]["openai_api_key"] = "********"
-            if "password" in data["general"] and data["general"]["password"]:
-                data["general"]["password"] = "********"
-        return data
-
     def _check_auth(self, request: web.Request) -> bool:
         auth_func = require_api_auth(self.config.api.api_key)
         return auth_func(request)
@@ -361,13 +351,27 @@ class WebOverlayServer:
             for key, val in body.items():
                 if hasattr(self.config, key) and isinstance(val, dict):
                     section = getattr(self.config, key)
+                    secret_fields = self.SECRET_FIELDS.get(key, ())
                     for sec_k, sec_v in val.items():
                         if not hasattr(section, sec_k):
                             continue
-                        # A masked secret round-tripped from GET /api/config
-                        # means "keep the existing value"
-                        if sec_v == self.SECRET_SENTINEL and sec_k in self.SECRET_FIELDS.get(key, ()):
-                            continue
+                        # Handle secret / credential fields
+                        if sec_k in secret_fields:
+                            # 1) If masked sentinel ("•••"), leave existing secret unchanged
+                            if sec_v == self.SECRET_SENTINEL:
+                                continue
+                            # 2) If explicit clear command, wipe the key
+                            if sec_v == "__CLEAR__":
+                                setattr(section, sec_k, "")
+                                continue
+                            # 3) If empty string or None, and an existing key is present:
+                            # preserve existing key unless explicit clear flag is set
+                            if (sec_v == "" or sec_v is None) and getattr(section, sec_k, ""):
+                                clear_flag = val.get(f"clear_{sec_k}", False) or body.get(f"clear_{key}_{sec_k}", False)
+                                if not clear_flag:
+                                    continue
+                                sec_v = ""
+
                         setattr(section, sec_k, sec_v)
 
             save_config(self.config)
