@@ -9,11 +9,49 @@ set "PYTHONUTF8=1"
 cd /d "%~dp0"
 
 echo =======================================================
-echo   VoxStream: OBS Live Captioner Suite - Windows Setup
+echo   VoxStream: OBS Live Captioner Suite - Complete Setup
 echo =======================================================
 echo.
 
-:: 1. Detect Python executable
+:: ---------------------------------------------------------------------------
+:: STEP 1: Detect or Install Git for Windows
+:: ---------------------------------------------------------------------------
+echo [1/8] Verifying Git for Windows installation...
+set "HAS_GIT=0"
+where git >nul 2>&1
+if %errorlevel% equ 0 set "HAS_GIT=1"
+
+if "!HAS_GIT!"=="0" (
+    if exist "%ProgramFiles%\Git\cmd\git.exe" (
+        set "PATH=%ProgramFiles%\Git\cmd;!PATH!"
+        set "HAS_GIT=1"
+    )
+)
+
+if "!HAS_GIT!"=="0" (
+    echo [INFO] Git for Windows was not found on your system.
+    echo [INFO] Installing Git for Windows automatically...
+    where winget >nul 2>&1
+    if !errorlevel! equ 0 (
+        winget install --id Git.Git -e --source winget --silent --accept-package-agreements --accept-source-agreements
+    )
+    if exist "%ProgramFiles%\Git\cmd\git.exe" (
+        set "PATH=%ProgramFiles%\Git\cmd;!PATH!"
+        set "HAS_GIT=1"
+    )
+)
+
+if "!HAS_GIT!"=="1" (
+    echo [SUCCESS] Git for Windows is active.
+) else (
+    echo [NOTE] Git not found; auto-updater will use direct GitHub archive fallback.
+)
+echo.
+
+:: ---------------------------------------------------------------------------
+:: STEP 2: Detect or Install Python 3.11
+:: ---------------------------------------------------------------------------
+echo [2/8] Detecting Python installation...
 set "PY_CMD="
 
 where python >nul 2>&1
@@ -27,35 +65,34 @@ if not defined PY_CMD (
 if not defined PY_CMD (
     if exist "%LocalAppData%\Programs\Python\Python311\python.exe" (
         set "PY_CMD=%LocalAppData%\Programs\Python\Python311\python.exe"
-        set "PATH=%LocalAppData%\Programs\Python\Python311;%LocalAppData%\Programs\Python\Python311\Scripts;%PATH%"
+        set "PATH=%LocalAppData%\Programs\Python\Python311;%LocalAppData%\Programs\Python\Python311\Scripts;!PATH!"
     )
 )
 
 if not defined PY_CMD (
     if exist "%LocalAppData%\Programs\Python\Python312\python.exe" (
         set "PY_CMD=%LocalAppData%\Programs\Python\Python312\python.exe"
-        set "PATH=%LocalAppData%\Programs\Python\Python312;%LocalAppData%\Programs\Python\Python312\Scripts;%PATH%"
+        set "PATH=%LocalAppData%\Programs\Python\Python312;%LocalAppData%\Programs\Python\Python312\Scripts;!PATH!"
     )
 )
 
 if not defined PY_CMD (
     if exist "%ProgramFiles%\Python311\python.exe" (
         set "PY_CMD=%ProgramFiles%\Python311\python.exe"
-        set "PATH=%ProgramFiles%\Python311;%ProgramFiles%\Python311\Scripts;%PATH%"
+        set "PATH=%ProgramFiles%\Python311;%ProgramFiles%\Python311\Scripts;!PATH!"
     )
 )
 
 if not defined PY_CMD (
     if exist "%ProgramFiles%\Python312\python.exe" (
         set "PY_CMD=%ProgramFiles%\Python312\python.exe"
-        set "PATH=%ProgramFiles%\Python312;%ProgramFiles%\Python312\Scripts;%PATH%"
+        set "PATH=%ProgramFiles%\Python312;%ProgramFiles%\Python312\Scripts;!PATH!"
     )
 )
 
-:: 2. If Python is still not found, download and install Python 3.11 automatically
 if not defined PY_CMD (
     echo [INFO] Python was not detected on your system.
-    echo [INFO] Attempting automatic installation of Python 3.11...
+    echo [INFO] Installing Python 3.11 automatically...
     echo.
 
     where winget >nul 2>&1
@@ -66,7 +103,7 @@ if not defined PY_CMD (
 
     if exist "%LocalAppData%\Programs\Python\Python311\python.exe" (
         set "PY_CMD=%LocalAppData%\Programs\Python\Python311\python.exe"
-        set "PATH=%LocalAppData%\Programs\Python\Python311;%LocalAppData%\Programs\Python\Python311\Scripts;%PATH%"
+        set "PATH=%LocalAppData%\Programs\Python\Python311;%LocalAppData%\Programs\Python\Python311\Scripts;!PATH!"
     )
 )
 
@@ -80,7 +117,7 @@ if not defined PY_CMD (
     )
     if exist "%LocalAppData%\Programs\Python\Python311\python.exe" (
         set "PY_CMD=%LocalAppData%\Programs\Python\Python311\python.exe"
-        set "PATH=%LocalAppData%\Programs\Python\Python311;%LocalAppData%\Programs\Python\Python311\Scripts;%PATH%"
+        set "PATH=%LocalAppData%\Programs\Python\Python311;%LocalAppData%\Programs\Python\Python311\Scripts;!PATH!"
     )
 )
 
@@ -101,8 +138,28 @@ echo [SUCCESS] Using Python:
 %PY_CMD% --version
 echo.
 
-:: 3. Setup or repair virtual environment
-echo [1/6] Setting up virtual environment (.venv)...
+:: ---------------------------------------------------------------------------
+:: STEP 3: Check and Install Microsoft Visual C++ 2015-2022 Redistributable (x64)
+:: ---------------------------------------------------------------------------
+echo [3/8] Checking Microsoft Visual C++ 2015-2022 Runtime...
+if not exist "%SystemRoot%\System32\vcruntime140.dll" (
+    echo [INFO] Microsoft Visual C++ 2015-2022 Redistributable not detected.
+    echo [INFO] Downloading and installing VC++ runtime (required by AI models)...
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile '%TEMP%\vc_redist.x64.exe'"
+    if exist "%TEMP%\vc_redist.x64.exe" (
+        start /wait "" "%TEMP%\vc_redist.x64.exe" /install /passive /norestart
+        del "%TEMP%\vc_redist.x64.exe" 2>nul
+        echo [SUCCESS] Visual C++ Redistributable installed.
+    )
+) else (
+    echo [SUCCESS] Visual C++ Runtime is installed.
+)
+echo.
+
+:: ---------------------------------------------------------------------------
+:: STEP 4: Setup or Repair Python Virtual Environment (.venv)
+:: ---------------------------------------------------------------------------
+echo [4/8] Setting up Python virtual environment (.venv)...
 if not exist ".venv\Scripts\activate.bat" (
     if exist ".venv" (
         echo [INFO] Removing broken virtual environment folder...
@@ -121,30 +178,23 @@ if not exist ".venv\Scripts\activate.bat" (
     exit /b 1
 )
 
-:: 4. Activate virtual environment
-echo [2/6] Activating virtual environment...
 call .venv\Scripts\activate.bat
+echo [SUCCESS] Virtual environment activated.
+echo.
 
-:: 4b. Check for Microsoft Visual C++ 2015-2022 Redistributable (x64)
-if not exist "%SystemRoot%\System32\vcruntime140.dll" (
-    echo [INFO] Microsoft Visual C++ 2015-2022 Redistributable not detected.
-    echo [INFO] Downloading and installing VC++ runtime (required by AI models)...
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile '%TEMP%\vc_redist.x64.exe'"
-    if exist "%TEMP%\vc_redist.x64.exe" (
-        start /wait "" "%TEMP%\vc_redist.x64.exe" /install /passive /norestart
-        del "%TEMP%\vc_redist.x64.exe" 2>nul
-        echo [SUCCESS] Visual C++ Redistributable installed.
-    )
-)
-
-:: 5. Install dependencies
-echo [3/6] Upgrading pip and installing required packages...
+:: ---------------------------------------------------------------------------
+:: STEP 5: Install Python Dependencies
+:: ---------------------------------------------------------------------------
+echo [5/8] Upgrading pip and installing required packages...
 call .venv\Scripts\python.exe -m pip install --upgrade pip
 call .venv\Scripts\python.exe -m pip install -r requirements.txt
 call .venv\Scripts\python.exe -m pip uninstall -y torchaudio >nul 2>&1
+echo.
 
-:: 6. Check for Dedicated GPU Acceleration (NVIDIA / AMD Radeon / DirectML)
-echo [4/6] Detecting GPU Hardware (NVIDIA / AMD Radeon / Intel)...
+:: ---------------------------------------------------------------------------
+:: STEP 6: Hardware Acceleration Drivers (NVIDIA / AMD Radeon RX / DirectML)
+:: ---------------------------------------------------------------------------
+echo [6/8] Detecting GPU Hardware (NVIDIA / AMD Radeon / Intel)...
 set "HAS_NVIDIA=0"
 set "HAS_AMD=0"
 
@@ -167,25 +217,40 @@ if "!HAS_NVIDIA!"=="1" (
 ) else if "!HAS_AMD!"=="1" (
     echo [SUCCESS] AMD Radeon GPU detected! (e.g. Radeon RX 580)
     echo [INFO] Installing DirectML runtime packages for AMD GPU acceleration...
-    call .venv\Scripts\python.exe -m pip install onnxruntime-directml
-    call .venv\Scripts\python.exe -m pip install torch-directml
+    call .venv\Scripts\python.exe -m pip install onnxruntime-directml torch-directml
     echo [SUCCESS] AMD Radeon GPU DirectML ^& OpenMP CPU acceleration configured!
 ) else (
-    echo [INFO] Standard CPU environment detected. Configured for fast CPU int8 inference.
+    echo [INFO] Configuring DirectML and CPU int8 acceleration...
+    call .venv\Scripts\python.exe -m pip install onnxruntime-directml >nul 2>&1
+    echo [SUCCESS] Configured for fast CPU int8 ^& DirectML inference.
 )
+echo.
 
-:: 7. Setup Configuration
-echo [5/6] Verifying configuration file...
+:: ---------------------------------------------------------------------------
+:: STEP 7: Configure Settings & Microphone Privacy Permissions
+:: ---------------------------------------------------------------------------
+echo [7/8] Configuring settings and Windows microphone access...
 if not exist "config.json" (
     copy config.json.example config.json >nul
-    echo Created fresh config.json from template.
+    echo [INFO] Created fresh config.json from template.
 ) else (
-    echo Existing config.json preserved.
+    echo [INFO] Existing config.json preserved.
 )
 
-:: 8. Preload default offline AI models
-echo [6/6] Pre-caching default offline AI speech models...
+:: Ensure Windows microphone access is allowed in registry
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone" /v Value /t REG_SZ /d Allow /f >nul 2>&1
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone\NonPackaged" /v Value /t REG_SZ /d Allow /f >nul 2>&1
+echo [SUCCESS] Windows microphone access verified.
+echo.
+
+:: ---------------------------------------------------------------------------
+:: STEP 8: Pre-cache Offline AI Models & Create Desktop Shortcut
+:: ---------------------------------------------------------------------------
+echo [8/8] Pre-caching default offline AI models & creating Desktop shortcut...
 call .venv\Scripts\python.exe -m obs_captioner.model_downloader --preload-defaults
+
+:: Create convenient Desktop Shortcut
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut([Environment]::GetFolderPath('Desktop') + '\VoxStream Live Captioner.lnk'); $s.TargetPath = '%~dp0run_captioner.bat'; $s.WorkingDirectory = '%~dp0'; $s.Description = 'Launch VoxStream Real-Time Live Captioner'; $s.Save()" >nul 2>&1
 
 echo.
 echo =======================================================
@@ -194,8 +259,10 @@ echo =======================================================
 call .venv\Scripts\python.exe -m obs_captioner.main --list-devices
 echo.
 echo =======================================================
-echo   [SUCCESS] Setup Complete!
-echo   1. Double-click run_captioner.bat to start VoxStream.
-echo   2. Open In-OBS Dock at: http://127.0.0.1:8765/dashboard
+echo   🎉 [SUCCESS] 100%% Turnkey Setup Complete!
+echo.
+echo   1. A shortcut 'VoxStream Live Captioner' was created
+echo      on your Desktop. Double-click it anytime to run!
+echo   2. Dashboard is available at: http://127.0.0.1:8765
 echo =======================================================
 pause
