@@ -184,10 +184,10 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Mu
 ## 📦 Installation & Quick Start
 
 ### 📋 Prerequisites
-* **Python**: Version `3.9` through `3.12` ([python.org/downloads](https://www.python.org/downloads/)). *(On Windows, make sure to check "Add Python to PATH" during installation)*.
-* **Git**: ([git-scm.com](https://git-scm.com/downloads)).
 * **OBS Studio**: Version `28.0+` (Version `30.0+` recommended).
-* **Linux Only**: `sudo apt install libportaudio2 ffmpeg` (for PortAudio mic capture and audio decoding).
+* **Operating System**: macOS 12+, Windows 10/11, or modern Linux.
+* **macOS / Linux**: Python `3.9` through `3.12` ([python.org](https://www.python.org/downloads/)) and Git.
+* **Windows**: **Zero manual prerequisites required!** `setup_windows.bat` automatically detects and installs Python 3.11, Git, and the Visual C++ runtime if they are missing.
 
 ---
 
@@ -206,15 +206,50 @@ cd vox-stream
 ./run_captioner.sh
 ```
 
-#### 🪟 Windows
-1. Clone or download the repository:
+#### 🪟 Windows (100% Turnkey 1-Click Setup)
+1. Clone the repo or download as ZIP:
    ```cmd
    git clone https://github.com/techguyowen/vox-stream.git
    cd vox-stream
    ```
 2. Double-click **`setup_windows.bat`**  
-   *(Automatically checks for Python, installs Python 3.11 via winget if missing, creates `.venv`, installs all packages, and lists your audio devices).*
-3. Double-click **`run_captioner.bat`** to start!
+   *Installs Python 3.11 (if missing), Git (if missing), Visual C++ Redistributable, creates `.venv`, installs speech models & GPU acceleration, enables mic permissions, and creates a desktop shortcut!*
+3. Double-click the newly created **`VoxStream Live Captioner`** shortcut on your Desktop (or `run_captioner.bat`) to launch!
+
+---
+
+### 📦 What Gets Installed (Full Manifest)
+
+When running the setup scripts (`setup_windows.bat` / `setup_mac.sh`), here is the complete breakdown of what is installed and configured:
+
+| Category | Component | Description & Purpose |
+| :--- | :--- | :--- |
+| **System Runtimes** *(Windows)* | **Python 3.11.9** (64-bit) | Installed automatically via `winget` or python.org if Python is not found. |
+| | **Visual C++ 2015–2022 x64** | Official Microsoft runtime (`vc_redist.x64.exe`) to prevent C-extension DLL load errors. |
+| | **Git for Windows** | Automatically installed for fast 2-second in-app updates (zero login required). |
+| **Python Virtual Env** | **`.venv/`** | Fully isolated local virtual environment so system Python packages remain clean. |
+| **Speech Recognition** | **`faster-whisper`** | CTranslate2-accelerated local Whisper inference engine (#1 champion for church sermons). |
+| | **`sherpa-onnx`** | Next-gen streaming transducer engine for NVIDIA Parakeet, SenseVoice, and Zipformer. |
+| | **`huggingface-hub`** | Automated model weight discovery and local neural cache manager. |
+| | **`useful-moonshine`** | Useful Sensors variable-length edge neural transformer. |
+| | **`vosk`** | Offline Kaldi acoustic speech recognition library (~30ms latency). |
+| | **`keras`** | Neural network model utilities. |
+| **VAD & Inference** | **`torch` (PyTorch)** | Deep learning inference framework for Silero VAD and Moonshine. |
+| | **`onnxruntime`** | Cross-platform ONNX inference runtime. |
+| **Audio Processing** | **`sounddevice`** | Real-time cross-platform microphone capture (PortAudio wrapper). |
+| | **`numpy` & `scipy`** | High-performance audio array math, digital decimation, and signal processing. |
+| **Web & Broadcast** | **`aiohttp`** | Asynchronous HTTP and WebSocket server for dashboard, stream overlays, and `/display`. |
+| | **`websockets`** | Low-latency duplex WebSocket server for real-time captions. |
+| | **`obsws-python`** | OBS Studio WebSocket v5 client for live caption injection (`SendStreamCaption`). |
+| | **`pydantic`** | Fast JSON and data validation. |
+| | **`colorama`** | Terminal status formatting. |
+| **GPU Acceleration** | **AMD Radeon (e.g. RX 580)** | `torch-directml` and `onnxruntime-directml` for DirectX 12 GPU acceleration. |
+| | **NVIDIA GPUs** | `nvidia-cublas-cu12` and `nvidia-cudnn-cu12` for CUDA tensor core acceleration. |
+| **Pre-Cached AI Models** *(100% Offline Ready)* | **Silero VAD v5** (~2 MB) | Neural voice activity and pause detector. |
+| | **Vosk Small en-US** (~40 MB) | Instant low-latency acoustic model. |
+| | **Faster-Whisper Base.en** (~140 MB) | High-accuracy church sermon speech model. |
+| **System Shortcuts** | **Desktop Shortcut** | `VoxStream Live Captioner.lnk` placed on Desktop for instant 1-click launching. |
+| | **Microphone Access** | Windows microphone privacy permissions verified and enabled in user registry. |
 
 ---
 
@@ -253,18 +288,20 @@ python -m obs_captioner.main
 
 ---
 
-### ⚡ NVIDIA GPU Acceleration (CUDA / Windows & Linux)
+### ⚡ GPU Acceleration Guide (NVIDIA, AMD Radeon, & Apple Silicon)
 
-VoxStream's #1 champion engine, **Local Faster-Whisper**, natively supports **NVIDIA GPU acceleration** (via CTranslate2 / CUDA):
+VoxStream automatically selects the fastest available hardware backend for your machine:
 
-* **CPU Mode (Default)**: Automatically runs on your CPU using fast `int8` quantization (~400–600ms latency, zero GPU setup required).
-* **Enabling NVIDIA CUDA Acceleration**:
-  1. Ensure you have up-to-date NVIDIA Graphics Drivers installed ([nvidia.com/drivers](https://www.nvidia.com/download/index.aspx)).
-  2. In your virtual environment, install NVIDIA's cuDNN/cuBLAS runtime wheels:
-     ```bash
-     pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
-     ```
-  3. In the VoxStream dashboard (**🎙️ Audio & Engine Settings**), set device to `cuda` or leave on `auto`. Faster-Whisper will automatically leverage your NVIDIA GPU tensor cores, reducing transcription latency to `< 150ms`!
+* **NVIDIA GeForce / RTX / GTX GPUs (CUDA)**:
+  * Uses CUDA tensor cores via `faster-whisper`, reducing transcription latency to `< 150ms`.
+  * `setup_windows.bat` automatically installs `nvidia-cublas-cu12` and `nvidia-cudnn-cu12`.
+* **AMD Radeon GPUs (DirectML — e.g. Radeon RX 580, Vega, RDNA)**:
+  * Uses Microsoft DirectML (`torch-directml` and `onnxruntime-directml`) across all DirectX 12 hardware.
+  * `setup_windows.bat` detects AMD Radeon GPUs and installs DirectML packages automatically; `run_captioner.bat` prepends DirectML DLLs to `PATH`.
+* **Apple Silicon (M1 / M2 / M3 / M4)**:
+  * Automatically uses Apple Metal Performance Shaders (MPS) via PyTorch and multi-threaded CPU acceleration.
+* **Standard Multi-Core CPU**:
+  * Runs optimized `int8` integer quantization with AVX2/AVX-512 (~400–600ms latency, zero GPU setup required).
 
 ---
 
