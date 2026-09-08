@@ -36,6 +36,8 @@ class ParakeetEngine(BaseSTTEngine):
             sample_rate=config.audio.sample_rate,
             noise_gate_db=config.audio.noise_gate_db,
             vad_threshold=config.audio.vad_threshold,
+            enable_silero=getattr(config.audio, "enable_vad", True),
+            suppress_music=getattr(config.audio, "suppress_music", True),
         )
 
     def _find_model_dir(self) -> Optional[Path]:
@@ -180,7 +182,6 @@ class ParakeetEngine(BaseSTTEngine):
 
         audio_buffer = bytearray()
         silence_start_time = None
-        sentence_break_s = 0.65
 
         try:
             async for chunk in audio_stream:
@@ -193,14 +194,22 @@ class ParakeetEngine(BaseSTTEngine):
                 is_speech = self.vad.is_speech(chunk)
                 now = time.time()
 
+                sentence_break_s = (getattr(self.config.audio, "sentence_break_ms", 650) or 650) / 1000.0
+                max_sentence_s = getattr(self.config.audio, "max_sentence_duration_seconds", 7.0) or 7.0
+                max_bytes = int(self.config.audio.sample_rate * 2 * max_sentence_s)
+
                 if is_speech:
                     silence_start_time = None
                     audio_buffer.extend(chunk)
+                    if len(audio_buffer) >= max_bytes:
+                        await self._process_utterance(bytes(audio_buffer), on_transcript)
+                        audio_buffer.clear()
+                        silence_start_time = None
                 else:
                     if audio_buffer:
                         if silence_start_time is None:
                             silence_start_time = now
-                        elif now - silence_start_time >= sentence_break_s:
+                        elif now - silence_start_time >= sentence_break_s or len(audio_buffer) >= max_bytes:
                             # Process buffered speech
                             await self._process_utterance(bytes(audio_buffer), on_transcript)
                             audio_buffer.clear()

@@ -35,6 +35,8 @@ class SherpaEngine(BaseSTTEngine):
             sample_rate=config.audio.sample_rate,
             noise_gate_db=config.audio.noise_gate_db,
             vad_threshold=config.audio.vad_threshold,
+            enable_silero=getattr(config.audio, "enable_vad", True),
+            suppress_music=getattr(config.audio, "suppress_music", True),
         )
 
     def _find_model_dir(self) -> Optional[Path]:

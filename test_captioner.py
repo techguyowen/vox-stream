@@ -2114,6 +2114,32 @@ class TestVersioningAndSemanticUpdater(unittest.TestCase):
             if os.path.exists(temp_path):
                 os.remove(temp_path)
 
+    def test_parakeet_audio_settings_integration(self):
+        """Verify that ParakeetEngine and its VAD correctly inherit and update all audio settings."""
+        from obs_captioner.engines.parakeet_engine import ParakeetEngine
+        cfg = AppConfig()
+        cfg.audio.enable_vad = False
+        cfg.audio.suppress_music = False
+        cfg.audio.vad_threshold = 0.42
+        cfg.audio.noise_gate_db = -48.0
+        cfg.audio.sentence_break_ms = 850
+        cfg.audio.max_sentence_duration_seconds = 8.5
+
+        engine = ParakeetEngine(cfg)
+        self.assertEqual(engine.vad.noise_gate_db, -48.0)
+        self.assertEqual(engine.vad.vad_threshold, 0.42)
+        self.assertFalse(engine.vad.suppress_music)
+
+        # Verify live update
+        cfg.audio.vad_threshold = 0.65
+        cfg.audio.noise_gate_db = -35.0
+        cfg.audio.suppress_music = True
+        engine.vad.update_config(cfg.audio)
+
+        self.assertEqual(engine.vad.vad_threshold, 0.65)
+        self.assertEqual(engine.vad.noise_gate_db, -35.0)
+        self.assertTrue(engine.vad.suppress_music)
+
 
 if __name__ == "__main__":
     unittest.main()
