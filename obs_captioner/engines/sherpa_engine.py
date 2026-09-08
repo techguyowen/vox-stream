@@ -61,6 +61,24 @@ class SherpaEngine(BaseSTTEngine):
         except Exception:
             pass
 
+        hf_hub = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub"
+        hf_dirs = [
+            hf_hub / f"models--csukuangfj--{model_name}" / "snapshots",
+            hf_hub / f"models--{model_name.replace('/', '--')}" / "snapshots",
+            hf_hub / f"models--csukuangfj--{self.DEFAULT_MODEL_NAME}" / "snapshots",
+            hf_hub / f"models--csukuangfj--sherpa-onnx-{model_name}" / "snapshots",
+        ]
+        if hf_hub.is_dir():
+            for d in hf_hub.iterdir():
+                if "zipformer" in d.name.lower():
+                    hf_dirs.append(d / "snapshots")
+
+        for hf_base in hf_dirs:
+            if hf_base.is_dir():
+                for snap in hf_base.iterdir():
+                    if snap.is_dir() and (snap / "tokens.txt").exists():
+                        return snap
+
         for c in candidates:
             if c.is_dir() and (c / "tokens.txt").exists():
                 return c
@@ -78,7 +96,24 @@ class SherpaEngine(BaseSTTEngine):
             return False
 
         try:
+            model_name = self.config.sherpa.model_name or self.DEFAULT_MODEL_NAME
             model_dir = self._find_model_dir()
+            if not model_dir:
+                try:
+                    from huggingface_hub import snapshot_download
+                    if status_callback:
+                        status_callback(f"Downloading Sherpa Zipformer model from HuggingFace...")
+                    if "zipformer" in model_name and not model_name.startswith("sherpa-onnx"):
+                        repo_id = "csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26"
+                    elif "/" not in model_name:
+                        repo_id = f"csukuangfj/{model_name}"
+                    else:
+                        repo_id = model_name
+                    dl_path = snapshot_download(repo_id=repo_id, allow_patterns=["*.onnx", "tokens.txt"])
+                    model_dir = Path(dl_path)
+                except Exception as dl_err:
+                    logger.debug(f"Auto-download note: {dl_err}")
+
             if not model_dir:
                 msg = (
                     f"Sherpa Zipformer weights not found. Download '{self.DEFAULT_MODEL_NAME}' to ~/.cache/sherpa-onnx/ "
@@ -97,17 +132,17 @@ class SherpaEngine(BaseSTTEngine):
             def _load():
                 encoder = str(model_dir / "encoder-epoch-99-avg-1.onnx")
                 if not os.path.exists(encoder):
-                    encoders = list(model_dir.glob("*encoder*.onnx"))
+                    encoders = sorted(list(model_dir.glob("*encoder*.onnx")), key=lambda p: ("128" in p.name, "int8" not in p.name), reverse=True)
                     encoder = str(encoders[0]) if encoders else ""
 
                 decoder = str(model_dir / "decoder-epoch-99-avg-1.onnx")
                 if not os.path.exists(decoder):
-                    decoders = list(model_dir.glob("*decoder*.onnx"))
+                    decoders = sorted(list(model_dir.glob("*decoder*.onnx")), key=lambda p: ("128" in p.name, "int8" not in p.name), reverse=True)
                     decoder = str(decoders[0]) if decoders else ""
 
                 joiner = str(model_dir / "joiner-epoch-99-avg-1.onnx")
                 if not os.path.exists(joiner):
-                    joiners = list(model_dir.glob("*joiner*.onnx"))
+                    joiners = sorted(list(model_dir.glob("*joiner*.onnx")), key=lambda p: ("128" in p.name, "int8" not in p.name), reverse=True)
                     joiner = str(joiners[0]) if joiners else ""
 
                 tokens = str(model_dir / "tokens.txt")
@@ -172,7 +207,8 @@ class SherpaEngine(BaseSTTEngine):
                     self.recognizer.decode_stream(stream)
 
                 is_endpoint = self.recognizer.is_endpoint(stream)
-                text = self.recognizer.get_result(stream).text.strip()
+                res = self.recognizer.get_result(stream)
+                text = (res.text if hasattr(res, "text") else str(res)).strip()
 
                 if text and text != last_text:
                     last_text = text
@@ -197,6 +233,16 @@ class SherpaEngine(BaseSTTEngine):
                         )
                     self.recognizer.reset(stream)
                     last_text = ""
+
+            if last_text:
+                await on_transcript(
+                    TranscriptEvent(
+                        text=last_text,
+                        is_final=True,
+                        confidence=0.98,
+                        timestamp=time.time(),
+                    )
+                )
 
         except asyncio.CancelledError:
             pass

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 import time
 from pathlib import Path
@@ -24,7 +25,7 @@ logger = logging.getLogger("obs_captioner.engine.sensevoice")
 class SenseVoiceEngine(BaseSTTEngine):
     """Ultra-fast non-autoregressive speech recognition with Audio Event Detection (applause, laughter, music)."""
 
-    DEFAULT_MODEL_NAME = "sensevoice-small"
+    DEFAULT_MODEL_NAME = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17"
 
     # SenseVoice special token patterns
     EVENT_MAP = {
@@ -70,8 +71,23 @@ class SenseVoiceEngine(BaseSTTEngine):
         if app_data:
             candidates.append(Path(app_data) / "sensevoice" / model_name)
             candidates.append(Path(app_data) / "funasr" / model_name)
+
+        hf_cache = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub"
+        hf_dirs = [
+            hf_cache / f"models--csukuangfj--{model_name}" / "snapshots",
+            hf_cache / f"models--{model_name.replace('/', '--')}" / "snapshots",
+            hf_cache / "models--csukuangfj--sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17" / "snapshots",
+        ]
+        for hf_base in hf_dirs:
+            if hf_base.is_dir():
+                for snap in hf_base.iterdir():
+                    if snap.is_dir() and (snap / "tokens.txt").exists() and (
+                        (snap / "model.onnx").exists() or (snap / "model.int8.onnx").exists()
+                    ):
+                        return snap
+
         for c in candidates:
-            if c.exists():
+            if c.exists() and (c / "tokens.txt").exists():
                 return c
         return None
 
@@ -104,7 +120,57 @@ class SenseVoiceEngine(BaseSTTEngine):
         if status_callback:
             status_callback(f"Loading SenseVoice ({model_name}) on {device_label}...")
 
-        # 1. Try loading via funasr / SenseVoiceSmall
+        # 1. Try loading via sherpa-onnx SenseVoice integration (fastest & lowest overhead)
+        try:
+            import sherpa_onnx
+            model_dir = self._find_model_dir()
+            if not model_dir:
+                try:
+                    from huggingface_hub import snapshot_download
+                    if status_callback:
+                        status_callback(f"Downloading SenseVoice model from HuggingFace...")
+                    repo_id = (
+                        f"csukuangfj/{model_name}"
+                        if "/" not in model_name and "sherpa-onnx" in model_name
+                        else "csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17"
+                    )
+                    dl_path = snapshot_download(
+                        repo_id=repo_id,
+                        allow_patterns=["model.int8.onnx", "model.onnx", "tokens.txt"],
+                    )
+                    model_dir = Path(dl_path)
+                except Exception as dl_err:
+                    logger.debug(f"SenseVoice auto-download note: {dl_err}")
+
+            if model_dir:
+                onnx_model = model_dir / "model.onnx"
+                if not onnx_model.exists():
+                    onnx_model = model_dir / "model.int8.onnx"
+                tokens = model_dir / "tokens.txt"
+
+                if onnx_model.exists() and tokens.exists():
+                    loop = asyncio.get_event_loop()
+
+                    def _load_sherpa_sv():
+                        return sherpa_onnx.OfflineRecognizer.from_sense_voice(
+                            model=str(onnx_model),
+                            tokens=str(tokens),
+                            num_threads=4,
+                            use_itn=getattr(self.config.sensevoice, "use_itn", True),
+                            sample_rate=self.config.audio.sample_rate,
+                        )
+
+                    self.model = await loop.run_in_executor(None, _load_sherpa_sv)
+                    if status_callback:
+                        status_callback(f"✅ SenseVoice ONNX ready on {device_label}!")
+                    logger.info("SenseVoice ONNX loaded successfully via sherpa.")
+                    return True
+        except ImportError:
+            pass
+        except Exception as e:
+            logger.debug(f"Sherpa SenseVoice loading note: {e}")
+
+        # 2. Try loading via funasr / SenseVoiceSmall
         try:
             from funasr import AutoModel
             loop = asyncio.get_event_loop()
@@ -126,35 +192,10 @@ class SenseVoiceEngine(BaseSTTEngine):
         except Exception as e:
             logger.debug(f"FunASR loading note: {e}")
 
-        # 2. Try loading via sherpa-onnx SenseVoice integration
-        try:
-            import sherpa_onnx
-            model_dir = self._find_model_dir()
-            if model_dir and (model_dir / "model.onnx").exists():
-                loop = asyncio.get_event_loop()
-
-                def _load_sherpa_sv():
-                    return sherpa_onnx.OfflineRecognizer.from_sense_voice(
-                        model=str(model_dir / "model.onnx"),
-                        tokens=str(model_dir / "tokens.txt"),
-                        num_threads=4,
-                        sample_rate=self.config.audio.sample_rate,
-                    )
-
-                self.model = await loop.run_in_executor(None, _load_sherpa_sv)
-                if status_callback:
-                    status_callback(f"✅ SenseVoice ONNX ready on {device_label}!")
-                logger.info("SenseVoice ONNX loaded successfully via sherpa.")
-                return True
-        except ImportError:
-            pass
-        except Exception as e:
-            logger.debug(f"Sherpa SenseVoice loading note: {e}")
-
         # 3. Graceful standby message if weights or package not yet provisioned
         msg = (
             f"SenseVoice engine configured ({model_name}). "
-            "For full neural execution, install: pip install funasr or sherpa-onnx"
+            "For full neural execution, install: pip install sherpa-onnx"
         )
         if status_callback:
             status_callback(f"⚠️ {msg}")

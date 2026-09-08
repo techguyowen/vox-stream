@@ -59,8 +59,23 @@ class ParakeetEngine(BaseSTTEngine):
         if app_data:
             candidates.append(Path(app_data) / "parakeet" / model_name)
             candidates.append(Path(app_data) / "nemo" / model_name)
+
+        hf_cache = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub"
+        hf_dirs = [
+            hf_cache / f"models--csukuangfj--{model_name}" / "snapshots",
+            hf_cache / f"models--{model_name.replace('/', '--')}" / "snapshots",
+            hf_cache / "models--csukuangfj--sherpa-onnx-nemo-ctc-en-conformer-medium" / "snapshots",
+        ]
+        for hf_base in hf_dirs:
+            if hf_base.is_dir():
+                for snap in hf_base.iterdir():
+                    if snap.is_dir() and (snap / "tokens.txt").exists() and (
+                        (snap / "model.onnx").exists() or (snap / "model.int8.onnx").exists()
+                    ):
+                        return snap
+
         for c in candidates:
-            if c.exists():
+            if c.exists() and (c / "tokens.txt").exists():
                 return c
         return None
 
@@ -78,22 +93,46 @@ class ParakeetEngine(BaseSTTEngine):
         try:
             import sherpa_onnx
             model_dir = self._find_model_dir()
-            if model_dir and (model_dir / "model.onnx").exists() and (model_dir / "tokens.txt").exists():
-                loop = asyncio.get_event_loop()
-
-                def _load_onnx():
-                    return sherpa_onnx.OfflineRecognizer.from_nemo_ctc(
-                        model=str(model_dir / "model.onnx"),
-                        tokens=str(model_dir / "tokens.txt"),
-                        num_threads=4,
-                        sample_rate=self.config.audio.sample_rate,
+            if not model_dir:
+                try:
+                    from huggingface_hub import snapshot_download
+                    if status_callback:
+                        status_callback(f"Downloading NVIDIA Parakeet model from HuggingFace...")
+                    repo_id = (
+                        f"csukuangfj/{model_name}"
+                        if "/" not in model_name and "sherpa-onnx" in model_name
+                        else "csukuangfj/sherpa-onnx-nemo-ctc-en-conformer-medium"
                     )
+                    dl_path = snapshot_download(
+                        repo_id=repo_id,
+                        allow_patterns=["model.int8.onnx", "model.onnx", "tokens.txt"],
+                    )
+                    model_dir = Path(dl_path)
+                except Exception as dl_err:
+                    logger.debug(f"Parakeet auto-download note: {dl_err}")
 
-                self.model = await loop.run_in_executor(None, _load_onnx)
-                if status_callback:
-                    status_callback(f"✅ NVIDIA Parakeet ready on {device_label}!")
-                logger.info("Parakeet ONNX model loaded successfully.")
-                return True
+            if model_dir:
+                onnx_model = model_dir / "model.onnx"
+                if not onnx_model.exists():
+                    onnx_model = model_dir / "model.int8.onnx"
+                tokens = model_dir / "tokens.txt"
+
+                if onnx_model.exists() and tokens.exists():
+                    loop = asyncio.get_event_loop()
+
+                    def _load_onnx():
+                        return sherpa_onnx.OfflineRecognizer.from_nemo_ctc(
+                            model=str(onnx_model),
+                            tokens=str(tokens),
+                            num_threads=4,
+                            sample_rate=self.config.audio.sample_rate,
+                        )
+
+                    self.model = await loop.run_in_executor(None, _load_onnx)
+                    if status_callback:
+                        status_callback(f"✅ NVIDIA Parakeet ready on {device_label}!")
+                    logger.info("Parakeet ONNX model loaded successfully.")
+                    return True
         except ImportError:
             pass
         except Exception as e:
@@ -123,7 +162,7 @@ class ParakeetEngine(BaseSTTEngine):
         # 3. Graceful standby message if weights / optional toolkit not yet provisioned
         msg = (
             f"NVIDIA Parakeet engine configured ({model_name}). "
-            "For full GPU neural inference, install: pip install sherpa-onnx or nemo_toolkit[asr]"
+            "For full GPU neural inference, install: pip install sherpa-onnx"
         )
         if status_callback:
             status_callback(f"⚠️ {msg}")

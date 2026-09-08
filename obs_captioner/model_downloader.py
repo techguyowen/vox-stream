@@ -133,6 +133,33 @@ MODEL_CATALOG: List[ModelCatalogItem] = [
         recommended=True,
     ),
     ModelCatalogItem(
+        id="sherpa_zipformer",
+        engine="sherpa",
+        name="Sherpa-ONNX Zipformer (Streaming)",
+        model_key="csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26",
+        size_mb=175,
+        description="Next-gen streaming transducer Zipformer. Sub-100ms real-time chunked decoding with zero latency.",
+        recommended=True,
+    ),
+    ModelCatalogItem(
+        id="sensevoice_small",
+        engine="sensevoice",
+        name="SenseVoice Small (Audio Event Detection)",
+        model_key="csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17",
+        size_mb=230,
+        description="Alibaba FunASR SenseVoice with real-time Audio Event Detection (applause, laughter, coughing, music).",
+        recommended=True,
+    ),
+    ModelCatalogItem(
+        id="parakeet_nemo",
+        engine="parakeet",
+        name="NVIDIA Parakeet NeMo Conformer",
+        model_key="csukuangfj/sherpa-onnx-nemo-ctc-en-conformer-medium",
+        size_mb=70,
+        description="SOTA accuracy NeMo FastConformer CTC. Ultra-low WER neural speech recognition.",
+        recommended=True,
+    ),
+    ModelCatalogItem(
         id="vosk_accurate",
         engine="vosk",
         name="Vosk Accurate (Large)",
@@ -177,13 +204,27 @@ class ModelDownloadManager:
 
         elif item.engine == "moonshine":
             # Check HuggingFace hub cache or useful-sensors cache
-            hf_cache = Path.home() / ".cache" / "huggingface" / "hub"
+            hf_cache = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub"
             if hf_cache.exists():
                 for repo in hf_cache.iterdir():
                     if "moonshine" in repo.name.lower():
                         snap = repo / "snapshots"
                         if snap.exists() and any(snap.iterdir()):
                             return True, str(repo)
+            return False, None
+
+        elif item.engine in ("sherpa", "sensevoice", "parakeet"):
+            hf_cache = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub"
+            repo_slug = item.model_key.replace("/", "--")
+            candidates = [
+                hf_cache / f"models--{repo_slug}" / "snapshots",
+                hf_cache / f"models--csukuangfj--{item.model_key.split('/')[-1]}" / "snapshots",
+            ]
+            for c in candidates:
+                if c.is_dir():
+                    for snap in c.iterdir():
+                        if snap.is_dir() and (snap / "tokens.txt").exists():
+                            return True, str(snap)
             return False, None
 
         return False, None
@@ -256,6 +297,16 @@ class ModelDownloadManager:
                 import moonshine
                 _ = moonshine.load_model(item.model_key)
                 return True
+
+            elif item.engine in ("sherpa", "sensevoice", "parakeet"):
+                from huggingface_hub import snapshot_download
+                patterns = (
+                    ["*.onnx", "tokens.txt"]
+                    if item.engine == "sherpa"
+                    else ["model.int8.onnx", "model.onnx", "tokens.txt"]
+                )
+                path = snapshot_download(repo_id=item.model_key, allow_patterns=patterns)
+                return bool(path and Path(path).exists())
 
             return False
         except Exception as e:
@@ -411,11 +462,27 @@ class ModelDownloadManager:
                 return True, f"Deleted {item.name} from local cache (freed ~{freed_mb} MB).", freed_mb
 
             elif item.engine == "moonshine":
-                hf_dir = Path.home() / ".cache" / "huggingface" / "hub" / "models--UsefulSensors--moonshine"
+                hf_dir = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub" / "models--UsefulSensors--moonshine"
                 if hf_dir.exists():
                     shutil.rmtree(hf_dir, ignore_errors=True)
                 logger.info(f"Deleted Moonshine model '{item.name}' from {hf_dir}")
                 return True, f"Deleted {item.name} from local cache (freed ~{freed_mb} MB).", freed_mb
+
+            elif item.engine in ("sherpa", "sensevoice", "parakeet"):
+                hf_cache = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub"
+                repo_slug = item.model_key.replace("/", "--")
+                deleted = False
+                for d in [
+                    hf_cache / f"models--{repo_slug}",
+                    hf_cache / f"models--csukuangfj--{item.model_key.split('/')[-1]}",
+                ]:
+                    if d.exists():
+                        shutil.rmtree(d, ignore_errors=True)
+                        deleted = True
+                if deleted:
+                    logger.info(f"Deleted model '{item.name}' from local cache")
+                    return True, f"Deleted {item.name} from local cache (freed ~{freed_mb} MB).", freed_mb
+                return False, f"Model directory for {item.name} not found in cache.", 0
 
             return False, f"Unsupported engine '{item.engine}' for deletion.", 0
         except Exception as e:
