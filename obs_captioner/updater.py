@@ -395,7 +395,7 @@ class UpdateManager:
                 subdirs = [d for d in extract_path.iterdir() if d.is_dir()]
                 source_dir = subdirs[0] if subdirs else extract_path
 
-                # Protected files that must NEVER be overwritten
+                # Protected files and directories that must NEVER be overwritten
                 PROTECTED_NAMES = {
                     "config.json",
                     "google_credentials.json",
@@ -410,10 +410,22 @@ class UpdateManager:
                     ".user_uploaded",
                 }
 
+                def is_protected_item(name: str) -> bool:
+                    if name in PROTECTED_NAMES:
+                        return True
+                    lower = name.lower()
+                    if lower.startswith(".env") or lower.endswith(".key") or lower.endswith(".pem"):
+                        return True
+                    if lower.startswith("config.") and lower.endswith(".json"):
+                        return True
+                    if "credentials" in lower and lower.endswith(".json"):
+                        return True
+                    return False
+
                 if progress_cb:
                     progress_cb("🔄 Updating application files...")
                 for item in source_dir.iterdir():
-                    if item.name in PROTECTED_NAMES:
+                    if is_protected_item(item.name):
                         continue
                     dest = self.app_root / item.name
                     if item.is_dir():

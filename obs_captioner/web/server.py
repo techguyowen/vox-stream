@@ -9,7 +9,7 @@ import time
 import uuid
 from dataclasses import asdict
 from pathlib import Path
-from typing import Callable, Optional, Set
+from typing import Any, Callable, Optional, Set
 
 from aiohttp import web
 
@@ -58,9 +58,9 @@ class WebOverlayServer:
         on_restart_requested: Optional[Callable[[], None]] = None,
         on_shutdown_requested: Optional[Callable[[], None]] = None,
         get_app_status: Optional[Callable[[], dict]] = None,
-        obs_client: Optional[any] = None,
-        audio_capture: Optional[any] = None,
-        updater: Optional[any] = None,
+        obs_client: Optional[Any] = None,
+        audio_capture: Optional[Any] = None,
+        updater: Optional[Any] = None,
     ):
         self.config = config
         self.history = history or TranscriptHistory()

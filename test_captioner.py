@@ -1907,8 +1907,19 @@ class TestVersioningAndSemanticUpdater(unittest.TestCase):
             # Create user files that must be protected
             user_config = app_root / "config.json"
             user_config.write_text('{"user_setting": "keep_me"}', encoding="utf-8")
+            custom_config = app_root / "config.church.json"
+            custom_config.write_text('{"custom": true}', encoding="utf-8")
             user_env = app_root / ".env"
             user_env.write_text("API_SECRET=super_secret", encoding="utf-8")
+            user_env_local = app_root / ".env.production"
+            user_env_local.write_text("ENV_KEY=keep_me_too", encoding="utf-8")
+            user_key = app_root / "private.key"
+            user_key.write_text("SECRET_KEY_PAYLOAD", encoding="utf-8")
+            user_pem = app_root / "cert.pem"
+            user_pem.write_text("SECRET_PEM_PAYLOAD", encoding="utf-8")
+            user_creds = app_root / "my_credentials.json"
+            user_creds.write_text('{"oauth": "keep"}', encoding="utf-8")
+
             sub_dir = app_root / "obs_captioner"
             sub_dir.mkdir(parents=True)
             existing_file = sub_dir / "existing.py"
@@ -1918,7 +1929,12 @@ class TestVersioningAndSemanticUpdater(unittest.TestCase):
             mock_zip_path = Path(web_dir) / "release.zip"
             with zipfile.ZipFile(mock_zip_path, "w") as zf:
                 zf.writestr("vox-stream-main/config.json", '{"user_setting": "OVERWRITTEN"}')
+                zf.writestr("vox-stream-main/config.church.json", '{"custom": "OVERWRITTEN"}')
                 zf.writestr("vox-stream-main/.env", "API_SECRET=OVERWRITTEN")
+                zf.writestr("vox-stream-main/.env.production", "ENV_KEY=OVERWRITTEN")
+                zf.writestr("vox-stream-main/private.key", "OVERWRITTEN")
+                zf.writestr("vox-stream-main/cert.pem", "OVERWRITTEN")
+                zf.writestr("vox-stream-main/my_credentials.json", '{"oauth": "OVERWRITTEN"}')
                 zf.writestr("vox-stream-main/obs_captioner/new_feature.py", "# new feature code")
                 zf.writestr("vox-stream-main/version.json", '{"version": "1.2.0"}')
 
@@ -1931,7 +1947,12 @@ class TestVersioningAndSemanticUpdater(unittest.TestCase):
 
             # Assert protected user files were untouched
             self.assertEqual(user_config.read_text(encoding="utf-8"), '{"user_setting": "keep_me"}')
+            self.assertEqual(custom_config.read_text(encoding="utf-8"), '{"custom": true}')
             self.assertEqual(user_env.read_text(encoding="utf-8"), "API_SECRET=super_secret")
+            self.assertEqual(user_env_local.read_text(encoding="utf-8"), "ENV_KEY=keep_me_too")
+            self.assertEqual(user_key.read_text(encoding="utf-8"), "SECRET_KEY_PAYLOAD")
+            self.assertEqual(user_pem.read_text(encoding="utf-8"), "SECRET_PEM_PAYLOAD")
+            self.assertEqual(user_creds.read_text(encoding="utf-8"), '{"oauth": "keep"}')
             # Assert existing files still exist and new files were merged
             self.assertTrue(existing_file.exists())
             self.assertTrue((sub_dir / "new_feature.py").exists())
