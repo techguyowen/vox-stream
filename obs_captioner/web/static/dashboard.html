@@ -934,7 +934,7 @@
                                 <option value="moonshine">⚡ Local Moonshine (5x Faster than Whisper / Variable Transformer)</option>
                                 <option value="local_whisper">💻 Local Faster-Whisper (100% Offline GPU/CPU)</option>
                                 <option value="gemini_live">✨ Gemini 3.5 Transcribe Live (Google AI Studio / Live API)</option>
-                                <option value="google_stt">Google Cloud STT Streaming (v1 / Chirp)</option>
+                                <option value="google_stt">🏢 Google Cloud STT Enterprise (v1 / Chirp - Requires GCP Credentials)</option>
                                 <option value="bandwidth">🌐 Bandwidth Labs Live STT (Streaming)</option>
                                 <option value="sherpa">⚡ Sherpa-ONNX Zipformer (Streaming &lt;100ms, CPU/ONNX)</option>
                                 <option value="parakeet">🦅 NVIDIA Parakeet (FastConformer SOTA Accuracy)</option>
@@ -952,6 +952,7 @@
                                 <option value="pt-BR">Portuguese</option>
                                 <option value="ja-JP">Japanese</option>
                             </select>
+                            <span id="language-note" class="subtext" style="font-size: 11px; color: #9CA3AF; margin-top: 4px; display: block;"></span>
                         </div>
                     </div>
 
@@ -1013,7 +1014,7 @@
                             </label>
                             <input type="range" id="sentence_break_slider" min="200" max="1500" step="50" value="650" class="slider">
                             <span class="subtext" style="margin-top: 4px; font-size: 11px; color: #9CA3AF; display: block;">
-                                Duration of speech pause required to finalize a sentence. <strong>650ms</strong>: Charismatic preaching default; preserves dramatic pregnant pauses without slicing thoughts in half.
+                                Duration of speech pause required to finalize a sentence. <strong>650ms</strong>: Preserves dramatic pregnant pauses without slicing thoughts in half.
                             </span>
                         </div>
                         <div class="form-group">
@@ -1023,7 +1024,17 @@
                             </label>
                             <input type="range" id="max_sentence_slider" min="2.0" max="10.0" step="0.5" value="7.0" class="slider">
                             <span class="subtext" style="margin-top: 4px; font-size: 11px; color: #9CA3AF; display: block;">
-                                Maximum duration speech can run continuously without pausing before forcing a sentence break. Prevents 15–20s freezes and massive run-on blocks during unpaused sermons.
+                                Maximum duration speech can run continuously without pausing before forcing a sentence break. Prevents run-ons during unpaused preaching.
+                            </span>
+                        </div>
+                        <div class="form-group">
+                            <label for="max_words_slider" style="display: flex; justify-content: space-between; align-items: center;">
+                                <span>📝 Max Words per Caption (<span id="val-max-words">24 words</span>)</span>
+                                <span style="font-size: 11px; color: #818CF8; font-weight: 600;">Layout Ceiling</span>
+                            </label>
+                            <input type="range" id="max_words_slider" min="10" max="40" step="1" value="24" class="slider">
+                            <span class="subtext" style="margin-top: 4px; font-size: 11px; color: #9CA3AF; display: block;">
+                                Maximum words allowed per caption block. Lower (14-18) for lower-thirds; higher (24-30) for full screens and stage monitors.
                             </span>
                         </div>
                     </div>
@@ -1186,6 +1197,14 @@
                                 </select>
                             </div>
                             <div class="form-group">
+                                <label for="sherpa_device">Inference Device</label>
+                                <select id="sherpa_device" class="form-control">
+                                    <option value="auto" selected>Auto (GPU if available, else CPU)</option>
+                                    <option value="cuda">NVIDIA GPU (CUDA)</option>
+                                    <option value="cpu">CPU Only</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
                                 <label for="sherpa_threads">CPU Threads</label>
                                 <input type="number" id="sherpa_threads" value="4" min="1" max="16" class="form-control">
                             </div>
@@ -1217,6 +1236,10 @@
                                     <option value="cpu">CPU Only</option>
                                 </select>
                             </div>
+                            <div class="form-group">
+                                <label for="parakeet_threads">CPU Threads</label>
+                                <input type="number" id="parakeet_threads" value="4" min="1" max="16" class="form-control">
+                            </div>
                         </div>
                         <div class="form-group">
                             <label for="parakeet_model_path">Custom Model Path / ONNX Directory (Optional)</label>
@@ -1242,6 +1265,10 @@
                                     <option value="cuda">NVIDIA GPU (CUDA)</option>
                                     <option value="cpu">CPU Only</option>
                                 </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="sensevoice_threads">CPU Threads</label>
+                                <input type="number" id="sensevoice_threads" value="4" min="1" max="16" class="form-control">
                             </div>
                         </div>
                         <div class="form-row">

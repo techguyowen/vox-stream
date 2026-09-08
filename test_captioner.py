@@ -264,12 +264,18 @@ class TestConfigAndEngines(unittest.TestCase):
         cfg = AppConfig()
         self.assertIsInstance(cfg, AppConfig)
         self.assertEqual(cfg.audio.sample_rate, 16000)
+        self.assertEqual(cfg.audio.max_sentence_words, 24)
+        self.assertEqual(cfg.sherpa.device, "auto")
+        self.assertEqual(cfg.sherpa.num_threads, 4)
+        self.assertEqual(cfg.parakeet.num_threads, 4)
+        self.assertEqual(cfg.sensevoice.num_threads, 4)
         self.assertEqual(cfg.obs.port, 4455)
         self.assertEqual(cfg.overlay.port, 8765)
         self.assertTrue(cfg.censor.enabled)
         self.assertFalse(cfg.obs.auto_open_projector)
         self.assertEqual(cfg.obs.projector_monitor_index, 1)
         self.assertEqual(cfg.obs.projector_type, "preview")
+        self.assertFalse(hasattr(cfg.overlay, "google_font"))
 
     def test_engine_factory(self):
         cfg = AppConfig()

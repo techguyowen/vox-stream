@@ -147,7 +147,6 @@ class OverlayConfig:
     text_align: str = "center"  # "left", "center", "right"
     vertical_align: str = "bottom"  # "top", "bottom"
     animation_style: str = "word_pop"  # "word_pop", "fade", "karaoke", "scroll", "instant"
-    google_font: str = ""  # e.g., "Montserrat", "Poppins", "Bebas Neue", "Oswald"
     font_family: str = "Inter, sans-serif"
     font_size: str = "32px"
     font_weight: str = "700"
