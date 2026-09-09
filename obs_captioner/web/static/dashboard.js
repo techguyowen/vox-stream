@@ -2176,7 +2176,7 @@ document.getElementById("btn-save-audio").addEventListener("click", async () => 
             num_threads: parseInt(document.getElementById("sherpa_threads") ? document.getElementById("sherpa_threads").value : "4", 10) || 4,
         },
         parakeet: {
-            model_name: document.getElementById("parakeet_model") ? document.getElementById("parakeet_model").value : "parakeet-tdt-0.6b",
+            model_name: document.getElementById("parakeet_model") ? document.getElementById("parakeet_model").value : "parakeet-fastconformer-large-24500",
             device: document.getElementById("parakeet_device") ? document.getElementById("parakeet_device").value : "auto",
             num_threads: parseInt(document.getElementById("parakeet_threads") ? document.getElementById("parakeet_threads").value : "4", 10) || 4,
             model_path: document.getElementById("parakeet_model_path") ? document.getElementById("parakeet_model_path").value.trim() : "",

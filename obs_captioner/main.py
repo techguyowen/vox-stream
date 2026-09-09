@@ -5,7 +5,11 @@ import os
 import signal
 import sys
 import time
-from pathlib import Path
+if __name__ == "__main__" and not __package__:
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    __package__ = "obs_captioner"
 
 from .config import load_config, AppConfig
 from .audio_capture import AudioCapture, list_audio_devices
@@ -559,6 +563,10 @@ def main():
         except Exception:
             pass
 
+        restart_cmd = [sys.executable, "-m", "obs_captioner.main"]
+        if len(sys.argv) > 1:
+            restart_cmd.extend(sys.argv[1:])
+
         # If running under batch/shell wrapper, exit with code 42 so launcher loops
         is_runner = os.environ.get("VOXSTREAM_RUNNER") in ("bat", "sh")
         if is_runner:
@@ -566,14 +574,14 @@ def main():
         elif sys.platform == "win32":
             # Standalone Windows execution without wrapper: spawn replacement process and exit
             try:
-                subprocess.Popen([sys.executable] + sys.argv)
+                subprocess.Popen(restart_cmd)
             except Exception as restart_err:
                 logger.error(f"Failed to spawn replacement restart process: {restart_err}")
             os._exit(42)
         else:
             # Standalone POSIX execution: re-exec Python process in-place
             try:
-                os.execv(sys.executable, [sys.executable] + sys.argv)
+                os.execv(sys.executable, restart_cmd)
             except Exception:
                 os._exit(42)
     else:

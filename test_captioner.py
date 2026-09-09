@@ -2364,6 +2364,73 @@ class TestVersioningAndSemanticUpdater(unittest.TestCase):
         finally:
             loop.close()
 
+    def test_parakeet_upgrade_options_and_architecture_detection(self):
+        """Verify all Parakeet upgrade tiers resolve to correct repos and validate CTC/Transducer directories."""
+        import tempfile
+        import shutil
+        from pathlib import Path
+        from obs_captioner.engines.parakeet_engine import (
+            PARAKEET_MODELS,
+            ParakeetEngine,
+            resolve_parakeet_repo,
+        )
+        from obs_captioner.model_downloader import MODEL_CATALOG
+
+        # 1. Model resolution
+        self.assertEqual(
+            resolve_parakeet_repo("parakeet-fastconformer-large-24500"),
+            "csukuangfj/sherpa-onnx-nemo-fast-conformer-ctc-en-24500",
+        )
+        self.assertEqual(
+            resolve_parakeet_repo("parakeet-tdt-0.6b"),
+            "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
+        )
+        self.assertEqual(
+            resolve_parakeet_repo("parakeet-ctc-large"),
+            "csukuangfj/sherpa-onnx-nemo-ctc-en-conformer-large",
+        )
+        self.assertEqual(
+            resolve_parakeet_repo("parakeet-ctc-medium"),
+            "csukuangfj/sherpa-onnx-nemo-ctc-en-conformer-medium",
+        )
+        self.assertEqual(
+            resolve_parakeet_repo("csukuangfj/custom-parakeet-model"),
+            "csukuangfj/custom-parakeet-model",
+        )
+
+        # 2. Model catalog verification
+        catalog_ids = {item.id: item for item in MODEL_CATALOG}
+        self.assertIn("parakeet_fastconformer_large", catalog_ids)
+        self.assertIn("parakeet_tdt_06b", catalog_ids)
+        self.assertIn("parakeet_ctc_large", catalog_ids)
+        self.assertIn("parakeet_nemo", catalog_ids)
+        self.assertEqual(catalog_ids["parakeet_fastconformer_large"].size_mb, 458)
+        self.assertEqual(catalog_ids["parakeet_tdt_06b"].size_mb, 670)
+
+        # 3. Directory validation for CTC vs Transducer
+        temp_dir = tempfile.mkdtemp()
+        try:
+            p = Path(temp_dir)
+            self.assertFalse(ParakeetEngine._is_valid_model_dir(p))
+
+            # Add tokens only -> still invalid
+            (p / "tokens.txt").touch()
+            self.assertFalse(ParakeetEngine._is_valid_model_dir(p))
+
+            # Add CTC model.onnx -> valid CTC
+            (p / "model.onnx").touch()
+            self.assertTrue(ParakeetEngine._is_valid_model_dir(p))
+
+            # Remove model.onnx, test Transducer triplets
+            (p / "model.onnx").unlink()
+            (p / "encoder.int8.onnx").touch()
+            (p / "decoder.int8.onnx").touch()
+            self.assertFalse(ParakeetEngine._is_valid_model_dir(p))  # Missing joiner
+            (p / "joiner.int8.onnx").touch()
+            self.assertTrue(ParakeetEngine._is_valid_model_dir(p))  # All 3 present
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
 
 if __name__ == "__main__":
     unittest.main()

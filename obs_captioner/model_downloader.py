@@ -151,13 +151,40 @@ MODEL_CATALOG: List[ModelCatalogItem] = [
         recommended=True,
     ),
     ModelCatalogItem(
+        id="parakeet_fastconformer_large",
+        engine="parakeet",
+        name="NVIDIA FastConformer-Large (24,500 Hours)",
+        model_key="csukuangfj/sherpa-onnx-nemo-fast-conformer-ctc-en-24500",
+        size_mb=458,
+        description="NVIDIA FastConformer Large trained on 24,500 hours. Exceptional phonetic accuracy and whisper resistance.",
+        recommended=True,
+    ),
+    ModelCatalogItem(
+        id="parakeet_tdt_06b",
+        engine="parakeet",
+        name="NVIDIA Parakeet-TDT 0.6B (Transducer)",
+        model_key="csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
+        size_mb=670,
+        description="Token-and-Duration Transducer (TDT). Prediction network enforces token sequences, preventing dropped letters.",
+        recommended=True,
+    ),
+    ModelCatalogItem(
+        id="parakeet_ctc_large",
+        engine="parakeet",
+        name="NVIDIA Conformer-Large (Balanced)",
+        model_key="csukuangfj/sherpa-onnx-nemo-ctc-en-conformer-large",
+        size_mb=170,
+        description="Balanced NeMo Conformer Large int8 model with high vocabulary coverage.",
+        recommended=False,
+    ),
+    ModelCatalogItem(
         id="parakeet_nemo",
         engine="parakeet",
-        name="NVIDIA Parakeet NeMo Conformer",
+        name="NVIDIA Conformer-Medium (Lightweight)",
         model_key="csukuangfj/sherpa-onnx-nemo-ctc-en-conformer-medium",
         size_mb=70,
-        description="SOTA accuracy NeMo FastConformer CTC. Ultra-low WER neural speech recognition.",
-        recommended=True,
+        description="Ultra-low latency NeMo FastConformer CTC. Lightweight footprint (~70 MB) for low-spec hardware.",
+        recommended=False,
     ),
     ModelCatalogItem(
         id="vosk_accurate",
@@ -302,7 +329,7 @@ class ModelDownloadManager:
                 from huggingface_hub import snapshot_download
                 patterns = (
                     ["*.onnx", "tokens.txt"]
-                    if item.engine == "sherpa"
+                    if item.engine in ("sherpa", "parakeet")
                     else ["model.int8.onnx", "model.onnx", "tokens.txt"]
                 )
                 path = snapshot_download(repo_id=item.model_key, allow_patterns=patterns)

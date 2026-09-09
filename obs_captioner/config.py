@@ -102,7 +102,7 @@ class SherpaConfig:
 
 @dataclass
 class ParakeetConfig:
-    model_name: str = "parakeet-tdt-0.6b"  # "parakeet-tdt-0.6b", "parakeet-ctc-0.6b", "parakeet-tdt-1.1b"
+    model_name: str = "parakeet-fastconformer-large-24500"  # "parakeet-fastconformer-large-24500", "parakeet-tdt-0.6b", "parakeet-ctc-large", "parakeet-ctc-medium"
     model_path: str = ""  # Optional custom local model path
     device: str = "auto"  # "auto", "cuda", "cpu"
     num_threads: int = 4
