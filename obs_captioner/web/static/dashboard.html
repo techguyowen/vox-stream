@@ -47,11 +47,12 @@
                 <a href="/display" target="_blank" class="btn btn-secondary" title="Open large-format Accessibility Captions &amp; Room View">📺 Captions View</a>
                 <button id="btn-reopen-projector" class="btn btn-secondary" title="Restore the video preview to the Conference Screen">🖥️ Restore Screen</button>
 
-                <div class="vu-container" title="Microphone Level">
+                <div class="vu-container" id="vu-container" title="Live Microphone Audio Level (dBFS)">
                     <span class="vu-label">MIC</span>
                     <div class="vu-bar-wrapper">
                         <div id="vu-meter-bar" class="vu-meter-bar"></div>
                     </div>
+                    <span id="vu-meter-db" class="vu-db-text">-∞ dB</span>
                 </div>
 
                 <!-- Active Engine Badge -->

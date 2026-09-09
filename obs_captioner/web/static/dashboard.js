@@ -984,6 +984,7 @@ function triggerModelTranscribingActivity(text) {
 
 // DOM Elements
 const vuBar = document.getElementById("vu-meter-bar");
+const vuDbText = document.getElementById("vu-meter-db");
 const statusPill = document.getElementById("status-pill");
 const statusText = document.getElementById("status-text");
 const btnToggleEngine = document.getElementById("btn-toggle-engine");
@@ -2493,6 +2494,11 @@ function updateStatusUI() {
         statusText.textContent = "Stopped";
         btnToggleEngine.textContent = "▶ Start Captions";
         btnToggleEngine.className = "btn btn-primary";
+        if (vuBar) vuBar.style.width = "0%";
+        if (vuDbText) {
+            vuDbText.textContent = "-∞ dB";
+            vuDbText.style.color = "#64748B";
+        }
     }
 }
 
@@ -2654,6 +2660,35 @@ async function refreshEngineStatus() {
             }
             isRunning = !!data.is_running;
             updateStatusUI();
+
+            if (!controlWs || controlWs.readyState !== WebSocket.OPEN) {
+                if (!isRunning) {
+                    if (vuBar) vuBar.style.width = "0%";
+                    if (vuDbText) {
+                        vuDbText.textContent = "-∞ dB";
+                        vuDbText.style.color = "#64748B";
+                    }
+                } else if (typeof data.audio_level_db === "number") {
+                    const db = data.audio_level_db;
+                    const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
+                    if (vuBar) vuBar.style.width = `${pct}%`;
+                    if (vuDbText) {
+                        if (db <= -58.0) {
+                            vuDbText.textContent = "-∞ dB";
+                            vuDbText.style.color = "#64748B";
+                        } else {
+                            vuDbText.textContent = `${db.toFixed(1)} dB`;
+                            if (db >= -3.0) {
+                                vuDbText.style.color = "#EF4444";
+                            } else if (db >= -12.0) {
+                                vuDbText.style.color = "#F59E0B";
+                            } else {
+                                vuDbText.style.color = "#34D399";
+                            }
+                        }
+                    }
+                }
+            }
 
             currentEngineName = data.engine_name || data.engine || "Unknown";
             currentModelDetail = data.model_detail || currentEngineName;
@@ -2902,7 +2937,23 @@ function connectControlWs() {
                 // 0 dB (full scale) is falsy — must not collapse to -100
                 const db = (typeof msg.level_db === "number") ? msg.level_db : -100;
                 const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
-                vuBar.style.width = `${pct}%`;
+                if (vuBar) vuBar.style.width = `${pct}%`;
+
+                if (vuDbText) {
+                    if (db <= -58.0) {
+                        vuDbText.textContent = "-∞ dB";
+                        vuDbText.style.color = "#64748B";
+                    } else {
+                        vuDbText.textContent = `${db.toFixed(1)} dB`;
+                        if (db >= -3.0) {
+                            vuDbText.style.color = "#EF4444";
+                        } else if (db >= -12.0) {
+                            vuDbText.style.color = "#F59E0B";
+                        } else {
+                            vuDbText.style.color = "#34D399";
+                        }
+                    }
+                }
 
                 const previewMic = document.getElementById("preview-mic-indicator");
                 if (previewMic) {
@@ -2948,7 +2999,14 @@ function connectControlWs() {
         } catch (e) {}
     };
 
-    controlWs.onclose = () => setTimeout(connectControlWs, Math.min(10000, (++controlReconnectAttempts) * 3000));
+    controlWs.onclose = () => {
+        if (vuBar) vuBar.style.width = "0%";
+        if (vuDbText) {
+            vuDbText.textContent = "-∞ dB";
+            vuDbText.style.color = "#64748B";
+        }
+        setTimeout(connectControlWs, Math.min(10000, (++controlReconnectAttempts) * 3000));
+    };
 }
 
 let captionReconnectAttempts = 0;
