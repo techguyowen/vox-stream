@@ -272,6 +272,28 @@ class TextFormatter:
 
         return text
 
+    @staticmethod
+    def cleanup_asr_disfluencies(text: str) -> str:
+        """Clean common acoustic ASR spelling artifacts, broken contractions, and syllable dropouts."""
+        if not text or len(text) < 3:
+            return text
+
+        # Broken contractions and conversational colloquialisms
+        text = re.sub(r"\bI't\b", "I don't", text)
+        text = re.sub(r"\bby by\b", "bye-bye", text, flags=re.IGNORECASE)
+        text = re.sub(r"\bby-by\b", "bye-bye", text, flags=re.IGNORECASE)
+
+        # Common phonetic ASR spelling artifacts and acoustic stutters
+        text = re.sub(r"\bspll\b", "spell", text, flags=re.IGNORECASE)
+        text = re.sub(r"\bslipp\b", "slip", text, flags=re.IGNORECASE)
+        text = re.sub(r"\bgonners\b", "goners", text, flags=re.IGNORECASE)
+        text = re.sub(r"\bcovenn\b", "coven", text, flags=re.IGNORECASE)
+        text = re.sub(r"\bdopple gangers\b", "doppelgängers", text, flags=re.IGNORECASE)
+        text = re.sub(r"\bdoppel ganger\b", "doppelgänger", text, flags=re.IGNORECASE)
+        text = re.sub(r"\bdopple ganger\b", "doppelgänger", text, flags=re.IGNORECASE)
+
+        return text
+
     def format_text(self, text: str, is_final: bool = True) -> str:
         """Apply church terms, capitalization, and punctuation in an ultra-fast single-pass pipeline."""
         if not text:
@@ -281,8 +303,9 @@ class TextFormatter:
         if not text:
             return ""
 
-        # 0. De-duplicate stutters and repeated sentences
+        # 0. De-duplicate stutters and clean common acoustic artifacts
         text = self.de_duplicate_phrases(text)
+        text = self.cleanup_asr_disfluencies(text)
 
         # 0b. Normalize all-caps transcription output (e.g. Sherpa-ONNX Zipformer CTC tokens)
         if text.isupper() and len(text) > 4:
