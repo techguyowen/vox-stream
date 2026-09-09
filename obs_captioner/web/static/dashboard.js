@@ -928,6 +928,59 @@ let controlWs = null;
 let captionWs = null;
 let isRunning = true;
 let activeThemeId = "modern_clean";
+let isActivelyTranscribing = false;
+let transcribingTimeout = null;
+
+function triggerModelTranscribingActivity(text) {
+    if (!text || !text.trim()) return;
+    isActivelyTranscribing = true;
+
+    // Header badge
+    const engineDot = document.getElementById("active-engine-dot");
+    const engineTag = document.getElementById("active-engine-status-tag");
+    if (engineDot) engineDot.className = "status-dot pulse-transcribing";
+    if (engineTag) {
+        engineTag.textContent = "TRANSCRIBING";
+        engineTag.style.background = "rgba(56, 189, 248, 0.25)";
+        engineTag.style.color = "#38BDF8";
+    }
+
+    // Preview status bar
+    const previewModelDot = document.getElementById("preview-model-dot");
+    const previewModelState = document.getElementById("preview-model-state");
+    if (previewModelDot) previewModelDot.className = "status-dot pulse-transcribing";
+    if (previewModelState) {
+        previewModelState.textContent = "⚡ Transcribing Speech...";
+        previewModelState.style.color = "#38BDF8";
+    }
+
+    // Hero card status
+    const heroState = document.getElementById("hero-live-state");
+    if (heroState) {
+        heroState.textContent = "⚡ Transcribing Speech...";
+        heroState.style.color = "#38BDF8";
+    }
+
+    if (transcribingTimeout) clearTimeout(transcribingTimeout);
+    transcribingTimeout = setTimeout(() => {
+        isActivelyTranscribing = false;
+        if (engineDot) engineDot.className = isRunning ? "status-dot pulse-active" : "status-dot offline";
+        if (engineTag) {
+            engineTag.textContent = isRunning ? "LISTENING" : "PAUSED";
+            engineTag.style.background = isRunning ? "rgba(16, 185, 129, 0.2)" : "rgba(239, 68, 68, 0.2)";
+            engineTag.style.color = isRunning ? "#34D399" : "#FCA5A5";
+        }
+        if (previewModelDot) previewModelDot.className = isRunning ? "status-dot pulse-active" : "status-dot offline";
+        if (previewModelState) {
+            previewModelState.textContent = isRunning ? "🟢 Listening & Ready" : "⏸️ Captions Paused";
+            previewModelState.style.color = isRunning ? "#34D399" : "#94A3B8";
+        }
+        if (heroState) {
+            heroState.textContent = isRunning ? "🟢 Model Active & Working" : "⏸️ Engine Paused";
+            heroState.style.color = isRunning ? "#34D399" : "#94A3B8";
+        }
+    }, 2000);
+}
 
 // DOM Elements
 const vuBar = document.getElementById("vu-meter-bar");
@@ -2607,20 +2660,79 @@ async function refreshEngineStatus() {
 
             // Update top header badge
             const badgeText = document.getElementById("active-engine-badge-text");
+            const engineDot = document.getElementById("active-engine-dot");
+            const engineTag = document.getElementById("active-engine-status-tag");
+            const activePill = document.getElementById("active-engine-pill");
+
             if (badgeText) {
-                badgeText.textContent = `Active: ${currentEngineName}`;
+                badgeText.textContent = currentModelDetail;
+            }
+            if (activePill) {
+                activePill.title = `Currently Active Speech Model: ${currentModelDetail}\nStatus: ${data.is_running ? 'Running & Listening' : 'Paused'}\nClick to configure in Audio & Engine settings.`;
+            }
+
+            if (data.is_switching_engine) {
+                if (engineDot) engineDot.className = "status-dot pulse-loading";
+                if (engineTag) {
+                    engineTag.textContent = "LOADING...";
+                    engineTag.style.background = "rgba(245, 158, 11, 0.2)";
+                    engineTag.style.color = "#F59E0B";
+                }
+            } else if (!data.is_running) {
+                if (engineDot) engineDot.className = "status-dot offline";
+                if (engineTag) {
+                    engineTag.textContent = "PAUSED";
+                    engineTag.style.background = "rgba(239, 68, 68, 0.2)";
+                    engineTag.style.color = "#FCA5A5";
+                }
+            } else if (!isActivelyTranscribing) {
+                if (engineDot) engineDot.className = "status-dot pulse-active";
+                if (engineTag) {
+                    engineTag.textContent = "LISTENING";
+                    engineTag.style.background = "rgba(16, 185, 129, 0.2)";
+                    engineTag.style.color = "#34D399";
+                }
+            }
+
+            // Update Tab 1 Live Preview Model Status Bar
+            const previewModelName = document.getElementById("preview-model-name");
+            const previewModelDot = document.getElementById("preview-model-dot");
+            const previewModelState = document.getElementById("preview-model-state");
+            if (previewModelName) {
+                previewModelName.textContent = `Model: ${currentModelDetail}`;
+            }
+            if (previewModelDot && !isActivelyTranscribing) {
+                previewModelDot.className = data.is_switching_engine ? "status-dot pulse-loading" : (!data.is_running ? "status-dot offline" : "status-dot pulse-active");
+            }
+            if (previewModelState && !isActivelyTranscribing) {
+                previewModelState.textContent = data.is_switching_engine ? "⏳ Loading Model..." : (!data.is_running ? "⏸️ Captions Paused" : "🟢 Listening");
+                previewModelState.style.color = data.is_switching_engine ? "#F59E0B" : (!data.is_running ? "#94A3B8" : "#34D399");
             }
 
             // Update hero card in Audio & Engine tab
             const heroName = document.getElementById("hero-active-model-name");
             const heroDesc = document.getElementById("hero-active-model-desc");
             const heroBadge = document.getElementById("hero-active-badge");
+            const heroInput = document.getElementById("hero-input-device");
+            const heroCaptions = document.getElementById("hero-total-captions");
+            const heroState = document.getElementById("hero-live-state");
 
             if (heroName) {
                 heroName.textContent = currentEngineName;
             }
             if (heroDesc) {
-                heroDesc.textContent = `${currentModelDetail} • Input: ${data.audio_device || 'Default Mic'}`;
+                const deviceLabel = (data.gpu && data.gpu.has_gpu) ? `${data.gpu.name} (${data.gpu.backend})` : 'CPU';
+                heroDesc.textContent = `${currentModelDetail} • Device: ${deviceLabel} • Latency: Real-Time`;
+            }
+            if (heroInput) {
+                heroInput.textContent = data.audio_device || 'Default Mic';
+            }
+            if (heroCaptions) {
+                heroCaptions.textContent = `${data.total_captions || 0} sentences`;
+            }
+            if (heroState && !isActivelyTranscribing) {
+                heroState.textContent = data.is_switching_engine ? "⏳ Initializing Model..." : (!data.is_running ? "⏸️ Engine Paused" : "🟢 Model Active & Working");
+                heroState.style.color = data.is_switching_engine ? "#F59E0B" : (!data.is_running ? "#94A3B8" : "#34D399");
             }
             if (data.is_switching_engine) {
                 handleEngineSwitchProgress({
@@ -2641,7 +2753,7 @@ async function refreshEngineStatus() {
                     heroBadge.style.background = "rgba(16, 185, 129, 0.2)";
                     heroBadge.style.color = "#10B981";
                     heroBadge.style.borderColor = "rgba(16, 185, 129, 0.4)";
-                    heroBadge.innerHTML = `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#10B981;"></span> LIVE IN MEMORY`;
+                    heroBadge.innerHTML = `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#10B981;"></span> MODEL ACTIVE & WORKING`;
                 }
             }
 
@@ -2791,6 +2903,20 @@ function connectControlWs() {
                 const db = (typeof msg.level_db === "number") ? msg.level_db : -100;
                 const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
                 vuBar.style.width = `${pct}%`;
+
+                const previewMic = document.getElementById("preview-mic-indicator");
+                if (previewMic) {
+                    if (db > -42.0) {
+                        previewMic.textContent = `🎙️ Mic: Speaking (${Math.round(db)} dB)`;
+                        previewMic.style.color = "#34D399";
+                    } else if (db > -55.0) {
+                        previewMic.textContent = `🎙️ Mic: Ambient (${Math.round(db)} dB)`;
+                        previewMic.style.color = "#94A3B8";
+                    } else {
+                        previewMic.textContent = `🎙️ Mic: Idle`;
+                        previewMic.style.color = "#64748B";
+                    }
+                }
             } else if (msg.type === "stats_update") {
                 updateWpmUI(msg);
             } else if (msg.type === "model_cache_updated") {
@@ -2843,6 +2969,7 @@ function connectCaptionWs() {
                 return;
             }
             if (data.is_final) {
+                triggerModelTranscribingActivity(data.text);
                 let displayText = data.text;
                 if (data.translated_text) {
                     displayText = `${data.text} (${data.translated_text})`;
@@ -2851,6 +2978,7 @@ function connectCaptionWs() {
                 previewInterim.textContent = "";
                 appendTranscriptItem(data);
             } else {
+                triggerModelTranscribingActivity(data.text);
                 const chkFinal = document.getElementById("overlay_final_only");
                 if (chkFinal && chkFinal.checked) {
                     previewInterim.textContent = "";
@@ -3613,7 +3741,13 @@ window.addEventListener("DOMContentLoaded", async () => {
             showToast("🔄 Model cache status refreshed.", "info", 2000);
         });
     }
-    await loadModelsStatus();
+    const activePill = document.getElementById("active-engine-pill");
+    if (activePill) {
+        activePill.addEventListener("click", () => {
+            const audioTabBtn = document.querySelector('.tab-btn[data-tab="audio"]');
+            if (audioTabBtn) audioTabBtn.click();
+        });
+    }
 
     await loadConfig();
     await loadThemes();

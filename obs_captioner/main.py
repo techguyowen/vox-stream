@@ -85,10 +85,19 @@ async def main_async(args):
         if eng == "vosk":
             model_variant = (cfg.vosk.model_name or "small").strip().lower()
             if model_variant in ("accurate", "large", "en-us-0.22", "vosk-model-en-us-0.22"):
-                return "Vosk Accurate (vosk-model-en-us-0.22 • ~1.8 GB)"
-            return "Vosk Small (vosk-model-small-en-us-0.15 • ~40 MB)"
+                return "Vosk Accurate (1.8 GB)"
+            return "Vosk Small (~40 MB)"
         elif eng == "local_whisper":
-            return f"Faster-Whisper ({cfg.local_whisper.model_size} • Device: {cfg.local_whisper.device})"
+            w_size = cfg.local_whisper.model_size or "base.en"
+            if w_size == "distil-large-v3":
+                w_label = "Distil-Large-v3 (Anti-Hallucination)"
+            elif w_size == "large-v3-turbo":
+                w_label = "Large-v3-Turbo (SOTA Multilingual)"
+            elif w_size == "base.en":
+                w_label = "Base.en (Punctuation & Caps)"
+            else:
+                w_label = w_size
+            return f"Faster-Whisper ({w_label})"
         elif eng == "moonshine":
             return f"Moonshine ONNX ({cfg.moonshine.model_name})"
         elif eng == "google_web":
@@ -102,7 +111,18 @@ async def main_async(args):
         elif eng in ("sherpa", "sherpa_onnx", "zipformer"):
             return f"Sherpa-ONNX Zipformer ({cfg.sherpa.model_name})"
         elif eng in ("parakeet", "nemo", "nemo_parakeet", "fastconformer"):
-            return f"NVIDIA Parakeet ({cfg.parakeet.model_name} • Device: {cfg.parakeet.device})"
+            p_model = cfg.parakeet.model_name or "parakeet-fastconformer-large-24500"
+            if "24500" in p_model:
+                p_name = "FastConformer Large (24,500h CTC)"
+            elif "tdt" in p_model:
+                p_name = "Parakeet-TDT 0.6B (Transducer)"
+            elif "large" in p_model:
+                p_name = "Conformer Large int8"
+            elif "medium" in p_model or "nemo" in p_model:
+                p_name = "Conformer Medium int8"
+            else:
+                p_name = p_model
+            return f"NVIDIA Parakeet ({p_name})"
         elif eng in ("sensevoice", "funasr"):
             return f"SenseVoice ({cfg.sensevoice.model_name} • Device: {cfg.sensevoice.device})"
         return eng
@@ -113,6 +133,8 @@ async def main_async(args):
 
     def get_app_status():
         from .hardware import get_ram_usage_mb, get_gpu_info
+        sink_obj = sink if 'sink' in locals() else None
+        hist_obj = history if 'history' in locals() else None
         return {
             "is_running": not is_paused,
             "obs_connected": obs_client.is_connected if obs_client else False,
@@ -120,10 +142,14 @@ async def main_async(args):
             "engine": config.general.engine,
             "engine_name": engine.name if engine else config.general.engine,
             "model_detail": get_model_detail(config),
+            "engine_initialized": bool(initialized and (engine is not None)),
+            "is_streaming": bool(engine and getattr(engine, "is_running", False) and not is_paused),
             "is_switching_engine": is_switching_engine,
             "engine_switch_status": engine_switch_status,
             "engine_switch_target": engine_switch_target,
             "engine_switch_error": engine_switch_error,
+            "last_caption_time": getattr(sink_obj, "_last_caption_time", 0.0) if sink_obj else 0.0,
+            "total_captions": len(hist_obj.entries) if hist_obj else 0,
             "ram_usage_mb": get_ram_usage_mb(),
             "gpu_info": get_gpu_info(),
         }
