@@ -43,6 +43,9 @@
     --box-padding: 14px 26px;
     --text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.95);
     --text-stroke: 2px #000000;
+    --bottom-offset: 40px;
+    --backdrop-blur: 8px;
+    --accent-color: #38BDF8;
 }
 
 * {
@@ -74,18 +77,22 @@ body.align-top {
 .caption-container {
     width: calc(100% - 80px);
     max-width: 1920px;
-    margin: 40px auto;
+    margin: var(--bottom-offset, 40px) auto;
     display: flex;
     justify-content: center;
     pointer-events: none;
+}
+
+body.align-top .caption-container {
+    margin: var(--bottom-offset, 40px) auto;
 }
 
 .caption-box {
     background: var(--background-box-color);
     padding: var(--box-padding);
     border-radius: var(--border-radius);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(var(--backdrop-blur, 8px));
+    -webkit-backdrop-filter: blur(var(--backdrop-blur, 8px));
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
     border: 1px solid rgba(255, 255, 255, 0.1);
     max-width: var(--max-width);
@@ -94,6 +101,48 @@ body.align-top {
     opacity: 1;
     transform: translateY(0);
     text-wrap: balance;
+    position: relative;
+}
+
+/* Functional Broadcast Layouts */
+body.layout-bar .caption-container {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    margin: 0 !important;
+}
+body.layout-bar .caption-box {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    border-radius: 0px !important;
+    border-left: none !important;
+    border-right: none !important;
+    border-bottom: none !important;
+}
+
+body.layout-boxless .caption-box {
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    padding: 0 !important;
+}
+
+body.layout-chyron-left .caption-container {
+    justify-content: flex-start !important;
+    margin-left: 40px !important;
+    margin-right: auto !important;
+}
+
+/* Functional Accent Divider Lines */
+.caption-box.accent-top-divider {
+    border-top: 3.5px solid var(--accent-color, #38BDF8) !important;
+}
+.caption-box.accent-bottom-divider {
+    border-bottom: 3.5px solid var(--accent-color, #38BDF8) !important;
+}
+.caption-box.accent-left-marker {
+    border-left: 6px solid var(--accent-color, #38BDF8) !important;
 }
 
 .caption-box.hidden {

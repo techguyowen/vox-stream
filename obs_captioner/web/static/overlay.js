@@ -113,6 +113,9 @@ function applyStyles(ov) {
     setVar("--text-shadow", ov.text_shadow);
     setVar("--text-stroke", ov.text_stroke);
     setVar("--letter-spacing", ov.letter_spacing || "normal");
+    setVar("--bottom-offset", (ov.bottom_offset_px !== undefined ? ov.bottom_offset_px : 40) + "px");
+    setVar("--backdrop-blur", ov.backdrop_blur || "8px");
+    setVar("--accent-color", ov.accent_color || "#38BDF8");
 
     const italics = ov.use_italics ? "italic" : "normal";
     setVar("--font-style", italics);
@@ -120,6 +123,28 @@ function applyStyles(ov) {
     if (ov.high_contrast_outline) {
         setVar("--text-stroke", "3.5px #000000");
         setVar("--text-shadow", "0 0 8px #000000, 2px 2px 6px #000000");
+    }
+
+    // Layout positioning classes
+    document.body.classList.remove("layout-bar", "layout-boxless", "layout-chyron-left");
+    if (ov.box_layout === "bar") {
+        document.body.classList.add("layout-bar");
+    } else if (ov.box_layout === "boxless") {
+        document.body.classList.add("layout-boxless");
+    } else if (ov.box_layout === "pill" && ov.text_align === "left") {
+        document.body.classList.add("layout-chyron-left");
+    }
+
+    // Accent line divider classes
+    if (captionBox) {
+        captionBox.classList.remove("accent-top-divider", "accent-bottom-divider", "accent-left-marker");
+        if (ov.accent_line === "top_divider") {
+            captionBox.classList.add("accent-top-divider");
+        } else if (ov.accent_line === "bottom_divider") {
+            captionBox.classList.add("accent-bottom-divider");
+        } else if (ov.accent_line === "left_marker") {
+            captionBox.classList.add("accent-left-marker");
+        }
     }
 
     if (ov.vertical_align === "top") {

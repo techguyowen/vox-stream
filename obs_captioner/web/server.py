@@ -61,6 +61,7 @@ class WebOverlayServer:
         obs_client: Optional[Any] = None,
         audio_capture: Optional[Any] = None,
         updater: Optional[Any] = None,
+        subtitle_recorder: Optional[Any] = None,
     ):
         self.config = config
         self.history = history or TranscriptHistory()
@@ -73,10 +74,25 @@ class WebOverlayServer:
         self.obs_client = obs_client
         self.audio_capture = audio_capture
         self.updater = updater
+        self.subtitle_recorder = subtitle_recorder
         self._updater_task: Optional[asyncio.Task] = None
         self.translator = SubtitleTranslator(self.config.translation)
         self.server_start_time = time.time()
         self.instance_id = str(uuid.uuid4())[:8]
+
+        if self.subtitle_recorder:
+            def _on_rec_status(st: dict):
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        asyncio.run_coroutine_threadsafe(
+                            self.broadcast_control({"type": "recording_state_changed", "recording": st}),
+                            loop,
+                        )
+                except Exception:
+                    pass
+            self.subtitle_recorder.on_status_changed = _on_rec_status
+
         # Generous: a dashboard (4s poll) + stage display (5s poll) + restart
         # polling from the same IP must not starve each other into 429s.
         self.rate_limiter = SimpleRateLimiter(max_requests=300, window_seconds=60.0)
@@ -219,6 +235,16 @@ class WebOverlayServer:
         self.app.router.add_post("/api/updater/check", self._handle_updater_check)
         self.app.router.add_post("/api/updater/apply", self._handle_updater_apply)
 
+        # Network Info & Stage QR Code
+        self.app.router.add_get("/api/network/info", self._handle_get_network_info)
+        self.app.router.add_get("/api/display/qr", self._handle_get_display_qr)
+        self.app.router.add_get("/api/qr", self._handle_get_display_qr)
+
+        # Synchronized Subtitle Sidecar Recording (.srt / .vtt)
+        self.app.router.add_get("/api/recording/status", self._handle_get_recording_status)
+        self.app.router.add_post("/api/recording/start", self._handle_recording_start)
+        self.app.router.add_post("/api/recording/stop", self._handle_recording_stop)
+
         # Hardware & Memory System Controls
         self.app.router.add_post("/api/system/trim_memory", self._handle_trim_memory)
 
@@ -266,7 +292,9 @@ class WebOverlayServer:
         if not self.rate_limiter.is_allowed(client_ip):
             return web.json_response({"error": "Rate limit exceeded"}, status=429)
 
-        from ..hardware import get_ram_usage_mb, get_gpu_info
+        from ..hardware import get_ram_usage_mb, get_gpu_info, get_local_ip
+        lan_ip = get_local_ip()
+        port = self.config.overlay.port or 8765
         status_info = {
             "engine": self.config.general.engine,
             "language": self.config.general.language,
@@ -280,7 +308,12 @@ class WebOverlayServer:
             "uptime_seconds": round(time.time() - self.server_start_time, 1),
             "ram_usage_mb": get_ram_usage_mb(),
             "gpu": get_gpu_info(),
+            "lan_ip": lan_ip,
+            "display_url": f"http://{lan_ip}:{port}/display",
+            "dashboard_url": f"http://{lan_ip}:{port}/dashboard",
         }
+        if self.subtitle_recorder:
+            status_info["recording"] = self.subtitle_recorder.get_status()
         if self.history:
             status_info.update(self.history.get_stats())
         if self.get_app_status:
@@ -291,6 +324,61 @@ class WebOverlayServer:
         # Never report "running" unless the app-status hook confirmed it
         status_info.setdefault("is_running", False)
         return web.json_response(status_info)
+
+    async def _handle_get_network_info(self, request: web.Request) -> web.Response:
+        """Return LAN IP address and direct mobile/stage display links."""
+        from ..hardware import get_local_ip
+        lan_ip = get_local_ip()
+        port = self.config.overlay.port or 8765
+        return web.json_response({
+            "lan_ip": lan_ip,
+            "port": port,
+            "display_url": f"http://{lan_ip}:{port}/display",
+            "dashboard_url": f"http://{lan_ip}:{port}/dashboard",
+            "overlay_url": f"http://{lan_ip}:{port}/",
+        })
+
+    async def _handle_get_display_qr(self, request: web.Request) -> web.Response:
+        """Return scalable vector SVG QR code for the Stage Confidence Monitor / Reader Display."""
+        from ..hardware import get_local_ip
+        from ..qr_generator import generate_qr_svg
+        lan_ip = get_local_ip()
+        port = self.config.overlay.port or 8765
+        display_url = f"http://{lan_ip}:{port}/display"
+        svg_content = generate_qr_svg(display_url)
+        return web.Response(
+            body=svg_content,
+            content_type="image/svg+xml",
+            headers={"Cache-Control": "public, max-age=60"},
+        )
+
+    async def _handle_get_recording_status(self, request: web.Request) -> web.Response:
+        """Return current live subtitle recording telemetry."""
+        if not self.subtitle_recorder:
+            return web.json_response({"is_recording": False, "error": "Recorder not configured"})
+        return web.json_response(self.subtitle_recorder.get_status())
+
+    async def _handle_recording_start(self, request: web.Request) -> web.Response:
+        """Manually trigger synchronized subtitle sidecar recording."""
+        if not self.subtitle_recorder:
+            return web.json_response({"error": "Recorder not configured"}, status=400)
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        video_path = body.get("video_path")
+        self.subtitle_recorder.start_recording(video_path=video_path)
+        status = self.subtitle_recorder.get_status()
+        await self.broadcast_control({"type": "recording_state_changed", "recording": status})
+        return web.json_response({"status": "started", "recording": status})
+
+    async def _handle_recording_stop(self, request: web.Request) -> web.Response:
+        """Manually stop synchronized subtitle sidecar recording and finalize files."""
+        if not self.subtitle_recorder:
+            return web.json_response({"error": "Recorder not configured"}, status=400)
+        res = self.subtitle_recorder.stop_recording()
+        await self.broadcast_control({"type": "recording_state_changed", "recording": res})
+        return web.json_response({"status": "stopped", "recording": res})
 
     async def _handle_trim_memory(self, request: web.Request) -> web.Response:
         """Trigger on-demand garbage collection and physical working set memory trim."""

@@ -43,10 +43,12 @@ class CaptionSink:
         history: Optional[TranscriptHistory] = None,
         twitch_bot: Optional[TwitchCaptionBot] = None,
         is_paused=None,
+        subtitle_recorder=None,
     ):
         self.config = config
         self.obs_client = obs_client
         self.web_server = web_server
+        self.subtitle_recorder = subtitle_recorder
         self.is_paused = is_paused  # optional callable; engines keep running, but events are dropped while paused
         self.vocabulary = VocabularyReplacer(config.vocabulary)
         church_mode = getattr(config.general, "church_mode", True)
@@ -217,6 +219,14 @@ class CaptionSink:
             # Broadcast to Twitch Chat if enabled
             if self.twitch_bot and self.twitch_bot.is_connected:
                 await self.twitch_bot.send_caption(clean_text)
+
+            # Synchronized Subtitle Sidecar Recording (.srt / .vtt)
+            if self.subtitle_recorder and getattr(self.subtitle_recorder, "is_recording", False):
+                self.subtitle_recorder.add_caption(
+                    text=clean_text,
+                    start_time=self._sentence_start_time,
+                    end_time=time.time(),
+                )
 
         # 6. Console display
         status = "✓ [FINAL]  " if event.is_final else "… [INTERIM]"

@@ -31,3 +31,4 @@ onnxruntime>=1.16.0
 # Utility & CLI
 colorama>=0.4.6
 pydantic>=2.5.0
+qrcode>=8.0.0

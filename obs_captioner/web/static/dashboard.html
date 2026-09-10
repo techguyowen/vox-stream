@@ -82,6 +82,13 @@
                 </div>
 
                 <button id="btn-toggle-engine" class="btn btn-danger">⏹ Stop Captions</button>
+                <button id="btn-header-rec" class="btn btn-secondary" title="Live Synchronized Subtitle Sidecar Recording (.srt / .vtt)" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; border: 1px solid rgba(239, 68, 68, 0.35); background: rgba(239, 68, 68, 0.08); color: #FCA5A5; padding: 6px 12px; border-radius: 6px; cursor: pointer;">
+                    <span id="header-rec-dot" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#94A3B8;"></span>
+                    <span id="header-rec-text">⏺ REC Sidecar</span>
+                </button>
+                <button id="btn-header-qr" class="btn btn-secondary" title="Scan QR Code to open Stage Confidence Monitor / Reader View on mobile or iPad" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.35); color: #7DD3FC; padding: 6px 12px; border-radius: 6px; cursor: pointer;">
+                    <span>📱 Stage QR</span>
+                </button>
                 <a href="http://localhost:3050" target="_blank" rel="noopener" class="btn btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 5px; font-weight: 600; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #6ee7b7;" title="Sanctuary AV Controller (Port 3050)">
                     <span>🎛️ AV Controller ↗</span>
                 </a>
@@ -302,6 +309,36 @@
                         <div class="form-group">
                             <label for="bg_opacity_slider">Box Background Opacity (<span id="val-bg-opacity">72%</span>)</label>
                             <input type="range" id="bg_opacity_slider" min="0" max="100" value="72" class="slider">
+                        </div>
+
+                        <!-- Functional Placement & Broadcast Accent Dividers -->
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="bottom_offset_slider">Vertical Margin Offset (<span id="val-bottom-offset">40px</span>)</label>
+                                <input type="range" id="bottom_offset_slider" min="0" max="180" step="5" value="40" class="slider">
+                                <span class="hint">Lifts captions above custom stream graphics or lower-third nameplates (0px = flush to edge).</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="backdrop_blur_slider">Backdrop Blur Glass (<span id="val-backdrop-blur">8px</span>)</label>
+                                <input type="range" id="backdrop_blur_slider" min="0" max="24" step="2" value="8" class="slider">
+                                <span class="hint">Glassmorphism optical blur intensity for video backgrounds.</span>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="accent_line">Lower-Third Accent Divider</label>
+                                <select id="accent_line" class="form-control">
+                                    <option value="none" selected>None (Clean Border)</option>
+                                    <option value="top_divider">Top Divider (News / Ticker Line)</option>
+                                    <option value="bottom_divider">Bottom Accent Highlight</option>
+                                    <option value="left_marker">Left Indicator Pill (Speaker Tag)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="accent_color">Accent Divider Color</label>
+                                <input type="color" id="accent_color" value="#38BDF8" class="color-input">
+                            </div>
                         </div>
 
                         <!-- ♿ Accessibility & Dyslexia Studio Card -->
@@ -1887,6 +1924,34 @@
                     </div>
                     <button type="button" id="btn-save-feature-settings" class="btn btn-primary">✓ Save & Close</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stage & Reader Display QR Code Modal -->
+    <div id="modal-display-qr" class="modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 9999; justify-content: center; align-items: center;">
+        <div class="modal-content" style="background: var(--bg-card); border: 1.5px solid rgba(56, 189, 248, 0.4); border-radius: 14px; padding: 24px; max-width: 440px; width: 92%; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.7);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                <h3 style="margin: 0; font-size: 17px; color: #38BDF8; display: flex; align-items: center; gap: 8px;">
+                    <span>📱 Stage &amp; Reader Display QR</span>
+                </h3>
+                <button type="button" id="btn-close-qr-modal" style="background: none; border: none; font-size: 24px; color: var(--text-muted); cursor: pointer; line-height: 1;">&times;</button>
+            </div>
+            <p class="subtext" style="font-size: 13px; margin-bottom: 16px; color: #94A3B8; text-align: center;">
+                Scan with any iPad, tablet, or smartphone on your local Wi-Fi to open the live stage confidence teleprompter or read-along screen.
+            </p>
+            <div id="qr-code-container" style="display: flex; justify-content: center; align-items: center; background: #FFFFFF; padding: 14px; border-radius: 12px; margin: 0 auto 16px auto; width: 220px; height: 220px; box-shadow: 0 4px 16px rgba(0,0,0,0.3);">
+                <img id="qr-code-img" src="/api/display/qr" alt="Stage Display QR Code" width="192" height="192" style="display: block;">
+            </div>
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <input type="text" id="qr-direct-url" readonly class="form-control" style="font-family: 'JetBrains Mono', monospace; font-size: 12px; text-align: center; background: rgba(15,23,42,0.6);" value="http://localhost:8765/display">
+                <button type="button" id="btn-copy-qr-url" class="btn btn-secondary btn-sm" style="white-space: nowrap;">📋 Copy</button>
+            </div>
+            <div style="display: flex; justify-content: space-between; gap: 10px;">
+                <a id="qr-open-tab-btn" href="/display" target="_blank" rel="noopener" class="btn btn-secondary btn-block" style="text-decoration: none; display: inline-flex; justify-content: center; align-items: center; gap: 6px;">
+                    <span>↗ Open in Tab</span>
+                </a>
+                <button type="button" id="btn-done-qr" class="btn btn-primary btn-block">Done</button>
             </div>
         </div>
     </div>

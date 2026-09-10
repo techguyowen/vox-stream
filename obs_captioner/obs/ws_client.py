@@ -151,9 +151,13 @@ class OBSWebSocketClient:
 
                     elif event_type == "RecordStateChanged":
                         active = event_payload.get("outputActive", False)
-                        logger.info(f"OBS Record State Changed: active={active}")
+                        output_path = event_payload.get("outputPath", "")
+                        logger.info(f"OBS Record State Changed: active={active} outputPath='{output_path}'")
                         if self.on_record_state_changed:
-                            self.on_record_state_changed(active)
+                            try:
+                                self.on_record_state_changed(active, output_path)
+                            except TypeError:
+                                self.on_record_state_changed(active)
 
                 # OpCode 7: RequestResponse
                 elif op == 7:

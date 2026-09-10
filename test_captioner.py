@@ -2,7 +2,11 @@
 
 import asyncio
 import math
+from pathlib import Path
+import shutil
 import struct
+import tempfile
+import time
 import unittest
 from obs_captioner.config import load_config, AppConfig, save_config, OverlayConfig
 from obs_captioner.vad import VoiceActivityDetector
@@ -84,9 +88,14 @@ class TestThemes(unittest.TestCase):
         self.assertIn("editorial_nordic", THEME_PRESETS)
         self.assertIn("youtube_cc", THEME_PRESETS)
         self.assertIn("opendyslexic", THEME_PRESETS)
+        self.assertIn("broadcast_bar", THEME_PRESETS)
+        self.assertIn("sanctuary_high_contrast", THEME_PRESETS)
+        self.assertIn("floating_clean", THEME_PRESETS)
+        self.assertIn("chyron_left", THEME_PRESETS)
+        self.assertIn("teleprompter_stage", THEME_PRESETS)
 
         all_presets = get_all_presets()
-        self.assertEqual(len(all_presets), 9)
+        self.assertEqual(len(all_presets), 14)
 
     def test_apply_theme_to_overlay(self):
         ov = OverlayConfig()
@@ -94,6 +103,25 @@ class TestThemes(unittest.TestCase):
         self.assertEqual(ov.theme_id, "sanctuary_worship")
         self.assertEqual(ov.text_color, "#FFFBEB")
         self.assertEqual(ov.font_family, "'Montserrat', sans-serif")
+
+    def test_apply_functional_broadcast_bar_preset(self):
+        ov = OverlayConfig()
+        applied = ov.apply_theme("broadcast_bar")
+        self.assertTrue(applied)
+        self.assertEqual(ov.theme_id, "broadcast_bar")
+        self.assertEqual(ov.box_layout, "bar")
+        self.assertEqual(ov.accent_line, "top_divider")
+        self.assertEqual(ov.bottom_offset_px, 0)
+        self.assertEqual(ov.accent_color, "#38BDF8")
+
+    def test_apply_functional_chyron_left_preset(self):
+        ov = OverlayConfig()
+        applied = ov.apply_theme("chyron_left")
+        self.assertTrue(applied)
+        self.assertEqual(ov.theme_id, "chyron_left")
+        self.assertEqual(ov.box_layout, "pill")
+        self.assertEqual(ov.accent_line, "left_marker")
+        self.assertEqual(ov.bottom_offset_px, 40)
 
     def test_overlay_final_only_config(self):
         ov = OverlayConfig()
@@ -2428,6 +2456,99 @@ class TestVersioningAndSemanticUpdater(unittest.TestCase):
             self.assertFalse(ParakeetEngine._is_valid_model_dir(p))  # Missing joiner
             (p / "joiner.int8.onnx").touch()
             self.assertTrue(ParakeetEngine._is_valid_model_dir(p))  # All 3 present
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+class TestQRGeneratorAndNetwork(unittest.TestCase):
+
+    def test_generate_qr_svg(self):
+        from obs_captioner.qr_generator import generate_qr_svg
+        url = "http://192.168.1.150:8765/display"
+        svg = generate_qr_svg(url)
+        self.assertIsInstance(svg, str)
+        self.assertIn("<svg", svg)
+        self.assertIn("</svg>", svg)
+        self.assertGreater(len(svg), 100)
+
+    def test_get_local_ip(self):
+        from obs_captioner.hardware import get_local_ip
+        ip = get_local_ip()
+        self.assertIsInstance(ip, str)
+        self.assertGreater(len(ip), 0)
+
+
+class TestSubtitleRecorder(unittest.TestCase):
+
+    def test_timestamp_formatting(self):
+        from obs_captioner.subtitle_recorder import format_timestamp_srt, format_timestamp_vtt
+        self.assertEqual(format_timestamp_srt(0.0), "00:00:00,000")
+        self.assertEqual(format_timestamp_srt(1.234), "00:00:01,234")
+        self.assertEqual(format_timestamp_srt(65.5), "00:01:05,500")
+        self.assertEqual(format_timestamp_srt(3661.025), "01:01:01,025")
+
+        self.assertEqual(format_timestamp_vtt(0.0), "00:00:00.000")
+        self.assertEqual(format_timestamp_vtt(1.234), "00:00:01.234")
+        self.assertEqual(format_timestamp_vtt(65.5), "00:01:05.500")
+
+    def test_recorder_lifecycle_srt(self):
+        from obs_captioner.subtitle_recorder import SubtitleRecorder
+        temp_dir = tempfile.mkdtemp()
+        try:
+            rec = SubtitleRecorder(output_format="srt", output_dir=temp_dir)
+            out_file = rec.start_recording()
+            self.assertTrue(rec.is_recording)
+            self.assertIsNotNone(out_file)
+
+            # Add two captions
+            rec.add_caption("Welcome to church this morning.", start_time=time.time() - 2.0, end_time=time.time())
+            rec.add_caption("Please open your Bibles to John 3:16.", start_time=time.time() - 1.0, end_time=time.time())
+
+            st = rec.stop_recording()
+            self.assertFalse(rec.is_recording)
+            self.assertEqual(st["entry_count"], 2)
+            self.assertTrue(Path(st["file_path"]).exists())
+
+            with open(st["file_path"], "r", encoding="utf-8") as f:
+                content = f.read()
+
+            self.assertIn("1\n", content)
+            self.assertIn("-->", content)
+            self.assertIn("Welcome to church this morning.", content)
+            self.assertIn("2\n", content)
+            self.assertIn("Please open your Bibles to John 3:16.", content)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_recorder_lifecycle_vtt(self):
+        from obs_captioner.subtitle_recorder import SubtitleRecorder
+        temp_dir = tempfile.mkdtemp()
+        try:
+            rec = SubtitleRecorder(output_format="vtt", output_dir=temp_dir)
+            rec.start_recording()
+            rec.add_caption("Testing WebVTT live generation.", start_time=time.time() - 1.0, end_time=time.time())
+            st = rec.stop_recording()
+
+            with open(st["file_path"], "r", encoding="utf-8") as f:
+                content = f.read()
+
+            self.assertTrue(content.startswith("WEBVTT"))
+            self.assertIn("Testing WebVTT live generation.", content)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_recorder_matching_video_path(self):
+        from obs_captioner.subtitle_recorder import SubtitleRecorder
+        temp_dir = tempfile.mkdtemp()
+        try:
+            video_file = Path(temp_dir) / "Sunday_Sermon_2026-09-10.mp4"
+            rec = SubtitleRecorder(output_format="srt")
+            out_file = rec.start_recording(video_path=str(video_file))
+            self.assertEqual(out_file, Path(temp_dir) / "Sunday_Sermon_2026-09-10.srt")
+            rec.add_caption("Hello world", time.time(), time.time() + 1.5)
+            st = rec.stop_recording()
+            self.assertEqual(st["file_path"], str(Path(temp_dir) / "Sunday_Sermon_2026-09-10.srt"))
+            self.assertTrue(Path(st["file_path"]).exists())
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 

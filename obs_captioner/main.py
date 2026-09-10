@@ -19,6 +19,7 @@ from .obs import OBSWebSocketClient, CaptionSink
 from .twitch_bot import TwitchCaptionBot
 from .web import WebOverlayServer
 from .updater import UpdateManager
+from .subtitle_recorder import SubtitleRecorder
 
 logger = logging.getLogger("obs_captioner")
 
@@ -60,6 +61,13 @@ async def main_async(args):
 
     # Shared Transcript History
     history = TranscriptHistory()
+
+    # Synchronized Subtitle Sidecar Recorder (.srt / .vtt)
+    subtitle_recorder = SubtitleRecorder(
+        enabled=getattr(config.obs, "auto_record_subtitles", True),
+        output_format=getattr(config.obs, "record_subtitles_format", "srt"),
+        output_dir=getattr(config.obs, "record_subtitles_directory", ""),
+    )
 
     # 1. Initialize OBS WebSocket Client
     obs_client = None
@@ -293,6 +301,8 @@ async def main_async(args):
         config = new_cfg
         if sink:
             sink.update_config(new_cfg)
+        if subtitle_recorder:
+            subtitle_recorder.update_config(new_cfg.obs)
         if audio_capture:
             audio_capture.update_device(new_cfg.audio)
         if engine:
@@ -357,6 +367,7 @@ async def main_async(args):
             obs_client=obs_client,
             audio_capture=audio_capture,
             updater=updater,
+            subtitle_recorder=subtitle_recorder,
         )
         await web_server.start()
 
@@ -394,6 +405,7 @@ async def main_async(args):
         history=history,
         twitch_bot=twitch_bot,
         is_paused=lambda: is_paused,
+        subtitle_recorder=subtitle_recorder,
     )
 
     # 6. Initialize STT Engine
@@ -441,8 +453,8 @@ async def main_async(args):
     if not audio_capture.start(loop=loop):
         logger.error("Failed to start audio capture stream.")
 
-    # Hook OBS auto-start / auto-stop events
-    if obs_client and obs_client.is_connected:
+    # Hook OBS auto-start / auto-stop events & recording sync
+    if obs_client:
         def on_stream_state(active: bool):
             nonlocal is_paused
             if active and config.obs.auto_start_on_stream:
@@ -451,7 +463,23 @@ async def main_async(args):
             elif not active and config.obs.auto_start_on_stream:
                 logger.info("OBS Streaming stopped.")
 
+        def on_record_state(active: bool, output_path: str = ""):
+            nonlocal is_paused
+            if active and config.obs.auto_start_on_record:
+                logger.info(f"OBS Recording started (output: '{output_path}') -> Captioner active.")
+                is_paused = False
+            elif not active and config.obs.auto_start_on_record:
+                logger.info("OBS Recording stopped.")
+
+            # Auto synchronized subtitle sidecar (.srt / .vtt)
+            if config.obs.auto_record_subtitles and subtitle_recorder:
+                if active:
+                    subtitle_recorder.start_recording(video_path=output_path)
+                else:
+                    subtitle_recorder.stop_recording()
+
         obs_client.on_stream_state_changed = on_stream_state
+        obs_client.on_record_state_changed = on_record_state
 
     # 7. Run streaming pipeline
     def signal_handler():
@@ -511,6 +539,11 @@ async def main_async(args):
                 await asyncio.wait_for(twitch_bot.stop(), timeout=0.8)
             except Exception as e:
                 logger.debug(f"Error stopping Twitch bot: {e}")
+        if subtitle_recorder and getattr(subtitle_recorder, "is_recording", False):
+            try:
+                subtitle_recorder.stop_recording()
+            except Exception as e:
+                logger.debug(f"Error stopping subtitle recorder: {e}")
         if engine:
             try:
                 await asyncio.wait_for(engine.stop(), timeout=0.8)

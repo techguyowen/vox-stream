@@ -988,6 +988,113 @@ const vuDbText = document.getElementById("vu-meter-db");
 const statusPill = document.getElementById("status-pill");
 const statusText = document.getElementById("status-text");
 const btnToggleEngine = document.getElementById("btn-toggle-engine");
+const btnHeaderRec = document.getElementById("btn-header-rec");
+const headerRecDot = document.getElementById("header-rec-dot");
+const headerRecText = document.getElementById("header-rec-text");
+const btnHeaderQr = document.getElementById("btn-header-qr");
+const modalDisplayQr = document.getElementById("modal-display-qr");
+const btnCloseQrModal = document.getElementById("btn-close-qr-modal");
+const btnDoneQr = document.getElementById("btn-done-qr");
+const btnCopyQrUrl = document.getElementById("btn-copy-qr-url");
+const qrDirectUrl = document.getElementById("qr-direct-url");
+const qrOpenTabBtn = document.getElementById("qr-open-tab-btn");
+const qrCodeImg = document.getElementById("qr-code-img");
+
+// Live Subtitle Recording UI
+let isRecordingSubtitles = false;
+
+function updateRecordingUI(rec) {
+    if (!btnHeaderRec || !headerRecDot || !headerRecText) return;
+    if (rec && rec.is_recording) {
+        isRecordingSubtitles = true;
+        headerRecDot.style.background = "#EF4444";
+        headerRecDot.style.boxShadow = "0 0 8px #EF4444";
+        const count = rec.entry_count || 0;
+        const timeStr = rec.elapsed_formatted || "00:00";
+        headerRecText.textContent = `🔴 REC ${timeStr} (${count})`;
+        btnHeaderRec.style.background = "rgba(239, 68, 68, 0.2)";
+        btnHeaderRec.style.borderColor = "rgba(239, 68, 68, 0.6)";
+        btnHeaderRec.style.color = "#FCA5A5";
+        btnHeaderRec.title = `Recording synced sidecar: ${rec.file_path || 'active'}`;
+    } else {
+        isRecordingSubtitles = false;
+        headerRecDot.style.background = "#94A3B8";
+        headerRecDot.style.boxShadow = "none";
+        headerRecText.textContent = "⏺ REC Sidecar";
+        btnHeaderRec.style.background = "rgba(239, 68, 68, 0.08)";
+        btnHeaderRec.style.borderColor = "rgba(239, 68, 68, 0.35)";
+        btnHeaderRec.style.color = "#FCA5A5";
+        btnHeaderRec.title = "Live Synchronized Subtitle Sidecar Recording (.srt / .vtt)";
+    }
+}
+
+if (btnHeaderRec) {
+    btnHeaderRec.addEventListener("click", async () => {
+        try {
+            if (isRecordingSubtitles) {
+                const res = await fetch("/api/recording/stop", { method: "POST" });
+                const data = await res.json();
+                updateRecordingUI(data.recording);
+                showToast(`⏹ Subtitle recording saved: ${data.recording?.file_path || ''}`, "success", 4000);
+            } else {
+                const res = await fetch("/api/recording/start", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({}),
+                });
+                const data = await res.json();
+                updateRecordingUI(data.recording);
+                showToast(`🔴 Synchronized subtitle recording started!`, "info", 4000);
+            }
+        } catch (e) {
+            showToast(`Error toggling subtitle recording: ${e.message}`, "error");
+        }
+    });
+}
+
+// Stage Display QR Code Modal Handlers
+async function openDisplayQrModal() {
+    if (!modalDisplayQr) return;
+    try {
+        const res = await fetch("/api/network/info");
+        if (res.ok) {
+            const data = await res.json();
+            if (qrDirectUrl && data.display_url) qrDirectUrl.value = data.display_url;
+            if (qrOpenTabBtn && data.display_url) qrOpenTabBtn.href = data.display_url;
+        }
+    } catch (e) {
+        console.warn("Error fetching network info:", e);
+    }
+    if (qrCodeImg) {
+        qrCodeImg.src = `/api/display/qr?t=${Date.now()}`;
+    }
+    modalDisplayQr.style.display = "flex";
+}
+
+function closeDisplayQrModal() {
+    if (modalDisplayQr) modalDisplayQr.style.display = "none";
+}
+
+if (btnHeaderQr) btnHeaderQr.addEventListener("click", openDisplayQrModal);
+if (btnCloseQrModal) btnCloseQrModal.addEventListener("click", closeDisplayQrModal);
+if (btnDoneQr) btnDoneQr.addEventListener("click", closeDisplayQrModal);
+if (modalDisplayQr) {
+    modalDisplayQr.addEventListener("click", (e) => {
+        if (e.target === modalDisplayQr) closeDisplayQrModal();
+    });
+}
+if (btnCopyQrUrl && qrDirectUrl) {
+    btnCopyQrUrl.addEventListener("click", async () => {
+        try {
+            await navigator.clipboard.writeText(qrDirectUrl.value);
+            showToast("📋 Stage display link copied to clipboard!", "success");
+        } catch (e) {
+            qrDirectUrl.select();
+            document.execCommand("copy");
+            showToast("📋 Stage display link copied!", "success");
+        }
+    });
+}
 
 // Preview Elements
 const previewBox = document.getElementById("preview-box");
@@ -1100,6 +1207,7 @@ async function applyThemePreset(themeId) {
         });
         if (res.ok) {
             activeThemeId = themeId;
+            await loadConfig();
             await loadThemes();
             showToast("🎨 Theme preset applied!", "success", 2000);
         }
@@ -1167,6 +1275,10 @@ if (btnSaveNewPreset) {
             text_shadow: ov.text_shadow || "2px 2px 5px rgba(0, 0, 0, 0.95)",
             text_stroke: ov.text_stroke || "2px #000000",
             animation_style: document.getElementById("animation_style")?.value || "word_pop",
+            bottom_offset_px: parseInt(document.getElementById("bottom_offset_slider") ? document.getElementById("bottom_offset_slider").value : "40", 10) || 40,
+            backdrop_blur: `${parseInt(document.getElementById("backdrop_blur_slider") ? document.getElementById("backdrop_blur_slider").value : "8", 10) || 8}px`,
+            accent_line: document.getElementById("accent_line") ? document.getElementById("accent_line").value : "none",
+            accent_color: document.getElementById("accent_color") ? document.getElementById("accent_color").value : "#38BDF8",
         };
 
         try {
@@ -1303,6 +1415,27 @@ function populateFormFields(cfg) {
         if (ov.final_only !== undefined) {
             const el = document.getElementById("overlay_final_only");
             if (el) el.checked = !!ov.final_only;
+        }
+        if (ov.bottom_offset_px !== undefined) {
+            const boEl = document.getElementById("bottom_offset_slider");
+            if (boEl) boEl.value = ov.bottom_offset_px;
+            const boVal = document.getElementById("val-bottom-offset");
+            if (boVal) boVal.textContent = `${ov.bottom_offset_px}px`;
+        }
+        if (ov.backdrop_blur !== undefined) {
+            const bbVal = parseInt(ov.backdrop_blur) || 8;
+            const bbEl = document.getElementById("backdrop_blur_slider");
+            if (bbEl) bbEl.value = bbVal;
+            const bbText = document.getElementById("val-backdrop-blur");
+            if (bbText) bbText.textContent = `${bbVal}px`;
+        }
+        if (ov.accent_line) {
+            const alEl = document.getElementById("accent_line");
+            if (alEl) alEl.value = ov.accent_line;
+        }
+        if (ov.accent_color) {
+            const acEl = document.getElementById("accent_color");
+            if (acEl) acEl.value = ov.accent_color;
         }
         populateBackgroundControls(ov.background_box_color);
     }
@@ -1512,6 +1645,10 @@ function buildOverlayStylePayload() {
         highlight_color: document.getElementById("highlight_color").value,
         background_box_color: `rgba(${r}, ${g}, ${b}, ${opacity})`,
         final_only: document.getElementById("overlay_final_only") ? document.getElementById("overlay_final_only").checked : false,
+        bottom_offset_px: parseInt(document.getElementById("bottom_offset_slider") ? document.getElementById("bottom_offset_slider").value : "40", 10) || 40,
+        backdrop_blur: `${parseInt(document.getElementById("backdrop_blur_slider") ? document.getElementById("backdrop_blur_slider").value : "8", 10) || 8}px`,
+        accent_line: document.getElementById("accent_line") ? document.getElementById("accent_line").value : "none",
+        accent_color: document.getElementById("accent_color") ? document.getElementById("accent_color").value : "#38BDF8",
     };
     // Never persist an empty font family (e.g. a select in a transient state)
     const fontFamily = document.getElementById("font_family").value;
@@ -1557,6 +1694,15 @@ function updatePreviewStyles() {
     previewBox.style.maxWidth = maxWidth;
     previewBox.style.textAlign = textAlign;
     previewBox.style.background = bgColorRgba;
+
+    const accentLine = document.getElementById("accent_line") ? document.getElementById("accent_line").value : "none";
+    const accentColor = document.getElementById("accent_color") ? document.getElementById("accent_color").value : "#38BDF8";
+    const blurVal = parseInt(document.getElementById("backdrop_blur_slider") ? document.getElementById("backdrop_blur_slider").value : "8", 10) || 8;
+
+    previewBox.style.backdropFilter = `blur(${blurVal}px)`;
+    previewBox.style.borderTop = (accentLine === "top_divider") ? `3.5px solid ${accentColor}` : "1px solid rgba(255, 255, 255, 0.1)";
+    previewBox.style.borderBottom = (accentLine === "bottom_divider") ? `3.5px solid ${accentColor}` : "1px solid rgba(255, 255, 255, 0.1)";
+    previewBox.style.borderLeft = (accentLine === "left_marker") ? `6px solid ${accentColor}` : "1px solid rgba(255, 255, 255, 0.1)";
 
     previewFinal.style.fontSize = fontSize;
     previewFinal.style.color = textColor;
@@ -1618,6 +1764,30 @@ if (minDispSlider) {
         if (v) v.textContent = `${e.target.value}s`;
         autoSyncStyleChanges();
     });
+}
+const bOffsetSlider = document.getElementById("bottom_offset_slider");
+if (bOffsetSlider) {
+    bOffsetSlider.addEventListener("input", (e) => {
+        const v = document.getElementById("val-bottom-offset");
+        if (v) v.textContent = `${e.target.value}px`;
+        autoSyncStyleChanges();
+    });
+}
+const bBlurSlider = document.getElementById("backdrop_blur_slider");
+if (bBlurSlider) {
+    bBlurSlider.addEventListener("input", (e) => {
+        const v = document.getElementById("val-backdrop-blur");
+        if (v) v.textContent = `${e.target.value}px`;
+        autoSyncStyleChanges();
+    });
+}
+const accentLineSelect = document.getElementById("accent_line");
+if (accentLineSelect) {
+    accentLineSelect.addEventListener("change", () => autoSyncStyleChanges());
+}
+const accentColorInput = document.getElementById("accent_color");
+if (accentColorInput) {
+    accentColorInput.addEventListener("input", () => autoSyncStyleChanges());
 }
 document.getElementById("noise_gate_slider").addEventListener("input", (e) => {
     document.getElementById("val-noise-gate").textContent = `${e.target.value} dB`;
@@ -2661,6 +2831,10 @@ async function refreshEngineStatus() {
             isRunning = !!data.is_running;
             updateStatusUI();
 
+            if (data.recording) {
+                updateRecordingUI(data.recording);
+            }
+
             if (!controlWs || controlWs.readyState !== WebSocket.OPEN) {
                 if (!isRunning) {
                     if (vuBar) vuBar.style.width = "0%";
@@ -2993,6 +3167,8 @@ function connectControlWs() {
                     renderUpdateUI(msg.status);
                     showToast(`🚀 New VoxStream update available (${msg.status.latest_commit || 'New'})! Check Advanced Settings.`, "info", 5000);
                 }
+            } else if (msg.type === "recording_state_changed") {
+                updateRecordingUI(msg.recording);
             } else if (msg.type === "updater_progress") {
                 handleUpdaterProgress(msg.message);
             }

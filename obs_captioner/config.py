@@ -135,6 +135,9 @@ class OBSConfig:
     projector_type: str = "preview"
     projector_monitor_index: int = 1
     projector_source_name: str = "Captions Overlay"
+    auto_record_subtitles: bool = True  # Auto-save synchronized .srt sidecar file when OBS records
+    record_subtitles_format: str = "srt"  # "srt", "vtt", or "both"
+    record_subtitles_directory: str = ""  # Custom directory path or leave blank for OBS record directory/user Videos
 
 
 @dataclass
@@ -167,6 +170,10 @@ class OverlayConfig:
     reduce_motion: bool = False  # Accessibility: False = animated, True = instant/no motion
     high_contrast_outline: bool = False  # Accessibility: False = normal stroke, True = heavy 3.5px black outline
     final_only: bool = False  # Display mode: False = show live in-progress speech, True = wait until text is fully prepared and finalized
+    bottom_offset_px: int = 40  # Vertical margin in px to lift captions above OBS nameplates/logos
+    box_layout: str = "banner"  # "banner", "pill", "boxless", "bar"
+    accent_line: str = "none"  # "none", "top_divider", "bottom_divider", "left_marker"
+    accent_color: str = "#38BDF8"  # Accent divider line color
 
     def apply_theme(self, theme_id: str, custom_presets: Optional[Dict[str, dict]] = None) -> bool:
         """Apply attributes from a known theme preset or custom user preset."""
@@ -186,6 +193,10 @@ class OverlayConfig:
             self.text_shadow = preset.text_shadow
             self.text_stroke = preset.text_stroke
             self.animation_style = preset.animation_style
+            self.bottom_offset_px = getattr(preset, "bottom_offset_px", self.bottom_offset_px)
+            self.box_layout = getattr(preset, "box_layout", self.box_layout)
+            self.accent_line = getattr(preset, "accent_line", self.accent_line)
+            self.accent_color = getattr(preset, "accent_color", self.accent_color)
             return True
         elif custom_presets and theme_id in custom_presets:
             cp = custom_presets[theme_id]
@@ -203,6 +214,10 @@ class OverlayConfig:
             self.text_shadow = cp.get("text_shadow", self.text_shadow)
             self.text_stroke = cp.get("text_stroke", self.text_stroke)
             self.animation_style = cp.get("animation_style", self.animation_style)
+            self.bottom_offset_px = cp.get("bottom_offset_px", self.bottom_offset_px)
+            self.box_layout = cp.get("box_layout", self.box_layout)
+            self.accent_line = cp.get("accent_line", self.accent_line)
+            self.accent_color = cp.get("accent_color", self.accent_color)
             return True
         return False
 

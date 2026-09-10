@@ -297,3 +297,28 @@ def get_torch_device() -> Tuple[Any, str]:
 
     # 4. High-Performance CPU
     return "cpu", "CPU"
+
+
+def get_local_ip() -> str:
+    """Detect the machine's primary local network (LAN) IPv4 address."""
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0.5)
+        # Connect to public DNS address without sending network packets
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        if ip and not ip.startswith("127."):
+            return ip
+    except Exception:
+        pass
+
+    try:
+        ip = socket.gethostbyname(socket.gethostname())
+        if ip and not ip.startswith("127."):
+            return ip
+    except Exception:
+        pass
+
+    return "127.0.0.1"
