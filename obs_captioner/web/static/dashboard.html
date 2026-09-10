@@ -224,7 +224,8 @@
                             <label for="font_family">Google / System Font</label>
                             <select id="font_family" class="form-control">
                                 <option value="Inter, sans-serif">Inter (Modern Clean)</option>
-                                <option value="'OpenDyslexic', sans-serif">📖 OpenDyslexic (Visual &amp; Reading Aid)</option>
+                                <option value="'OpenDyslexic', sans-serif">📖 OpenDyslexic (Accessibility &amp; Reading Aid)</option>
+                                <option value="'Lexend', sans-serif">📖 Lexend (Readability &amp; Focus)</option>
                                 <option value="Montserrat, sans-serif">Montserrat (Bold &amp; Clean)</option>
                                 <option value="Poppins, sans-serif">Poppins (Smooth Rounded)</option>
                                 <option value="'Bebas Neue', sans-serif">Bebas Neue (Stream Headline)</option>
@@ -355,6 +356,14 @@
 
                             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px;">
 
+                                <!-- 1. OpenDyslexic Typography Toggle -->
+                                <label class="switch-label" style="display: flex; align-items: flex-start; gap: 10px; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 6px; padding: 10px 12px; cursor: pointer;">
+                                    <input type="checkbox" id="a11y_toggle_opendyslexic" style="width: 18px; height: 18px; margin-top: 2px; cursor: pointer;">
+                                    <div>
+                                        <strong style="color: #38BDF8; display: block; font-size: 13px;">📖 OpenDyslexic Font</strong>
+                                        <span style="font-size: 11.5px; color: var(--text-muted);">Bottom-heavy weighted letterforms engineered to prevent character inversion and flipping.</span>
+                                    </div>
+                                </label>
 
                                 <!-- 2. Wide Letter Spacing -->
                                 <label class="switch-label" style="display: flex; align-items: flex-start; gap: 10px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px; cursor: pointer;">

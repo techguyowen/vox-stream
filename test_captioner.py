@@ -114,6 +114,21 @@ class TestThemes(unittest.TestCase):
         self.assertEqual(ov.bottom_offset_px, 0)
         self.assertEqual(ov.accent_color, "#38BDF8")
 
+    def test_apply_opendyslexic_preset(self):
+        from pathlib import Path
+        ov = OverlayConfig()
+        applied = ov.apply_theme("opendyslexic")
+        self.assertTrue(applied)
+        self.assertEqual(ov.theme_id, "opendyslexic")
+        self.assertEqual(ov.font_family, "'OpenDyslexic', sans-serif")
+        self.assertEqual(ov.font_weight, "700")
+
+        # Verify offline bundled font files exist in static/fonts
+        static_fonts = Path(__file__).parent / "obs_captioner" / "web" / "static" / "fonts"
+        self.assertTrue((static_fonts / "OpenDyslexic-Regular.woff").is_file())
+        self.assertTrue((static_fonts / "OpenDyslexic-Bold.woff").is_file())
+        self.assertTrue((static_fonts / "OpenDyslexic-Italic.woff").is_file())
+
     def test_apply_functional_chyron_left_preset(self):
         ov = OverlayConfig()
         applied = ov.apply_theme("chyron_left")
@@ -1476,6 +1491,12 @@ class TestWindowsAuditAndResilience(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(js_type, "application/javascript")
         self.assertEqual(css_type, "text/css")
         self.assertEqual(json_type, "application/json")
+        woff_type, _ = mimetypes.guess_type("test.woff")
+        woff2_type, _ = mimetypes.guess_type("test.woff2")
+        ttf_type, _ = mimetypes.guess_type("test.ttf")
+        self.assertEqual(woff_type, "font/woff")
+        self.assertEqual(woff2_type, "font/woff2")
+        self.assertEqual(ttf_type, "font/ttf")
 
 
 class TestUpdaterCore(unittest.IsolatedAsyncioTestCase):

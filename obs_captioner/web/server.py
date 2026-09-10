@@ -21,7 +21,9 @@ mimetypes.add_type("image/svg+xml", ".svg")
 mimetypes.add_type("image/png", ".png")
 mimetypes.add_type("image/jpeg", ".jpg")
 mimetypes.add_type("image/webp", ".webp")
+mimetypes.add_type("font/woff", ".woff")
 mimetypes.add_type("font/woff2", ".woff2")
+mimetypes.add_type("font/ttf", ".ttf")
 mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 from ..config import AppConfig, save_config

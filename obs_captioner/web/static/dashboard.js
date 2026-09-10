@@ -37,6 +37,25 @@ function setupA11yPresets() {
 
     // Accessibility Controls Event Listeners
 
+    const chkOpenDys = document.getElementById("a11y_toggle_opendyslexic");
+    if (chkOpenDys) {
+        chkOpenDys.addEventListener("change", () => {
+            const fontSel = document.getElementById("font_family");
+            if (fontSel) {
+                if (chkOpenDys.checked) {
+                    if (!fontSel.value.includes("OpenDyslexic")) {
+                        fontSel.dataset.prevFont = fontSel.value;
+                    }
+                    setSelectValue(fontSel, "'OpenDyslexic', sans-serif");
+                } else {
+                    const prev = fontSel.dataset.prevFont;
+                    setSelectValue(fontSel, (prev && !prev.includes("OpenDyslexic")) ? prev : "Inter, sans-serif");
+                }
+            }
+            updatePreviewStyles();
+            autoSyncStyleChanges();
+        });
+    }
 
     const chkLetterSp = document.getElementById("a11y_toggle_letter_spacing");
     if (chkLetterSp) {
@@ -1347,11 +1366,22 @@ function setSelectValue(select, value) {
     if (!select || value === undefined || value === null || value === "") return;
     select.value = String(value);
     if (select.value !== String(value)) {
-        const opt = document.createElement("option");
-        opt.value = String(value);
-        opt.textContent = String(value);
-        select.appendChild(opt);
-        select.value = String(value);
+        const normalized = String(value).replace(/['"]/g, "").toLowerCase().trim();
+        let found = false;
+        for (const opt of select.options) {
+            if (opt.value.replace(/['"]/g, "").toLowerCase().trim() === normalized) {
+                select.value = opt.value;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            const opt = document.createElement("option");
+            opt.value = String(value);
+            opt.textContent = String(value);
+            select.appendChild(opt);
+            select.value = String(value);
+        }
     }
 }
 
@@ -1385,6 +1415,10 @@ function populateFormFields(cfg) {
         const ov = cfg.overlay;
         activeThemeId = ov.theme_id || "modern_clean";
         setSelectValue(document.getElementById("font_family"), ov.font_family);
+        const chkOpenDys = document.getElementById("a11y_toggle_opendyslexic");
+        if (chkOpenDys) {
+            chkOpenDys.checked = !!(ov.font_family && ov.font_family.toLowerCase().includes("opendyslexic"));
+        }
         if (ov.font_size) {
             const sizeVal = parseInt(ov.font_size) || 32;
             document.getElementById("font_size_slider").value = sizeVal;
@@ -1732,7 +1766,16 @@ function updatePreviewStyles() {
 }
 
 // Attach Input Listeners with Auto-Sync
-document.getElementById("font_family").addEventListener("change", autoSyncStyleChanges);
+const fontFamSelect = document.getElementById("font_family");
+if (fontFamSelect) {
+    fontFamSelect.addEventListener("change", () => {
+        const chk = document.getElementById("a11y_toggle_opendyslexic");
+        if (chk) {
+            chk.checked = !!(fontFamSelect.value && fontFamSelect.value.toLowerCase().includes("opendyslexic"));
+        }
+        autoSyncStyleChanges();
+    });
+}
 document.getElementById("max_lines").addEventListener("change", autoSyncStyleChanges);
 document.getElementById("text_align").addEventListener("change", autoSyncStyleChanges);
 document.getElementById("animation_style").addEventListener("change", autoSyncStyleChanges);
