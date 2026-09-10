@@ -390,6 +390,23 @@ async def main_async(args):
 
         audio_capture.on_level_meter = on_vu_level
 
+        def on_recovery_status(status: str, device_name: str):
+            logger.info(f"Audio recovery status changed: status={status}, device='{device_name}'")
+            if web_server:
+                try:
+                    asyncio.run_coroutine_threadsafe(
+                        web_server.broadcast_control({
+                            "type": "audio_recovery_status",
+                            "status": status,
+                            "device": device_name,
+                        }),
+                        loop,
+                    )
+                except Exception:
+                    pass
+
+        audio_capture.on_recovery_status = on_recovery_status
+
     # 4. Initialize Twitch Chat Bot
     twitch_bot = None
     if config.twitch.enabled:
@@ -478,8 +495,46 @@ async def main_async(args):
                 else:
                     subtitle_recorder.stop_recording()
 
+        def on_scene_changed(scene_name: str):
+            nonlocal is_paused
+            if not config.obs.scene_auto_mute_enabled or not scene_name:
+                return
+            clean_name = scene_name.strip()
+            cur_lower = clean_name.lower()
+            muted_scenes = [s.strip().lower() for s in config.obs.scene_muted_names if s.strip()]
+            active_scenes = [s.strip().lower() for s in config.obs.scene_active_names if s.strip()]
+
+            should_pause = None
+            if muted_scenes and not active_scenes:
+                # If only muted scenes specified: pause if in muted scenes, unpause if not
+                should_pause = (cur_lower in muted_scenes)
+            elif active_scenes and not muted_scenes:
+                # If only active scenes specified: unpause if in active scenes, pause if not
+                should_pause = (cur_lower not in active_scenes)
+            elif muted_scenes and active_scenes:
+                # If both specified: prioritize explicit lists
+                if cur_lower in muted_scenes:
+                    should_pause = True
+                elif cur_lower in active_scenes:
+                    should_pause = False
+
+            if should_pause is not None and should_pause != is_paused:
+                is_paused = should_pause
+                action = "Auto-Muted (Paused)" if is_paused else "Auto-Resumed (Active)"
+                logger.info(f"🎬 OBS Scene changed to '{clean_name}' -> Captions {action}.")
+                if web_server:
+                    asyncio.run_coroutine_threadsafe(
+                        web_server.broadcast_control({
+                            "type": "obs_scene_auto_mute",
+                            "scene_name": clean_name,
+                            "is_paused": is_paused,
+                        }),
+                        loop,
+                    )
+
         obs_client.on_stream_state_changed = on_stream_state
         obs_client.on_record_state_changed = on_record_state
+        obs_client.on_scene_changed = on_scene_changed
 
     # 7. Run streaming pipeline
     def signal_handler():

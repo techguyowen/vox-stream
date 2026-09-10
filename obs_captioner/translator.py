@@ -28,6 +28,7 @@ SUPPORTED_LANGUAGES = {
     "tr": "Turkish (Türkçe)",
     "uk": "Ukrainian (Українська)",
     "vi": "Vietnamese (Tiếng Việt)",
+    "tl": "Tagalog / Filipino",
 }
 
 LANG_CODE_MAP = {

@@ -1061,6 +1061,12 @@
                                 <span>🎵 Stop Captioning on Music / Worship</span>
                             </label>
                         </div>
+                        <div class="form-group" style="margin-bottom: 0; min-width: 280px;">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #10B981; font-size: 13px; font-weight: 600;">
+                                <input type="checkbox" id="enable_agc" checked style="width: 17px; height: 17px; cursor: pointer; accent-color: #10B981;">
+                                <span>🎙️ Speech AGC &amp; Limiter (Whispers &amp; Shouts)</span>
+                            </label>
+                        </div>
                     </div>
 
                     <!-- UNIVERSAL CHURCH / ORGANIZATION SETTING -->
@@ -1476,6 +1482,53 @@
                             </div>
                         </div>
                         <div id="projector-status-msg" style="font-size: 12px; margin-top: 8px; display: none;"></div>
+                    </div>
+
+                    <!-- Scene-Aware Caption Control (OBS Auto-Mute on Music/Video) -->
+                    <div style="background: rgba(139, 92, 246, 0.08); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
+                            <h3 style="margin: 0; color: #A78BFA; display: flex; align-items: center; gap: 8px; font-size: 16px;">
+                                <span>🎬 Scene-Aware Auto-Mute (OBS Scene Tracking)</span>
+                            </h3>
+                            <button type="button" id="btn-refresh-obs-scenes" class="btn btn-secondary btn-sm" style="font-size: 11.5px; padding: 4px 12px; border-color: rgba(139, 92, 246, 0.4); color: #C4B5FD;">
+                                🔄 Refresh OBS Scenes
+                            </button>
+                        </div>
+                        <p style="font-size: 13px; color: #E0E7FF; margin-bottom: 14px; line-height: 1.45;">
+                            Automatically mute/pause speech recognition when switching to worship music, countdowns, or pre-roll videos in OBS, and auto-resume captioning on sermon or speaking scenes.
+                        </p>
+                        <div class="form-group toggle-row" style="margin-bottom: 14px;">
+                            <label class="switch-label">
+                                <input type="checkbox" id="obs_scene_auto_mute_enabled">
+                                <span class="switch-text"><strong style="color: #F3F4F6;">Enable Scene-Aware Auto-Mute / Auto-Resume</strong></span>
+                            </label>
+                        </div>
+
+                        <div id="obs-scene-control-container" style="display: flex; flex-direction: column; gap: 14px;">
+                            <div>
+                                <label style="font-size: 12px; font-weight: 700; color: #EF4444; margin-bottom: 4px; display: block;">
+                                    🔇 Auto-Muted Scenes (Captions PAUSE, e.g. Worship Band, Video, Prelude, Countdown):
+                                </label>
+                                <input type="text" id="obs_scene_muted_names" class="form-control" placeholder="Worship, Video, Pre-roll, Announcements, Countdown" style="font-size: 12.5px;">
+                                <div id="obs-scene-muted-chips" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;"></div>
+                            </div>
+                            <div>
+                                <label style="font-size: 12px; font-weight: 700; color: #10B981; margin-bottom: 4px; display: block;">
+                                    🎙️ Speaking / Sermon Scenes (Captions RESUME, e.g. Sermon, Pulpit, Preacher, Message):
+                                </label>
+                                <input type="text" id="obs_scene_active_names" class="form-control" placeholder="Sermon, Pulpit, Pastor, Message" style="font-size: 12.5px;">
+                                <div id="obs-scene-active-chips" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;"></div>
+                            </div>
+                            <div id="obs-active-scene-indicator" style="font-size: 12px; color: #94A3B8; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.08); padding: 8px 14px; border-radius: 6px; display: flex; align-items: center; justify-content: space-between;">
+                                <span>Current OBS Scene: <strong id="obs-current-scene-name" style="color: #38BDF8;">Waiting for OBS connection...</strong></span>
+                                <span id="obs-scene-mute-status-badge" style="padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; background: rgba(16, 185, 129, 0.2); color: #34D399;">Active</span>
+                            </div>
+                            <div style="text-align: right;">
+                                <button type="button" id="btn-save-scene-mute" class="btn btn-secondary btn-sm" style="font-weight: 600; border-color: rgba(139, 92, 246, 0.5); color: #C4B5FD;">
+                                    💾 Save Scene Mute Settings
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Auto-Open Startup Automation Settings -->
@@ -1955,9 +2008,25 @@
                 </h3>
                 <button type="button" id="btn-close-qr-modal" style="background: none; border: none; font-size: 24px; color: var(--text-muted); cursor: pointer; line-height: 1;">&times;</button>
             </div>
-            <p class="subtext" style="font-size: 13px; margin-bottom: 16px; color: #94A3B8; text-align: center;">
+            <p class="subtext" style="font-size: 13px; margin-bottom: 14px; color: #94A3B8; text-align: center;">
                 Scan with any iPad, tablet, or smartphone on your local Wi-Fi to open the live stage confidence teleprompter or read-along screen.
             </p>
+            <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 14px; background: rgba(15,23,42,0.4); padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
+                <label for="qr-language-select" style="font-size: 12px; color: #94A3B8; margin: 0; font-weight: 600; white-space: nowrap;">Mobile Language:</label>
+                <select id="qr-language-select" class="form-control" style="width: auto; padding: 4px 10px; font-size: 12px; height: 32px; background: rgba(15,23,42,0.8);">
+                    <option value="en" selected>🌐 English (Clean)</option>
+                    <option value="es">🇪🇸 Spanish (Español)</option>
+                    <option value="fr">🇫🇷 French (Français)</option>
+                    <option value="de">🇩🇪 German (Deutsch)</option>
+                    <option value="pt">🇧🇷 Portuguese (Português)</option>
+                    <option value="it">🇮🇹 Italian (Italiano)</option>
+                    <option value="zh">🇨🇳 Chinese (中文)</option>
+                    <option value="ko">🇰🇷 Korean (한국어)</option>
+                    <option value="tl">🇵🇭 Tagalog</option>
+                    <option value="ru">🇷🇺 Russian (Русский)</option>
+                    <option value="vi">🇻🇳 Vietnamese (Tiếng Việt)</option>
+                </select>
+            </div>
             <div id="qr-code-container" style="display: flex; justify-content: center; align-items: center; background: #FFFFFF; padding: 14px; border-radius: 12px; margin: 0 auto 16px auto; width: 220px; height: 220px; box-shadow: 0 4px 16px rgba(0,0,0,0.3);">
                 <img id="qr-code-img" src="/api/display/qr" alt="Stage Display QR Code" width="192" height="192" style="display: block;">
             </div>

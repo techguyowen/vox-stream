@@ -6,6 +6,7 @@ import logging
 import mimetypes
 import re
 import time
+import urllib.parse
 import uuid
 from dataclasses import asdict
 from pathlib import Path
@@ -191,6 +192,7 @@ class WebOverlayServer:
         # OBS Projector & Display Automation
         self.app.router.add_post("/api/obs/projector/open", self._handle_open_projector)
         self.app.router.add_get("/api/obs/monitors", self._handle_get_monitors)
+        self.app.router.add_get("/api/obs/scenes", self._handle_get_scenes)
         
         # Transcript, Chapters, Translation & Export
         self.app.router.add_get("/api/transcript/history", self._handle_get_history)
@@ -346,7 +348,11 @@ class WebOverlayServer:
         from ..qr_generator import generate_qr_svg
         lan_ip = get_local_ip()
         port = self.config.overlay.port or 8765
-        display_url = f"http://{lan_ip}:{port}/display"
+        lang = sanitize_text(request.query.get("lang", "")).lower().strip()
+        if lang and lang not in ("en", "original", "none"):
+            display_url = f"http://{lan_ip}:{port}/display?lang={urllib.parse.quote(lang)}"
+        else:
+            display_url = f"http://{lan_ip}:{port}/display"
         svg_content = generate_qr_svg(display_url)
         return web.Response(
             body=svg_content,
@@ -823,6 +829,12 @@ class WebOverlayServer:
             return web.json_response({"monitors": []})
         monitors = await self.obs_client.get_monitors()
         return web.json_response({"monitors": monitors})
+
+    async def _handle_get_scenes(self, request: web.Request) -> web.Response:
+        if not self.obs_client:
+            return web.json_response({"connected": False, "current_scene": "", "scenes": []})
+        scene_info = await self.obs_client.get_scene_list()
+        return web.json_response(scene_info)
 
     async def _handle_get_history(self, request: web.Request) -> web.Response:
         search = sanitize_text(request.query.get("search", ""), max_len=100)

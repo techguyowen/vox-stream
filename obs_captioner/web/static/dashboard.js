@@ -1072,21 +1072,41 @@ if (btnHeaderRec) {
 }
 
 // Stage Display QR Code Modal Handlers
+const qrLanguageSelect = document.getElementById("qr-language-select");
+
+function updateDisplayQrUrl() {
+    if (!qrDirectUrl || !qrCodeImg) return;
+    const lang = qrLanguageSelect ? qrLanguageSelect.value : "en";
+    let base = qrDirectUrl.dataset.baseUrl || qrDirectUrl.value.split("?")[0];
+    qrDirectUrl.dataset.baseUrl = base;
+    const finalUrl = (lang && lang !== "en") ? `${base}?lang=${encodeURIComponent(lang)}` : base;
+    qrDirectUrl.value = finalUrl;
+    if (qrOpenTabBtn) qrOpenTabBtn.href = finalUrl;
+    qrCodeImg.src = (lang && lang !== "en")
+        ? `/api/display/qr?lang=${encodeURIComponent(lang)}&t=${Date.now()}`
+        : `/api/display/qr?t=${Date.now()}`;
+}
+
+if (qrLanguageSelect) {
+    qrLanguageSelect.addEventListener("change", updateDisplayQrUrl);
+}
+
 async function openDisplayQrModal() {
     if (!modalDisplayQr) return;
     try {
         const res = await fetch("/api/network/info");
         if (res.ok) {
             const data = await res.json();
-            if (qrDirectUrl && data.display_url) qrDirectUrl.value = data.display_url;
+            if (qrDirectUrl && data.display_url) {
+                qrDirectUrl.dataset.baseUrl = data.display_url;
+                qrDirectUrl.value = data.display_url;
+            }
             if (qrOpenTabBtn && data.display_url) qrOpenTabBtn.href = data.display_url;
         }
     } catch (e) {
         console.warn("Error fetching network info:", e);
     }
-    if (qrCodeImg) {
-        qrCodeImg.src = `/api/display/qr?t=${Date.now()}`;
-    }
+    updateDisplayQrUrl();
     modalDisplayQr.style.display = "flex";
 }
 
@@ -1593,6 +1613,10 @@ function populateFormFields(cfg) {
             const smEl = document.getElementById("suppress_music");
             if (smEl) smEl.checked = !!cfg.audio.suppress_music;
         }
+        if (cfg.audio.enable_agc !== undefined) {
+            const agcEl = document.getElementById("enable_agc");
+            if (agcEl) agcEl.checked = !!cfg.audio.enable_agc;
+        }
     }
     if (cfg.google_stt) {
         document.getElementById("google_creds_path").value = cfg.google_stt.credentials_path || "";
@@ -1678,6 +1702,18 @@ function populateFormFields(cfg) {
             document.getElementById("quick_projector_monitor").value = cfg.obs.projector_monitor_index;
         }
         if (cfg.obs.projector_source_name) document.getElementById("obs_projector_source_name").value = cfg.obs.projector_source_name;
+        if (cfg.obs.scene_auto_mute_enabled !== undefined) {
+            const samEl = document.getElementById("obs_scene_auto_mute_enabled");
+            if (samEl) samEl.checked = !!cfg.obs.scene_auto_mute_enabled;
+        }
+        if (cfg.obs.scene_muted_names !== undefined) {
+            const smnEl = document.getElementById("obs_scene_muted_names");
+            if (smnEl) smnEl.value = (cfg.obs.scene_muted_names || []).join(", ");
+        }
+        if (cfg.obs.scene_active_names !== undefined) {
+            const sanEl = document.getElementById("obs_scene_active_names");
+            if (sanEl) sanEl.value = (cfg.obs.scene_active_names || []).join(", ");
+        }
         toggleProjectorSourceField();
     }
 
@@ -2438,6 +2474,7 @@ document.getElementById("btn-save-audio").addEventListener("click", async () => 
             max_sentence_duration_seconds: parseFloat(document.getElementById("max_sentence_slider").value),
             max_sentence_words: parseInt(document.getElementById("max_words_slider") ? document.getElementById("max_words_slider").value : "24", 10) || 24,
             suppress_music: document.getElementById("suppress_music") ? document.getElementById("suppress_music").checked : true,
+            enable_agc: document.getElementById("enable_agc") ? document.getElementById("enable_agc").checked : true,
         },
         bandwidth: {
             api_key: (() => {
@@ -2551,6 +2588,93 @@ document.getElementById("btn-save-projector").addEventListener("click", async ()
     };
     await saveConfigPayload(payload, "Projector & Display automation settings saved!");
 });
+
+// Scene-Aware Auto-Mute Handlers
+const btnSaveSceneMute = document.getElementById("btn-save-scene-mute");
+if (btnSaveSceneMute) {
+    btnSaveSceneMute.addEventListener("click", async () => {
+        const payload = {
+            obs: {
+                scene_auto_mute_enabled: document.getElementById("obs_scene_auto_mute_enabled") ? document.getElementById("obs_scene_auto_mute_enabled").checked : false,
+                scene_muted_names: (document.getElementById("obs_scene_muted_names")?.value || "").split(",").map(s => s.trim()).filter(Boolean),
+                scene_active_names: (document.getElementById("obs_scene_active_names")?.value || "").split(",").map(s => s.trim()).filter(Boolean),
+            }
+        };
+        await saveConfigPayload(payload, "OBS Scene-Aware Auto-Mute settings saved!");
+    });
+}
+
+const btnRefreshObsScenes = document.getElementById("btn-refresh-obs-scenes");
+async function refreshObsScenesList() {
+    try {
+        const res = await fetch("/api/obs/scenes");
+        if (!res.ok) return;
+        const data = await res.json();
+        const scNameEl = document.getElementById("obs-current-scene-name");
+        if (scNameEl && data.current_scene) {
+            scNameEl.textContent = data.current_scene;
+        }
+        const scenes = data.scenes || [];
+        const mutedChips = document.getElementById("obs-scene-muted-chips");
+        const activeChips = document.getElementById("obs-scene-active-chips");
+        if (mutedChips) {
+            mutedChips.innerHTML = "";
+            scenes.forEach(s => {
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.className = "btn btn-sm";
+                btn.style.cssText = "font-size: 11px; padding: 2px 8px; background: rgba(239, 68, 68, 0.12); color: #FCA5A5; border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 4px; cursor: pointer;";
+                btn.textContent = `+ ${s}`;
+                btn.title = `Click to toggle '${s}' in Muted Scenes`;
+                btn.addEventListener("click", () => {
+                    const input = document.getElementById("obs_scene_muted_names");
+                    if (!input) return;
+                    let list = input.value.split(",").map(x => x.trim()).filter(Boolean);
+                    if (list.includes(s)) {
+                        list = list.filter(x => x !== s);
+                    } else {
+                        list.push(s);
+                    }
+                    input.value = list.join(", ");
+                });
+                mutedChips.appendChild(btn);
+            });
+        }
+        if (activeChips) {
+            activeChips.innerHTML = "";
+            scenes.forEach(s => {
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.className = "btn btn-sm";
+                btn.style.cssText = "font-size: 11px; padding: 2px 8px; background: rgba(16, 185, 129, 0.12); color: #6EE7B7; border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 4px; cursor: pointer;";
+                btn.textContent = `+ ${s}`;
+                btn.title = `Click to toggle '${s}' in Speaking Scenes`;
+                btn.addEventListener("click", () => {
+                    const input = document.getElementById("obs_scene_active_names");
+                    if (!input) return;
+                    let list = input.value.split(",").map(x => x.trim()).filter(Boolean);
+                    if (list.includes(s)) {
+                        list = list.filter(x => x !== s);
+                    } else {
+                        list.push(s);
+                    }
+                    input.value = list.join(", ");
+                });
+                activeChips.appendChild(btn);
+            });
+        }
+        if (scenes.length > 0) {
+            showToast(`✅ Loaded ${scenes.length} OBS scenes! Click chips to add.`, "success");
+        } else {
+            showToast("ℹ️ Connected to OBS, but no scenes returned or OBS is idle.", "info");
+        }
+    } catch (e) {
+        console.warn("Error refreshing OBS scenes:", e);
+    }
+}
+if (btnRefreshObsScenes) {
+    btnRefreshObsScenes.addEventListener("click", refreshObsScenesList);
+}
 
 document.getElementById("btn-quick-open-projector").addEventListener("click", async () => {
     const rawVal = document.getElementById("quick_projector_monitor").value;
@@ -3256,6 +3380,27 @@ function connectControlWs() {
                 updateRecordingUI(msg.recording);
             } else if (msg.type === "updater_progress") {
                 handleUpdaterProgress(msg.message);
+            } else if (msg.type === "obs_scene_auto_mute") {
+                const scNameEl = document.getElementById("obs-current-scene-name");
+                if (scNameEl) scNameEl.textContent = msg.scene_name || "Unknown";
+                const badge = document.getElementById("obs-scene-mute-status-badge");
+                if (badge) {
+                    if (msg.is_paused) {
+                        badge.textContent = "Auto-Muted (Paused)";
+                        badge.style.background = "rgba(239, 68, 68, 0.2)";
+                        badge.style.color = "#FCA5A5";
+                    } else {
+                        badge.textContent = "Active";
+                        badge.style.background = "rgba(16, 185, 129, 0.2)";
+                        badge.style.color = "#34D399";
+                    }
+                }
+            } else if (msg.type === "audio_recovery_status") {
+                if (msg.status === "recovering") {
+                    showToast(`⚠️ Audio interface '${msg.device}' disconnected. Auto-watchdog recovering...`, "warning", 4000);
+                } else if (msg.status === "recovered") {
+                    showToast(`✅ Audio interface '${msg.device}' restored!`, "success", 4000);
+                }
             }
         } catch (e) {}
     };

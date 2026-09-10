@@ -111,6 +111,69 @@ class AudioCapture:
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self.current_rms_db: float = -100.0
         self.on_level_meter: Optional[Callable[[float], None]] = None
+        self._agc_gain: float = 1.0
+        self.is_recovering: bool = False
+        self._recovery_task: Optional[asyncio.Task] = None
+        self.on_recovery_status: Optional[Callable[[str, str], None]] = None
+
+    def _apply_agc_and_limiter(self, audio_f: np.ndarray) -> np.ndarray:
+        """
+        Apply Broadcast Automatic Gain Control (AGC) and soft-knee peak limiter.
+        Normalizes quiet speech and loud shouting into the optimal speech recognition
+        window (-22 dBFS to -16 dBFS) before inference.
+        """
+        if audio_f is None or len(audio_f) == 0:
+            return audio_f
+
+        # Calculate RMS level
+        rms = float(np.sqrt(np.mean(audio_f ** 2)))
+        db = 20.0 * math.log10(rms) if rms > 1e-5 else -100.0
+        self.current_rms_db = max(-100.0, min(0.0, db))
+        if self.on_level_meter:
+            try:
+                self.on_level_meter(self.current_rms_db)
+            except Exception:
+                pass
+
+        if not getattr(self.config, "enable_agc", True):
+            return np.clip(audio_f, -1.0, 1.0)
+
+        # Broadcast AGC Target & Gains
+        target_db = getattr(self.config, "agc_target_db", -18.0)
+        target_linear = 10.0 ** (target_db / 20.0)  # ~0.1259 for -18 dBFS
+        max_gain_db = getattr(self.config, "agc_max_gain_db", 18.0)
+        max_gain_linear = 10.0 ** (max_gain_db / 20.0)  # ~7.94 for +18 dB
+        min_gain_linear = 10.0 ** (-12.0 / 20.0)  # ~0.25 (-12 dB cut)
+
+        noise_floor_db = getattr(self.config, "noise_gate_db", -52.0)
+        if db > noise_floor_db:
+            desired_gain = target_linear / max(rms, 1e-4)
+            clamped_gain = max(min_gain_linear, min(max_gain_linear, desired_gain))
+
+            # Fast attack (~50ms) when volume surges, gentle release (~800ms) when volume dips
+            if clamped_gain < self._agc_gain:
+                alpha = 0.35
+            else:
+                alpha = 0.05
+            self._agc_gain = (1.0 - alpha) * self._agc_gain + alpha * clamped_gain
+        else:
+            # Below noise gate: preserve silence/ambient floor without boosting hiss
+            self._agc_gain = (1.0 - 0.05) * self._agc_gain + 0.05 * 1.0
+
+        boosted = audio_f * self._agc_gain
+
+        # Soft-knee peak limiter (threshold T = 0.85, smooth saturation with tanh curve)
+        # Prevents harsh digital clipping on sudden shouts or plosives
+        threshold = 0.85
+        abs_val = np.abs(boosted)
+        over_idx = abs_val > threshold
+        if np.any(over_idx):
+            headroom = 1.0 - threshold
+            ratio = (abs_val[over_idx] - threshold) / headroom
+            limited = threshold + headroom * np.tanh(ratio)
+            boosted[over_idx] = limited * np.sign(boosted[over_idx])
+
+        return np.clip(boosted, -1.0, 1.0)
 
     def _open_stream(self) -> bool:
         """Attempt to open hardware audio stream with 4-tier fallback for multi-channel / ASIO interfaces."""
@@ -162,45 +225,34 @@ class AudioCapture:
                     if not self._running:
                         return
 
-                    # Compute RMS Level for VU Meter
-                    try:
-                        if indata.dtype == np.float32:
-                            rms = np.sqrt(np.mean(indata ** 2))
-                        else:
-                            audio_f = indata.astype(np.float32) / 32768.0
-                            rms = np.sqrt(np.mean(audio_f ** 2))
-                        db = 20 * math.log10(rms) if rms > 1e-5 else -100.0
-                        self.current_rms_db = max(-100.0, min(0.0, float(db)))
-                        if self.on_level_meter:
-                            self.on_level_meter(self.current_rms_db)
-                    except Exception:
-                        pass
-
-                    # Convert to 16-bit linear PCM bytes
+                    # Convert input buffer to float array in range [-1.0, 1.0]
                     if indata.dtype == np.float32:
-                        clipped = np.clip(indata, -1.0, 1.0)
-                        pcm16 = (clipped * 32767.0).astype(np.int16)
-                    elif indata.dtype == np.int16:
-                        pcm16 = indata
+                        audio_f = indata.copy()
                     else:
-                        pcm16 = indata.astype(np.int16)
+                        audio_f = indata.astype(np.float32) / 32768.0
 
                     # Downmix multi-channel to mono
-                    if pcm16.ndim > 1 and pcm16.shape[1] > 1:
-                        pcm16 = np.mean(pcm16, axis=1).astype(np.int16)
+                    if audio_f.ndim > 1 and audio_f.shape[1] > 1:
+                        audio_f = np.mean(audio_f, axis=1)
+                    elif audio_f.ndim > 1:
+                        audio_f = audio_f.flatten()
 
                     # Resample down to 16kHz if captured at native rate (e.g. 48kHz -> 16kHz)
-                    if s_rate != self.target_rate and len(pcm16) > 0:
+                    if s_rate != self.target_rate and len(audio_f) > 0:
                         step = int(s_rate / self.target_rate)
                         if step > 1 and s_rate % self.target_rate == 0:
-                            pcm16 = pcm16[::step]
+                            audio_f = audio_f[::step]
                         else:
-                            target_len = int(len(pcm16) * (self.target_rate / s_rate))
+                            target_len = int(len(audio_f) * (self.target_rate / s_rate))
                             if target_len > 0:
-                                indices = np.linspace(0, len(pcm16) - 1, target_len).astype(int)
-                                pcm16 = pcm16[indices]
+                                indices = np.linspace(0, len(audio_f) - 1, target_len).astype(int)
+                                audio_f = audio_f[indices]
 
+                    # Condition audio with Broadcast AGC & Dynamic Peak Limiter
+                    conditioned_f = self._apply_agc_and_limiter(audio_f)
+                    pcm16 = (conditioned_f * 32767.0).astype(np.int16)
                     pcm_bytes = pcm16.tobytes()
+
                     try:
                         self._queue.put_nowait(pcm_bytes)
                     except queue.Full:
@@ -255,18 +307,15 @@ class AudioCapture:
         if not pcm_bytes:
             return
 
-        # Calculate VU meter level from PCM bytes
-        try:
-            if np is not None:
-                even_len = len(pcm_bytes) & ~1
+        # Calculate VU meter level and apply AGC/limiter
+        even_len = len(pcm_bytes) & ~1
+        if np is not None and even_len > 0:
+            try:
                 audio_np = np.frombuffer(pcm_bytes[:even_len], dtype=np.int16).astype(np.float32) / 32768.0
-                rms = np.sqrt(np.mean(audio_np ** 2)) if len(audio_np) > 0 else 0.0
-                db = 20 * math.log10(rms) if rms > 1e-5 else -100.0
-                self.current_rms_db = max(-100.0, min(0.0, float(db)))
-                if self.on_level_meter:
-                    self.on_level_meter(self.current_rms_db)
-        except Exception:
-            pass
+                conditioned_f = self._apply_agc_and_limiter(audio_np)
+                pcm_bytes = (conditioned_f * 32767.0).astype(np.int16).tobytes()
+            except Exception:
+                pass
 
         try:
             self._queue.put_nowait(pcm_bytes)
@@ -280,6 +329,9 @@ class AudioCapture:
     def stop(self):
         """Stop the audio capture stream."""
         self._running = False
+        self.is_recovering = False
+        if self._recovery_task and not self._recovery_task.done():
+            self._recovery_task.cancel()
         # Unblock any thread or generator waiting on the queue
         try:
             self._queue.put_nowait(b"")
@@ -301,6 +353,10 @@ class AudioCapture:
         if new_config is not None:
             self.config = new_config
         new_idx, new_info = find_audio_device(self.config)
+
+        self.is_recovering = False
+        if self._recovery_task and not self._recovery_task.done():
+            self._recovery_task.cancel()
 
         if new_idx == self.device_index and self.stream is not None:
             logger.debug(f"Audio device unchanged (index {self.device_index}).")
@@ -335,23 +391,89 @@ class AudioCapture:
     class AudioStreamError(Exception):
         pass
 
+    async def _auto_recovery_loop(self):
+        """Background watchdog worker that periodically attempts to rebind the audio device upon disconnect."""
+        retry_count = 0
+        while self._running and self.is_recovering:
+            retry_count += 1
+            await asyncio.sleep(1.5)
+            if not self.is_recovering or not self._running:
+                break
+            try:
+                # Refresh sounddevice hardware device table if supported
+                if sd is not None and hasattr(sd, "_terminate") and hasattr(sd, "_initialize"):
+                    try:
+                        sd._terminate()
+                        sd._initialize()
+                    except Exception:
+                        pass
+
+                new_idx, new_info = find_audio_device(self.config)
+                if new_idx is not None:
+                    if self.stream is not None:
+                        s = self.stream
+                        self.stream = None
+                        try:
+                            s.stop()
+                            s.close()
+                        except Exception:
+                            pass
+
+                    self.device_index = new_idx
+                    self.device_info = new_info
+                    ok = self._open_stream()
+                    if ok:
+                        dev_name = self.device_info["name"] if self.device_info else f"Index {new_idx}"
+                        logger.info(f"✅ Audio watchdog reconnected to '{dev_name}' (attempt #{retry_count})!")
+                        break
+            except Exception as ex:
+                logger.debug(f"Audio recovery attempt #{retry_count} failed: {ex}")
+
     async def stream_generator(self) -> AsyncGenerator[bytes, None]:
-        """Asynchronously yield audio chunks as raw 16kHz 16-bit PCM bytes."""
+        """Asynchronously yield audio chunks as raw 16kHz 16-bit PCM bytes with auto-watchdog recovery."""
         loop = asyncio.get_event_loop()
         empty_strikes = 0
+        silence_chunk = b"\x00" * (self.chunk_samples * 2)
+
         while self._running:
             try:
                 chunk = await loop.run_in_executor(None, self._queue.get, True, 0.2)
                 empty_strikes = 0
+                if self.is_recovering:
+                    self.is_recovering = False
+                    dev_name = self.device_info["name"] if self.device_info else "Default"
+                    logger.info(f"✅ Audio capture resumed normal streaming on '{dev_name}'.")
+                    if self.on_recovery_status:
+                        try:
+                            self.on_recovery_status("recovered", dev_name)
+                        except Exception:
+                            pass
                 if chunk:
                     yield chunk
             except queue.Empty:
                 empty_strikes += 1
-                if empty_strikes > 25:  # 25 * 0.2 = 5 seconds of absolute silence from callback
-                    logger.error("Audio stream callback starved for 5 seconds. Device likely disconnected or driver crashed.")
-                    self.stop()
-                    raise self.AudioStreamError("Audio device disconnected.")
-                await asyncio.sleep(0.01)
+                # If starved for > 1.2s (6 strikes * 0.2s):
+                if empty_strikes >= 6 and not self.is_recovering:
+                    self.is_recovering = True
+                    dev_name = self.device_info["name"] if self.device_info else "Audio device"
+                    logger.warning(
+                        f"⚠️ Audio capture starved ({empty_strikes * 0.2:.1f}s). "
+                        f"'{dev_name}' disconnected or buffer starved. Audio watchdog initiating recovery..."
+                    )
+                    if self.on_recovery_status:
+                        try:
+                            self.on_recovery_status("recovering", dev_name)
+                        except Exception:
+                            pass
+                    if not self._recovery_task or self._recovery_task.done():
+                        self._recovery_task = asyncio.create_task(self._auto_recovery_loop())
+
+                if self.is_recovering:
+                    # Provide silence padding to keep downstream STT engine alive and warm
+                    yield silence_chunk
+                    await asyncio.sleep(0.1)
+                else:
+                    await asyncio.sleep(0.01)
             except Exception as e:
                 if self._running:
                     logger.debug(f"Stream generator error: {e}")

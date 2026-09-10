@@ -2579,6 +2579,140 @@ class TestSubtitleRecorder(unittest.TestCase):
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
+    def test_obs_scene_auto_mute_config_and_logic(self):
+        from obs_captioner.config import OBSConfig
+        cfg = OBSConfig()
+        self.assertFalse(cfg.scene_auto_mute_enabled)
+        self.assertEqual(cfg.scene_muted_names, [])
+        self.assertEqual(cfg.scene_active_names, [])
+
+        cfg.scene_auto_mute_enabled = True
+        cfg.scene_muted_names = ["Worship", "Prelude", "Video"]
+        cfg.scene_active_names = ["Sermon", "Pulpit"]
+
+        # Helper matching function identical to main.py logic
+        def evaluate_scene(scene_name: str, current_paused: bool) -> bool:
+            muted = [s.strip().lower() for s in cfg.scene_muted_names if s.strip()]
+            active = [s.strip().lower() for s in cfg.scene_active_names if s.strip()]
+            cur = scene_name.strip().lower()
+            if cur in muted:
+                return True  # Pause
+            elif cur in active:
+                return False  # Unpause
+            return current_paused
+
+        # Switching to Worship pauses captions
+        self.assertTrue(evaluate_scene("Worship", False))
+        self.assertTrue(evaluate_scene("worship", False))
+        self.assertTrue(evaluate_scene("Prelude", False))
+        # Switching to Sermon resumes captions
+        self.assertFalse(evaluate_scene("Sermon", True))
+        self.assertFalse(evaluate_scene("pulpit", True))
+        # Unlisted scene preserves state
+        self.assertTrue(evaluate_scene("Camera 3", True))
+        self.assertFalse(evaluate_scene("Camera 3", False))
+
+    def test_obs_ws_client_scene_subscriptions_and_helpers(self):
+        from obs_captioner.obs.ws_client import OBSWebSocketClient
+        from obs_captioner.config import OBSConfig
+        cfg = OBSConfig()
+        client = OBSWebSocketClient(cfg)
+        self.assertIsNone(client.current_scene)
+        self.assertIsNone(client.on_scene_changed)
+
+        # Verify initial get_scene_list when disconnected
+        loop = asyncio.new_event_loop()
+        try:
+            res = loop.run_until_complete(client.get_scene_list())
+            self.assertFalse(res["connected"])
+            self.assertEqual(res["scenes"], [])
+        finally:
+            loop.close()
+
+    def test_audio_agc_and_peak_limiter(self):
+        import numpy as np
+        from obs_captioner.audio_capture import AudioCapture
+        from obs_captioner.config import AudioConfig
+
+        cfg = AudioConfig(enable_agc=True, agc_target_db=-18.0, agc_max_gain_db=18.0)
+        capture = AudioCapture(cfg)
+
+        # 1. Test quiet speech signal (-35 dBFS RMS)
+        # 1600 samples (100ms at 16kHz)
+        t = np.linspace(0, 0.1, 1600, endpoint=False)
+        quiet_amp = 10.0 ** (-35.0 / 20.0)  # ~0.0177
+        quiet_signal = (quiet_amp * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
+
+        # Apply AGC over several blocks to let the attack/gain smoothly settle
+        out = quiet_signal
+        for _ in range(10):
+            out = capture._apply_agc_and_limiter(quiet_signal)
+
+        out_rms = float(np.sqrt(np.mean(out ** 2)))
+        out_db = 20.0 * math.log10(out_rms)
+        # Should be boosted well above -35 dBFS toward -18 dBFS
+        self.assertGreater(out_db, -30.0)
+        self.assertGreater(capture._agc_gain, 1.0)
+
+        # 2. Test loud shouting with spikes (+3 dBFS peak signal)
+        loud_signal = (1.5 * np.sin(2 * np.pi * 440 * t)).astype(np.float32)
+        out_loud = capture._apply_agc_and_limiter(loud_signal)
+        # Peak limiter must strictly keep all samples <= 1.0
+        self.assertLessEqual(np.max(np.abs(out_loud)), 1.0)
+        # Gain should be reduced
+        self.assertLess(capture._agc_gain, 5.0)
+
+        # 3. Test ambient noise floor (-60 dBFS)
+        # Below noise floor (-52 dB), AGC should not boost background hiss
+        noise_amp = 10.0 ** (-65.0 / 20.0)
+        noise_signal = (noise_amp * np.random.randn(1600)).astype(np.float32)
+        capture._agc_gain = 1.0
+        out_noise = capture._apply_agc_and_limiter(noise_signal)
+        # Gain should not skyrocket to max_gain
+        self.assertLess(capture._agc_gain, 1.5)
+
+    def test_audio_watchdog_silence_padding_in_recovery(self):
+        from obs_captioner.audio_capture import AudioCapture
+        from obs_captioner.config import AudioConfig
+        cfg = AudioConfig()
+        capture = AudioCapture(cfg)
+
+        capture._running = True
+        capture.is_recovering = True
+
+        async def check_generator():
+            chunks = []
+            gen = capture.stream_generator()
+            # Grab first 3 chunks while in recovering state
+            for _ in range(3):
+                chunk = await gen.__anext__()
+                chunks.append(chunk)
+            capture._running = False
+            await gen.aclose()
+            return chunks
+
+        loop = asyncio.new_event_loop()
+        try:
+            silence_chunks = loop.run_until_complete(check_generator())
+            self.assertEqual(len(silence_chunks), 3)
+            for c in silence_chunks:
+                # Must be 100ms chunk of zeros (silence padding)
+                self.assertEqual(len(c), capture.chunk_samples * 2)
+                self.assertEqual(c, b"\x00" * (capture.chunk_samples * 2))
+        finally:
+            loop.close()
+
+    def test_multi_language_tagalog_and_qr_lang_query(self):
+        from obs_captioner.translator import SUPPORTED_LANGUAGES, SubtitleTranslator
+        self.assertIn("tl", SUPPORTED_LANGUAGES)
+        self.assertEqual(SUPPORTED_LANGUAGES["tl"], "Tagalog / Filipino")
+
+        from obs_captioner.qr_generator import generate_qr_svg
+        url = "http://192.168.1.100:8765/display?lang=es"
+        svg = generate_qr_svg(url)
+        self.assertIn("<svg", svg)
+        self.assertIn("</svg>", svg)
+
 
 if __name__ == "__main__":
     unittest.main()

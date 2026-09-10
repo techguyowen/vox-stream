@@ -40,6 +40,9 @@ class AudioConfig:
     max_sentence_duration_seconds: float = 7.0  # Max duration of continuous speech in seconds before forcing a break (default 7.0s)
     max_sentence_words: int = 24  # Max word count before forcing a sentence break (default 24 words)
     suppress_music: bool = True  # Stop/pause captioning when worship music, preludes, or singing is detected
+    enable_agc: bool = True  # Broadcast Speech AGC: normalizes soft prayers & loud shouting into speech recognition window
+    agc_target_db: float = -18.0  # Target RMS speech level in dBFS (-24 to -14 optimal for STT)
+    agc_max_gain_db: float = 18.0  # Max gain boost in dB for quiet speech/whispers
 
 
 @dataclass
@@ -138,6 +141,9 @@ class OBSConfig:
     auto_record_subtitles: bool = True  # Auto-save synchronized .srt sidecar file when OBS records
     record_subtitles_format: str = "srt"  # "srt", "vtt", or "both"
     record_subtitles_directory: str = ""  # Custom directory path or leave blank for OBS record directory/user Videos
+    scene_auto_mute_enabled: bool = False  # Auto-pause captions on music/video scenes and auto-resume on speaking scenes
+    scene_muted_names: List[str] = field(default_factory=list)  # OBS scenes where captions should be muted/paused
+    scene_active_names: List[str] = field(default_factory=list)  # OBS scenes where captions should be active/resumed
 
 
 @dataclass

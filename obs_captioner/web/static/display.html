@@ -627,6 +627,7 @@
                 <option value="tr">Türkçe</option>
                 <option value="uk">Українська</option>
                 <option value="vi">Tiếng Việt</option>
+                <option value="tl">🇵🇭 Tagalog</option>
             </select>
         </div>
     </header>
@@ -1474,7 +1475,9 @@
                         let text = (data.text || '').trim();
                         if (!text) return;
 
-                        if (currentLang !== 'en') {
+                        // When connected with ?lang=XX, server WebSocket already delivers pre-translated text in data.text
+                        // with original English in data.original_text. Fallback to HTTP translation only if text is untranslated.
+                        if (currentLang !== 'en' && !data.original_text && text) {
                             try {
                                 const res = await fetch(`/api/translate?text=${encodeURIComponent(text)}&target=${encodeURIComponent(currentLang)}`);
                                 if (res.ok) {

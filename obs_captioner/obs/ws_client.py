@@ -36,6 +36,8 @@ class OBSWebSocketClient:
         self._closing = False
         self.on_stream_state_changed: Optional[Callable[[bool], None]] = None
         self.on_record_state_changed: Optional[Callable[[bool], None]] = None
+        self.on_scene_changed: Optional[Callable[[str], None]] = None
+        self.current_scene: Optional[str] = None
 
     async def connect(self) -> bool:
         """Connect and authenticate with OBS WebSocket v5, starting auto-reconnector."""
@@ -72,7 +74,7 @@ class OBSWebSocketClient:
             # 2. Build OpCode 1 (Identify)
             identify_d = {
                 "rpcVersion": 1,
-                "eventSubscriptions": 1 | 64,  # General | Outputs
+                "eventSubscriptions": 1 | 4 | 64,  # General (1) | Scenes (4) | Outputs (64)
             }
 
             if auth_info:
@@ -158,6 +160,16 @@ class OBSWebSocketClient:
                                 self.on_record_state_changed(active, output_path)
                             except TypeError:
                                 self.on_record_state_changed(active)
+
+                    elif event_type == "CurrentProgramSceneChanged":
+                        scene_name = event_payload.get("sceneName", "")
+                        self.current_scene = scene_name
+                        logger.info(f"OBS Program Scene Changed: '{scene_name}'")
+                        if self.on_scene_changed:
+                            try:
+                                self.on_scene_changed(scene_name)
+                            except Exception as ex:
+                                logger.error(f"Error in on_scene_changed callback: {ex}")
 
                 # OpCode 7: RequestResponse
                 elif op == 7:
@@ -311,6 +323,32 @@ class OBSWebSocketClient:
                     m["monitorIndex"] = idx
             return monitors
         return []
+
+    async def get_scene_list(self) -> dict:
+        """Query current program scene and list of available scenes from OBS Studio."""
+        if not self.is_connected:
+            return {"connected": False, "current_scene": self.current_scene or "", "scenes": []}
+
+        res = await self.send_request("GetSceneList", {})
+        if res and res.get("requestStatus", {}).get("result", False):
+            resp_data = res.get("responseData", {})
+            current_scene = resp_data.get("currentProgramSceneName", "")
+            if current_scene:
+                self.current_scene = current_scene
+            raw_scenes = resp_data.get("scenes", [])
+            # In OBS WebSocket v5, scenes is a list of dicts: [{"sceneName": "...", "sceneIndex": 0}, ...]
+            scene_names = []
+            for s in raw_scenes:
+                if isinstance(s, dict) and "sceneName" in s:
+                    scene_names.append(s["sceneName"])
+                elif isinstance(s, str):
+                    scene_names.append(s)
+            return {
+                "connected": True,
+                "current_scene": current_scene or self.current_scene or "",
+                "scenes": scene_names,
+            }
+        return {"connected": self.is_connected, "current_scene": self.current_scene or "", "scenes": []}
 
     async def handle_auto_projector(self):
         """Auto-open projector if configured."""
