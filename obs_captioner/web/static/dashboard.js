@@ -1153,33 +1153,73 @@ async function loadConfig() {
     }
 }
 
+// Theme Presets & Category Filters
+let cachedThemePresets = [];
+let activeThemeCategory = "all";
+
+function setupPresetCategoryFilters() {
+    const bar = document.getElementById("preset-filter-bar");
+    if (!bar) return;
+    bar.querySelectorAll(".preset-cat-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            bar.querySelectorAll(".preset-cat-btn").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            activeThemeCategory = btn.dataset.category || "all";
+            renderFilteredThemeGrid();
+        });
+    });
+}
+
 // Load Theme Presets
 async function loadThemes() {
     try {
         const res = await fetch("/api/presets");
         if (res.ok) {
             const data = await res.json();
-            renderThemeGrid(data.presets || []);
+            cachedThemePresets = data.presets || [];
+            renderFilteredThemeGrid();
         }
     } catch (e) {
         console.error("Failed to load themes:", e);
     }
 }
 
-function renderThemeGrid(presets) {
+function renderFilteredThemeGrid() {
     const grid = document.getElementById("theme-grid");
     if (!grid) return;
 
-    grid.innerHTML = presets.map(p => `
+    let filtered = cachedThemePresets;
+    if (activeThemeCategory && activeThemeCategory !== "all") {
+        filtered = cachedThemePresets.filter(p => {
+            if (p.is_custom) return true;
+            const cat = p.category || "cinema";
+            return cat === activeThemeCategory;
+        });
+    }
+
+    const catLabels = {
+        broadcast: "📺 Broadcast",
+        sanctuary: "⛪ Sanctuary",
+        cinema: "🎬 Stream/Cinema",
+        accessibility: "♿ Accessibility",
+    };
+
+    grid.innerHTML = filtered.map(p => {
+        const catBadge = p.is_custom
+            ? '<span style="font-size: 10px; background: rgba(99, 102, 241, 0.2); color: #A5B4FC; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 6px; font-weight: 600;">Custom Preset</span>'
+            : (catLabels[p.category] ? `<span class="theme-card-cat-tag">${catLabels[p.category]}</span>` : '');
+
+        return `
         <div class="theme-card ${p.id === activeThemeId ? 'active' : ''}" data-theme-id="${escapeHtml(p.id)}">
             <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;">
                 <div class="theme-card-name">${escapeHtml(p.name)}</div>
                 ${p.is_custom ? `<button class="btn-icon-del btn-del-preset" data-del-preset="${escapeHtml(p.id)}" title="Delete Custom Preset" style="padding: 2px 6px; font-size: 11px; border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 4px; background: rgba(239, 68, 68, 0.15); color: #EF4444; cursor: pointer;">🗑️</button>` : ''}
             </div>
+            ${catBadge}
             <div class="theme-card-desc">${escapeHtml(p.description)}</div>
-            ${p.is_custom ? '<span style="font-size: 10px; background: rgba(99, 102, 241, 0.2); color: #A5B4FC; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-top: 6px; font-weight: 600;">Custom Preset</span>' : ''}
         </div>
-    `).join("");
+        `;
+    }).join("");
 
     grid.querySelectorAll(".theme-card").forEach(card => {
         card.addEventListener("click", async (e) => {
@@ -1203,9 +1243,6 @@ function renderThemeGrid(presets) {
                 if (res.ok) {
                     showToast("🗑️ Custom preset deleted.", "info");
                     await loadThemes();
-    initBibleHandlers();
-    initFeatureManagerHandlers();
-    setupA11yPresets();
                 } else {
                     const err = await res.json();
                     showToast(`⚠️ Failed to delete preset: ${err.error || "Unknown error"}`, "error");
@@ -1215,6 +1252,11 @@ function renderThemeGrid(presets) {
             }
         });
     });
+}
+
+function renderThemeGrid(presets) {
+    cachedThemePresets = presets || [];
+    renderFilteredThemeGrid();
 }
 
 async function applyThemePreset(themeId) {
@@ -4027,6 +4069,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
 
     await loadConfig();
+    setupPresetCategoryFilters();
     await loadThemes();
     initBibleHandlers();
     initFeatureManagerHandlers();

@@ -97,6 +97,12 @@ class TestThemes(unittest.TestCase):
         all_presets = get_all_presets()
         self.assertEqual(len(all_presets), 14)
 
+    def test_preset_categories(self):
+        valid_cats = {"broadcast", "sanctuary", "cinema", "accessibility"}
+        for p_id, p in THEME_PRESETS.items():
+            self.assertTrue(hasattr(p, "category"), f"Preset {p_id} missing category")
+            self.assertIn(p.category, valid_cats, f"Preset {p_id} has invalid category {p.category}")
+
     def test_apply_theme_to_overlay(self):
         ov = OverlayConfig()
         ov.apply_theme("sanctuary_worship")
