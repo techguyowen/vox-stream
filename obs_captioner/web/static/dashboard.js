@@ -1136,91 +1136,110 @@ if (btnCopyQrUrl && qrDirectUrl) {
 }
 
 // --- Google Gemini API Key Help & Setup Modal ---
-const modalGeminiKey = document.getElementById("modal-gemini-key");
-const btnCloseGeminiModal = document.getElementById("btn-close-gemini-modal");
-const btnDoneGeminiModal = document.getElementById("btn-done-gemini-modal");
-const btnModalSaveGeminiKey = document.getElementById("btn-modal-save-gemini-key");
-const modalGeminiKeyInput = document.getElementById("modal-gemini-key-input");
-
 function openGeminiKeyModal() {
-    if (modalGeminiKey) {
-        modalGeminiKey.style.display = "flex";
-        if (modalGeminiKeyInput) {
-            modalGeminiKeyInput.value = "";
-            modalGeminiKeyInput.focus();
+    const modal = document.getElementById("modal-gemini-key");
+    const input = document.getElementById("modal-gemini-key-input");
+    if (modal) {
+        modal.style.display = "flex";
+        if (input) {
+            input.value = "";
+            setTimeout(() => input.focus(), 60);
         }
     }
 }
 
 function closeGeminiKeyModal() {
-    if (modalGeminiKey) modalGeminiKey.style.display = "none";
+    const modal = document.getElementById("modal-gemini-key");
+    if (modal) modal.style.display = "none";
 }
 
-document.querySelectorAll(".btn-open-gemini-key-modal").forEach(btn => {
-    btn.addEventListener("click", openGeminiKeyModal);
-});
-
-if (btnCloseGeminiModal) btnCloseGeminiModal.addEventListener("click", closeGeminiKeyModal);
-if (btnDoneGeminiModal) btnDoneGeminiModal.addEventListener("click", closeGeminiKeyModal);
-if (modalGeminiKey) {
-    modalGeminiKey.addEventListener("click", (e) => {
-        if (e.target === modalGeminiKey) closeGeminiKeyModal();
-    });
-}
-
-window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-        closeDisplayQrModal();
+// Delegated click handler for Gemini modal triggers, close buttons, and backdrop
+document.addEventListener("click", (e) => {
+    // Open trigger buttons
+    if (e.target.closest(".btn-open-gemini-key-modal")) {
+        e.preventDefault();
+        openGeminiKeyModal();
+        return;
+    }
+    // Close trigger buttons
+    if (e.target.closest("#btn-close-gemini-modal") || e.target.closest("#btn-done-gemini-modal")) {
+        e.preventDefault();
         closeGeminiKeyModal();
+        return;
+    }
+    // Backdrop click
+    const modal = document.getElementById("modal-gemini-key");
+    if (modal && e.target === modal) {
+        closeGeminiKeyModal();
+        return;
+    }
+    // Save key button inside modal
+    if (e.target.closest("#btn-modal-save-gemini-key")) {
+        e.preventDefault();
+        saveGeminiKeyFromModal();
     }
 });
 
-if (btnModalSaveGeminiKey && modalGeminiKeyInput) {
-    btnModalSaveGeminiKey.addEventListener("click", async () => {
-        const key = (modalGeminiKeyInput.value || "").trim();
-        if (!key) {
-            showToast("Please enter or paste your API key first.", "warning", 2000);
-            return;
-        }
-        try {
-            const origText = btnModalSaveGeminiKey.innerHTML;
+// Keyboard accessibility: Escape to close, Enter to submit
+window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+        if (typeof closeDisplayQrModal === "function") closeDisplayQrModal();
+        closeGeminiKeyModal();
+    } else if (e.key === "Enter" && e.target && e.target.id === "modal-gemini-key-input") {
+        e.preventDefault();
+        saveGeminiKeyFromModal();
+    }
+});
+
+async function saveGeminiKeyFromModal() {
+    const modalGeminiKeyInput = document.getElementById("modal-gemini-key-input");
+    const btnModalSaveGeminiKey = document.getElementById("btn-modal-save-gemini-key");
+    const key = (modalGeminiKeyInput ? modalGeminiKeyInput.value : "").trim();
+    if (!key) {
+        showToast("Please enter or paste your API key first.", "warning", 2000);
+        return;
+    }
+    try {
+        if (btnModalSaveGeminiKey) {
             btnModalSaveGeminiKey.innerHTML = "Saving...";
             btnModalSaveGeminiKey.disabled = true;
+        }
 
-            const payload = {
-                gemini_live: { api_key: key },
-                summary: { gemini_api_key: key }
-            };
+        const payload = {
+            gemini_live: { api_key: key },
+            summary: { gemini_api_key: key }
+        };
 
-            const resp = await fetch("/api/config", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-            });
+        const resp = await fetch("/api/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
 
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
-            // Update Tab 1 UI
-            const tab1KeyInput = document.getElementById("gemini_api_key");
-            const keyStatus = document.getElementById("gemini_key_status");
-            if (tab1KeyInput) tab1KeyInput.value = "••••••••••••";
-            if (keyStatus) keyStatus.style.display = "inline";
+        // Update Tab 1 UI
+        const tab1KeyInput = document.getElementById("gemini_api_key");
+        const keyStatus = document.getElementById("gemini_key_status");
+        if (tab1KeyInput) tab1KeyInput.value = "••••••••••••";
+        if (keyStatus) keyStatus.style.display = "inline";
 
-            // Update summary status
-            if (typeof checkSummaryStatus === "function") {
-                await checkSummaryStatus();
-            }
+        // Update summary status
+        if (typeof checkSummaryStatus === "function") {
+            await checkSummaryStatus();
+        }
 
-            showToast("✓ Google Gemini API Key saved and activated!", "success", 3000);
-            closeGeminiKeyModal();
-        } catch (err) {
-            console.error("Failed to save API key:", err);
-            showToast("Error saving API key.", "error", 3000);
-        } finally {
+        showToast("✓ Google Gemini API Key saved and activated!", "success", 3000);
+        closeGeminiKeyModal();
+    } catch (err) {
+        console.error("Failed to save API key:", err);
+        showToast("Error saving API key.", "error", 3000);
+    } finally {
+        if (btnModalSaveGeminiKey) {
             btnModalSaveGeminiKey.innerHTML = "Save Key";
             btnModalSaveGeminiKey.disabled = false;
         }
-    });
+    }
 }
 
 // Preview Elements
@@ -3994,6 +4013,10 @@ async function checkSummaryStatus() {
                     badgeEl.style.color = "#818CF8";
                     badgeEl.style.border = "1px solid rgba(99, 102, 241, 0.35)";
                 }
+            }
+            const promptEl = document.getElementById("summary-gemini-key-prompt");
+            if (promptEl) {
+                promptEl.style.display = data.gemini_available ? "none" : "block";
             }
         }
     } catch (e) {
