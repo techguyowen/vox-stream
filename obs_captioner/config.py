@@ -261,6 +261,19 @@ class UpdateConfig:
 
 
 @dataclass
+class SummaryConfig:
+    enabled: bool = True
+    provider: str = "auto"  # "auto", "gemini", "ollama", "heuristic"
+    gemini_model: str = "gemini-2.0-flash"
+    gemini_api_key: str = ""
+    ollama_url: str = "http://localhost:11434"
+    ollama_model: str = "llama3.2"
+    include_discussion_questions: bool = True
+    include_scriptures: bool = True
+    include_quotes: bool = True
+
+
+@dataclass
 class AppConfig:
     general: GeneralConfig = field(default_factory=GeneralConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
@@ -283,6 +296,7 @@ class AppConfig:
     bible: BibleConfig = field(default_factory=BibleConfig)
     api: APIConfig = field(default_factory=APIConfig)
     update: UpdateConfig = field(default_factory=UpdateConfig)
+    summary: SummaryConfig = field(default_factory=SummaryConfig)
 
 
 _current_config_path: Optional[str] = None
@@ -355,14 +369,18 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         bible=_safe_dataclass_load(BibleConfig, data.get("bible")),
         api=_safe_dataclass_load(APIConfig, data.get("api")),
         update=_safe_dataclass_load(UpdateConfig, data.get("update")),
+        summary=_safe_dataclass_load(SummaryConfig, data.get("summary")),
     )
 
     # Environment variable overrides
     if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS") and not cfg.google_stt.credentials_path:
         cfg.google_stt.credentials_path = os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
 
-    if os.environ.get("GEMINI_API_KEY") and not cfg.gemini_live.api_key:
-        cfg.gemini_live.api_key = os.environ["GEMINI_API_KEY"]
+    if os.environ.get("GEMINI_API_KEY"):
+        if not cfg.gemini_live.api_key:
+            cfg.gemini_live.api_key = os.environ["GEMINI_API_KEY"]
+        if not cfg.summary.gemini_api_key:
+            cfg.summary.gemini_api_key = os.environ["GEMINI_API_KEY"]
 
     if os.environ.get("BANDWIDTH_API_KEY") and not cfg.bandwidth.api_key:
         cfg.bandwidth.api_key = os.environ["BANDWIDTH_API_KEY"]

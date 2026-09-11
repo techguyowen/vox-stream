@@ -1,6 +1,7 @@
 """Comprehensive unit test suite for OBS Live Captioner PRO Suite."""
 
 import asyncio
+import json
 import math
 from pathlib import Path
 import shutil
@@ -2714,7 +2715,136 @@ class TestSubtitleRecorder(unittest.TestCase):
         self.assertIn("</svg>", svg)
 
 
+class TestSermonSummaryAndAIChapters(unittest.TestCase):
+    """Test suite for optional AI Sermon Summary and Semantic YouTube Chapters."""
+
+    def setUp(self):
+        from obs_captioner.summary_engine import SermonSummaryEngine, SummaryConfig
+        from obs_captioner.history import TranscriptHistory
+        self.history = TranscriptHistory()
+        self.config = SummaryConfig(enabled=True, provider="heuristic")
+        self.engine = SermonSummaryEngine(self.config, self.history)
+
+    def test_summary_config_defaults_and_masking(self):
+        from obs_captioner.config import AppConfig, SummaryConfig, load_config
+        cfg = AppConfig()
+        self.assertTrue(hasattr(cfg, "summary"))
+        self.assertTrue(cfg.summary.enabled)
+        self.assertEqual(cfg.summary.provider, "auto")
+        self.assertEqual(cfg.summary.gemini_model, "gemini-2.0-flash")
+
+    def test_empty_transcript_handling(self):
+        loop = asyncio.new_event_loop()
+        try:
+            summary = loop.run_until_complete(self.engine.generate_sermon_summary())
+            self.assertIn("No Spoken Transcript", summary["title"])
+            self.assertEqual(summary["provider_used"], "none")
+
+            chapters = loop.run_until_complete(self.engine.generate_ai_chapters())
+            self.assertIn("chapters", chapters)
+            self.assertEqual(len(chapters["chapters"]), 1)
+            self.assertEqual(chapters["chapters"][0]["seconds"], 0.0)
+        finally:
+            loop.close()
+
+    def test_heuristic_sermon_summary_generation(self):
+        # Populate realistic Sunday service transcript
+        t0 = 1000.0
+        self.history.add_entry("Welcome to church everyone, so glad you are with us.", start_time=t0, end_time=t0 + 5.0)
+        self.history.add_entry("Today's message is called Walking in Victory.", start_time=t0 + 10.0, end_time=t0 + 15.0)
+        self.history.add_entry("Please turn your Bibles to Romans 8 verse 28.", start_time=t0 + 30.0, end_time=t0 + 35.0)
+        self.history.add_entry("Point number one: Faith requires complete surrender to Christ.", start_time=t0 + 120.0, end_time=t0 + 125.0)
+        self.history.add_entry("Point number two: God works all things together for our good.", start_time=t0 + 240.0, end_time=t0 + 245.0)
+        self.history.add_entry("Faith is not the absence of trials, but trusting God in the storm.", start_time=t0 + 300.0, end_time=t0 + 305.0)
+        self.history.add_entry("In conclusion, let us bow our heads in prayer together.", start_time=t0 + 400.0, end_time=t0 + 405.0)
+
+        loop = asyncio.new_event_loop()
+        try:
+            summary = loop.run_until_complete(self.engine.generate_sermon_summary())
+            self.assertEqual(summary["provider_used"], "heuristic")
+            self.assertIn("Walking In Victory", summary["title"])
+            self.assertIn("Romans 8:28", summary["scriptures"])
+            self.assertTrue(len(summary["key_points"]) >= 2)
+            self.assertTrue(len(summary["discussion_questions"]) >= 3)
+            self.assertIn("# 📖", summary["markdown"])
+            self.assertIn("TIMESTAMPS:", summary["youtube_description"])
+            self.assertIn("SERMON RECAP:", summary["bulletin_text"])
+        finally:
+            loop.close()
+
+    def test_ai_chapters_strict_youtube_compliance(self):
+        t0 = 2000.0
+        self.history.add_entry("Praise the Lord, welcome this morning.", start_time=t0, end_time=t0 + 5.0)
+        self.history.add_entry("Let us open with a word of prayer.", start_time=t0 + 20.0, end_time=t0 + 25.0)
+        self.history.add_entry("Turn with me to John chapter 3 verse 16.", start_time=t0 + 80.0, end_time=t0 + 85.0)
+        self.history.add_entry("Point number one: God's love is unconditional.", start_time=t0 + 200.0, end_time=t0 + 205.0)
+
+        loop = asyncio.new_event_loop()
+        try:
+            result = loop.run_until_complete(self.engine.generate_ai_chapters(
+                format_style="hhmmss",
+                min_interval_seconds=30.0,
+            ))
+            chapters = result["chapters"]
+            self.assertTrue(result["youtube_compliant"])
+            self.assertTrue(len(chapters) >= 3, "YouTube strictly requires at least 3 chapters")
+            self.assertEqual(chapters[0]["seconds"], 0.0)
+            self.assertEqual(chapters[0]["timecode"], "00:00:00")
+
+            # Check strictly ascending order
+            for i in range(len(chapters) - 1):
+                self.assertLess(chapters[i]["seconds"], chapters[i + 1]["seconds"])
+
+            self.assertIn("00:00:00 -", result["formatted"])
+        finally:
+            loop.close()
+
+    def test_webserver_summary_endpoints(self):
+        from obs_captioner.config import AppConfig
+        from obs_captioner.web.server import WebServer
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            cfg = AppConfig()
+            cfg.overlay.enabled = True
+            cfg.overlay.port = 19876
+            cfg.summary.provider = "heuristic"
+            server = WebServer(cfg, history=self.history)
+
+            self.history.add_entry("Welcome to our church gathering.", start_time=100.0, end_time=105.0)
+            self.history.add_entry("Today we read Matthew chapter 5.", start_time=120.0, end_time=125.0)
+            self.history.add_entry("Point 1: Be salt and light in this world.", start_time=200.0, end_time=205.0)
+
+            async def run_checks():
+                # 1. Summary status endpoint
+                status_res = server.summary_engine.get_status()
+                self.assertTrue(status_res["heuristic_available"])
+
+                # 2. AI chapters endpoint handler
+                class FakeRequest:
+                    remote = "127.0.0.1"
+                    method = "GET"
+                    query = {"format": "hhmmss"}
+                    async def json(self): return {}
+
+                resp_chapters = await server._handle_ai_chapters(FakeRequest())
+                data_chapters = json.loads(resp_chapters.text)
+                self.assertTrue(data_chapters["youtube_compliant"])
+
+                # 3. Sermon summary endpoint handler
+                resp_summary = await server._handle_sermon_summary(FakeRequest())
+                data_summary = json.loads(resp_summary.text)
+                self.assertIn("Matthew 5", ", ".join(data_summary["scriptures"]))
+                self.assertIn("markdown", data_summary)
+
+            loop.run_until_complete(run_checks())
+        finally:
+            loop.close()
+
+
 if __name__ == "__main__":
     unittest.main()
+
 
 

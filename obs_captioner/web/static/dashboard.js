@@ -3672,6 +3672,221 @@ if (btnDownloadChapters) {
     });
 }
 
+// --- Semantic AI YouTube Chapters ---
+const btnGenerateAIChapters = document.getElementById("btn-generate-ai-chapters");
+if (btnGenerateAIChapters) {
+    btnGenerateAIChapters.addEventListener("click", async () => {
+        const origText = btnGenerateAIChapters.innerHTML;
+        btnGenerateAIChapters.innerHTML = "✨ Analyzing...";
+        btnGenerateAIChapters.disabled = true;
+
+        const anchor = document.getElementById("select-chapter-anchor")?.value || "first_speech";
+        const interval = parseFloat(document.getElementById("select-chapter-interval")?.value || 45.0);
+        const offset = parseFloat(document.getElementById("input-chapter-offset")?.value || 0.0);
+        const format = document.getElementById("select-chapter-format")?.value || "hhmmss";
+        const provider = document.getElementById("select-summary-provider")?.value || "auto";
+
+        try {
+            const resp = await fetch("/api/transcript/ai-chapters", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    anchor: anchor,
+                    min_interval: interval,
+                    offset: offset,
+                    format: format,
+                    provider: provider,
+                }),
+            });
+            if (!resp.ok) {
+                throw new Error(`HTTP ${resp.status}`);
+            }
+            const data = await resp.json();
+            const chaptersTextEl = document.getElementById("youtube-chapters-text");
+            const badgeEl = document.getElementById("youtube-chapters-badge");
+            const countEl = document.getElementById("youtube-chapters-char-count");
+
+            if (chaptersTextEl && data.formatted) {
+                chaptersTextEl.value = data.formatted;
+            }
+            if (countEl) {
+                countEl.textContent = `${data.count || 0} chapter${(data.count || 0) === 1 ? "" : "s"} (${(data.provider_used || "AI").toUpperCase()})`;
+            }
+            if (badgeEl) {
+                badgeEl.textContent = `✨ AI Ready (${data.count || 0} Chapters)`;
+                badgeEl.style.background = "rgba(99, 102, 241, 0.2)";
+                badgeEl.style.color = "#818CF8";
+                badgeEl.style.border = "1px solid rgba(99, 102, 241, 0.4)";
+            }
+            showToast(`✨ AI chapters generated via ${(data.provider_used || "engine").toUpperCase()}!`, "success", 3000);
+        } catch (err) {
+            console.error("AI chapter generation failed:", err);
+            showToast("Failed to generate AI chapters. Falling back to refresh.", "error", 3000);
+            await loadYouTubeChapters();
+        } finally {
+            btnGenerateAIChapters.innerHTML = origText;
+            btnGenerateAIChapters.disabled = false;
+        }
+    });
+}
+
+// --- AI Sermon Summary & Bulletin Recap ---
+let currentSummaryData = null;
+
+const btnGenerateSummary = document.getElementById("btn-generate-summary");
+if (btnGenerateSummary) {
+    btnGenerateSummary.addEventListener("click", async () => {
+        const loadingEl = document.getElementById("summary-loading");
+        const previewEl = document.getElementById("summary-preview");
+        const actionBarEl = document.getElementById("summary-action-bar");
+        const badgeEl = document.getElementById("summary-provider-badge");
+        const provider = document.getElementById("select-summary-provider")?.value || "auto";
+
+        const origBtnText = btnGenerateSummary.innerHTML;
+        btnGenerateSummary.innerHTML = "✨ Generating...";
+        btnGenerateSummary.disabled = true;
+
+        if (loadingEl) loadingEl.style.display = "block";
+        if (previewEl) previewEl.style.display = "none";
+        if (actionBarEl) actionBarEl.style.display = "none";
+
+        try {
+            const resp = await fetch("/api/transcript/summary", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ provider: provider }),
+            });
+            if (!resp.ok) {
+                throw new Error(`HTTP ${resp.status}`);
+            }
+            const data = await resp.json();
+            currentSummaryData = data;
+
+            if (badgeEl) {
+                badgeEl.textContent = `✨ ${(data.provider_used || "READY").toUpperCase()}`;
+                badgeEl.style.background = "rgba(16, 185, 129, 0.15)";
+                badgeEl.style.color = "#10B981";
+                badgeEl.style.border = "1px solid rgba(16, 185, 129, 0.35)";
+            }
+
+            // Render Preview HTML
+            if (previewEl) {
+                let html = `
+                    <div style="margin-bottom: 12px;">
+                        <h3 style="margin: 0 0 6px 0; color: #F8FAFC; font-size: 18px;">📖 ${escapeHtml(data.title || "Sunday Sermon Message")}</h3>
+                        <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px;">
+                `;
+
+                if (data.scriptures && data.scriptures.length > 0) {
+                    data.scriptures.forEach(s => {
+                        html += `<span class="badge" style="background: rgba(99, 102, 241, 0.2); color: #A5B4FC; border: 1px solid rgba(99, 102, 241, 0.3); font-size: 11px; padding: 2px 8px; border-radius: 4px;">📜 ${escapeHtml(s)}</span>`;
+                    });
+                }
+
+                html += `
+                        </div>
+                        <div style="background: rgba(255, 255, 255, 0.04); border-left: 3px solid #8B5CF6; padding: 8px 12px; border-radius: 0 6px 6px 0; margin-bottom: 14px;">
+                            <strong style="color: #C084FC; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; display: block;">The Big Idea:</strong>
+                            <div style="color: #E2E8F0; font-size: 13.5px; margin-top: 2px;">${escapeHtml(data.big_idea || "")}</div>
+                        </div>
+                    </div>
+                `;
+
+                if (data.key_points && data.key_points.length > 0) {
+                    html += `<h4 style="margin: 14px 0 8px 0; color: #94A3B8; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;">📌 Key Teaching Points:</h4><ul style="margin: 0 0 14px 0; padding-left: 20px;">`;
+                    data.key_points.forEach(p => {
+                        html += `
+                            <li style="margin-bottom: 6px;">
+                                <strong style="color: #F1F5F9;">[${escapeHtml(p.timecode || "")}] ${escapeHtml(p.title || "")}</strong>
+                                ${p.description ? `<div style="color: #94A3B8; font-size: 12.5px; margin-top: 2px;">${escapeHtml(p.description)}</div>` : ""}
+                            </li>
+                        `;
+                    });
+                    html += `</ul>`;
+                }
+
+                if (data.quotes && data.quotes.length > 0) {
+                    html += `<h4 style="margin: 14px 0 8px 0; color: #94A3B8; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;">💬 Notable Quotes:</h4>`;
+                    data.quotes.forEach(q => {
+                        html += `<blockquote style="margin: 0 0 8px 0; border-left: 2px solid #EC4899; padding-left: 10px; color: #CBD5E1; font-style: italic;">${escapeHtml(q)}</blockquote>`;
+                    });
+                }
+
+                if (data.discussion_questions && data.discussion_questions.length > 0) {
+                    html += `<h4 style="margin: 14px 0 8px 0; color: #94A3B8; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;">🤝 Small Group Questions:</h4><ol style="margin: 0; padding-left: 20px;">`;
+                    data.discussion_questions.forEach(q => {
+                        html += `<li style="margin-bottom: 4px; color: #E2E8F0;">${escapeHtml(q)}</li>`;
+                    });
+                    html += `</ol>`;
+                }
+
+                previewEl.innerHTML = html;
+            }
+
+            if (actionBarEl) actionBarEl.style.display = "flex";
+            showToast(`📖 Sermon recap generated via ${(data.provider_used || "engine").toUpperCase()}!`, "success", 3000);
+        } catch (err) {
+            console.error("Sermon summary generation failed:", err);
+            showToast("Failed to generate sermon summary. Please check speech transcript.", "error", 3000);
+            if (previewEl) {
+                previewEl.innerHTML = `<div style="color: #EF4444; padding: 12px; text-align: center;">Error generating summary. Ensure at least a few spoken sentences have been recorded.</div>`;
+            }
+        } finally {
+            if (loadingEl) loadingEl.style.display = "none";
+            if (previewEl) previewEl.style.display = "block";
+            btnGenerateSummary.innerHTML = origBtnText;
+            btnGenerateSummary.disabled = false;
+        }
+    });
+}
+
+// Summary Action Buttons
+const copyHelper = async (text, successMsg) => {
+    if (!text) {
+        showToast("No summary content to copy.", "warning", 2000);
+        return;
+    }
+    try {
+        await navigator.clipboard.writeText(text);
+        showToast(successMsg, "success", 3000);
+    } catch (e) {
+        showToast("Clipboard access failed.", "error", 2000);
+    }
+};
+
+document.getElementById("btn-copy-summary-markdown")?.addEventListener("click", () => {
+    if (currentSummaryData) copyHelper(currentSummaryData.markdown, "📋 Full recap copied to clipboard (Markdown)!");
+});
+
+document.getElementById("btn-copy-summary-youtube")?.addEventListener("click", () => {
+    if (currentSummaryData) copyHelper(currentSummaryData.youtube_description, "📋 YouTube description block copied to clipboard!");
+});
+
+document.getElementById("btn-copy-summary-bulletin")?.addEventListener("click", () => {
+    if (currentSummaryData) copyHelper(currentSummaryData.bulletin_text, "📋 Bulletin outline copied to clipboard!");
+});
+
+document.getElementById("btn-download-summary")?.addEventListener("click", () => {
+    if (!currentSummaryData || !currentSummaryData.markdown) {
+        showToast("No summary to download yet.", "warning", 2000);
+        return;
+    }
+    const text = currentSummaryData.markdown;
+    const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+    const fileName = `sermon_summary_${dateStr}.md`;
+
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+    showToast(`💾 Downloaded ${fileName}!`, "success", 3000);
+});
+
 function escapeHtml(str) {
     if (str === null || str === undefined) return "";
     return String(str)

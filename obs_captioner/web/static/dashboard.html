@@ -1699,6 +1699,7 @@
                             <p class="subtext" style="margin-top: 4px; margin-bottom: 0;">Automatically detects scripture readings, sermon points, prayers, and liturgy into YouTube-ready video description chapters.</p>
                         </div>
                         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button id="btn-generate-ai-chapters" class="btn btn-primary btn-sm" style="background: linear-gradient(135deg, #6366F1, #8B5CF6); border: none; font-weight: 600;" title="Generate semantic AI chapter markers from sermon transcript">✨ AI Chapters</button>
                             <button id="btn-copy-chapters" class="btn btn-secondary btn-sm" title="Copy chapters to clipboard">📋 Copy Chapters</button>
                             <button id="btn-download-chapters" class="btn btn-secondary btn-sm" title="Download chapters as a .txt file">💾 Download .txt</button>
                             <button id="btn-refresh-chapters" class="btn btn-secondary btn-sm" title="Recalculate chapters from live history">🔄 Refresh</button>
@@ -1746,6 +1747,49 @@
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 11px; color: var(--text-muted); flex-wrap: wrap; gap: 6px;">
                         <span>💡 <em>Tip: You can edit, add, or refine any chapter titles directly in the box above before copying into your YouTube description.</em></span>
                         <span id="youtube-chapters-char-count">0 chapters</span>
+                    </div>
+                </div>
+
+                <!-- AI Sermon Summary & Bulletin Card -->
+                <div class="panel" style="margin-top: 20px; border: 1px solid rgba(139, 92, 246, 0.3); background: linear-gradient(180deg, rgba(139, 92, 246, 0.04) 0%, rgba(0, 0, 0, 0) 100%);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                                <h2 style="margin-bottom: 0;">📖 AI Sermon Summary &amp; Bulletin Outline</h2>
+                                <span id="summary-provider-badge" class="badge" style="background: rgba(99, 102, 241, 0.15); color: #818CF8; border: 1px solid rgba(99, 102, 241, 0.35); font-size: 11px; padding: 3px 8px; border-radius: 6px; font-weight: 600;">✨ Ready</span>
+                            </div>
+                            <p class="subtext" style="margin-top: 4px; margin-bottom: 0;">Generates a comprehensive post-service recap: sermon title, scriptures cited, core takeaway, key teaching points with timestamps, quotes, and small-group questions.</p>
+                        </div>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                            <select id="select-summary-provider" class="form-control" style="font-size: 12px; padding: 4px 8px; height: 32px; min-width: 170px;">
+                                <option value="auto" selected>Auto (Gemini or Offline)</option>
+                                <option value="gemini">Google Gemini Flash (Cloud)</option>
+                                <option value="heuristic">Built-in Offline (Zero Setup)</option>
+                                <option value="ollama">Local Ollama LLM</option>
+                            </select>
+                            <button id="btn-generate-summary" class="btn btn-primary btn-sm" style="background: linear-gradient(135deg, #8B5CF6, #EC4899); border: none; font-weight: 600;" title="Generate comprehensive sermon summary from current session transcript">✨ Generate Summary</button>
+                        </div>
+                    </div>
+
+                    <!-- Quick Export Actions (Hidden until summary generated) -->
+                    <div id="summary-action-bar" style="display: none; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; padding: 8px 12px; background: rgba(255, 255, 255, 0.03); border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.07);">
+                        <button id="btn-copy-summary-markdown" class="btn btn-secondary btn-sm" title="Copy full Markdown summary">📋 Copy Full Recap</button>
+                        <button id="btn-copy-summary-youtube" class="btn btn-secondary btn-sm" title="Copy formatted for YouTube video description">📋 Copy for YouTube Description</button>
+                        <button id="btn-copy-summary-bulletin" class="btn btn-secondary btn-sm" title="Copy compact outline for church bulletin / newsletter">📋 Copy for Bulletin</button>
+                        <button id="btn-download-summary" class="btn btn-secondary btn-sm" title="Download summary as markdown file">💾 Download .md</button>
+                    </div>
+
+                    <!-- Summary Loading / Status Indicator -->
+                    <div id="summary-loading" style="display: none; padding: 24px; text-align: center; color: #A5B4FC;">
+                        <div class="spinner" style="display: inline-block; width: 24px; height: 24px; border: 3px solid rgba(139, 92, 246, 0.3); border-top-color: #8B5CF6; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 8px;"></div>
+                        <div style="font-size: 13px; font-weight: 500;">Analyzing sermon transcript and generating recap...</div>
+                    </div>
+
+                    <!-- Summary Content Preview Box -->
+                    <div id="summary-preview" style="background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 16px; min-height: 100px; font-size: 13.5px; line-height: 1.65; color: #E2E8F0;">
+                        <div style="color: var(--text-muted); font-style: italic; text-align: center; padding: 20px 0;">
+                            Click <strong>"✨ Generate Summary"</strong> above to produce an instant post-service recap, bulletin notes, and discussion questions from the live transcript.
+                        </div>
                     </div>
                 </div>
             </div>

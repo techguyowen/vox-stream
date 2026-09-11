@@ -33,6 +33,7 @@ from ..censor import ContentFilter
 from ..history import TranscriptHistory
 from ..themes import THEME_PRESETS, get_all_presets
 from ..translator import SUPPORTED_LANGUAGES, SubtitleTranslator
+from ..summary_engine import SermonSummaryEngine
 from ..vocabulary import VocabularyReplacer
 from ..model_downloader import ModelDownloadManager
 from ..bible_engine import BibleEngine, ScriptureLookupResult
@@ -101,6 +102,7 @@ class WebOverlayServer:
         self.rate_limiter = SimpleRateLimiter(max_requests=300, window_seconds=60.0)
         self.model_downloader = ModelDownloadManager()
         self.bible_engine = BibleEngine()
+        self.summary_engine = SermonSummaryEngine(getattr(self.config, "summary", None), self.history)
         # Rolling snapshot of recent final caption payloads, replayed to newly
         # connected /ws clients so refreshed views aren't blank until the next utterance.
         self._recent_finals: list = []
@@ -194,10 +196,15 @@ class WebOverlayServer:
         self.app.router.add_get("/api/obs/monitors", self._handle_get_monitors)
         self.app.router.add_get("/api/obs/scenes", self._handle_get_scenes)
         
-        # Transcript, Chapters, Translation & Export
+        # Transcript, Chapters, Summary, Translation & Export
         self.app.router.add_get("/api/transcript/history", self._handle_get_history)
         self.app.router.add_get("/api/transcript/stats", self._handle_get_transcript_stats)
         self.app.router.add_get("/api/transcript/chapters", self._handle_get_chapters)
+        self.app.router.add_get("/api/transcript/ai-chapters", self._handle_ai_chapters)
+        self.app.router.add_post("/api/transcript/ai-chapters", self._handle_ai_chapters)
+        self.app.router.add_get("/api/transcript/summary", self._handle_sermon_summary)
+        self.app.router.add_post("/api/transcript/summary", self._handle_sermon_summary)
+        self.app.router.add_get("/api/transcript/summary/status", self._handle_summary_status)
         self.app.router.add_get("/api/transcript/export", self._handle_export_transcript)
         self.app.router.add_post("/api/transcript/clear", self._handle_clear_history)
         self.app.router.add_get("/api/translate", self._handle_translate_text)
@@ -423,6 +430,7 @@ class WebOverlayServer:
         "twitch": ("oauth_token",),
         "obs": ("password",),
         "api": ("api_key",),
+        "summary": ("gemini_api_key",),
     }
 
     def get_masked_config_dict(self) -> dict:
@@ -691,6 +699,82 @@ class WebOverlayServer:
             "anchor": anchor,
             "format": format_style,
         })
+
+    async def _handle_summary_status(self, request: web.Request) -> web.Response:
+        """Return availability and configuration of AI sermon summary & chapter providers."""
+        client_ip = request.remote or "127.0.0.1"
+        if not self.rate_limiter.is_allowed(client_ip):
+            return web.json_response({"error": "Rate limit exceeded"}, status=429)
+        return web.json_response(self.summary_engine.get_status())
+
+    async def _handle_ai_chapters(self, request: web.Request) -> web.Response:
+        """Generate semantic, YouTube-compliant timestamped video chapters using AI or heuristics."""
+        client_ip = request.remote or "127.0.0.1"
+        if not self.rate_limiter.is_allowed(client_ip):
+            return web.json_response({"error": "Rate limit exceeded"}, status=429)
+
+        min_interval = 45.0
+        offset = 0.0
+        anchor = "first_speech"
+        format_style = "hhmmss"
+        provider = None
+
+        if request.method == "POST":
+            try:
+                body = await request.json()
+                min_interval = float(body.get("min_interval", min_interval))
+                offset = float(body.get("offset", offset))
+                anchor = sanitize_text(body.get("anchor", anchor)).strip().lower()
+                format_style = sanitize_text(body.get("format", format_style)).strip().lower()
+                provider = sanitize_text(body.get("provider", "")).strip().lower() or None
+            except Exception:
+                pass
+        else:
+            try:
+                min_interval = float(request.query.get("min_interval", 45.0))
+                offset = float(request.query.get("offset", 0.0))
+                anchor = sanitize_text(request.query.get("anchor", "first_speech")).strip().lower()
+                format_style = sanitize_text(request.query.get("format", "hhmmss")).strip().lower()
+                provider = sanitize_text(request.query.get("provider", "")).strip().lower() or None
+            except Exception:
+                pass
+
+        if anchor not in ("first_speech", "session"):
+            anchor = "first_speech"
+        if format_style not in ("hhmmss", "mmss", "auto"):
+            format_style = "hhmmss"
+
+        result = await self.summary_engine.generate_ai_chapters(
+            entries=self.history.entries,
+            min_interval_seconds=min_interval,
+            time_offset_seconds=offset,
+            anchor=anchor,
+            format_style=format_style,
+            provider_override=provider,
+        )
+        return web.json_response(result)
+
+    async def _handle_sermon_summary(self, request: web.Request) -> web.Response:
+        """Generate comprehensive sermon summary, bulletin outline, and discussion questions."""
+        client_ip = request.remote or "127.0.0.1"
+        if not self.rate_limiter.is_allowed(client_ip):
+            return web.json_response({"error": "Rate limit exceeded"}, status=429)
+
+        provider = None
+        if request.method == "POST":
+            try:
+                body = await request.json()
+                provider = sanitize_text(body.get("provider", "")).strip().lower() or None
+            except Exception:
+                pass
+        else:
+            provider = sanitize_text(request.query.get("provider", "")).strip().lower() or None
+
+        result = await self.summary_engine.generate_sermon_summary(
+            entries=self.history.entries,
+            provider_override=provider,
+        )
+        return web.json_response(result)
 
     async def _handle_translate_text(self, request: web.Request) -> web.Response:
         client_ip = request.remote or "127.0.0.1"
