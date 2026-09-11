@@ -26,16 +26,24 @@ logger = logging.getLogger("obs_captioner.summary_engine")
 class SermonSummaryEngine:
     """Generates structured sermon recaps and YouTube-compliant chapters."""
 
-    def __init__(self, config: Optional[SummaryConfig] = None, history: Optional[TranscriptHistory] = None):
+    def __init__(
+        self,
+        config: Optional[SummaryConfig] = None,
+        history: Optional[TranscriptHistory] = None,
+        app_config: Optional[Any] = None,
+    ):
         self.config = config or SummaryConfig()
         self.history = history
+        self.app_config = app_config
 
     def get_api_key(self) -> str:
-        """Retrieve Gemini API key from summary config, general env, or GeminiLiveConfig."""
+        """Retrieve Gemini API key from summary config, app_config, general env, or GeminiLiveConfig."""
         if self.config.gemini_api_key and self.config.gemini_api_key.strip():
             return self.config.gemini_api_key.strip()
-        if os.environ.get("GEMINI_API_KEY"):
+        if os.environ.get("GEMINI_API_KEY") and os.environ["GEMINI_API_KEY"].strip():
             return os.environ["GEMINI_API_KEY"].strip()
+        if self.app_config and hasattr(self.app_config, "gemini_live") and getattr(self.app_config.gemini_live, "api_key", None):
+            return self.app_config.gemini_live.api_key.strip()
         return ""
 
     def get_status(self) -> Dict[str, Any]:

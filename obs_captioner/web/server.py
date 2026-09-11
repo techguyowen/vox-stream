@@ -102,7 +102,7 @@ class WebOverlayServer:
         self.rate_limiter = SimpleRateLimiter(max_requests=300, window_seconds=60.0)
         self.model_downloader = ModelDownloadManager()
         self.bible_engine = BibleEngine()
-        self.summary_engine = SermonSummaryEngine(getattr(self.config, "summary", None), self.history)
+        self.summary_engine = SermonSummaryEngine(getattr(self.config, "summary", None), self.history, app_config=self.config)
         # Rolling snapshot of recent final caption payloads, replayed to newly
         # connected /ws clients so refreshed views aren't blank until the next utterance.
         self._recent_finals: list = []

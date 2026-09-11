@@ -3523,6 +3523,7 @@ document.getElementById("btn-clear-transcript").addEventListener("click", async 
 
 // YouTube Chapters Handling
 async function loadYouTubeChapters() {
+    checkSummaryStatus();
     const chaptersTextEl = document.getElementById("youtube-chapters-text");
     if (!chaptersTextEl) return;
 
@@ -3886,6 +3887,31 @@ document.getElementById("btn-download-summary")?.addEventListener("click", () =>
     URL.revokeObjectURL(link.href);
     showToast(`💾 Downloaded ${fileName}!`, "success", 3000);
 });
+
+async function checkSummaryStatus() {
+    try {
+        const resp = await fetch("/api/transcript/summary/status");
+        if (resp.ok) {
+            const data = await resp.json();
+            const badgeEl = document.getElementById("summary-provider-badge");
+            if (badgeEl) {
+                if (data.gemini_available) {
+                    badgeEl.textContent = "✨ Gemini Flash Ready";
+                    badgeEl.style.background = "rgba(16, 185, 129, 0.15)";
+                    badgeEl.style.color = "#10B981";
+                    badgeEl.style.border = "1px solid rgba(16, 185, 129, 0.35)";
+                } else {
+                    badgeEl.textContent = "⚡ Offline Engine Ready";
+                    badgeEl.style.background = "rgba(99, 102, 241, 0.15)";
+                    badgeEl.style.color = "#818CF8";
+                    badgeEl.style.border = "1px solid rgba(99, 102, 241, 0.35)";
+                }
+            }
+        }
+    } catch (e) {
+        console.debug("Could not query summary status:", e);
+    }
+}
 
 function escapeHtml(str) {
     if (str === null || str === undefined) return "";
