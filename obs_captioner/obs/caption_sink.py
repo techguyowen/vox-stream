@@ -198,18 +198,20 @@ class CaptionSink:
 
         # 5. Record to history if finalized
         if event.is_final and clean_text:
-            self._last_final_time = time.time()
+            sentence_start = self._sentence_start_time
+            sentence_end = time.time()
+            self._last_final_time = sentence_end
             recorded_text = clean_text
             if translated_text:
                 recorded_text = f"{clean_text} ({translated_text})"
             self.history.add_entry(
                 text=recorded_text,
-                start_time=self._sentence_start_time,
-                end_time=time.time(),
+                start_time=sentence_start,
+                end_time=sentence_end,
                 is_censored=was_censored,
             )
             self._utterance_active = False
-            self._sentence_start_time = time.time()
+            self._sentence_start_time = sentence_end
 
             # Auto Scripture Lookup & Broadcast Trigger
             if self.web_server and getattr(self.config, "bible", None) and self.config.bible.enabled:
@@ -224,8 +226,8 @@ class CaptionSink:
             if self.subtitle_recorder and getattr(self.subtitle_recorder, "is_recording", False):
                 self.subtitle_recorder.add_caption(
                     text=clean_text,
-                    start_time=self._sentence_start_time,
-                    end_time=time.time(),
+                    start_time=sentence_start,
+                    end_time=sentence_end,
                 )
 
         # 6. Console display

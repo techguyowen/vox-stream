@@ -10,7 +10,7 @@ import urllib.parse
 import uuid
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Callable, Optional, Set
+from typing import Any, Callable, Dict, Optional, Set
 
 from aiohttp import web
 

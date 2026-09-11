@@ -160,6 +160,7 @@ class BibleEngine:
             logger.warning(f"Bible database not found at {self.db_path}")
             return None
 
+        conn = None
         try:
             conn = sqlite3.connect(self.db_path)
             cur = conn.cursor()
@@ -176,7 +177,6 @@ class BibleEngine:
                 )
                 rows = cur.fetchall()
                 if not rows:
-                    conn.close()
                     return None
 
                 combined_text = " ".join([r[1].strip() for r in rows])
@@ -193,13 +193,10 @@ class BibleEngine:
                 )
                 row = cur.fetchone()
                 if not row:
-                    conn.close()
                     return None
 
                 combined_text = row[0].strip()
                 citation = f"{canonical_book} {chapter}:{verse_start}"
-
-            conn.close()
 
             # Clean Strong's numbers (e.g. <S>1063</S>) and markup annotations
             combined_text = re.sub(r"<S>\d+</S>", "", combined_text)
@@ -220,6 +217,12 @@ class BibleEngine:
         except Exception as e:
             logger.error(f"Error querying bible.db: {e}", exc_info=True)
             return None
+        finally:
+            if conn:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     def parse_and_lookup_first(self, text: str, version: str = "bsb") -> Optional[ScriptureLookupResult]:
         """Scan a transcript string for scripture references and lookup the first match."""

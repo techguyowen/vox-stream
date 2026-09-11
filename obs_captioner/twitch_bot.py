@@ -53,6 +53,7 @@ class TwitchCaptionBot:
             self.is_connected = True
             self._send_queue = asyncio.Queue(maxsize=50)
             self._worker_task = asyncio.create_task(self._send_worker())
+            self._read_task = asyncio.create_task(self._read_loop())
             logger.info(f"Twitch Caption Bot joined #{channel} successfully.")
             return True
         except Exception as e:
@@ -70,6 +71,26 @@ class TwitchCaptionBot:
             self._send_queue.put_nowait(msg)
         except asyncio.QueueFull:
             pass
+
+    async def _read_loop(self):
+        """Read incoming IRC messages and respond to server PING with PONG to maintain connection."""
+        while self.is_connected and self.reader:
+            try:
+                line_bytes = await self.reader.readline()
+                if not line_bytes:
+                    break
+                line = line_bytes.decode("utf-8", errors="ignore").strip()
+                if line.startswith("PING"):
+                    pong_resp = line.replace("PING", "PONG", 1) + "\r\n"
+                    if self.writer:
+                        self.writer.write(pong_resp.encode("utf-8"))
+                        await self.writer.drain()
+                        logger.debug("Sent Twitch IRC keepalive PONG.")
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug(f"Twitch IRC read loop error: {e}")
+                break
 
     async def _send_worker(self):
         """Worker to send messages while respecting Twitch chat rate limits."""
@@ -95,6 +116,8 @@ class TwitchCaptionBot:
         self.is_connected = False
         if self._worker_task:
             self._worker_task.cancel()
+        if hasattr(self, "_read_task") and self._read_task:
+            self._read_task.cancel()
         if self.writer:
             try:
                 self.writer.close()

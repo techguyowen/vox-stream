@@ -3,6 +3,7 @@ import asyncio
 import logging
 import os
 import signal
+import subprocess
 import sys
 import time
 if __name__ == "__main__" and not __package__:
