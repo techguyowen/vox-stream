@@ -1199,7 +1199,10 @@
                                 </div>
                                 <div style="margin-top: 8px; font-size: 11.5px; color: var(--text-muted); line-height: 1.5; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 6px; padding: 8px 12px;">
                                     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; flex-wrap: wrap; gap: 4px;">
-                                        <strong style="color: #A5B4FC;">🔑 Need a free Google Gemini API Key?</strong>
+                                        <div style="display: flex; align-items: center; gap: 6px;">
+                                            <strong style="color: #A5B4FC;">🔑 Free Google Gemini API Key</strong>
+                                            <button type="button" class="btn btn-secondary btn-sm btn-open-gemini-key-modal" style="font-size: 10.5px; padding: 1px 7px; color: #38BDF8; cursor: pointer;">Setup Popup ↗</button>
+                                        </div>
                                         <span style="color: #10B981; font-weight: 600; font-size: 11px;">✓ 100% Free • No Credit Card</span>
                                     </div>
                                     <ol style="margin: 4px 0 0 0; padding-left: 18px;">
@@ -1773,17 +1776,11 @@
                                 <span id="summary-provider-badge" class="badge" style="background: rgba(99, 102, 241, 0.15); color: #818CF8; border: 1px solid rgba(99, 102, 241, 0.35); font-size: 11px; padding: 3px 8px; border-radius: 6px; font-weight: 600;">✨ Ready</span>
                             </div>
                             <p class="subtext" style="margin-top: 4px; margin-bottom: 0;">Generates a comprehensive post-service recap: sermon title, scriptures cited, core takeaway, key teaching points with timestamps, quotes, and small-group questions.</p>
-                            <details style="margin-top: 8px; font-size: 11.5px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 6px 10px;">
-                                <summary style="cursor: pointer; color: #818CF8; font-weight: 500;">🔑 Need a free Google Gemini API Key? (Click for 3-step guide)</summary>
-                                <div style="margin-top: 8px; line-height: 1.5; color: var(--text-muted);">
-                                    <ol style="margin: 0; padding-left: 18px;">
-                                        <li>Visit <a href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer" style="color: #38BDF8; text-decoration: underline; font-weight: 500;">Google AI Studio (aistudio.google.com)</a> and sign in with any Google account.</li>
-                                        <li>Click <strong>"Get API key"</strong> on the left sidebar and click <strong>"Create API key"</strong> (100% free, no credit card required).</li>
-                                        <li>Paste your key into <a href="#tab-engine" onclick="document.querySelector('[data-tab=engine]').click();" style="color: #A5B4FC; text-decoration: underline; font-weight: 500;">Tab 1 (Audio &amp; Engine Settings)</a> under Gemini Settings, or add <code>GEMINI_API_KEY</code> to your <code>.env</code> file.</li>
-                                    </ol>
-                                    <div style="margin-top: 6px; color: #10B981; font-weight: 500;">⚡ <em>No key? The Built-in Offline Engine automatically generates your outline and chapters with zero setup!</em></div>
-                                </div>
-                            </details>
+                            <div style="margin-top: 8px;">
+                                <button type="button" class="btn btn-secondary btn-sm btn-open-gemini-key-modal" style="font-size: 11px; padding: 4px 10px; color: #818CF8; border-color: rgba(99, 102, 241, 0.35); background: rgba(99, 102, 241, 0.08); display: inline-flex; align-items: center; gap: 6px; cursor: pointer;">
+                                    <span>🔑 Need a free Google Gemini API Key? (Click for setup popup ↗)</span>
+                                </button>
+                            </div>
                         </div>
                         <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
                             <select id="select-summary-provider" class="form-control" style="font-size: 12px; padding: 4px 8px; height: 32px; min-width: 170px;">
@@ -2108,6 +2105,60 @@
                     <span>↗ Open in Tab</span>
                 </a>
                 <button type="button" id="btn-done-qr" class="btn btn-primary btn-block">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Google Gemini API Key Help & Setup Modal -->
+    <div id="modal-gemini-key" class="modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 10000; justify-content: center; align-items: center; backdrop-filter: blur(4px);">
+        <div class="modal-content" style="background: var(--bg-card); border: 1.5px solid rgba(139, 92, 246, 0.4); border-radius: 14px; padding: 24px; max-width: 500px; width: 92%; box-shadow: 0 25px 70px rgba(0,0,0,0.8);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <h3 style="margin: 0; font-size: 18px; color: #C084FC; display: flex; align-items: center; gap: 8px;">
+                    <span>🔑 Free Google Gemini API Key</span>
+                </h3>
+                <button type="button" id="btn-close-gemini-modal" style="background: none; border: none; font-size: 24px; color: var(--text-muted); cursor: pointer; line-height: 1;">&times;</button>
+            </div>
+            
+            <div style="display: inline-block; background: rgba(16, 185, 129, 0.15); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.35); font-size: 11px; padding: 3px 10px; border-radius: 6px; font-weight: 600; margin-bottom: 14px;">
+                ✓ 100% Free • 1,500 Requests/Day • No Credit Card Required
+            </div>
+
+            <div style="font-size: 13px; line-height: 1.6; color: #E2E8F0; margin-bottom: 16px;">
+                <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+                    <div style="background: #8B5CF6; color: #FFFFFF; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; flex-shrink: 0;">1</div>
+                    <div>
+                        <strong>Open Google AI Studio</strong>: Sign in with any standard Google or Gmail account.<br>
+                        <a href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="margin-top: 6px; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; color: #38BDF8; font-weight: 600;">
+                            <span>↗ Open Google AI Studio</span>
+                        </a>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+                    <div style="background: #8B5CF6; color: #FFFFFF; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; flex-shrink: 0;">2</div>
+                    <div>
+                        Click <strong>"Get API key"</strong> on the left sidebar, then click <strong>"Create API key"</strong>.
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-bottom: 6px;">
+                    <div style="background: #8B5CF6; color: #FFFFFF; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; flex-shrink: 0;">3</div>
+                    <div style="flex: 1;">
+                        <strong>Paste your key below</strong> to activate it across VoxStream:
+                        <div style="display: flex; gap: 8px; margin-top: 6px;">
+                            <input type="password" id="modal-gemini-key-input" placeholder="AIzaSy..." class="form-control" style="flex: 1; font-family: 'JetBrains Mono', monospace; font-size: 12px;">
+                            <button type="button" id="btn-modal-save-gemini-key" class="btn btn-primary btn-sm" style="white-space: nowrap; font-weight: 600;">Save Key</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="font-size: 11px; color: var(--text-muted); background: rgba(255, 255, 255, 0.02); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.06); margin-bottom: 16px;">
+                🛡️ <em>Your key is securely stored in <code>config.json</code> and is never erased during software updates.</em>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                <button type="button" id="btn-done-gemini-modal" class="btn btn-secondary btn-sm">Close</button>
             </div>
         </div>
     </div>

@@ -1135,6 +1135,94 @@ if (btnCopyQrUrl && qrDirectUrl) {
     });
 }
 
+// --- Google Gemini API Key Help & Setup Modal ---
+const modalGeminiKey = document.getElementById("modal-gemini-key");
+const btnCloseGeminiModal = document.getElementById("btn-close-gemini-modal");
+const btnDoneGeminiModal = document.getElementById("btn-done-gemini-modal");
+const btnModalSaveGeminiKey = document.getElementById("btn-modal-save-gemini-key");
+const modalGeminiKeyInput = document.getElementById("modal-gemini-key-input");
+
+function openGeminiKeyModal() {
+    if (modalGeminiKey) {
+        modalGeminiKey.style.display = "flex";
+        if (modalGeminiKeyInput) {
+            modalGeminiKeyInput.value = "";
+            modalGeminiKeyInput.focus();
+        }
+    }
+}
+
+function closeGeminiKeyModal() {
+    if (modalGeminiKey) modalGeminiKey.style.display = "none";
+}
+
+document.querySelectorAll(".btn-open-gemini-key-modal").forEach(btn => {
+    btn.addEventListener("click", openGeminiKeyModal);
+});
+
+if (btnCloseGeminiModal) btnCloseGeminiModal.addEventListener("click", closeGeminiKeyModal);
+if (btnDoneGeminiModal) btnDoneGeminiModal.addEventListener("click", closeGeminiKeyModal);
+if (modalGeminiKey) {
+    modalGeminiKey.addEventListener("click", (e) => {
+        if (e.target === modalGeminiKey) closeGeminiKeyModal();
+    });
+}
+
+window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+        closeDisplayQrModal();
+        closeGeminiKeyModal();
+    }
+});
+
+if (btnModalSaveGeminiKey && modalGeminiKeyInput) {
+    btnModalSaveGeminiKey.addEventListener("click", async () => {
+        const key = (modalGeminiKeyInput.value || "").trim();
+        if (!key) {
+            showToast("Please enter or paste your API key first.", "warning", 2000);
+            return;
+        }
+        try {
+            const origText = btnModalSaveGeminiKey.innerHTML;
+            btnModalSaveGeminiKey.innerHTML = "Saving...";
+            btnModalSaveGeminiKey.disabled = true;
+
+            const payload = {
+                gemini_live: { api_key: key },
+                summary: { gemini_api_key: key }
+            };
+
+            const resp = await fetch("/api/config", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+            // Update Tab 1 UI
+            const tab1KeyInput = document.getElementById("gemini_api_key");
+            const keyStatus = document.getElementById("gemini_key_status");
+            if (tab1KeyInput) tab1KeyInput.value = "••••••••••••";
+            if (keyStatus) keyStatus.style.display = "inline";
+
+            // Update summary status
+            if (typeof checkSummaryStatus === "function") {
+                await checkSummaryStatus();
+            }
+
+            showToast("✓ Google Gemini API Key saved and activated!", "success", 3000);
+            closeGeminiKeyModal();
+        } catch (err) {
+            console.error("Failed to save API key:", err);
+            showToast("Error saving API key.", "error", 3000);
+        } finally {
+            btnModalSaveGeminiKey.innerHTML = "Save Key";
+            btnModalSaveGeminiKey.disabled = false;
+        }
+    });
+}
+
 // Preview Elements
 const previewBox = document.getElementById("preview-box");
 const previewFinal = document.getElementById("preview-final");
