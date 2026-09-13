@@ -1847,21 +1847,30 @@
                                 <h2 style="margin-bottom: 0;">📑 Automated YouTube Chapter Markers</h2>
                                 <span id="youtube-chapters-badge" class="badge" style="background: rgba(16, 185, 129, 0.15); color: #10B981; border: 1px solid rgba(16, 185, 129, 0.35); font-size: 11px; padding: 3px 8px; border-radius: 6px; font-weight: 600;">✅ YouTube Ready</span>
                             </div>
-                            <p class="subtext" style="margin-top: 4px; margin-bottom: 0;">Automatically detects scripture readings, sermon points, prayers, and liturgy into YouTube-ready video description chapters.</p>
+                            <p class="subtext" style="margin-top: 4px; margin-bottom: 0;">Generate YouTube chapters using either <strong>Google Gemini AI</strong> (intelligent topic tracking &amp; scripture detection) or <strong>Offline Heuristics</strong> (100% local keyword detection).</p>
                         </div>
                         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                            <button id="btn-generate-ai-chapters" class="btn btn-primary btn-sm" style="background: linear-gradient(135deg, #6366F1, #8B5CF6); border: none; font-weight: 600;" title="Generate semantic AI chapter markers from sermon transcript">✨ AI Chapters</button>
+                            <button id="btn-generate-ai-chapters" class="btn btn-primary btn-sm" style="background: linear-gradient(135deg, #6366F1, #8B5CF6); border: none; font-weight: 600;" title="Generate semantic AI chapter markers using Google Gemini">✨ Gemini AI</button>
+                            <button id="btn-generate-heuristic-chapters" class="btn btn-secondary btn-sm" title="Generate fast offline keyword/liturgy chapter markers">⚡ Offline Local</button>
                             <button id="btn-copy-chapters" class="btn btn-secondary btn-sm" title="Copy chapters to clipboard">📋 Copy Chapters</button>
                             <button id="btn-download-chapters" class="btn btn-secondary btn-sm" title="Download chapters as a .txt file">💾 Download .txt</button>
-                            <button id="btn-refresh-chapters" class="btn btn-secondary btn-sm" title="Recalculate chapters from live history">🔄 Refresh</button>
+                            <button id="btn-refresh-chapters" class="btn btn-secondary btn-sm" title="Recalculate chapters from live history using selected engine">🔄 Refresh</button>
                         </div>
                     </div>
 
                     <!-- Filter / Offset / Format Controls -->
                     <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 10px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); padding: 10px 12px; border-radius: 8px;">
                         <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <label for="select-chapter-engine" style="font-size: 11px; font-weight: 500; color: var(--text-muted);">Chapter Engine:</label>
+                            <select id="select-chapter-engine" class="form-control" style="font-size: 12px; padding: 4px 8px; height: 32px; min-width: 195px;">
+                                <option value="gemini" selected>✨ Google Gemini AI (Semantic)</option>
+                                <option value="heuristic">⚡ Offline Heuristics (Local)</option>
+                            </select>
+                        </div>
+
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
                             <label for="select-chapter-anchor" style="font-size: 11px; font-weight: 500; color: var(--text-muted);">Sync Anchor:</label>
-                            <select id="select-chapter-anchor" class="form-control" style="font-size: 12px; padding: 4px 8px; height: 32px; min-width: 170px;">
+                            <select id="select-chapter-anchor" class="form-control" style="font-size: 12px; padding: 4px 8px; height: 32px; min-width: 160px;">
                                 <option value="first_speech" selected>First Spoken Word (Best)</option>
                                 <option value="session">App Launch Time</option>
                             </select>

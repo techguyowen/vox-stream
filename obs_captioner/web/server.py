@@ -704,6 +704,57 @@ class WebOverlayServer:
         if format_style not in ("hhmmss", "mmss", "auto"):
             format_style = "hhmmss"
 
+        engine = sanitize_text(request.query.get("engine", "") or request.query.get("provider", "")).strip().lower()
+
+        if engine in ("gemini", "ai"):
+            result = await self.summary_engine.generate_ai_chapters(
+                entries=self.history.entries,
+                min_interval_seconds=min_interval,
+                time_offset_seconds=offset,
+                anchor=anchor,
+                format_style=format_style,
+                provider_override="gemini",
+            )
+            return web.json_response(result)
+
+        if engine in ("heuristic", "offline", "local"):
+            chapters = self.history.generate_chapters(
+                min_interval_seconds=min_interval,
+                time_offset_seconds=offset,
+                anchor=anchor,
+                format_style=format_style,
+            )
+            formatted = self.history.export_youtube_chapters(
+                min_interval_seconds=min_interval,
+                time_offset_seconds=offset,
+                anchor=anchor,
+                format_style=format_style,
+            )
+            youtube_compliant = len(chapters) >= 3 and (chapters[0]["seconds"] == 0.0 if chapters else False)
+            return web.json_response({
+                "chapters": chapters,
+                "formatted": formatted,
+                "count": len(chapters),
+                "provider_used": "heuristic",
+                "youtube_compliant": youtube_compliant,
+                "min_interval": min_interval,
+                "offset": offset,
+                "anchor": anchor,
+                "format": format_style,
+            })
+
+        # Default / Auto: If Gemini API key is configured, use Gemini, else fallback to heuristic
+        if hasattr(self, "summary_engine") and self.summary_engine and self.summary_engine.get_api_key():
+            result = await self.summary_engine.generate_ai_chapters(
+                entries=self.history.entries,
+                min_interval_seconds=min_interval,
+                time_offset_seconds=offset,
+                anchor=anchor,
+                format_style=format_style,
+                provider_override="gemini",
+            )
+            return web.json_response(result)
+
         chapters = self.history.generate_chapters(
             min_interval_seconds=min_interval,
             time_offset_seconds=offset,
@@ -722,6 +773,7 @@ class WebOverlayServer:
             "chapters": chapters,
             "formatted": formatted,
             "count": len(chapters),
+            "provider_used": "heuristic",
             "youtube_compliant": youtube_compliant,
             "min_interval": min_interval,
             "offset": offset,
@@ -755,7 +807,7 @@ class WebOverlayServer:
                 offset = float(body.get("offset", offset))
                 anchor = sanitize_text(body.get("anchor", anchor)).strip().lower()
                 format_style = sanitize_text(body.get("format", format_style)).strip().lower()
-                provider = sanitize_text(body.get("provider", "")).strip().lower() or None
+                provider = sanitize_text(body.get("provider", "") or body.get("engine", "")).strip().lower() or None
             except Exception:
                 pass
         else:
@@ -764,7 +816,7 @@ class WebOverlayServer:
                 offset = float(request.query.get("offset", 0.0))
                 anchor = sanitize_text(request.query.get("anchor", "first_speech")).strip().lower()
                 format_style = sanitize_text(request.query.get("format", "hhmmss")).strip().lower()
-                provider = sanitize_text(request.query.get("provider", "")).strip().lower() or None
+                provider = sanitize_text(request.query.get("provider", "") or request.query.get("engine", "")).strip().lower() or None
             except Exception:
                 pass
 

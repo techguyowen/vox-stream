@@ -3834,10 +3834,19 @@ document.getElementById("btn-clear-transcript").addEventListener("click", async 
 });
 
 // YouTube Chapters Handling
-async function loadYouTubeChapters() {
+async function loadYouTubeChapters(forcedEngine = null) {
     checkSummaryStatus();
     const chaptersTextEl = document.getElementById("youtube-chapters-text");
     if (!chaptersTextEl) return;
+
+    const engineEl = document.getElementById("select-chapter-engine");
+    if (forcedEngine && engineEl) {
+        engineEl.value = forcedEngine;
+    }
+    const engine = forcedEngine || (engineEl ? engineEl.value : "gemini");
+    try {
+        localStorage.setItem("voxstream_chapter_engine", engine);
+    } catch (e) {}
 
     const anchorEl = document.getElementById("select-chapter-anchor");
     const intervalEl = document.getElementById("select-chapter-interval");
@@ -3852,21 +3861,31 @@ async function loadYouTubeChapters() {
     const format = formatEl ? formatEl.value : "hhmmss";
 
     try {
-        const url = `/api/transcript/chapters?anchor=${encodeURIComponent(anchor)}&min_interval=${encodeURIComponent(interval)}&offset=${encodeURIComponent(offset)}&format=${encodeURIComponent(format)}`;
+        const url = `/api/transcript/chapters?anchor=${encodeURIComponent(anchor)}&min_interval=${encodeURIComponent(interval)}&offset=${encodeURIComponent(offset)}&format=${encodeURIComponent(format)}&engine=${encodeURIComponent(engine)}`;
         const res = await fetch(url);
         if (res.ok) {
             const data = await res.json();
             chaptersTextEl.value = data.formatted || "00:00:00 - Introduction & Welcome";
             
+            const isGemini = data.provider_used === "gemini" || data.provider_used === "ai";
+            const engineLabel = isGemini ? "Gemini AI" : "Offline Heuristics";
+
             // Update YouTube Compliance Badge
             if (badgeEl) {
                 if (data.youtube_compliant) {
-                    badgeEl.textContent = `✅ YouTube Ready (${data.count} Chapters)`;
-                    badgeEl.style.background = "rgba(16, 185, 129, 0.15)";
-                    badgeEl.style.color = "#10B981";
-                    badgeEl.style.border = "1px solid rgba(16, 185, 129, 0.35)";
+                    if (isGemini) {
+                        badgeEl.textContent = `✨ Gemini AI Ready (${data.count} Chapters)`;
+                        badgeEl.style.background = "rgba(99, 102, 241, 0.18)";
+                        badgeEl.style.color = "#818CF8";
+                        badgeEl.style.border = "1px solid rgba(99, 102, 241, 0.4)";
+                    } else {
+                        badgeEl.textContent = `⚡ Offline Ready (${data.count} Chapters)`;
+                        badgeEl.style.background = "rgba(16, 185, 129, 0.15)";
+                        badgeEl.style.color = "#10B981";
+                        badgeEl.style.border = "1px solid rgba(16, 185, 129, 0.35)";
+                    }
                 } else {
-                    badgeEl.textContent = `⚠️ YouTube requires ≥ 3 chapters (${data.count} found)`;
+                    badgeEl.textContent = `⚠️ YouTube requires ≥ 3 chapters (${data.count} found via ${engineLabel})`;
                     badgeEl.style.background = "rgba(245, 158, 11, 0.15)";
                     badgeEl.style.color = "#F59E0B";
                     badgeEl.style.border = "1px solid rgba(245, 158, 11, 0.35)";
@@ -3876,16 +3895,26 @@ async function loadYouTubeChapters() {
             // Update line count
             if (countEl) {
                 const lines = (chaptersTextEl.value || "").split("\n").filter(l => l.trim().length > 0);
-                countEl.textContent = `${lines.length} chapter${lines.length === 1 ? "" : "s"}`;
+                countEl.textContent = `${lines.length} chapter${lines.length === 1 ? "" : "s"} (${engineLabel})`;
             }
+            return data;
         }
     } catch (e) {
         console.debug("Could not query chapters:", e);
     }
 }
 
+// Restore saved chapter engine preference if available
+try {
+    const savedChapterEngine = localStorage.getItem("voxstream_chapter_engine");
+    const chapterEngineEl = document.getElementById("select-chapter-engine");
+    if (savedChapterEngine && chapterEngineEl) {
+        chapterEngineEl.value = savedChapterEngine;
+    }
+} catch (e) {}
+
 // Re-generate chapters on control adjustments
-["select-chapter-anchor", "select-chapter-interval", "select-chapter-format"].forEach(id => {
+["select-chapter-engine", "select-chapter-anchor", "select-chapter-interval", "select-chapter-format"].forEach(id => {
     const el = document.getElementById(id);
     if (el) {
         el.addEventListener("change", async () => {
@@ -3985,60 +4014,53 @@ if (btnDownloadChapters) {
     });
 }
 
-// --- Semantic AI YouTube Chapters ---
+// --- Dual Engine Chapter Generation (Gemini AI vs Offline Heuristics) ---
 const btnGenerateAIChapters = document.getElementById("btn-generate-ai-chapters");
 if (btnGenerateAIChapters) {
     btnGenerateAIChapters.addEventListener("click", async () => {
         const origText = btnGenerateAIChapters.innerHTML;
-        btnGenerateAIChapters.innerHTML = "✨ Analyzing...";
+        btnGenerateAIChapters.innerHTML = "✨ Analyzing with Gemini...";
         btnGenerateAIChapters.disabled = true;
 
-        const anchor = document.getElementById("select-chapter-anchor")?.value || "first_speech";
-        const interval = parseFloat(document.getElementById("select-chapter-interval")?.value || 45.0);
-        const offset = parseFloat(document.getElementById("input-chapter-offset")?.value || 0.0);
-        const format = document.getElementById("select-chapter-format")?.value || "hhmmss";
-        const provider = document.getElementById("select-summary-provider")?.value || "auto";
+        const engineEl = document.getElementById("select-chapter-engine");
+        if (engineEl) engineEl.value = "gemini";
 
         try {
-            const resp = await fetch("/api/transcript/ai-chapters", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    anchor: anchor,
-                    min_interval: interval,
-                    offset: offset,
-                    format: format,
-                    provider: provider,
-                }),
-            });
-            if (!resp.ok) {
-                throw new Error(`HTTP ${resp.status}`);
+            const data = await loadYouTubeChapters("gemini");
+            if (data && (data.provider_used === "gemini" || data.provider_used === "ai")) {
+                showToast(`✨ Generated ${data.count || 0} smart chapters with Gemini AI!`, "success", 3000);
+            } else {
+                showToast(`⚡ Generated ${data?.count || 0} chapters (fallback to offline heuristics)`, "info", 3000);
             }
-            const data = await resp.json();
-            const chaptersTextEl = document.getElementById("youtube-chapters-text");
-            const badgeEl = document.getElementById("youtube-chapters-badge");
-            const countEl = document.getElementById("youtube-chapters-char-count");
-
-            if (chaptersTextEl && data.formatted) {
-                chaptersTextEl.value = data.formatted;
-            }
-            if (countEl) {
-                countEl.textContent = `${data.count || 0} chapter${(data.count || 0) === 1 ? "" : "s"} (${(data.provider_used || "AI").toUpperCase()})`;
-            }
-            if (badgeEl) {
-                badgeEl.textContent = `✨ AI Ready (${data.count || 0} Chapters)`;
-                badgeEl.style.background = "rgba(99, 102, 241, 0.2)";
-                badgeEl.style.color = "#818CF8";
-                badgeEl.style.border = "1px solid rgba(99, 102, 241, 0.4)";
-            }
-            showToast(`✨ AI chapters generated via ${(data.provider_used || "engine").toUpperCase()}!`, "success", 3000);
         } catch (err) {
             console.error("AI chapter generation failed:", err);
-            showToast("Failed to generate AI chapters. Falling back to refresh.", "error", 3000);
-            await loadYouTubeChapters();
+            showToast("Failed to generate AI chapters.", "error", 3000);
         } finally {
             btnGenerateAIChapters.innerHTML = origText;
             btnGenerateAIChapters.disabled = false;
+        }
+    });
+}
+
+const btnGenerateHeuristicChapters = document.getElementById("btn-generate-heuristic-chapters");
+if (btnGenerateHeuristicChapters) {
+    btnGenerateHeuristicChapters.addEventListener("click", async () => {
+        const origText = btnGenerateHeuristicChapters.innerHTML;
+        btnGenerateHeuristicChapters.innerHTML = "⚡ Calculating...";
+        btnGenerateHeuristicChapters.disabled = true;
+
+        const engineEl = document.getElementById("select-chapter-engine");
+        if (engineEl) engineEl.value = "heuristic";
+
+        try {
+            const data = await loadYouTubeChapters("heuristic");
+            showToast(`⚡ Generated ${data?.count || 0} offline heuristic chapters!`, "success", 2500);
+        } catch (err) {
+            console.error("Offline chapter generation failed:", err);
+            showToast("Failed to generate offline chapters.", "error", 3000);
+        } finally {
+            btnGenerateHeuristicChapters.innerHTML = origText;
+            btnGenerateHeuristicChapters.disabled = false;
         }
     });
 }

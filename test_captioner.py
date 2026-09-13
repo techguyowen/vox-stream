@@ -1352,6 +1352,40 @@ class TestServerEndpoints(AioHTTPTestCase):
         self.assertEqual(data['format'], 'mmss')
         self.assertIn('youtube_compliant', data)
 
+    async def test_chapters_endpoint_dual_engines(self):
+        # Populate speech history so chapters can be generated
+        self.overlay_server.history.add_entry("Welcome to our worship service.", start_time=100.0, end_time=105.0)
+        self.overlay_server.history.add_entry("Let us read from Matthew 5.", start_time=250.0, end_time=255.0)
+        self.overlay_server.history.add_entry("Benediction and closing prayer.", start_time=500.0, end_time=505.0)
+
+        # 1. Explicit offline heuristic engine
+        resp_heur = await self.client.request('GET', '/api/transcript/chapters?engine=heuristic')
+        self.assertEqual(resp_heur.status, 200)
+        data_heur = await resp_heur.json()
+        self.assertEqual(data_heur['provider_used'], 'heuristic')
+        self.assertIn('chapters', data_heur)
+        self.assertIn('formatted', data_heur)
+        self.assertIn('youtube_compliant', data_heur)
+
+        # 2. Gemini AI engine (routes to summary_engine, falls back to heuristic if no key)
+        resp_gem = await self.client.request('GET', '/api/transcript/chapters?engine=gemini')
+        self.assertEqual(resp_gem.status, 200)
+        data_gem = await resp_gem.json()
+        self.assertIn(data_gem['provider_used'], ('gemini', 'heuristic'))
+        self.assertIn('chapters', data_gem)
+        self.assertIn('formatted', data_gem)
+
+        # 3. AI chapters POST endpoint with provider override
+        resp_post = await self.client.request('POST', '/api/transcript/ai-chapters', json={
+            'provider': 'heuristic',
+            'format': 'hhmmss',
+        })
+        self.assertEqual(resp_post.status, 200)
+        data_post = await resp_post.json()
+        self.assertEqual(data_post['provider_used'], 'heuristic')
+        self.assertIn('youtube_compliant', data_post)
+
+
     async def test_vocabulary_test_and_clear_api(self):
         # Test vocabulary sandbox
         test_resp = await self.client.request('POST', '/api/vocabulary/test', json={'text': 'hello world'})

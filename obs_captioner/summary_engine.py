@@ -241,8 +241,16 @@ class SermonSummaryEngine:
             entries, anchor=anchor, time_offset_seconds=time_offset_seconds
         )
 
+        church_context = ""
+        if self.app_config:
+            church_name = (getattr(getattr(self.app_config, "general", None), "church_name", "") or "").strip()
+            church_mode = getattr(getattr(self.app_config, "general", None), "church_mode", True)
+            if church_mode:
+                church_context = f" This is a church worship service at {church_name}." if church_name else " This is a church worship service."
+                church_context += " Identify scripture citations, sermon main points, prayers, worship, and benediction."
+
         prompt = (
-            "You are an expert church media and video director. Analyze this live sermon transcript with timestamps.\n"
+            f"You are an expert church media and video director. Analyze this live sermon transcript with timestamps.{church_context}\n"
             "Generate YouTube-compliant video chapters. Follow these strict rules:\n"
             "1. First chapter MUST start at 00:00:00 (or 00:00) with a title like 'Welcome & Opening Prayer' or 'Welcome & Praise'.\n"
             "2. Timestamps must be strictly ascending.\n"
