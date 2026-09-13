@@ -125,8 +125,8 @@ if not defined PY_CMD if exist "C:\Python312\python.exe" (
 
 if defined PY_CMD goto :python_found
 
-:: Check if standard python in PATH is a real working Python between 3.10 and 3.12
-python -c "import sys; sys.exit(0 if (3, 10) <= sys.version_info[:2] <= (3, 12) else 1)" >nul 2>&1
+:: Check if standard python in PATH is a real working Python between 3.10 and 3.12 (skip Windows Store sandbox)
+python -c "import sys; sys.exit(0 if (3, 10) <= sys.version_info[:2] <= (3, 12) and 'windowsapps' not in sys.executable.lower() else 1)" >nul 2>&1
 if !errorlevel! equ 0 (
     set "PY_CMD=python"
     goto :python_found
@@ -219,11 +219,30 @@ if "!REBUILD_VENV!"=="1" (
     if exist "%VENV_DIR%" (
         echo [INFO] Freeing any background file locks in .venv...
         powershell -NoProfile -Command "Get-Process | Where-Object { $_.Path -like '*\.venv\*' } | Stop-Process -Force" >nul 2>&1
-        echo [INFO] Removing previous virtual environment...
+        powershell -NoProfile -Command "Remove-Item -LiteralPath '%VENV_DIR%' -Recurse -Force -ErrorAction SilentlyContinue" >nul 2>&1
         rmdir /s /q "%VENV_DIR%" >nul 2>&1
+        if exist "%VENV_DIR%" (
+            echo [WARNING] Folder locked by Windows. Renaming to clear path...
+            ren "%VENV_DIR%" ".venv_old_!RANDOM!" >nul 2>&1
+        )
     )
     echo [INFO] Creating clean virtual environment with %PY_CMD%...
     call %PY_CMD% -m venv "%VENV_DIR%"
+    if not exist "%VENV_PY%" (
+        echo [WARNING] Standard venv creation failed. Retrying with --without-pip...
+        call %PY_CMD% -m venv --without-pip "%VENV_DIR%"
+        if exist "%VENV_PY%" (
+            echo [INFO] Virtual environment created. Bootstrapping pip...
+            call "%VENV_PY%" -m ensurepip --default-pip >nul 2>&1
+            if not exist "%VENV_DIR%\Scripts\pip.exe" (
+                powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile('https://bootstrap.pypa.io/get-pip.py', '%TEMP%\get-pip.py')" >nul 2>&1
+                if exist "%TEMP%\get-pip.py" (
+                    call "%VENV_PY%" "%TEMP%\get-pip.py" --no-warn-script-location >nul 2>&1
+                    del "%TEMP%\get-pip.py" 2>nul
+                )
+            )
+        )
+    )
 )
 
 if not exist "%VENV_PY%" (
