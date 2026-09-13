@@ -1,11 +1,9 @@
 @echo off
 setlocal EnableDelayedExpansion
 
-:: Set UTF-8 for proper text display
 set "PYTHONIOENCODING=utf-8"
 set "PYTHONUTF8=1"
 
-:: Move to the folder containing this script
 cd /d "%~dp0"
 set "ROOT_DIR=%~dp0"
 if "%ROOT_DIR:~-1%"=="\" set "ROOT_DIR=%ROOT_DIR:~0,-1%"
@@ -17,83 +15,90 @@ echo =======================================================
 echo.
 
 :: ============================================================
-:: STEP 1: Python - Detect or Guide Install
+:: STEP 1: Find Python 3.10 / 3.11 / 3.12 (real install only)
 :: ============================================================
 echo [1/6] Detecting Python...
 echo.
 
 set "PYTHON_EXE="
 
-:: Check explicit versioned py launcher entries first (most reliable)
-for %%V in (3.12 3.11 3.10) do (
+:: Resolve py launcher to an actual path for each version
+:: This avoids the "space in variable" venv bug AND catches
+:: Windows Store stubs that the py launcher might point to.
+
+for %%V in (3.11 3.12 3.10) do (
     if not defined PYTHON_EXE (
-        py -%%V -c "import sys" >nul 2>&1
-        if !errorlevel! equ 0 (
-            set "PYTHON_EXE=py -%%V"
-            echo [OK] Found Python %%V via py launcher.
+        for /f "usebackq tokens=*" %%P in (`py -%%V -c "import sys; print(sys.executable)" 2^>nul`) do (
+            set "_CANDIDATE=%%P"
+            echo [DEBUG] py -%%V resolves to: %%P
+            :: Reject Windows Store sandbox paths
+            echo %%P | findstr /i "windowsapps" >nul 2>&1
+            if !errorlevel! neq 0 (
+                if exist "%%P" (
+                    set "PYTHON_EXE=%%P"
+                    echo [OK] Found Python %%V at: %%P
+                )
+            ) else (
+                echo [SKIP] %%P is a Windows Store stub - ignoring.
+            )
         )
     )
 )
 
-:: Check common install paths
+:: Also check hard-coded install paths
 if not defined PYTHON_EXE (
     for %%P in (
-        "%LocalAppData%\Programs\Python\Python312\python.exe"
         "%LocalAppData%\Programs\Python\Python311\python.exe"
+        "%LocalAppData%\Programs\Python\Python312\python.exe"
         "%LocalAppData%\Programs\Python\Python310\python.exe"
-        "%ProgramFiles%\Python312\python.exe"
         "%ProgramFiles%\Python311\python.exe"
-        "%ProgramFiles%\Python310\python.exe"
-        "C:\Python312\python.exe"
+        "%ProgramFiles%\Python312\python.exe"
         "C:\Python311\python.exe"
+        "C:\Python312\python.exe"
         "C:\Python310\python.exe"
     ) do (
         if not defined PYTHON_EXE (
             if exist %%P (
-                %%P -c "import sys" >nul 2>&1
+                echo [DEBUG] Checking path: %%P
+                %%P -c "import sys; exit(0)" >nul 2>&1
                 if !errorlevel! equ 0 (
-                    set "PYTHON_EXE=%%P"
-                    echo [OK] Found Python at %%P
+                    set "PYTHON_EXE=%%~P"
+                    echo [OK] Found Python at: %%~P
                 )
             )
         )
     )
 )
 
-:: Check python in PATH but block Windows Store dummy
-if not defined PYTHON_EXE (
-    python -c "import sys; exit(0 if (3,10)<=sys.version_info[:2]<=(3,13) and 'windowsapps' not in sys.executable.lower() else 1)" >nul 2>&1
-    if !errorlevel! equ 0 (
-        set "PYTHON_EXE=python"
-        echo [OK] Found Python in PATH.
-    )
-)
-
 if not defined PYTHON_EXE (
     echo.
     echo =======================================================
-    echo   Python 3.10, 3.11, or 3.12 was not found.
+    echo   Python 3.10, 3.11, or 3.12 was NOT found.
     echo.
-    echo   Please install it:
-    echo   1. Download: https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe
-    echo   2. Run the installer
-    echo   3. CHECK THE BOX: "Add python.exe to PATH"
-    echo   4. Re-run this setup script
+    echo   Please do this BEFORE re-running setup:
+    echo.
+    echo   1. Go to: https://www.python.org/downloads/
+    echo   2. Download Python 3.11 for Windows (64-bit)
+    echo   3. Run the installer
+    echo   4. IMPORTANT: Check "Add python.exe to PATH"
+    echo   5. Click Install Now
+    echo   6. Close this window, then re-run setup_windows.bat
     echo =======================================================
     echo.
-    start https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe
-    echo Press any key to close this window...
+    start https://www.python.org/downloads/release/python-3119/
+    echo Press any key to close...
     pause
     exit /b 1
 )
 
 echo.
-echo [INFO] Python version in use:
-%PYTHON_EXE% --version
+echo [INFO] Python selected:
+"%PYTHON_EXE%" --version
+echo [INFO] Path: %PYTHON_EXE%
 echo.
 
 :: ============================================================
-:: STEP 2: Create Virtual Environment
+:: STEP 2: Create Virtual Environment (.venv)
 :: ============================================================
 echo [2/6] Setting up virtual environment (.venv)...
 echo.
@@ -102,95 +107,97 @@ set "VENV=%ROOT_DIR%\.venv"
 set "VENV_PY=%VENV%\Scripts\python.exe"
 set "VENV_PIP=%VENV%\Scripts\pip.exe"
 
-:: Wipe the old venv if it exists (avoids all stale/locked state issues)
+:: Always wipe old .venv to avoid stale/locked state
 if exist "%VENV%" (
     echo [INFO] Removing old virtual environment...
-    :: Kill any python processes in the venv first
     taskkill /F /FI "IMAGENAME eq python.exe" >nul 2>&1
-    :: Remove read-only/system/hidden attributes
     attrib -r -s -h "%VENV%" /s /d >nul 2>&1
-    :: Try PowerShell Remove-Item first (handles deep paths better)
     powershell -NoProfile -Command "Remove-Item -LiteralPath '%VENV%' -Recurse -Force -ErrorAction SilentlyContinue" >nul 2>&1
-    :: Then rmdir as backup
     if exist "%VENV%" rmdir /s /q "%VENV%" >nul 2>&1
-    :: If still stuck, rename it out of the way
     if exist "%VENV%" (
-        echo [INFO] Folder still locked - renaming it to free up the path...
+        echo [INFO] Folder locked - renaming it out of the way...
         ren "%VENV%" ".venv_old_%RANDOM%" >nul 2>&1
     )
     echo [OK] Old environment cleared.
+    echo.
 )
 
-echo [INFO] Creating fresh virtual environment...
-%PYTHON_EXE% -m venv "%VENV%"
+echo [INFO] Creating virtual environment with: %PYTHON_EXE%
+"%PYTHON_EXE%" -m venv "%VENV%"
+echo [INFO] venv command finished (exit code: !errorlevel!)
 
 if not exist "%VENV_PY%" (
     echo.
-    echo [WARNING] Standard venv failed - trying without bundled pip...
-    %PYTHON_EXE% -m venv --without-pip "%VENV%"
+    echo [WARNING] venv failed. Retrying with --without-pip...
+    "%PYTHON_EXE%" -m venv --without-pip "%VENV%"
+    echo [INFO] Retry finished (exit code: !errorlevel!)
 )
 
 if not exist "%VENV_PY%" (
     echo.
     echo =======================================================
-    echo   [ERROR] Could not create the virtual environment.
+    echo   [ERROR] Could not create a virtual environment.
     echo.
-    echo   This usually means your Python install is incomplete.
-    echo   Try uninstalling Python completely, then re-installing
-    echo   from: https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe
-    echo   (Make sure to check "Add python.exe to PATH")
+    echo   Most likely fix: Uninstall Python, then reinstall it
+    echo   from python.org making sure to check:
+    echo   "Add python.exe to PATH"
+    echo.
+    echo   Download: https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe
     echo =======================================================
-    echo Press any key to close this window...
+    echo.
+    echo Press any key to close...
     pause
     exit /b 1
 )
 
-:: Bootstrap pip if it's missing
+echo [OK] Virtual environment created.
+
+:: Bootstrap pip if venv was created without it
 if not exist "%VENV_PIP%" (
-    echo [INFO] Bootstrapping pip into the virtual environment...
+    echo [INFO] Bootstrapping pip...
     "%VENV_PY%" -m ensurepip --default-pip
 )
 if not exist "%VENV_PIP%" (
-    echo [INFO] Downloading get-pip.py to install pip...
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile('https://bootstrap.pypa.io/get-pip.py', '%TEMP%\get-pip.py')"
+    echo [INFO] Downloading get-pip.py...
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile('https://bootstrap.pypa.io/get-pip.py','%TEMP%\get-pip.py')"
     if exist "%TEMP%\get-pip.py" (
         "%VENV_PY%" "%TEMP%\get-pip.py"
         del "%TEMP%\get-pip.py" 2>nul
     )
 )
 
-echo [OK] Virtual environment ready.
 echo.
 
 :: ============================================================
 :: STEP 3: Install Dependencies
 :: ============================================================
 echo [3/6] Installing project dependencies...
-echo        (This downloads ~250 MB of AI libraries - takes 1 to 3 minutes)
+echo        (Downloads ~250 MB of AI libraries - takes 1 to 3 minutes)
+echo        You will see a progress bar below. Do NOT close this window.
 echo.
 
-call "%VENV_PIP%" install --prefer-binary --timeout 120 -r "%ROOT_DIR%\requirements.txt"
+"%VENV_PIP%" install --prefer-binary --timeout 120 -r "%ROOT_DIR%\requirements.txt"
 
 if !errorlevel! neq 0 (
     echo.
     echo =======================================================
     echo   [ERROR] Dependency installation failed.
-    echo   Check the error messages above.
+    echo   Check the error messages printed above.
     echo   Common fixes:
-    echo     - Check your internet connection
     echo     - Disable VPN or antivirus temporarily
     echo     - Re-run setup_windows.bat
     echo =======================================================
-    echo Press any key to close this window...
+    echo.
+    echo Press any key to close...
     pause
     exit /b 1
 )
 
-:: Remove torchaudio if it crept in (causes audio conflicts)
-call "%VENV_PIP%" uninstall -y torchaudio >nul 2>&1
+:: Remove torchaudio if present (causes audio conflicts)
+"%VENV_PIP%" uninstall -y torchaudio >nul 2>&1
 
 echo.
-echo [OK] Dependencies installed.
+echo [OK] Dependencies installed successfully.
 echo.
 
 :: ============================================================
@@ -206,29 +213,30 @@ where nvidia-smi >nul 2>&1
 if !errorlevel! equ 0 set "HAS_NVIDIA=1"
 
 if "!HAS_NVIDIA!"=="0" (
-    powershell -NoProfile -Command "Get-CimInstance Win32_VideoController | Where-Object { $_.Name -match 'NVIDIA|GeForce|RTX|GTX' } | Measure-Object | Select-Object -ExpandProperty Count" 2>nul | findstr /r "[1-9]" >nul 2>&1
+    powershell -NoProfile -Command "if((Get-CimInstance Win32_VideoController | Where-Object{$_.Name -match 'NVIDIA|GeForce|RTX|GTX'}).Count -gt 0){exit 0}else{exit 1}" >nul 2>&1
     if !errorlevel! equ 0 set "HAS_NVIDIA=1"
 )
 
-powershell -NoProfile -Command "Get-CimInstance Win32_VideoController | Where-Object { $_.Name -match 'Radeon|AMD RX' } | Measure-Object | Select-Object -ExpandProperty Count" 2>nul | findstr /r "[1-9]" >nul 2>&1
+powershell -NoProfile -Command "if((Get-CimInstance Win32_VideoController | Where-Object{$_.Name -match 'Radeon|AMD RX'}).Count -gt 0){exit 0}else{exit 1}" >nul 2>&1
 if !errorlevel! equ 0 set "HAS_AMD=1"
 
 if "!HAS_NVIDIA!"=="1" (
     echo [OK] NVIDIA GPU detected - installing CUDA libraries...
-    call "%VENV_PIP%" install --prefer-binary --timeout 120 nvidia-cublas-cu12 nvidia-cudnn-cu12
+    "%VENV_PIP%" install --prefer-binary --timeout 120 nvidia-cublas-cu12 nvidia-cudnn-cu12
     echo [OK] NVIDIA CUDA acceleration ready.
     goto :gpu_done
 )
 
 if "!HAS_AMD!"=="1" (
     echo [OK] AMD Radeon GPU detected - installing DirectML libraries...
-    call "%VENV_PIP%" install --prefer-binary --timeout 120 onnxruntime-directml torch-directml
+    "%VENV_PIP%" install --prefer-binary --timeout 120 onnxruntime-directml torch-directml
     echo [OK] AMD DirectML acceleration ready.
     goto :gpu_done
 )
 
-echo [INFO] No dedicated GPU detected - using CPU mode (works great for most setups).
-call "%VENV_PIP%" install --prefer-binary --timeout 120 onnxruntime-directml >nul 2>&1
+echo [INFO] CPU mode - configuring DirectML for best CPU performance...
+"%VENV_PIP%" install --prefer-binary --timeout 120 onnxruntime-directml >nul 2>&1
+echo [OK] Configured for fast CPU inference.
 
 :gpu_done
 echo.
@@ -248,7 +256,6 @@ if not exist "%ROOT_DIR%\config.json" (
     echo [OK] Existing config.json preserved.
 )
 
-:: Allow microphone for desktop apps via registry
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone" /v Value /t REG_SZ /d Allow /f >nul 2>&1
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone\NonPackaged" /v Value /t REG_SZ /d Allow /f >nul 2>&1
 echo [OK] Microphone access enabled.
@@ -260,19 +267,19 @@ echo.
 echo [6/6] Creating Desktop shortcut...
 echo.
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $d = [Environment]::GetFolderPath('Desktop'); $lnk = Join-Path $d 'VoxStream Live Captioner.lnk'; $s = $ws.CreateShortcut($lnk); $s.TargetPath = '%ROOT_DIR%\run_captioner.bat'; $s.WorkingDirectory = '%ROOT_DIR%'; $s.Description = 'Launch VoxStream Live Captioner'; $s.Save()" >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws=New-Object -ComObject WScript.Shell; $lnk=$ws.CreateShortcut([IO.Path]::Combine([Environment]::GetFolderPath('Desktop'),'VoxStream Live Captioner.lnk')); $lnk.TargetPath='%ROOT_DIR%\run_captioner.bat'; $lnk.WorkingDirectory='%ROOT_DIR%'; $lnk.Description='Launch VoxStream'; $lnk.Save()" >nul 2>&1
 echo [OK] Desktop shortcut created.
 echo.
 
-:: Pre-cache models quietly in background
-call "%VENV_PY%" -m obs_captioner.model_downloader --preload-defaults >nul 2>&1
+:: Pre-cache default models quietly
+"%VENV_PY%" -m obs_captioner.model_downloader --preload-defaults >nul 2>&1
 
 echo.
 echo =======================================================
-echo   Setup Complete!
+echo   [SUCCESS] Setup Complete!
 echo.
 echo   Double-click "VoxStream Live Captioner" on your
-echo   Desktop to start, or run:  run_captioner.bat
+echo   Desktop to launch the app.
 echo.
 echo   Dashboard: http://127.0.0.1:8765
 echo =======================================================
