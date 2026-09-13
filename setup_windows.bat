@@ -205,11 +205,22 @@ echo [SUCCESS] Virtual environment ready.
 echo.
 
 :: ---------------------------------------------------------------------------
-:: STEP 5: Install Python Dependencies
+:: STEP 5: Fast Multi-Threaded Package Installation via uv (10x-50x Faster)
 :: ---------------------------------------------------------------------------
-echo [5/8] Upgrading pip and installing required packages...
+echo [5/8] Installing high-speed package installer (uv)...
 call "%VENV_PY%" -m pip install --upgrade pip
-call "%VENV_PY%" -m pip install -r "%ROOT_DIR%\requirements.txt"
+call "%VENV_PY%" -m pip install uv >nul 2>&1
+
+set "INSTALLER="%VENV_PY%" -m pip install"
+if exist "%VENV_DIR%\Scripts\uv.exe" (
+    set "INSTALLER="%VENV_DIR%\Scripts\uv.exe" pip install"
+    echo [SUCCESS] High-speed Rust package manager (uv) active!
+) else (
+    echo [INFO] Using standard pip installer.
+)
+
+echo [INFO] Installing required dependencies in parallel (this is much faster)...
+call %INSTALLER% -r "%ROOT_DIR%\requirements.txt"
 call "%VENV_PY%" -m pip uninstall -y torchaudio >nul 2>&1
 echo.
 
@@ -234,7 +245,7 @@ if !errorlevel! equ 0 set "HAS_AMD=1"
 if "!HAS_NVIDIA!"=="1" (
     echo [SUCCESS] NVIDIA GPU detected!
     echo [INFO] Installing CUDA and cuDNN runtime packages for Faster-Whisper...
-    call "%VENV_PY%" -m pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+    call %INSTALLER% nvidia-cublas-cu12 nvidia-cudnn-cu12
     echo [SUCCESS] NVIDIA GPU acceleration installed!
     goto :gpu_done
 )
@@ -242,13 +253,13 @@ if "!HAS_NVIDIA!"=="1" (
 if "!HAS_AMD!"=="1" (
     echo [SUCCESS] AMD Radeon GPU detected!
     echo [INFO] Installing DirectML runtime packages for AMD GPU acceleration...
-    call "%VENV_PY%" -m pip install onnxruntime-directml torch-directml
+    call %INSTALLER% onnxruntime-directml torch-directml
     echo [SUCCESS] AMD Radeon GPU DirectML and OpenMP CPU acceleration configured!
     goto :gpu_done
 )
 
 echo [INFO] Configuring DirectML and CPU int8 acceleration...
-call "%VENV_PY%" -m pip install onnxruntime-directml >nul 2>&1
+call %INSTALLER% onnxruntime-directml >nul 2>&1
 echo [SUCCESS] Configured for fast CPU int8 and DirectML inference.
 
 :gpu_done

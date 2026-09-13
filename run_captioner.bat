@@ -74,7 +74,11 @@ if "!APP_EXIT_CODE!"=="42" (
     echo.
     echo [VoxStream] Application restart requested. Verifying dependencies and reloading...
     if exist "%ROOT_DIR%\requirements.txt" (
-        call "%VENV_PY%" -m pip install -q -r "%ROOT_DIR%\requirements.txt"
+        if exist "%VENV_DIR%\Scripts\uv.exe" (
+            call "%VENV_DIR%\Scripts\uv.exe" pip install -q -r "%ROOT_DIR%\requirements.txt"
+        ) else (
+            call "%VENV_PY%" -m pip install -q -r "%ROOT_DIR%\requirements.txt"
+        )
     )
     timeout /t 1 /nobreak >nul
     goto app_loop
