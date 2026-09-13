@@ -1,6 +1,6 @@
 # Auto-detect text files and perform LF normalization for source code
 * text=auto
 
-# Windows batch files MUST use CRLF line endings or cmd.exe will misseek on labels/goto
-*.bat text eol=crlf
-*.cmd text eol=crlf
+# Windows batch files MUST use CRLF line endings in the repository itself so raw downloads preserve CRLF
+*.bat -text
+*.cmd -text
