@@ -1457,11 +1457,12 @@
                         return;
                     }
 
-                    if (data.type === 'scripture' && data.action === 'show') {
+                    if (data.type === 'scripture_verse' || (data.type === 'scripture' && data.action === 'show')) {
+                        if (data.show_on_stage_display === false) return;
                         showStageScripture(data);
                         return;
                     }
-                    if (data.type === 'scripture' && data.action === 'dismiss') {
+                    if (data.type === 'scripture_dismiss' || (data.type === 'scripture' && data.action === 'dismiss')) {
                         dismissStageScripture();
                         return;
                     }

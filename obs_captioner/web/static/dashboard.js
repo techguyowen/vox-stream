@@ -634,7 +634,8 @@ function initBibleHandlers() {
                     vertical_align: document.getElementById("bible_tab_vertical_align").value,
                     use_italics: document.getElementById("bible_tab_use_italics") ? document.getElementById("bible_tab_use_italics").checked : false,
                     letter_spacing: (document.getElementById("bible_tab_letter_spacing") && document.getElementById("bible_tab_letter_spacing").checked) ? "0.05em" : "normal",
-                    high_contrast_outline: document.getElementById("bible_tab_high_contrast") ? document.getElementById("bible_tab_high_contrast").checked : false
+                    high_contrast_outline: document.getElementById("bible_tab_high_contrast") ? document.getElementById("bible_tab_high_contrast").checked : false,
+                    show_on_stream_overlay: document.getElementById("bible_tab_show_on_stream_overlay") ? document.getElementById("bible_tab_show_on_stream_overlay").checked : false
                 }
             };
             await saveConfigPayload(payload, "Scripture Studio settings saved successfully!");
@@ -1892,6 +1893,58 @@ function populateFormFields(cfg) {
         }
         if (twitchStatus) {
             twitchStatus.style.display = (cfg.twitch.oauth_token && cfg.twitch.oauth_token.length > 0) ? "inline" : "none";
+        }
+    }
+
+    // Bible / Scripture Studio tab
+    if (cfg.bible) {
+        const b = cfg.bible;
+        const bEnabled = document.getElementById("bible_tab_enabled");
+        if (bEnabled) bEnabled.checked = b.enabled !== false;
+
+        const bVer = document.getElementById("bible_tab_version_select");
+        if (bVer && b.default_version) bVer.value = b.default_version;
+
+        const bMode = document.getElementById("bible_tab_display_mode");
+        if (bMode && b.display_mode) bMode.value = b.display_mode;
+
+        const bDur = document.getElementById("bible_tab_duration_slider");
+        const bDurVal = document.getElementById("val-bible-tab-duration");
+        if (bDur && b.display_duration_seconds !== undefined) {
+            bDur.value = b.display_duration_seconds;
+            if (bDurVal) bDurVal.textContent = `${b.display_duration_seconds}s`;
+        }
+
+        const bFontFam = document.getElementById("bible_tab_font_family");
+        if (bFontFam && b.font_family) setSelectValue(bFontFam, b.font_family);
+
+        const bFontSz = document.getElementById("bible_tab_font_size");
+        const bFontSzVal = document.getElementById("val-bible-tab-font-size");
+        if (bFontSz && b.font_size) {
+            bFontSz.value = b.font_size;
+            if (bFontSzVal) bFontSzVal.textContent = `${b.font_size}px`;
+        }
+
+        const bTheme = document.getElementById("bible_tab_card_theme");
+        if (bTheme && b.card_theme) bTheme.value = b.card_theme;
+
+        const bVert = document.getElementById("bible_tab_vertical_align");
+        if (bVert && b.vertical_align) bVert.value = b.vertical_align;
+
+        const bItal = document.getElementById("bible_tab_use_italics");
+        if (bItal) bItal.checked = !!b.use_italics;
+
+        const bSpacing = document.getElementById("bible_tab_letter_spacing");
+        if (bSpacing) bSpacing.checked = (b.letter_spacing === "0.05em");
+
+        const bContrast = document.getElementById("bible_tab_high_contrast");
+        if (bContrast) bContrast.checked = !!b.high_contrast_outline;
+
+        const bStream = document.getElementById("bible_tab_show_on_stream_overlay");
+        if (bStream) bStream.checked = !!b.show_on_stream_overlay;
+
+        if (typeof updateBibleTabPreviewStyling === "function") {
+            updateBibleTabPreviewStyling();
         }
     }
 }

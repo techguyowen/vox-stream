@@ -246,7 +246,7 @@ class BibleConfig:
     use_italics: bool = False       # Accessibility: False = straight upright text, True = italic slant
     reduce_motion: bool = False     # Accessibility: False = animated, True = instant
     high_contrast_outline: bool = False  # Accessibility: False = normal, True = heavy high-contrast outline
-    show_on_stream_overlay: bool = True
+    show_on_stream_overlay: bool = False
     show_on_stage_display: bool = True
 
 

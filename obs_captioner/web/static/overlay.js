@@ -51,6 +51,26 @@ const scriptureTextEl = document.getElementById("scripture-text");
 
 function showScriptureVerse(data) {
     if (!scriptureCard || !scriptureCitationEl || !scriptureTextEl) return;
+
+    // Check if scripture should appear on this general captions overlay.
+    // By default, scripture is isolated exclusively to the dedicated /bible overlay.
+    const urlParams = new URLSearchParams(window.location.search);
+    let allow = false;
+    if (urlParams.has("scripture")) {
+        const p = urlParams.get("scripture").toLowerCase();
+        allow = (p === "1" || p === "true" || p === "yes");
+    } else if (data && data.show_on_stream_overlay !== undefined) {
+        allow = Boolean(data.show_on_stream_overlay);
+    } else if (config && config.show_bible_on_stream !== undefined) {
+        allow = Boolean(config.show_bible_on_stream);
+    }
+
+    if (!allow) {
+        // Scripture is disabled on the main caption overlay; keep subtitles clean.
+        dismissScriptureVerse();
+        return;
+    }
+
     if (scriptureTimer) clearTimeout(scriptureTimer);
 
     scriptureCitationEl.textContent = `📖 ${data.citation || ''} • ${data.version || 'BSB'}`;
@@ -83,6 +103,7 @@ let config = {
     dual_subtitle_color: "#FFD700",
     dual_subtitle_scale: 0.85,
     dual_subtitle_format: "clean",
+    show_bible_on_stream: false,
 };
 
 let hideTimer = null;
@@ -199,6 +220,9 @@ async function loadConfig() {
                 if (data.translation.dual_subtitle_color) config.dual_subtitle_color = data.translation.dual_subtitle_color;
                 if (data.translation.dual_subtitle_scale) config.dual_subtitle_scale = parseFloat(data.translation.dual_subtitle_scale) || 0.85;
                 if (data.translation.dual_subtitle_format) config.dual_subtitle_format = data.translation.dual_subtitle_format;
+            }
+            if (data.bible) {
+                config.show_bible_on_stream = Boolean(data.bible.show_on_stream_overlay);
             }
         }
     } catch (e) {
@@ -498,8 +522,13 @@ function connectControlWebSocket() {
     controlWs.onmessage = (event) => {
         try {
             const msg = JSON.parse(event.data);
-            if (msg.type === "config_updated" && msg.config && msg.config.overlay) {
-                applyStyles(msg.config.overlay);
+            if (msg.type === "config_updated" && msg.config) {
+                if (msg.config.overlay) {
+                    applyStyles(msg.config.overlay);
+                }
+                if (msg.config.bible) {
+                    config.show_bible_on_stream = Boolean(msg.config.bible.show_on_stream_overlay);
+                }
             }
         } catch (e) {}
     };

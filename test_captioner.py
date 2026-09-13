@@ -1443,6 +1443,53 @@ class TestServerEndpoints(AioHTTPTestCase):
         dm_data = await dm_resp.json()
         self.assertEqual(dm_data['status'], 'success')
 
+    async def test_bible_overlay_isolation(self):
+        """Verify scripture overlay isolation config and broadcast routing."""
+        # 1. Check BibleConfig default
+        from obs_captioner.config import BibleConfig
+        bc = BibleConfig()
+        self.assertFalse(bc.show_on_stream_overlay, "BibleConfig.show_on_stream_overlay should default to False")
+        self.assertTrue(bc.show_on_stage_display)
+
+        # 2. Toggle show_on_stream_overlay via API
+        post_resp = await self.client.request('POST', '/api/config', json={
+            'bible': {
+                'show_on_stream_overlay': False,
+                'show_on_stage_display': True
+            }
+        })
+        self.assertEqual(post_resp.status, 200)
+        get_resp = await self.client.request('GET', '/api/config')
+        self.assertEqual(get_resp.status, 200)
+        data = await get_resp.json()
+        self.assertFalse(data['bible']['show_on_stream_overlay'])
+
+        # 3. Verify broadcast_scripture payload structure
+        from obs_captioner.bible_engine import ScriptureLookupResult
+        mock_verse = ScriptureLookupResult(
+            citation="John 1:1",
+            book="John",
+            chapter=1,
+            verse_start=1,
+            verse_end=1,
+            text="In the beginning was the Word.",
+            version="bsb",
+            version_name="Berean Standard Bible"
+        )
+        received_msgs = []
+        class MockWs:
+            async def send_json(self, m):
+                received_msgs.append(m)
+        mock_ws = MockWs()
+        self.overlay_server.caption_sockets[mock_ws] = "en"
+        try:
+            await self.overlay_server.broadcast_scripture(mock_verse, duration_seconds=10.0)
+            self.assertEqual(len(received_msgs), 1)
+            self.assertEqual(received_msgs[0]['type'], 'scripture_verse')
+            self.assertFalse(received_msgs[0]['show_on_stream_overlay'])
+            self.assertTrue(received_msgs[0]['show_on_stage_display'])
+        finally:
+            self.overlay_server.caption_sockets.pop(mock_ws, None)
 
     async def test_accessibility_config_fields(self):
         # Test saving and reading accessibility configuration parameters

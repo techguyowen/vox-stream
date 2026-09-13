@@ -168,7 +168,7 @@
     "use_italics": false,
     "reduce_motion": false,
     "high_contrast_outline": false,
-    "show_on_stream_overlay": true,
+    "show_on_stream_overlay": false,
     "show_on_stage_display": true
   }
 }

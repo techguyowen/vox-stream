@@ -1673,7 +1673,7 @@ class WebOverlayServer:
         await self.broadcast_scripture(res, duration_seconds=duration)
         return web.json_response({
             "status": "success",
-            "message": f"Displayed {res.citation} [{res.version}] on stream and stage monitors.",
+            "message": f"Displayed {res.citation} [{res.version}] on scripture overlay and stage monitors.",
             "scripture": res.to_dict(),
         })
 
@@ -1710,6 +1710,8 @@ class WebOverlayServer:
             "version_name": res.version_name,
             "duration_seconds": duration_seconds,
             "timestamp": time.time(),
+            "show_on_stream_overlay": bool(getattr(self.config.bible, "show_on_stream_overlay", False)) if getattr(self.config, "bible", None) else False,
+            "show_on_stage_display": bool(getattr(self.config.bible, "show_on_stage_display", True)) if getattr(self.config, "bible", None) else True,
         }
         
         # Broadcast to stream overlay WebSockets (/ws)

@@ -473,10 +473,10 @@
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
                         <div>
                             <h2 style="margin: 0; font-size: 16.5px; color: #FBBF24; display: flex; align-items: center; gap: 8px;">
-                                <span>📖 Scripture Overlay</span>
+                                <span>📖 Dedicated Scripture Broadcast Overlay</span>
                             </h2>
                             <p class="subtext" style="margin: 4px 0 0 0; font-size: 12.5px;">
-                                Add this URL as a dedicated <strong>Browser Source</strong> in OBS Studio, vMix, or ProPresenter to display live, animated scripture lower-thirds and passage cards on your broadcast.
+                                Add this URL as a dedicated <strong>Browser Source</strong> in OBS Studio, vMix, or ProPresenter. Scripture displays exclusively on this dedicated source, keeping your live speech captions clean!
                             </p>
                         </div>
                         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
@@ -492,7 +492,7 @@
                     <!-- Live URL Pill & Recommended Dimensions -->
                     <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center; background: #0F172A; border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 14px; font-size: 12.5px; margin-bottom: 12px;">
                         <div style="flex: 1; min-width: 260px; font-family: 'JetBrains Mono', monospace; color: #FBBF24; word-break: break-all;">
-                            <span style="color: var(--text-muted); font-size: 10.5px; text-transform: uppercase; display: block; margin-bottom: 2px; font-weight: 700;">Scripture Overlay URL:</span>
+                            <span style="color: var(--text-muted); font-size: 10.5px; text-transform: uppercase; display: block; margin-bottom: 2px; font-weight: 700;">Dedicated Scripture Overlay URL:</span>
                             <span id="bible-overlay-live-url" style="font-weight: 600; font-size: 13px;">http://127.0.0.1:8765/bible</span>
                         </div>
                         <div style="display: flex; gap: 14px; font-size: 11.5px; color: #CBD5E1; border-left: 1px solid var(--border-color); padding-left: 14px; flex-wrap: wrap;">
@@ -514,8 +514,8 @@
                             <span style="color: var(--text-muted);">Paste the copied URL, set Width to <strong>1920</strong>, Height to <strong>1080</strong>.</span>
                         </div>
                         <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px; font-size: 12px;">
-                            <strong style="color: var(--text-main); display: block; margin-bottom: 3px;">3. Instant Auto-Detection</strong>
-                            <span style="color: var(--text-muted);">When a speaker quotes scripture or when you click <em>Push to Stream</em>, verses pop up automatically!</span>
+                            <strong style="color: var(--text-main); display: block; margin-bottom: 3px;">3. Clean Broadcast Isolation</strong>
+                            <span style="color: var(--text-muted);">Verses appear exclusively on this source without cluttering your speech subtitles overlay!</span>
                         </div>
                     </div>
                 </div>
@@ -563,6 +563,19 @@
                                 <input type="range" id="bible_tab_duration_slider" min="5" max="30" step="1" value="14" class="slider">
                                 <span class="hint">How long the scripture card remains visible before smoothly fading out.</span>
                             </div>
+                        </div>
+
+                        <!-- Dedicated Overlay Routing Control -->
+                        <div class="panel" style="background: rgba(15, 23, 42, 0.5); border: 1.5px solid rgba(245, 158, 11, 0.35); border-radius: 8px; padding: 12px 14px; margin: 14px 0 10px 0;">
+                            <label class="switch-label" style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
+                                <input type="checkbox" id="bible_tab_show_on_stream_overlay" style="width: 18px; height: 18px; margin-top: 2px; cursor: pointer;">
+                                <div>
+                                    <strong style="color: var(--text-main); display: block; font-size: 13px;">📺 Show Scripture on Main Caption Overlay (<code>/</code>)</strong>
+                                    <span style="font-size: 11.5px; color: var(--text-muted); line-height: 1.4; display: block; margin-top: 3px;">
+                                        <strong>Default: Off (Recommended).</strong> Keeps your main speech subtitles overlay (<code>/</code>) strictly for speech captions, while scripture displays exclusively on your dedicated OBS Scripture Browser Source (<code>/bible</code>). Check this only if you want scripture cards to pop up directly over live speech subtitles.
+                                    </span>
+                                </div>
+                            </label>
                         </div>
 
                         <!-- Typography & Placement -->
