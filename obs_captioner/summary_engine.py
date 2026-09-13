@@ -232,7 +232,7 @@ class SermonSummaryEngine:
         anchor: str,
         format_style: str,
     ) -> Optional[List[Dict[str, Any]]]:
-        """Prompt Gemini Flash for semantic YouTube chapters."""
+        """Prompt Gemini Flash for semantic YouTube chapters across the entire recording."""
         api_key = self.get_api_key()
         if not api_key:
             return None
@@ -250,16 +250,17 @@ class SermonSummaryEngine:
                 church_context += " Identify scripture citations, sermon main points, prayers, worship, and benediction."
 
         prompt = (
-            f"You are an expert church media and video director. Analyze this live sermon transcript with timestamps.{church_context}\n"
-            "Generate YouTube-compliant video chapters. Follow these strict rules:\n"
-            "1. First chapter MUST start at 00:00:00 (or 00:00) with a title like 'Welcome & Opening Prayer' or 'Welcome & Praise'.\n"
+            f"You are an expert church media and video director. Analyze this COMPLETE live sermon transcript with timestamps.{church_context}\n"
+            "Generate YouTube-compliant video chapters distributed across the entire duration of the service from beginning to end.\n"
+            "Follow these strict rules:\n"
+            "1. First chapter MUST start at 00:00:00 (or 00:00) with a title like 'Welcome & Opening' or 'Welcome & Praise'.\n"
             "2. Timestamps must be strictly ascending.\n"
-            "3. Space chapters at least 2 to 5 minutes apart.\n"
-            "4. Total chapters between 4 and 10.\n"
+            "3. Space chapters evenly across the entire recording (typically 2 to 6 minutes apart).\n"
+            "4. Total chapters between 4 and 12, reflecting major movements of the service (Worship, Welcome, Scripture Reading, Sermon Points, Invitation, Benediction).\n"
             "5. Titles must be concise, engaging, and professional (under 45 characters), capturing topic shifts, scripture readings, and worship.\n"
             "Output ONLY valid JSON array with objects containing 'timecode' and 'title', e.g.:\n"
             '[{"timecode": "00:00:00", "title": "Welcome & Opening"}, {"timecode": "00:04:15", "title": "Scripture Reading (Romans 8)"}]\n\n'
-            f"TRANSCRIPT:\n{transcript_text[:12000]}"
+            f"COMPLETE TRANSCRIPT:\n{transcript_text}"
         )
 
         response_text = await self._call_gemini_api(prompt, api_key=api_key, model=self.config.gemini_model)
@@ -286,28 +287,53 @@ class SermonSummaryEngine:
         return chapters if len(chapters) >= 3 else None
 
     async def _generate_gemini_summary(self, entries: List[HistoryEntry]) -> Optional[Dict[str, Any]]:
-        """Prompt Gemini Flash for a comprehensive sermon recap."""
+        """Prompt Gemini Flash for a comprehensive, descriptive, and actionable sermon recap."""
         api_key = self.get_api_key()
         if not api_key:
             return None
 
         transcript_text, _ = self._format_transcript_for_prompt(entries, anchor="first_speech", time_offset_seconds=0.0)
 
+        church_context = ""
+        if self.app_config:
+            church_name = (getattr(getattr(self.app_config, "general", None), "church_name", "") or "").strip()
+            church_mode = getattr(getattr(self.app_config, "general", None), "church_mode", True)
+            if church_mode:
+                church_context = f" at {church_name}" if church_name else ""
+                church_context = f"This is a live church worship service and sermon{church_context}. "
+
         prompt = (
-            "You are an expert church pastor and communications director. Analyze this sermon transcript.\n"
-            "Generate a high-quality sermon recap package. Output ONLY a valid JSON object with the following keys:\n"
+            f"You are an expert theologian, pastor, and church communications director.\n"
+            f"{church_context}Analyze the following COMPLETE sermon transcript from beginning to end.\n\n"
+            "Generate an in-depth, descriptive, highly practical sermon recap and study guide.\n"
+            "Do NOT provide brief, superficial, or generic summaries. Capture the specific biblical arguments, stories, "
+            "theological context, and pastoral heart communicated by the speaker throughout the entire message.\n\n"
+            "Output ONLY a valid JSON object matching this schema:\n"
             "{\n"
-            '  "title": "A captivating, biblical sermon title",\n'
-            '  "scriptures": ["Romans 8:28-39", "Matthew 5:14-16"],\n'
-            '  "big_idea": "One or two sentences capturing the central message of the sermon",\n'
+            '  "title": "A compelling, biblically faithful sermon title",\n'
+            '  "scriptures": ["Primary Book Chapter:Verse-Verse", "Secondary Scripture citations..."],\n'
+            '  "big_idea": "A clear, memorable 2-3 sentence thesis statement defining the central theological message.",\n'
+            '  "overview": "A thorough, descriptive 2-3 paragraph narrative summary of the sermon. Explain the biblical text, the cultural/historical context, the human problem addressed, and the gospel resolution.",\n'
             '  "key_points": [\n'
-            '    {"timecode": "00:14:20", "title": "Point 1 Title", "description": "Brief 1-2 sentence explanation"},\n'
-            '    {"timecode": "00:27:45", "title": "Point 2 Title", "description": "Brief 1-2 sentence explanation"}\n'
-            "  ],\n"
-            '  "quotes": ["1 to 3 memorable or inspiring spoken quotes from the transcript"],\n'
-            '  "discussion_questions": ["3 to 4 thoughtful small group application questions"]\n'
+            '    {\n'
+            '      "timecode": "HH:MM:SS",\n'
+            '      "title": "Descriptive Point Title",\n'
+            '      "scripture": "Scripture reference for this point (e.g. Romans 8:1-4)",\n'
+            '      "description": "Thorough 3-5 sentence explanation detailing the biblical exposition, the speaker\'s illustrations or analogies, and theological significance.",\n'
+            '      "practical_application": "Concrete, practical guidance for how to live this truth out in daily life."\n'
+            '    }\n'
+            '  ],\n'
+            '  "action_steps": [\n'
+            '    "Concrete action step or spiritual discipline for the listener this week (3 to 5 steps)"\n'
+            '  ],\n'
+            '  "quotes": [\n'
+            '    "3 to 5 memorable, inspiring, or challenging spoken quotes from the transcript"\n'
+            '  ],\n'
+            '  "discussion_questions": [\n'
+            '    "4 to 6 thoughtful small group application questions ranging from understanding the text to personal vulnerability and prayer"\n'
+            '  ]\n'
             "}\n\n"
-            f"TRANSCRIPT:\n{transcript_text[:14000]}"
+            f"COMPLETE TRANSCRIPT:\n{transcript_text}"
         )
 
         response_text = await self._call_gemini_api(prompt, api_key=api_key, model=self.config.gemini_model)
@@ -325,15 +351,32 @@ class SermonSummaryEngine:
         def _run_sdk() -> Optional[str]:
             try:
                 from google import genai
+                from google.genai import types
                 client = genai.Client(api_key=api_key)
+                config = types.GenerateContentConfig(
+                    temperature=0.2,
+                    max_output_tokens=4096,
+                )
                 response = client.models.generate_content(
                     model=model,
                     contents=prompt,
+                    config=config,
                 )
                 if response and response.text:
                     return response.text
             except Exception as e:
-                logger.debug(f"google.genai SDK failed, trying REST API fallback: {e}")
+                logger.debug(f"google.genai SDK with config failed, trying basic call: {e}")
+                try:
+                    from google import genai
+                    client = genai.Client(api_key=api_key)
+                    response = client.models.generate_content(
+                        model=model,
+                        contents=prompt,
+                    )
+                    if response and response.text:
+                        return response.text
+                except Exception as e2:
+                    logger.debug(f"google.genai SDK fallback failed: {e2}")
             return None
 
         result = await loop.run_in_executor(None, _run_sdk)
@@ -347,7 +390,7 @@ class SermonSummaryEngine:
                 "contents": [{"parts": [{"text": prompt}]}],
                 "generationConfig": {
                     "temperature": 0.2,
-                    "maxOutputTokens": 2048,
+                    "maxOutputTokens": 4096,
                 }
             }
             data_bytes = json.dumps(payload).encode("utf-8")
@@ -357,7 +400,7 @@ class SermonSummaryEngine:
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=12.0) as resp:
+            with urllib.request.urlopen(req, timeout=35.0) as resp:
                 resp_bytes = resp.read()
                 data = json.loads(resp_bytes.decode("utf-8"))
                 candidates = data.get("candidates", [])
@@ -497,11 +540,30 @@ class SermonSummaryEngine:
         # 5. Generate Small Group Questions
         questions = self._generate_discussion_questions(scriptures, title)
 
+        # 6. Derive Narrative Overview
+        scrip_str = f" anchored in {', '.join(scriptures)}" if scriptures else ""
+        overview = f"In this service, the message focused on '{title}'{scrip_str}. The teaching explored God's truth for faithful living and community, calling believers to deeper trust and obedience. {big_idea}"
+
+        # 7. Action Steps
+        primary_ref = scriptures[0] if scriptures else "the scriptures"
+        action_steps = [
+            f"Read and meditate on {primary_ref} throughout the week.",
+            "Identify one specific area in your life where you need to surrender fear and step out in faith.",
+            "Reach out to an individual or family in your community to share encouragement and pray with them.",
+        ]
+
+        # Enhance key points with practical applications if not already set
+        for idx, pt in enumerate(key_points, 1):
+            if "practical_application" not in pt:
+                pt["practical_application"] = f"Reflect on how {pt.get('title', 'this point')} applies to your everyday routines."
+
         return {
             "title": title,
             "scriptures": scriptures,
             "big_idea": big_idea,
+            "overview": overview,
             "key_points": key_points,
+            "action_steps": action_steps,
             "quotes": quotes,
             "discussion_questions": questions,
         }
@@ -551,6 +613,7 @@ class SermonSummaryEngine:
                     "timecode": timecode,
                     "title": f"Key Teaching Point ({timecode})",
                     "description": desc[:140] + ("..." if len(desc) > 140 else ""),
+                    "practical_application": "Apply this teaching in your personal walk this week.",
                 })
                 if len(points) >= 5:
                     break
@@ -565,6 +628,7 @@ class SermonSummaryEngine:
                     "timecode": timecode,
                     "title": f"Teaching Section ({timecode})",
                     "description": e.text[:120] + "...",
+                    "practical_application": "Reflect on God's direction for this area of your life.",
                 })
                 if len(points) >= 3:
                     break
@@ -618,9 +682,12 @@ class SermonSummaryEngine:
     def _format_summary_outputs(self, data: Dict[str, Any]):
         """Generate ready-to-copy Markdown, YouTube Description, and Bulletin text."""
         title = data.get("title", "Sunday Message")
-        scriptures = ", ".join(data.get("scriptures", [])) or "Scripture Reading"
+        scriptures_list = data.get("scriptures", [])
+        scriptures = ", ".join(scriptures_list) if scriptures_list else "Scripture Reading"
         big_idea = data.get("big_idea", "")
+        overview = data.get("overview", "")
         key_points = data.get("key_points", [])
+        action_steps = data.get("action_steps", [])
         quotes = data.get("quotes", [])
         questions = data.get("discussion_questions", [])
 
@@ -630,13 +697,33 @@ class SermonSummaryEngine:
             f"**Primary Scripture:** {scriptures}",
             f"**The Big Idea:** {big_idea}",
             "",
-            "### 📌 Key Teaching Points",
         ]
+
+        if overview:
+            md_lines.extend([
+                "### 📝 Message Overview",
+                overview,
+                "",
+            ])
+
+        md_lines.append("### 📌 Key Teaching Points")
         for p in key_points:
-            md_lines.append(f"- **[{p.get('timecode', '00:00:00')}] {p.get('title', '')}**")
+            tc = p.get("timecode", "00:00:00")
+            p_title = p.get("title", "")
+            p_scrip = p.get("scripture", "")
+            scrip_str = f" *({p_scrip})*" if p_scrip else ""
+            md_lines.append(f"- **[{tc}] {p_title}**{scrip_str}")
             if p.get("description"):
                 md_lines.append(f"  {p.get('description')}")
+            if p.get("practical_application"):
+                md_lines.append(f"  *💡 Application:* {p.get('practical_application')}")
         md_lines.append("")
+
+        if action_steps:
+            md_lines.append("### 🎯 Weekly Action Steps & Life Application")
+            for idx, step in enumerate(action_steps, 1):
+                md_lines.append(f"{idx}. {step}")
+            md_lines.append("")
 
         if quotes:
             md_lines.append("### 💬 Notable Quotes")
@@ -654,16 +741,34 @@ class SermonSummaryEngine:
 
         # 2. YouTube Description Block
         yt_lines = [
-            title,
+            f"📖 {title}",
             "",
             big_idea,
             "",
-            f"Scriptures: {scriptures}",
+            f"Primary Scripture: {scriptures}",
             "",
-            "TIMESTAMPS:",
         ]
+        if overview:
+            yt_lines.extend([
+                "ABOUT THIS MESSAGE:",
+                overview,
+                "",
+            ])
+        yt_lines.append("SERMON OUTLINE & TIMESTAMPS:")
         for p in key_points:
             yt_lines.append(f"{p.get('timecode', '00:00:00')} - {p.get('title', '')}")
+        yt_lines.append("")
+
+        if action_steps:
+            yt_lines.append("THIS WEEK'S CHALLENGE:")
+            for s in action_steps:
+                yt_lines.append(f"• {s}")
+            yt_lines.append("")
+
+        if questions:
+            yt_lines.append("REFLECTION QUESTION:")
+            yt_lines.append(f"• {questions[0]}")
+
         data["youtube_description"] = "\n".join(yt_lines)
 
         # 3. Compact Bulletin / Newsletter Block
@@ -673,10 +778,32 @@ class SermonSummaryEngine:
             "",
             f"Main Idea: {big_idea}",
             "",
-            "Key Points:",
         ]
+        if overview:
+            bulletin_lines.extend([
+                "Overview:",
+                overview,
+                "",
+            ])
+        bulletin_lines.append("Key Points:")
         for idx, p in enumerate(key_points, 1):
-            bulletin_lines.append(f"{idx}. {p.get('title', '')} — {p.get('description', '')}")
+            p_desc = p.get("description", "")
+            bulletin_lines.append(f"{idx}. {p.get('title', '')} — {p_desc}")
+            if p.get("practical_application"):
+                bulletin_lines.append(f"   Takeaway: {p.get('practical_application')}")
+        bulletin_lines.append("")
+
+        if action_steps:
+            bulletin_lines.append("Life Applications for This Week:")
+            for idx, s in enumerate(action_steps, 1):
+                bulletin_lines.append(f"  {idx}. {s}")
+            bulletin_lines.append("")
+
+        if questions:
+            bulletin_lines.append("Small Group Discussion:")
+            for idx, q in enumerate(questions[:3], 1):
+                bulletin_lines.append(f"  {idx}. {q}")
+
         data["bulletin_text"] = "\n".join(bulletin_lines)
 
     def _ensure_youtube_compliance(self, chapters: List[Dict[str, Any]], format_style: str = "hhmmss") -> List[Dict[str, Any]]:
@@ -710,19 +837,69 @@ class SermonSummaryEngine:
         return sorted_chapters
 
     def _format_transcript_for_prompt(
-        self, entries: List[HistoryEntry], anchor: str, time_offset_seconds: float
+        self,
+        entries: List[HistoryEntry],
+        anchor: str = "first_speech",
+        time_offset_seconds: float = 0.0,
+        group_interval_seconds: float = 25.0,
+        max_chars: int = 350000,
     ) -> Tuple[str, float]:
-        """Compress transcript into formatted timestamped blocks."""
+        """Format and group transcript into readable timestamped paragraphs for LLM reasoning.
+
+        Aggregates fragmented speech recognition entries within ~25s windows into
+        coherent narrative blocks, eliminating repetitive timestamp token bloat
+        while preserving precise temporal anchors for chapters and outline points.
+        """
         if not entries:
             return "", 0.0
-        base_time = entries[0].start_time if anchor == "first_speech" else (self.history.session_start_time if self.history else entries[0].start_time)
 
-        lines = []
+        base_time = (
+            entries[0].start_time
+            if anchor == "first_speech"
+            else (self.history.session_start_time if self.history else entries[0].start_time)
+        )
+
+        blocks = []
+        current_block_texts = []
+        current_block_start_sec = None
+        last_entry_end_time = None
+
         for e in entries:
+            text = e.text.strip()
+            if not text:
+                continue
+
             rel_sec = max(0, int(e.start_time - base_time + time_offset_seconds))
-            tc = f"{rel_sec // 3600:02d}:{(rel_sec % 3600) // 60:02d}:{rel_sec % 60:02d}"
-            lines.append(f"[{tc}] {e.text}")
-        return "\n".join(lines), base_time
+
+            # Trigger a new block on first entry, interval boundary (~25s), or >4s silence pause
+            is_new_block = (
+                current_block_start_sec is None
+                or (rel_sec - current_block_start_sec) >= group_interval_seconds
+                or (last_entry_end_time is not None and (e.start_time - last_entry_end_time) > 4.0)
+            )
+
+            if is_new_block and current_block_texts:
+                tc = f"{current_block_start_sec // 3600:02d}:{(current_block_start_sec % 3600) // 60:02d}:{current_block_start_sec % 60:02d}"
+                joined = " ".join(current_block_texts)
+                blocks.append(f"[{tc}] {joined}")
+                current_block_texts = []
+                current_block_start_sec = rel_sec
+            elif current_block_start_sec is None:
+                current_block_start_sec = rel_sec
+
+            current_block_texts.append(text)
+            last_entry_end_time = e.end_time
+
+        if current_block_texts and current_block_start_sec is not None:
+            tc = f"{current_block_start_sec // 3600:02d}:{(current_block_start_sec % 3600) // 60:02d}:{current_block_start_sec % 60:02d}"
+            joined = " ".join(current_block_texts)
+            blocks.append(f"[{tc}] {joined}")
+
+        full_transcript = "\n".join(blocks)
+        if len(full_transcript) > max_chars:
+            full_transcript = full_transcript[:max_chars]
+
+        return full_transcript, base_time
 
     def _format_seconds(self, seconds: float, format_style: str = "hhmmss") -> str:
         sec = max(0, int(seconds))
@@ -743,21 +920,95 @@ class SermonSummaryEngine:
         return 0.0
 
     def _extract_json_array(self, text: str) -> Optional[List[Dict[str, Any]]]:
-        """Extract JSON array from LLM response text."""
-        match = re.search(r"\[\s*\{.*\}\s*\]", text, re.DOTALL)
-        if match:
+        """Extract JSON array from LLM response text with markdown fence stripping and bracket matching."""
+        if not text:
+            return None
+        cleaned = text.strip()
+
+        # 1. Look for ```json ... ``` markdown block
+        fence_match = re.search(r"```(?:json)?\s*(\[.*?\])\s*```", cleaned, re.DOTALL)
+        if fence_match:
             try:
-                return json.loads(match.group(0))
+                res = json.loads(fence_match.group(1))
+                if isinstance(res, list):
+                    return res
             except Exception:
                 pass
+
+        # 2. Try direct parsing
+        try:
+            res = json.loads(cleaned)
+            if isinstance(res, list):
+                return res
+        except Exception:
+            pass
+
+        # 3. Find outermost square brackets
+        start = cleaned.find("[")
+        end = cleaned.rfind("]")
+        if start != -1 and end != -1 and end > start:
+            try:
+                res = json.loads(cleaned[start:end+1])
+                if isinstance(res, list):
+                    return res
+            except Exception:
+                pass
+
+        # 4. Fallback regex
+        match = re.search(r"\[\s*\{.*\}\s*\]", cleaned, re.DOTALL)
+        if match:
+            try:
+                res = json.loads(match.group(0))
+                if isinstance(res, list):
+                    return res
+            except Exception:
+                pass
+
         return None
 
     def _extract_json_object(self, text: str) -> Optional[Dict[str, Any]]:
-        """Extract JSON object from LLM response text."""
-        match = re.search(r"\{\s*\".*\"\s*:.*\}", text, re.DOTALL)
-        if match:
+        """Extract JSON object from LLM response text with markdown fence stripping and bracket matching."""
+        if not text:
+            return None
+        cleaned = text.strip()
+
+        # 1. Look for ```json ... ``` markdown block
+        fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, re.DOTALL)
+        if fence_match:
             try:
-                return json.loads(match.group(0))
+                res = json.loads(fence_match.group(1))
+                if isinstance(res, dict):
+                    return res
             except Exception:
                 pass
+
+        # 2. Try direct parsing
+        try:
+            res = json.loads(cleaned)
+            if isinstance(res, dict):
+                return res
+        except Exception:
+            pass
+
+        # 3. Find outermost curly braces
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                res = json.loads(cleaned[start:end+1])
+                if isinstance(res, dict):
+                    return res
+            except Exception:
+                pass
+
+        # 4. Fallback regex
+        match = re.search(r"\{\s*\".*\"\s*:.*\}", cleaned, re.DOTALL)
+        if match:
+            try:
+                res = json.loads(match.group(0))
+                if isinstance(res, dict):
+                    return res
+            except Exception:
+                pass
+
         return None

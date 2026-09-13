@@ -3319,11 +3319,51 @@ class TestSermonSummaryAndAIChapters(unittest.TestCase):
             self.assertIn("Romans 8:28", summary["scriptures"])
             self.assertTrue(len(summary["key_points"]) >= 2)
             self.assertTrue(len(summary["discussion_questions"]) >= 3)
+            self.assertIn("overview", summary)
+            self.assertTrue(len(summary["overview"]) > 0)
+            self.assertIn("action_steps", summary)
+            self.assertTrue(len(summary["action_steps"]) >= 2)
             self.assertIn("# 📖", summary["markdown"])
+            self.assertIn("Message Overview", summary["markdown"])
+            self.assertIn("Weekly Action Steps", summary["markdown"])
             self.assertIn("TIMESTAMPS:", summary["youtube_description"])
             self.assertIn("SERMON RECAP:", summary["bulletin_text"])
         finally:
             loop.close()
+
+    def test_transcript_aggregation_and_json_extraction(self):
+        # 1. Test paragraph aggregation eliminates repetitive timestamps
+        t0 = 5000.0
+        self.history.add_entry("Opening welcome words.", start_time=t0, end_time=t0 + 2.0)
+        self.history.add_entry("Continuing the same sentence seamlessly.", start_time=t0 + 5.0, end_time=t0 + 8.0)
+        self.history.add_entry("A third line in the same 25s window.", start_time=t0 + 12.0, end_time=t0 + 15.0)
+        self.history.add_entry("A new point after a 10-second gap.", start_time=t0 + 35.0, end_time=t0 + 38.0)
+
+        formatted, base = self.engine._format_transcript_for_prompt(self.history.entries)
+        lines = formatted.strip().split("\n")
+        # Should have aggregated into 2 distinct timestamped paragraphs instead of 4 separate lines
+        self.assertEqual(len(lines), 2)
+        self.assertTrue(lines[0].startswith("[00:00:00]"))
+        self.assertIn("Continuing the same sentence", lines[0])
+        self.assertIn("A third line", lines[0])
+        self.assertTrue(lines[1].startswith("[00:00:35]"))
+
+        # 2. Test JSON extraction resilience against code fences and commentary
+        fenced_obj = '```json\n{\n  "title": "Grace Awakened",\n  "scriptures": ["Ephesians 2:8"]\n}\n```'
+        parsed_obj = self.engine._extract_json_object(fenced_obj)
+        self.assertIsNotNone(parsed_obj)
+        self.assertEqual(parsed_obj["title"], "Grace Awakened")
+
+        conversational_obj = 'Here is the summary:\n{\n  "title": "Walking in Truth"\n}\nHope this helps!'
+        parsed_conv = self.engine._extract_json_object(conversational_obj)
+        self.assertIsNotNone(parsed_conv)
+        self.assertEqual(parsed_conv["title"], "Walking in Truth")
+
+        fenced_arr = '```json\n[\n  {"timecode": "00:00:00", "title": "Welcome"}\n]\n```'
+        parsed_arr = self.engine._extract_json_array(fenced_arr)
+        self.assertIsNotNone(parsed_arr)
+        self.assertEqual(len(parsed_arr), 1)
+        self.assertEqual(parsed_arr[0]["title"], "Welcome")
 
     def test_ai_chapters_strict_youtube_compliance(self):
         t0 = 2000.0

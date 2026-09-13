@@ -4107,7 +4107,7 @@ if (btnGenerateSummary) {
             // Render Preview HTML
             if (previewEl) {
                 let html = `
-                    <div style="margin-bottom: 12px;">
+                    <div style="margin-bottom: 14px;">
                         <h3 style="margin: 0 0 6px 0; color: #F8FAFC; font-size: 18px;">📖 ${escapeHtml(data.title || "Sunday Sermon Message")}</h3>
                         <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px;">
                 `;
@@ -4124,20 +4124,41 @@ if (btnGenerateSummary) {
                             <strong style="color: #C084FC; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; display: block;">The Big Idea:</strong>
                             <div style="color: #E2E8F0; font-size: 13.5px; margin-top: 2px;">${escapeHtml(data.big_idea || "")}</div>
                         </div>
-                    </div>
                 `;
+
+                if (data.overview) {
+                    html += `
+                        <div style="background: rgba(99, 102, 241, 0.05); border: 1px solid rgba(99, 102, 241, 0.18); border-radius: 6px; padding: 12px 14px; margin-bottom: 14px; line-height: 1.6; color: #E2E8F0; font-size: 13px;">
+                            <strong style="color: #A5B4FC; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 4px;">📝 Message Overview:</strong>
+                            <div>${escapeHtml(data.overview).replace(/\n/g, "<br>")}</div>
+                        </div>
+                    `;
+                }
+
+                html += `</div>`;
 
                 if (data.key_points && data.key_points.length > 0) {
                     html += `<h4 style="margin: 14px 0 8px 0; color: #94A3B8; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;">📌 Key Teaching Points:</h4><ul style="margin: 0 0 14px 0; padding-left: 20px;">`;
                     data.key_points.forEach(p => {
+                        const scripBadge = p.scripture ? ` <span style="color: #818CF8; font-size: 11px;">(${escapeHtml(p.scripture)})</span>` : "";
+                        const appLine = p.practical_application ? `<div style="color: #34D399; font-size: 12px; margin-top: 3px;">💡 <strong>Application:</strong> ${escapeHtml(p.practical_application)}</div>` : "";
                         html += `
-                            <li style="margin-bottom: 6px;">
-                                <strong style="color: #F1F5F9;">[${escapeHtml(p.timecode || "")}] ${escapeHtml(p.title || "")}</strong>
-                                ${p.description ? `<div style="color: #94A3B8; font-size: 12.5px; margin-top: 2px;">${escapeHtml(p.description)}</div>` : ""}
+                            <li style="margin-bottom: 10px;">
+                                <strong style="color: #F1F5F9;">[${escapeHtml(p.timecode || "")}] ${escapeHtml(p.title || "")}</strong>${scripBadge}
+                                ${p.description ? `<div style="color: #CBD5E1; font-size: 12.5px; margin-top: 2px; line-height: 1.5;">${escapeHtml(p.description)}</div>` : ""}
+                                ${appLine}
                             </li>
                         `;
                     });
                     html += `</ul>`;
+                }
+
+                if (data.action_steps && data.action_steps.length > 0) {
+                    html += `<h4 style="margin: 14px 0 8px 0; color: #34D399; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;">🎯 Life Applications &amp; Weekly Steps:</h4><ol style="margin: 0 0 14px 0; padding-left: 20px;">`;
+                    data.action_steps.forEach(step => {
+                        html += `<li style="margin-bottom: 4px; color: #E2E8F0; font-size: 12.5px;">${escapeHtml(step)}</li>`;
+                    });
+                    html += `</ol>`;
                 }
 
                 if (data.quotes && data.quotes.length > 0) {
