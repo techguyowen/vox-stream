@@ -60,7 +60,13 @@ class CaptionSink:
             church_name=church_name,
         )
         self.content_filter = ContentFilter(config.censor, church_mode=church_mode)
-        self.translator = SubtitleTranslator(config.translation)
+        self.translator = SubtitleTranslator(
+            config.translation,
+            api_key_resolver=lambda: (
+                getattr(getattr(self, "config", config).gemini_live, "api_key", "")
+                or getattr(getattr(self, "config", config).summary, "gemini_api_key", "")
+            ),
+        )
         self.history = history or TranscriptHistory()
         self.twitch_bot = twitch_bot
         self._last_caption_time = 0.0
@@ -83,18 +89,27 @@ class CaptionSink:
             church_name=church_name,
         )
         self.content_filter = ContentFilter(new_config.censor, church_mode=church_mode)
-        self.translator = SubtitleTranslator(new_config.translation)
+        self.translator = SubtitleTranslator(
+            new_config.translation,
+            api_key_resolver=lambda: (
+                getattr(new_config.gemini_live, "api_key", "")
+                or getattr(new_config.summary, "gemini_api_key", "")
+            ),
+        )
 
     def _attempt_boundary_stitch(self, clean_text: str) -> Tuple[str, bool]:
-        """Stitch mid-word chunk boundary splits between consecutive finalized utterances."""
+        """Stitch mid-word chunk boundary splits and continuing clauses between consecutive utterances."""
         now = time.time()
         if not self.history.entries or (now - self._last_final_time > 3.5):
             return clean_text, False
 
         last_entry = self.history.entries[-1]
         last_text = last_entry.text
-
         clean_new = clean_text.strip()
+        if not clean_new:
+            return clean_text, False
+
+        # 1. Lexical word-split stitching (e.g. 'way poi' + 'point' -> 'Waypoint')
         for (prefix, suffix), (stitched_word, _) in self.BOUNDARY_STITCH_PAIRS.items():
             # Check if last entry ends with prefix or stitched word (ignoring trailing punctuation)
             tail_pat = rf"(?:\b|_)(?:{re.escape(prefix)}|{re.escape(stitched_word)})[.,!?:;\-_]*$"
@@ -119,6 +134,42 @@ class CaptionSink:
                 return remainder, False
             else:
                 return "", True
+
+        # 2. Syntactic clause stitching for dangling connectors or unclosed clauses
+        # Strip potential translation parenthetical from last_text before checking English base
+        last_clean_text = re.sub(r"\s*\([^)]*\)$", "", last_text).strip()
+        last_words = last_clean_text.split()
+        if last_words:
+            last_word_clean = last_words[-1].lower().rstrip(".,?!;:…")
+            is_dangling = last_word_clean in TextFormatter.DANGLING_CONNECTORS
+            has_no_terminal = last_clean_text[-1] not in ".?!"
+
+            if is_dangling or has_no_terminal:
+                max_words = getattr(self.config.audio, "max_sentence_words", 24) or 24
+                new_words = clean_new.split()
+                # If combined length fits comfortably within sentence length ceiling
+                if len(last_words) + len(new_words) <= max_words + 4:
+                    # Prepare continuation text: lowercase first word unless it's a proper noun or 'I'
+                    continuation = clean_new
+                    first_word = new_words[0].rstrip(".,?!;:…")
+                    if (
+                        first_word != "I"
+                        and first_word.lower() not in self.formatter.PROPER_NOUNS
+                        and not any(c.isupper() for c in first_word[1:])  # not acronym like OBS
+                    ):
+                        continuation = continuation[0].lower() + continuation[1:]
+
+                    # Remove any trailing punctuation from last_text before attaching
+                    base_text = last_clean_text.rstrip(".,;:… ")
+                    combined = f"{base_text} {continuation}"
+                    # Re-apply formatting and punctuation to the stitched complete sentence
+                    stitched = self.formatter.format_text(combined, is_final=True)
+                    last_entry.text = stitched
+                    last_entry.end_time = now
+                    return "", True
+                elif has_no_terminal:
+                    # If sentence is too long to absorb, gracefully seal the previous entry with a period
+                    last_entry.text = last_clean_text.rstrip(".,;:… ") + "."
 
         return clean_text, False
 
@@ -185,12 +236,45 @@ class CaptionSink:
                 self._utterance_active = False
                 self._sentence_start_time = time.time()
                 self._last_final_time = time.time()
+
+                # Dispatch updated full sentence to Web Overlay and OBS Text Source
+                last_entry = self.history.entries[-1]
+                updated_text = last_entry.text
+
+                if self.web_server:
+                    await self.web_server.broadcast_caption(
+                        {
+                            "text": updated_text,
+                            "translated_text": None,
+                            "is_final": True,
+                            "is_censored": last_entry.is_censored,
+                            "timestamp": event.timestamp,
+                            "replace_last": True,
+                        }
+                    )
+
+                if self.obs_client and self.obs_client.is_connected:
+                    if self.config.obs.update_text_source and self.config.obs.text_source_name:
+                        await self.obs_client.update_text_source(
+                            self.config.obs.text_source_name,
+                            updated_text,
+                        )
+
+                if self.config.overlay.auto_hide_seconds > 0:
+                    if self._auto_clear_task:
+                        self._auto_clear_task.cancel()
+                    self._auto_clear_task = asyncio.create_task(self._auto_clear_worker())
+
                 return
             clean_text = stitched_text
 
         # 4. Live Translation if enabled
         translated_text = None
-        if clean_text and self.config.translation.enabled:
+        if getattr(event, "translated_text", None):
+            # Directly provided by live speech translation engine (e.g. gemini-3.5-live-translate-preview)
+            translated_text = event.translated_text
+            display_text = clean_text
+        elif clean_text and self.config.translation.enabled:
             primary_text, translated_text = await self.translator.translate_text(clean_text)
             display_text = primary_text
         else:
@@ -203,7 +287,11 @@ class CaptionSink:
             self._last_final_time = sentence_end
             recorded_text = clean_text
             if translated_text:
-                recorded_text = f"{clean_text} ({translated_text})"
+                dual_fmt = getattr(self.config.translation, "dual_subtitle_format", "clean")
+                if dual_fmt == "parentheses":
+                    recorded_text = f"{clean_text} ({translated_text})"
+                else:
+                    recorded_text = f"{clean_text} / {translated_text}"
             self.history.add_entry(
                 text=recorded_text,
                 start_time=sentence_start,
@@ -214,7 +302,7 @@ class CaptionSink:
             self._sentence_start_time = sentence_end
 
             # Auto Scripture Lookup & Broadcast Trigger
-            if self.web_server and getattr(self.config, "bible", None) and self.config.bible.enabled:
+            if self.web_server and hasattr(self.web_server, "trigger_scripture_lookup") and getattr(self.config, "bible", None) and self.config.bible.enabled:
                 if self.config.bible.display_mode == "auto":
                     asyncio.create_task(self.web_server.trigger_scripture_lookup(clean_text))
 
@@ -242,6 +330,9 @@ class CaptionSink:
                 {
                     "text": display_text,
                     "translated_text": translated_text,
+                    "dual_color": getattr(self.config.translation, "dual_subtitle_color", "#FFD700"),
+                    "dual_scale": getattr(self.config.translation, "dual_subtitle_scale", 0.85),
+                    "dual_format": getattr(self.config.translation, "dual_subtitle_format", "clean"),
                     "is_final": event.is_final,
                     "is_censored": was_censored,
                     "timestamp": event.timestamp,
@@ -252,7 +343,11 @@ class CaptionSink:
         if self.obs_client and self.obs_client.is_connected:
             obs_out_text = display_text
             if translated_text and self.config.translation.display_mode == "dual":
-                obs_out_text = f"{display_text}\n{translated_text}"
+                dual_fmt = getattr(self.config.translation, "dual_subtitle_format", "clean")
+                if dual_fmt == "parentheses":
+                    obs_out_text = f"{display_text}\n({translated_text})"
+                else:
+                    obs_out_text = f"{display_text}\n{translated_text}"
 
             if self.config.obs.update_text_source and self.config.obs.text_source_name:
                 if not getattr(self.config.overlay, "final_only", False) or event.is_final:
@@ -262,7 +357,7 @@ class CaptionSink:
                     )
 
             # Send Twitch/YouTube Closed Captions (only on finalized sentences)
-            if self.config.obs.send_cea608_captions and event.is_final and clean_text:
+            if self.config.obs.send_cea608_captions and event.is_final and clean_text and hasattr(self.obs_client, "send_stream_caption"):
                 await self.obs_client.send_stream_caption(clean_text)
 
         # Reset auto-clear timer

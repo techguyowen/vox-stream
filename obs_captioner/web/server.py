@@ -66,6 +66,7 @@ class WebOverlayServer:
         audio_capture: Optional[Any] = None,
         updater: Optional[Any] = None,
         subtitle_recorder: Optional[Any] = None,
+        on_trim_memory: Optional[Callable[[], float]] = None,
     ):
         self.config = config
         self.history = history or TranscriptHistory()
@@ -74,13 +75,20 @@ class WebOverlayServer:
         self.on_stop_requested = on_stop_requested
         self.on_restart_requested = on_restart_requested
         self.on_shutdown_requested = on_shutdown_requested
+        self.on_trim_memory = on_trim_memory
         self.get_app_status = get_app_status
         self.obs_client = obs_client
         self.audio_capture = audio_capture
         self.updater = updater
         self.subtitle_recorder = subtitle_recorder
         self._updater_task: Optional[asyncio.Task] = None
-        self.translator = SubtitleTranslator(self.config.translation)
+        self.translator = SubtitleTranslator(
+            self.config.translation,
+            api_key_resolver=lambda: (
+                getattr(self.config.gemini_live, "api_key", "")
+                or getattr(self.config.summary, "gemini_api_key", "")
+            ),
+        )
         self.server_start_time = time.time()
         self.instance_id = str(uuid.uuid4())[:8]
 
@@ -206,8 +214,10 @@ class WebOverlayServer:
         self.app.router.add_post("/api/transcript/summary", self._handle_sermon_summary)
         self.app.router.add_get("/api/transcript/summary/status", self._handle_summary_status)
         self.app.router.add_get("/api/transcript/export", self._handle_export_transcript)
-        self.app.router.add_post("/api/transcript/clear", self._handle_clear_history)
         self.app.router.add_get("/api/translate", self._handle_translate_text)
+        self.app.router.add_post("/api/translate", self._handle_translate_text)
+        self.app.router.add_post("/api/translation/prewarm", self._handle_translation_prewarm)
+        self.app.router.add_get("/api/translation/stats", self._handle_translation_stats)
         
         # Filter Management CRUD
         self.app.router.add_get("/api/filter/state", self._handle_filter_state)
@@ -398,11 +408,25 @@ class WebOverlayServer:
     async def _handle_trim_memory(self, request: web.Request) -> web.Response:
         """Trigger on-demand garbage collection and physical working set memory trim."""
         from ..hardware import release_stt_memory, get_ram_usage_mb
-        freed = release_stt_memory(log_details=True)
+        if self.on_trim_memory and callable(self.on_trim_memory):
+            try:
+                freed = self.on_trim_memory()
+            except Exception as e:
+                logger.error(f"Error in on_trim_memory hook: {e}")
+                freed = release_stt_memory(log_details=True)
+        else:
+            freed = release_stt_memory(log_details=True)
+
+        current_ram = get_ram_usage_mb()
+        await self.broadcast_control({
+            "type": "ram_trimmed",
+            "freed_mb": freed,
+            "current_ram_mb": current_ram,
+        })
         return web.json_response({
             "status": "success",
             "freed_mb": freed,
-            "current_ram_mb": get_ram_usage_mb(),
+            "current_ram_mb": current_ram,
         })
 
     async def _handle_get_transcript_stats(self, request: web.Request) -> web.Response:
@@ -431,6 +455,7 @@ class WebOverlayServer:
         "obs": ("password",),
         "api": ("api_key",),
         "summary": ("gemini_api_key",),
+        "translation": ("gemini_api_key",),
     }
 
     def get_masked_config_dict(self) -> dict:
@@ -479,6 +504,10 @@ class WebOverlayServer:
                         setattr(section, sec_k, sec_v)
 
             save_config(self.config)
+            if hasattr(self, "translator") and self.translator:
+                self.translator.config = self.config.translation
+                if getattr(self.config.translation, "enabled", False) and getattr(self.config.translation, "provider", "") == "nllb":
+                    asyncio.create_task(self.translator.prewarm_async())
 
             if self.on_config_updated:
                 self.on_config_updated(self.config)
@@ -780,18 +809,52 @@ class WebOverlayServer:
         client_ip = request.remote or "127.0.0.1"
         if not self.rate_limiter.is_allowed(client_ip):
             return web.json_response({"error": "Rate limit exceeded"}, status=429)
-        text = sanitize_text(request.query.get("text", "")).strip()
-        target = sanitize_text(request.query.get("target", "es")).strip().lower()
-        source = sanitize_text(request.query.get("source", "auto")).strip().lower()
+
+        if request.method == "POST":
+            try:
+                body = await request.json()
+            except Exception:
+                body = {}
+            text = sanitize_text(body.get("text", "")).strip()
+            target = sanitize_text(body.get("target") or body.get("target_lang", "es")).strip().lower()
+            source = sanitize_text(body.get("source") or body.get("source_lang", "auto")).strip().lower()
+            provider = sanitize_text(body.get("provider", "")).strip().lower() or None
+        else:
+            text = sanitize_text(request.query.get("text", "")).strip()
+            target = sanitize_text(request.query.get("target", "es")).strip().lower()
+            source = sanitize_text(request.query.get("source", "auto")).strip().lower()
+            provider = sanitize_text(request.query.get("provider", "")).strip().lower() or None
+
         if not text:
             return web.json_response({"original": "", "translated": "", "target": target})
-        translated = await self.translator.translate_to_language(text, target_lang=target, source_lang=source)
+        translated = await self.translator.translate_to_language(
+            text, target_lang=target, source_lang=source, provider_override=provider
+        )
         return web.json_response({
             "original": text,
             "translated": translated or text,
             "target": target,
             "source": source
         })
+
+    async def _handle_translation_prewarm(self, request: web.Request) -> web.Response:
+        client_ip = request.remote or "127.0.0.1"
+        if not self.rate_limiter.is_allowed(client_ip):
+            return web.json_response({"error": "Rate limit exceeded"}, status=429)
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+        provider = sanitize_text(data.get("provider", "")).strip().lower() or getattr(self.config.translation, "provider", "nllb")
+        if hasattr(self, "translator") and self.translator:
+            asyncio.create_task(self.translator.prewarm_async())
+        return web.json_response({"status": "prewarming", "provider": provider})
+
+    async def _handle_translation_stats(self, request: web.Request) -> web.Response:
+        stats = {}
+        if hasattr(self, "translator") and self.translator and hasattr(self.translator, "disk_cache") and self.translator.disk_cache:
+            stats = self.translator.disk_cache.get_stats()
+        return web.json_response({"status": "ok", "stats": stats})
 
     async def _handle_control_start(self, request: web.Request) -> web.Response:
         if not self._check_auth(request):
@@ -1292,9 +1355,12 @@ class WebOverlayServer:
             return
         text = (payload.get("text") or "").strip()
         if text:
-            self._recent_finals.append(payload)
-            if len(self._recent_finals) > self._max_snapshot_lines:
-                self._recent_finals.pop(0)
+            if payload.get("replace_last") and self._recent_finals:
+                self._recent_finals[-1] = payload
+            else:
+                self._recent_finals.append(payload)
+                if len(self._recent_finals) > self._max_snapshot_lines:
+                    self._recent_finals.pop(0)
 
     async def broadcast_caption(self, payload: dict):
         self._record_snapshot(payload)

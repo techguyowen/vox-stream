@@ -13,6 +13,7 @@ class TranscriptEvent:
     is_final: bool = False
     confidence: float = 1.0
     timestamp: float = 0.0
+    translated_text: Optional[str] = None
 
     def __post_init__(self):
         if self.timestamp == 0.0:
@@ -47,4 +48,8 @@ class BaseSTTEngine(ABC):
     @abstractmethod
     async def stop(self) -> None:
         """Gracefully stop the recognition session."""
+        pass
+
+    def trim_memory(self) -> None:
+        """Optional hook to flush internal memory buffers or model caches."""
         pass

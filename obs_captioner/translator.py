@@ -1,12 +1,17 @@
 """Real-time multi-language subtitle translation engine with multi-fallback providers."""
 
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, Dict, Any, Optional, Tuple
+
+if TYPE_CHECKING:
+    from obs_captioner.engines.nllb_translator import NLLBTranslator
 
 logger = logging.getLogger("obs_captioner.translator")
 
@@ -44,16 +49,112 @@ class TranslationConfig:
     source_language: str = "auto"
     target_language: str = "es"  # e.g., "es" for Spanish
     display_mode: str = "dual"  # "dual" (original + translated), "translated_only"
+    provider: str = "google_free"  # "google_free", "nllb", "gemini_live"
+    gemini_api_key: str = ""  # If empty, automatically falls back to gemini_live API key
+    temperature: float = 0.1
+    dual_subtitle_color: str = "#FFD700"  # Classic Subtitle Gold/Yellow
+    dual_subtitle_scale: float = 0.85  # Secondary subtitle font size scale (0.6 - 1.0)
+    dual_subtitle_format: str = "clean"  # "clean" (clean 2-line stack) or "parentheses" ((Texto))
+    enable_disk_cache: bool = True  # Persistent SQLite disk cache in ~/.cache/voxstream/
 
 
 class SubtitleTranslator:
     """Performs low-latency subtitle translation with memory caching and multi-provider fallbacks."""
 
-    def __init__(self, config: Optional[TranslationConfig] = None):
+    def __init__(
+        self,
+        config: Optional[TranslationConfig] = None,
+        api_key_resolver: Optional[Callable[[], str]] = None,
+        nllb_translator: Optional[NLLBTranslator] = None,
+        disk_cache: Optional[Any] = None,
+    ):
         self.config = config or TranslationConfig()
+        self.api_key_resolver = api_key_resolver
         self._cache: Dict[str, str] = {}
+        self._nllb_translator: Optional[NLLBTranslator] = nllb_translator
+        self._disk_cache = disk_cache
 
-    async def translate_to_language(self, text: str, target_lang: str, source_lang: str = "auto") -> str:
+    @property
+    def disk_cache(self) -> Any:
+        """Lazily obtain or create persistent SQLite disk cache."""
+        if self._disk_cache is False or not getattr(self.config, "enable_disk_cache", True):
+            return None
+        if self._disk_cache is None:
+            try:
+                from obs_captioner.translation_cache import TranslationDiskCache
+                self._disk_cache = TranslationDiskCache()
+            except Exception as e:
+                logger.debug(f"Failed to initialize TranslationDiskCache: {e}")
+        return self._disk_cache
+
+    @property
+    def nllb_translator(self) -> Any:
+        """Lazily obtain or create local NLLBTranslator instance."""
+        if self._nllb_translator is None:
+            from obs_captioner.engines.nllb_translator import NLLBTranslator
+            self._nllb_translator = NLLBTranslator()
+        return self._nllb_translator
+
+    def get_gemini_api_key(self) -> str:
+        """Resolve Gemini API key from translation config or global key resolver."""
+        explicit_key = (getattr(self.config, "gemini_api_key", "") or "").strip()
+        if explicit_key and explicit_key != "•••":
+            return explicit_key
+        if self.api_key_resolver:
+            try:
+                resolved = (self.api_key_resolver() or "").strip()
+                if resolved and resolved != "•••":
+                    return resolved
+            except Exception as e:
+                logger.debug(f"Error resolving fallback Gemini API key: {e}")
+        return ""
+
+    async def _fetch_gemini_translation(
+        self, text: str, source: str, target: str, api_key: str
+    ) -> Optional[str]:
+        """Translate text using Gemini REST API with fallback."""
+        if not api_key:
+            return None
+
+        loop = asyncio.get_event_loop()
+        target_name = SUPPORTED_LANGUAGES.get(target.lower(), target)
+
+        def _sync_gemini_call() -> Optional[str]:
+            payload = {
+                "contents": [{"parts": [{"text": f"Translate to {target_name}: {text}"}]}],
+            }
+            data_bytes = json.dumps(payload).encode("utf-8")
+            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+            try:
+                req = urllib.request.Request(
+                    endpoint,
+                    data=data_bytes,
+                    headers={"Content-Type": "application/json"},
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=3.5) as resp:
+                    resp_bytes = resp.read()
+                    data = json.loads(resp_bytes.decode("utf-8"))
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        if parts:
+                            res = parts[0].get("text", "").strip()
+                            if (res.startswith('"') and res.endswith('"')) or (res.startswith("'") and res.endswith("'")):
+                                res = res[1:-1].strip()
+                            return res
+            except Exception:
+                return None
+            return None
+
+        try:
+            return await loop.run_in_executor(None, _sync_gemini_call)
+        except Exception:
+            return None
+
+    async def translate_to_language(
+        self, text: str, target_lang: str, source_lang: str = "auto", provider_override: Optional[str] = None
+    ) -> str:
         """Translate text directly into a specified target language."""
         if not text or not text.strip():
             return ""
@@ -66,19 +167,72 @@ class SubtitleTranslator:
 
         # Map language code if necessary (e.g. zh -> zh-CN)
         resolved_target = LANG_CODE_MAP.get(t_code, t_code)
-        cache_key = f"{source_lang}:{resolved_target}:{clean_text}"
+        provider = provider_override or getattr(self.config, "provider", "google_free") or "google_free"
+        cache_key = f"{provider}:{source_lang}:{resolved_target}:{clean_text}"
 
+        # 1. Check L1 in-memory cache (<0.1ms)
         if cache_key in self._cache:
             return self._cache[cache_key]
 
-        translated = await self._fetch_translation(clean_text, source_lang, resolved_target)
+        # 2. Check L2 persistent SQLite disk cache (<1ms on warm reboot)
+        if self.disk_cache:
+            cached_disk = self.disk_cache.get(cache_key)
+            if cached_disk:
+                self._cache[cache_key] = cached_disk
+                return cached_disk
+
+        translated = None
+        if provider == "nllb":
+            try:
+                src_code = source_lang if source_lang and source_lang != "auto" else "en"
+                translated = await self.nllb_translator.translate(
+                    clean_text,
+                    target_lang=resolved_target,
+                    source_lang=src_code,
+                )
+                if not translated:
+                    logger.debug("NLLB model not loaded or returned None. Falling back to default provider.")
+            except Exception as e:
+                logger.warning(f"NLLB-200 translation failed: {e}. Falling back to default provider.")
+                translated = None
+
+        elif provider in ("gemini", "gemini_live"):
+            api_key = self.get_gemini_api_key()
+            if api_key:
+                translated = await self._fetch_gemini_translation(clean_text, source_lang, resolved_target, api_key)
+            else:
+                logger.debug("Gemini translation requested but no API key available. Falling back to default provider.")
+
+        # Fallback to Google / MyMemory free endpoints if provider was not used or failed
+        if not translated:
+            translated = await self._fetch_translation(clean_text, source_lang, resolved_target)
+
         if translated:
             self._cache[cache_key] = translated
+            if self.disk_cache:
+                self.disk_cache.set(
+                    cache_key=cache_key,
+                    source_text=clean_text,
+                    translated_text=translated,
+                    provider=provider,
+                    source_lang=source_lang,
+                    target_lang=resolved_target,
+                )
             if len(self._cache) > 3000:
                 self._cache.clear()
             return translated
 
         return clean_text
+
+    async def prewarm_async(self) -> bool:
+        """Eagerly warm up the selected translation engine in the background."""
+        provider = getattr(self.config, "provider", "google_free")
+        if provider == "nllb":
+            if self.nllb_translator.is_available():
+                logger.info("Pre-warming Meta NLLB-200 translation engine...")
+                return await self.nllb_translator.prewarm()
+            return False
+        return False
 
     async def translate_text(self, text: str) -> Tuple[str, Optional[str]]:
         """

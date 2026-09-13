@@ -356,6 +356,16 @@ async def main_async(args):
     web_server = None
     updater = UpdateManager(on_restart_requested=on_restart_requested)
     if config.overlay.enabled:
+        def on_trim_memory() -> float:
+            nonlocal engine
+            if engine is not None and hasattr(engine, "trim_memory"):
+                try:
+                    engine.trim_memory()
+                except Exception as te:
+                    logger.debug(f"Engine trim_memory error: {te}")
+            from .hardware import release_stt_memory
+            return release_stt_memory(log_details=True)
+
         web_server = WebOverlayServer(
             config=config,
             history=history,
@@ -369,6 +379,7 @@ async def main_async(args):
             audio_capture=audio_capture,
             updater=updater,
             subtitle_recorder=subtitle_recorder,
+            on_trim_memory=on_trim_memory,
         )
         await web_server.start()
 

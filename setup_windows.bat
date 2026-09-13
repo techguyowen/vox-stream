@@ -1,12 +1,12 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal EnableDelayedExpansion
 
-:: Ensure UTF-8 encoding is enabled for Windows terminal and Python output
-chcp 65001 >nul 2>&1
 set "PYTHONIOENCODING=utf-8"
 set "PYTHONUTF8=1"
 
 cd /d "%~dp0"
+set "ROOT_DIR=%~dp0"
+if "%ROOT_DIR:~-1%"=="\" set "ROOT_DIR=%ROOT_DIR:~0,-1%"
 
 echo =======================================================
 echo   VoxStream: OBS Live Captioner Suite - Complete Setup
@@ -16,10 +16,11 @@ echo.
 :: ---------------------------------------------------------------------------
 :: STEP 1: Detect or Install Git for Windows
 :: ---------------------------------------------------------------------------
-echo [1/8] Checking Git for Windows (fast 1-click updates, no login required)...
+echo [1/8] Checking Git for Windows...
 set "HAS_GIT=0"
-where git >nul 2>&1
-if %errorlevel% equ 0 set "HAS_GIT=1"
+
+git --version >nul 2>&1
+if !errorlevel! equ 0 set "HAS_GIT=1"
 
 if "!HAS_GIT!"=="0" (
     if exist "%ProgramFiles%\Git\cmd\git.exe" (
@@ -29,7 +30,7 @@ if "!HAS_GIT!"=="0" (
 )
 
 if "!HAS_GIT!"=="0" (
-    echo [INFO] Git for Windows not found. Installing automatically for fast updates...
+    echo [INFO] Git for Windows not found in PATH. Checking winget...
     where winget >nul 2>&1
     if !errorlevel! equ 0 (
         echo [INFO] Installing Git via Windows Package Manager...
@@ -39,7 +40,7 @@ if "!HAS_GIT!"=="0" (
         echo [INFO] Downloading official Git for Windows installer...
         powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri 'https://github.com/git-for-windows/git/releases/download/v2.46.0.windows.1/Git-2.46.0-64-bit.exe' -OutFile '%TEMP%\git_installer.exe'"
         if exist "%TEMP%\git_installer.exe" (
-            echo [INFO] Installing Git for Windows (silent)...
+            echo [INFO] Installing Git for Windows silently...
             start /wait "" "%TEMP%\git_installer.exe" /VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS
             del "%TEMP%\git_installer.exe" 2>nul
         )
@@ -51,15 +52,14 @@ if "!HAS_GIT!"=="0" (
 )
 
 if "!HAS_GIT!"=="1" (
-    echo [SUCCESS] Git for Windows is active (No GitHub login required).
-    :: If user downloaded as a ZIP, link to the public GitHub repository automatically
+    echo [SUCCESS] Git for Windows is active.
     if not exist ".git" (
-        echo [INFO] Linking installation to official GitHub repository for 1-click updates...
+        echo [INFO] Linking installation to official GitHub repository for updates...
         git init -q
         git remote add origin https://github.com/techguyowen/vox-stream.git >nul 2>&1
         git fetch origin main --depth=1 -q >nul 2>&1
         git reset --soft origin/main >nul 2>&1
-        echo [SUCCESS] Repository linked! Future updates will pull in 2 seconds.
+        echo [SUCCESS] Repository linked! Future updates will pull in seconds.
     )
 ) else (
     echo [NOTE] Git installation skipped or unavailable. Auto-updater will use direct ZIP download.
@@ -67,102 +67,104 @@ if "!HAS_GIT!"=="1" (
 echo.
 
 :: ---------------------------------------------------------------------------
-:: STEP 2: Detect or Install Python 3.11
+:: STEP 2: Detect or Install Python 3.10 - 3.12 (Skip Windows Store dummy stub)
 :: ---------------------------------------------------------------------------
 echo [2/8] Detecting Python installation...
 set "PY_CMD="
 
-where python >nul 2>&1
-if %errorlevel% equ 0 set "PY_CMD=python"
-
-if not defined PY_CMD (
-    where py >nul 2>&1
-    if %errorlevel% equ 0 set "PY_CMD=py -3"
+:: Check if py launcher works
+py -3 -c "import sys" >nul 2>&1
+if !errorlevel! equ 0 (
+    set "PY_CMD=py -3"
+    goto :python_found
 )
 
-if not defined PY_CMD (
-    if exist "%LocalAppData%\Programs\Python\Python311\python.exe" (
-        set "PY_CMD=%LocalAppData%\Programs\Python\Python311\python.exe"
-        set "PATH=%LocalAppData%\Programs\Python\Python311;%LocalAppData%\Programs\Python\Python311\Scripts;!PATH!"
-    )
+:: Check if standard python in PATH is a real working Python (NOT Microsoft Store stub)
+python -c "import sys" >nul 2>&1
+if !errorlevel! equ 0 (
+    set "PY_CMD=python"
+    goto :python_found
 )
 
-if not defined PY_CMD (
-    if exist "%LocalAppData%\Programs\Python\Python312\python.exe" (
-        set "PY_CMD=%LocalAppData%\Programs\Python\Python312\python.exe"
-        set "PATH=%LocalAppData%\Programs\Python\Python312;%LocalAppData%\Programs\Python\Python312\Scripts;!PATH!"
-    )
+:: Check known default installation paths without parentheses in for loops
+if not defined PY_CMD if exist "%LocalAppData%\Programs\Python\Python311\python.exe" (
+    "%LocalAppData%\Programs\Python\Python311\python.exe" -c "import sys" >nul 2>&1
+    if !errorlevel! equ 0 set "PY_CMD="%LocalAppData%\Programs\Python\Python311\python.exe""
+)
+if not defined PY_CMD if exist "%LocalAppData%\Programs\Python\Python312\python.exe" (
+    "%LocalAppData%\Programs\Python\Python312\python.exe" -c "import sys" >nul 2>&1
+    if !errorlevel! equ 0 set "PY_CMD="%LocalAppData%\Programs\Python\Python312\python.exe""
+)
+if not defined PY_CMD if exist "%ProgramFiles%\Python311\python.exe" (
+    "%ProgramFiles%\Python311\python.exe" -c "import sys" >nul 2>&1
+    if !errorlevel! equ 0 set "PY_CMD="%ProgramFiles%\Python311\python.exe""
+)
+if not defined PY_CMD if exist "%ProgramFiles%\Python312\python.exe" (
+    "%ProgramFiles%\Python312\python.exe" -c "import sys" >nul 2>&1
+    if !errorlevel! equ 0 set "PY_CMD="%ProgramFiles%\Python312\python.exe""
+)
+if not defined PY_CMD if exist "C:\Python311\python.exe" (
+    "C:\Python311\python.exe" -c "import sys" >nul 2>&1
+    if !errorlevel! equ 0 set "PY_CMD="C:\Python311\python.exe""
+)
+if not defined PY_CMD if exist "C:\Python312\python.exe" (
+    "C:\Python312\python.exe" -c "import sys" >nul 2>&1
+    if !errorlevel! equ 0 set "PY_CMD="C:\Python312\python.exe""
 )
 
-if not defined PY_CMD (
-    if exist "%ProgramFiles%\Python311\python.exe" (
-        set "PY_CMD=%ProgramFiles%\Python311\python.exe"
-        set "PATH=%ProgramFiles%\Python311;%ProgramFiles%\Python311\Scripts;!PATH!"
-    )
+if defined PY_CMD goto :python_found
+
+:: If not found, install Python 3.11 automatically
+echo [INFO] Python was not detected on your system.
+echo [INFO] Installing Python 3.11 automatically...
+echo.
+
+where winget >nul 2>&1
+if !errorlevel! equ 0 (
+    echo [INFO] Installing Python 3.11 via Windows Package Manager...
+    winget install --id Python.Python.3.11 -e --silent --accept-package-agreements --accept-source-agreements
 )
 
-if not defined PY_CMD (
-    if exist "%ProgramFiles%\Python312\python.exe" (
-        set "PY_CMD=%ProgramFiles%\Python312\python.exe"
-        set "PATH=%ProgramFiles%\Python312;%ProgramFiles%\Python312\Scripts;!PATH!"
-    )
+if exist "%LocalAppData%\Programs\Python\Python311\python.exe" (
+    set "PY_CMD="%LocalAppData%\Programs\Python\Python311\python.exe""
+    goto :python_found
 )
 
-if not defined PY_CMD (
-    echo [INFO] Python was not detected on your system.
-    echo [INFO] Installing Python 3.11 automatically...
-    echo.
-
-    where winget >nul 2>&1
-    if %errorlevel% equ 0 (
-        echo [INFO] Installing Python 3.11 via Windows Package Manager...
-        winget install --id Python.Python.3.11 -e --silent --accept-package-agreements --accept-source-agreements
-    )
-
-    if exist "%LocalAppData%\Programs\Python\Python311\python.exe" (
-        set "PY_CMD=%LocalAppData%\Programs\Python\Python311\python.exe"
-        set "PATH=%LocalAppData%\Programs\Python\Python311;%LocalAppData%\Programs\Python\Python311\Scripts;!PATH!"
-    )
+echo [INFO] Downloading official Python 3.11 installer from python.org...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe' -OutFile '%TEMP%\python-3.11.9-amd64.exe'"
+if exist "%TEMP%\python-3.11.9-amd64.exe" (
+    echo [INFO] Installing Python 3.11.9 - please wait 30 to 60 seconds...
+    start /wait "" "%TEMP%\python-3.11.9-amd64.exe" /passive InstallAllUsers=0 PrependPath=1 Include_pip=1 Include_test=0 Shortcuts=0 TargetDir="%LocalAppData%\Programs\Python\Python311"
+    del "%TEMP%\python-3.11.9-amd64.exe" 2>nul
 )
 
-if not defined PY_CMD (
-    echo [INFO] Downloading official Python 3.11 installer from python.org...
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe' -OutFile '%TEMP%\python-3.11.9-amd64.exe'"
-    if exist "%TEMP%\python-3.11.9-amd64.exe" (
-        echo [INFO] Installing Python 3.11.9 - please wait 30 to 60 seconds...
-        start /wait "" "%TEMP%\python-3.11.9-amd64.exe" /passive InstallAllUsers=0 PrependPath=1 Include_pip=1 Include_test=0 Shortcuts=0 TargetDir="%LocalAppData%\Programs\Python\Python311"
-        del "%TEMP%\python-3.11.9-amd64.exe" 2>nul
-    )
-    if exist "%LocalAppData%\Programs\Python\Python311\python.exe" (
-        set "PY_CMD=%LocalAppData%\Programs\Python\Python311\python.exe"
-        set "PATH=%LocalAppData%\Programs\Python\Python311;%LocalAppData%\Programs\Python\Python311\Scripts;!PATH!"
-    )
+if exist "%LocalAppData%\Programs\Python\Python311\python.exe" (
+    set "PY_CMD="%LocalAppData%\Programs\Python\Python311\python.exe""
+    goto :python_found
 )
 
-if not defined PY_CMD (
-    echo.
-    echo =======================================================
-    echo   [ERROR] Python is not installed on this system!
-    echo   Please install Python 3.11 from: https://www.python.org/downloads/
-    echo   Make sure to check: Add Python to PATH
-    echo =======================================================
-    echo.
-    start https://www.python.org/downloads/
-    pause
-    exit /b 1
-)
+echo.
+echo =======================================================
+echo   [ERROR] Python is not installed on this system!
+echo   Please install Python 3.11 from: https://www.python.org/downloads/
+echo   Make sure to check: 'Add Python to PATH'
+echo =======================================================
+echo.
+start https://www.python.org/downloads/
+goto :setup_failed
 
+:python_found
 echo [SUCCESS] Using Python:
-%PY_CMD% --version
+call %PY_CMD% --version
 echo.
 
 :: ---------------------------------------------------------------------------
-:: STEP 3: Check and Install Microsoft Visual C++ 2015-2022 Redistributable (x64)
+:: STEP 3: Check and Install Microsoft Visual C++ 2015-2022 Redistributable
 :: ---------------------------------------------------------------------------
 echo [3/8] Checking Microsoft Visual C++ 2015-2022 Runtime...
 if not exist "%SystemRoot%\System32\vcruntime140.dll" (
     echo [INFO] Microsoft Visual C++ 2015-2022 Redistributable not detected.
-    echo [INFO] Downloading and installing VC++ runtime (required by AI models)...
+    echo [INFO] Downloading and installing VC++ runtime for AI models...
     powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile '%TEMP%\vc_redist.x64.exe'"
     if exist "%TEMP%\vc_redist.x64.exe" (
         start /wait "" "%TEMP%\vc_redist.x64.exe" /install /passive /norestart
@@ -177,71 +179,79 @@ echo.
 :: ---------------------------------------------------------------------------
 :: STEP 4: Setup or Repair Python Virtual Environment (.venv)
 :: ---------------------------------------------------------------------------
-echo [4/8] Setting up Python virtual environment (.venv)...
-if not exist ".venv\Scripts\activate.bat" (
-    if exist ".venv" (
+echo [4/8] Setting up Python virtual environment [.venv]...
+set "VENV_DIR=%ROOT_DIR%\.venv"
+set "VENV_PY=%VENV_DIR%\Scripts\python.exe"
+
+if not exist "%VENV_PY%" (
+    if exist "%VENV_DIR%" (
         echo [INFO] Removing broken virtual environment folder...
-        rmdir /s /q ".venv" >nul 2>&1
+        rmdir /s /q "%VENV_DIR%" >nul 2>&1
     )
-    %PY_CMD% -m venv .venv
+    echo [INFO] Creating new virtual environment...
+    call %PY_CMD% -m venv "%VENV_DIR%"
 )
 
-if not exist ".venv\Scripts\activate.bat" (
+if not exist "%VENV_PY%" (
     echo.
     echo =======================================================
     echo   [ERROR] Failed to create virtual environment with %PY_CMD%.
     echo   Please ensure Python is functional and try again.
     echo =======================================================
-    pause
-    exit /b 1
+    goto :setup_failed
 )
 
-call .venv\Scripts\activate.bat
-echo [SUCCESS] Virtual environment activated.
+echo [SUCCESS] Virtual environment ready.
 echo.
 
 :: ---------------------------------------------------------------------------
 :: STEP 5: Install Python Dependencies
 :: ---------------------------------------------------------------------------
 echo [5/8] Upgrading pip and installing required packages...
-call .venv\Scripts\python.exe -m pip install --upgrade pip
-call .venv\Scripts\python.exe -m pip install -r requirements.txt
-call .venv\Scripts\python.exe -m pip uninstall -y torchaudio >nul 2>&1
+call "%VENV_PY%" -m pip install --upgrade pip
+call "%VENV_PY%" -m pip install -r "%ROOT_DIR%\requirements.txt"
+call "%VENV_PY%" -m pip uninstall -y torchaudio >nul 2>&1
 echo.
 
 :: ---------------------------------------------------------------------------
 :: STEP 6: Hardware Acceleration Drivers (NVIDIA / AMD Radeon RX / DirectML)
 :: ---------------------------------------------------------------------------
-echo [6/8] Detecting GPU Hardware (NVIDIA / AMD Radeon / Intel)...
+echo [6/8] Detecting GPU Hardware [NVIDIA / AMD Radeon / Intel]...
 set "HAS_NVIDIA=0"
 set "HAS_AMD=0"
 
 where nvidia-smi >nul 2>&1
-if %errorlevel% equ 0 set "HAS_NVIDIA=1"
+if !errorlevel! equ 0 set "HAS_NVIDIA=1"
 
 if "!HAS_NVIDIA!"=="0" (
     powershell -NoProfile -Command "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name" 2>nul | findstr /i "NVIDIA GeForce RTX GTX Quadro" >nul 2>&1
-    if %errorlevel% equ 0 set "HAS_NVIDIA=1"
+    if !errorlevel! equ 0 set "HAS_NVIDIA=1"
 )
 
 powershell -NoProfile -Command "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name" 2>nul | findstr /i "Radeon AMD RX" >nul 2>&1
-if %errorlevel% equ 0 set "HAS_AMD=1"
+if !errorlevel! equ 0 set "HAS_AMD=1"
 
 if "!HAS_NVIDIA!"=="1" (
     echo [SUCCESS] NVIDIA GPU detected!
     echo [INFO] Installing CUDA and cuDNN runtime packages for Faster-Whisper...
-    call .venv\Scripts\python.exe -m pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+    call "%VENV_PY%" -m pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
     echo [SUCCESS] NVIDIA GPU acceleration installed!
-) else if "!HAS_AMD!"=="1" (
-    echo [SUCCESS] AMD Radeon GPU detected! (e.g. Radeon RX 580)
-    echo [INFO] Installing DirectML runtime packages for AMD GPU acceleration...
-    call .venv\Scripts\python.exe -m pip install onnxruntime-directml torch-directml
-    echo [SUCCESS] AMD Radeon GPU DirectML ^& OpenMP CPU acceleration configured!
-) else (
-    echo [INFO] Configuring DirectML and CPU int8 acceleration...
-    call .venv\Scripts\python.exe -m pip install onnxruntime-directml >nul 2>&1
-    echo [SUCCESS] Configured for fast CPU int8 ^& DirectML inference.
+    goto :gpu_done
 )
+
+if "!HAS_AMD!"=="1" (
+    echo [SUCCESS] AMD Radeon GPU detected!
+    echo [INFO] Installing DirectML runtime packages for AMD GPU acceleration...
+    call "%VENV_PY%" -m pip install onnxruntime-directml torch-directml
+    echo [SUCCESS] AMD Radeon GPU DirectML and OpenMP CPU acceleration configured!
+    goto :gpu_done
+)
+
+echo [INFO] Configuring DirectML and CPU int8 acceleration...
+call "%VENV_PY%" -m pip install onnxruntime-directml >nul 2>&1
+echo [SUCCESS] Configured for fast CPU int8 and DirectML inference.
+
+:gpu_done
 echo.
 
 :: ---------------------------------------------------------------------------
@@ -249,13 +259,12 @@ echo.
 :: ---------------------------------------------------------------------------
 echo [7/8] Configuring settings and Windows microphone access...
 if not exist "config.json" (
-    copy config.json.example config.json >nul
+    copy config.json.example config.json >nul 2>&1
     echo [INFO] Created fresh config.json from template.
 ) else (
     echo [INFO] Existing config.json preserved.
 )
 
-:: Ensure Windows microphone access is allowed in registry
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone" /v Value /t REG_SZ /d Allow /f >nul 2>&1
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone\NonPackaged" /v Value /t REG_SZ /d Allow /f >nul 2>&1
 echo [SUCCESS] Windows microphone access verified.
@@ -264,23 +273,38 @@ echo.
 :: ---------------------------------------------------------------------------
 :: STEP 8: Pre-cache Offline AI Models & Create Desktop Shortcut
 :: ---------------------------------------------------------------------------
-echo [8/8] Pre-caching default offline AI models & creating Desktop shortcut...
-call .venv\Scripts\python.exe -m obs_captioner.model_downloader --preload-defaults
+echo [8/8] Pre-caching default offline AI models and creating Desktop shortcut...
+call "%VENV_PY%" -m obs_captioner.model_downloader --preload-defaults
 
-:: Create convenient Desktop Shortcut
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut([Environment]::GetFolderPath('Desktop') + '\VoxStream Live Captioner.lnk'); $s.TargetPath = '%~dp0run_captioner.bat'; $s.WorkingDirectory = '%~dp0'; $s.Description = 'Launch VoxStream Real-Time Live Captioner'; $s.Save()" >nul 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $d = [Environment]::GetFolderPath('Desktop'); $lnk = Join-Path $d 'VoxStream Live Captioner.lnk'; $s = $ws.CreateShortcut($lnk); $s.TargetPath = '%ROOT_DIR%\run_captioner.bat'; $s.WorkingDirectory = '%ROOT_DIR%'; $s.Description = 'Launch VoxStream Real-Time Live Captioner'; $s.Save()" >nul 2>&1
 
 echo.
 echo =======================================================
 echo   Available Audio Input Devices on your PC:
 echo =======================================================
-call .venv\Scripts\python.exe -m obs_captioner.main --list-devices
+call "%VENV_PY%" -m obs_captioner.main --list-devices
 echo.
+
+:setup_done
 echo =======================================================
-echo   🎉 [SUCCESS] 100%% Turnkey Setup Complete!
+echo   [SUCCESS] 100%% Turnkey Setup Complete!
 echo.
 echo   1. A shortcut 'VoxStream Live Captioner' was created
 echo      on your Desktop. Double-click it anytime to run!
 echo   2. Dashboard is available at: http://127.0.0.1:8765
 echo =======================================================
-pause
+echo.
+echo Setup finished successfully. Press any key to close this window...
+pause >nul
+exit /b 0
+
+:setup_failed
+echo.
+echo =======================================================
+echo   [ERROR] Setup encountered an issue and could not complete.
+echo   Please check the error messages displayed above.
+echo =======================================================
+echo.
+echo Press any key to close this window...
+pause >nul
+exit /b 1

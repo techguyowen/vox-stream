@@ -457,17 +457,26 @@ class TextFormatter:
 
         return text
 
+    # Dangling connectors (conjunctions, prepositions, relative pronouns)
+    # When an utterance boundary occurs on these words, suppress terminal punctuation
+    # to avoid slicing unfinished clauses into fractured standalone sentences.
+    DANGLING_CONNECTORS: Set[str] = {
+        "and", "but", "or", "nor", "so", "because", "that", "which", "who", "whom",
+        "where", "when", "if", "while", "though", "although", "to", "of", "in",
+        "into", "unto", "with", "for", "as", "than", "then", "since", "until",
+        "unless", "whether",
+    }
+
     def _apply_punctuation(self, text: str) -> str:
         """Restores sentence-ending punctuation based on grammatical intent."""
         if not text:
             return ""
 
-        # If already ends in punctuation, preserve it
-        if text[-1] in ".?!,:;…":
+        words = text.split()
+        if not words:
             return text
 
         # Check for conjunction clauses in long sentences (12+ words) without existing punctuation
-        words = text.split()
         if len(words) >= 12:
             # Insert natural commas before major conjunctions if no commas present
             if "," not in text:
@@ -479,10 +488,19 @@ class TextFormatter:
                     flags=re.IGNORECASE,
                 )
 
+        # Check if text ends on a dangling connector word (conjunction/preposition)
+        last_word_clean = words[-1].lower().rstrip(".,?!;:…")
+
         # Determine terminal punctuation (? or ! or .)
         if self.QUESTION_STARTERS.search(text) or self.QUESTION_ENDINGS.search(text):
-            return text + "?"
+            return text.rstrip(".,?!;:…") + "?"
         elif self.EXCLAMATION_STARTERS.search(text):
-            return text + "!"
+            return text.rstrip(".,?!;:…") + "!"
+        elif last_word_clean in self.DANGLING_CONNECTORS:
+            # Strip false terminal punctuation if model appended it to a dangling connector
+            return text.rstrip(".,?!;:…")
+        elif text[-1] in ".?!,:;…":
+            return text
         else:
             return text + "."
+

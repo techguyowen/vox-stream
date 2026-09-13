@@ -1656,8 +1656,49 @@ function populateFormFields(cfg) {
     // Translation tab
     if (cfg.translation) {
         document.getElementById("translation_enabled").checked = !!cfg.translation.enabled;
+        if (document.getElementById("translation_provider")) {
+            document.getElementById("translation_provider").value = cfg.translation.provider || "google_free";
+        }
+        const transKeyInput = document.getElementById("translation_gemini_key");
+        const transKeyStatus = document.getElementById("translation_key_status");
+        if (transKeyInput && document.activeElement !== transKeyInput) {
+            transKeyInput.value = cfg.translation.gemini_api_key || "";
+        }
+        if (transKeyStatus) {
+            transKeyStatus.style.display = (cfg.translation.gemini_api_key && cfg.translation.gemini_api_key.length > 0) ? "inline" : "none";
+        }
         document.getElementById("translation_target").value = cfg.translation.target_language || "es";
         document.getElementById("translation_mode").value = cfg.translation.display_mode || "dual";
+
+        if (document.getElementById("translation_dual_color")) {
+            document.getElementById("translation_dual_color").value = cfg.translation.dual_subtitle_color || "#FFD700";
+        }
+        if (document.getElementById("translation_dual_scale")) {
+            const scale = cfg.translation.dual_subtitle_scale !== undefined ? cfg.translation.dual_subtitle_scale : 0.85;
+            document.getElementById("translation_dual_scale").value = scale;
+            if (document.getElementById("translation_dual_scale_val")) {
+                document.getElementById("translation_dual_scale_val").textContent = `${Math.round(scale * 100)}%`;
+            }
+        }
+        if (document.getElementById("translation_dual_format")) {
+            document.getElementById("translation_dual_format").value = cfg.translation.dual_subtitle_format || "clean";
+        }
+        const dualCard = document.getElementById("dual-subtitle-appearance-card");
+        if (dualCard) {
+            dualCard.style.display = (cfg.translation.display_mode === "dual") ? "block" : "none";
+        }
+
+        const geminiFields = document.getElementById("translation-gemini-fields");
+        if (geminiFields) {
+            geminiFields.style.display = (cfg.translation.provider === "gemini" || cfg.translation.provider === "gemini_live") ? "block" : "none";
+        }
+        const nllbFields = document.getElementById("translation-nllb-fields");
+        if (nllbFields) {
+            nllbFields.style.display = (cfg.translation.provider === "nllb") ? "block" : "none";
+            if (cfg.translation.provider === "nllb" && typeof checkNllbStatus === "function") {
+                checkNllbStatus();
+            }
+        }
     }
 
     // Audio tab
@@ -1741,7 +1782,18 @@ function populateFormFields(cfg) {
         if (cfg.gemini_live.custom_vocabulary) {
             document.getElementById("gemini_custom_vocab").value = cfg.gemini_live.custom_vocabulary.join(", ");
         }
-        document.getElementById("gemini_smart_transcription").checked = cfg.gemini_live.smart_transcription !== false;
+        if (document.getElementById("gemini_mode")) {
+            document.getElementById("gemini_mode").value = cfg.gemini_live.mode || (cfg.gemini_live.smart_transcription !== false ? "SMART" : "VERBATIM");
+        }
+        if (document.getElementById("gemini_languages")) {
+            document.getElementById("gemini_languages").value = (cfg.gemini_live.language_codes || []).join(", ");
+        }
+        if (document.getElementById("gemini_hybrid_vad")) {
+            document.getElementById("gemini_hybrid_vad").checked = cfg.gemini_live.enable_hybrid_vad !== false;
+        }
+        if (document.getElementById("gemini_smart_transcription")) {
+            document.getElementById("gemini_smart_transcription").checked = cfg.gemini_live.smart_transcription !== false;
+        }
     }
     if (cfg.bandwidth) {
         const bwInput = document.getElementById("bandwidth_api_key");
@@ -2543,11 +2595,134 @@ document.getElementById("btn-save-translation").addEventListener("click", async 
     const payload = {
         translation: {
             enabled: document.getElementById("translation_enabled").checked,
+            provider: document.getElementById("translation_provider") ? document.getElementById("translation_provider").value : "google_free",
             target_language: document.getElementById("translation_target").value,
             display_mode: document.getElementById("translation_mode").value,
+            dual_subtitle_color: document.getElementById("translation_dual_color") ? document.getElementById("translation_dual_color").value : "#FFD700",
+            dual_subtitle_scale: document.getElementById("translation_dual_scale") ? parseFloat(document.getElementById("translation_dual_scale").value) : 0.85,
+            dual_subtitle_format: document.getElementById("translation_dual_format") ? document.getElementById("translation_dual_format").value : "clean",
+            gemini_api_key: (() => {
+                const el = document.getElementById("translation_gemini_key");
+                const val = el ? el.value.trim() : "";
+                if (!val || val === "•••") {
+                    return (currentConfig && currentConfig.translation && currentConfig.translation.gemini_api_key) || "•••";
+                }
+                return val;
+            })(),
         }
     };
     await saveConfigPayload(payload, "Translation settings saved successfully!");
+});
+
+const transProviderEl = document.getElementById("translation_provider");
+if (transProviderEl) {
+    transProviderEl.addEventListener("change", (e) => {
+        const geminiFields = document.getElementById("translation-gemini-fields");
+        if (geminiFields) {
+            geminiFields.style.display = (e.target.value === "gemini" || e.target.value === "gemini_live") ? "block" : "none";
+        }
+        const nllbFields = document.getElementById("translation-nllb-fields");
+        if (nllbFields) {
+            nllbFields.style.display = (e.target.value === "nllb") ? "block" : "none";
+            if (e.target.value === "nllb") {
+                checkNllbStatus();
+                // Trigger background pre-warming on selection
+                fetch("/api/translation/prewarm", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ provider: "nllb" }),
+                }).catch(() => {});
+            }
+        }
+    });
+}
+
+async function checkNllbStatus() {
+    const badge = document.getElementById("nllb-cache-badge");
+    const btn = document.getElementById("btn-download-nllb");
+    if (!badge || !btn) return;
+    try {
+        const res = await fetch("/api/models/status");
+        if (res.ok) {
+            const data = await res.json();
+            const nllbItem = (data.models || []).find(m => m.id === "nllb_200");
+            if (nllbItem && nllbItem.is_cached) {
+                badge.textContent = "✅ Downloaded & Ready (Offline)";
+                badge.style.background = "rgba(16, 185, 129, 0.2)";
+                badge.style.color = "#34D399";
+                btn.textContent = "✅ Model Downloaded (~640 MB)";
+                btn.disabled = true;
+                btn.classList.remove("btn-secondary");
+                btn.classList.add("btn-outline");
+            } else {
+                badge.textContent = "⚠️ Not Downloaded";
+                badge.style.background = "rgba(245, 158, 11, 0.2)";
+                badge.style.color = "#FBBF24";
+                btn.textContent = "📥 Download Meta NLLB-200 (~640 MB)";
+                btn.disabled = false;
+                btn.classList.remove("btn-outline");
+                btn.classList.add("btn-secondary");
+            }
+        }
+    } catch (e) {
+        console.debug("Failed to fetch NLLB status:", e);
+    }
+}
+
+const btnDownloadNllb = document.getElementById("btn-download-nllb");
+if (btnDownloadNllb) {
+    btnDownloadNllb.addEventListener("click", async () => {
+        const statusEl = document.getElementById("nllb-download-status");
+        btnDownloadNllb.disabled = true;
+        btnDownloadNllb.textContent = "⏳ Downloading (~640 MB)...";
+        if (statusEl) statusEl.textContent = "Starting download from Hugging Face...";
+        try {
+            const res = await fetch("/api/models/download", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ model_id: "nllb_200" }),
+            });
+            if (res.ok) {
+                showToast("📥 Started downloading Meta NLLB-200 in background.", "info");
+                if (statusEl) statusEl.textContent = "Downloading in background...";
+            } else {
+                showToast("Failed to initiate download.", "error");
+                btnDownloadNllb.disabled = false;
+                btnDownloadNllb.textContent = "📥 Download Meta NLLB-200 (~640 MB)";
+            }
+        } catch (err) {
+            showToast("Error starting download: " + err.message, "error");
+            btnDownloadNllb.disabled = false;
+            btnDownloadNllb.textContent = "📥 Download Meta NLLB-200 (~640 MB)";
+        }
+    });
+}
+
+const transModeEl = document.getElementById("translation_mode");
+if (transModeEl) {
+    transModeEl.addEventListener("change", (e) => {
+        const dualCard = document.getElementById("dual-subtitle-appearance-card");
+        if (dualCard) {
+            dualCard.style.display = (e.target.value === "dual") ? "block" : "none";
+        }
+    });
+}
+
+const dualScaleEl = document.getElementById("translation_dual_scale");
+if (dualScaleEl) {
+    dualScaleEl.addEventListener("input", (e) => {
+        const lbl = document.getElementById("translation_dual_scale_val");
+        if (lbl) lbl.textContent = `${Math.round(parseFloat(e.target.value) * 100)}%`;
+    });
+}
+
+document.querySelectorAll(".btn-color-chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+        const colorInput = document.getElementById("translation_dual_color");
+        if (colorInput && chip.dataset.color) {
+            colorInput.value = chip.dataset.color;
+        }
+    });
 });
 
 document.getElementById("btn-save-audio").addEventListener("click", async () => {
@@ -2606,8 +2781,11 @@ document.getElementById("btn-save-audio").addEventListener("click", async () => 
                 return val;
             })(),
             model: document.getElementById("gemini_model").value,
+            mode: document.getElementById("gemini_mode") ? document.getElementById("gemini_mode").value : (document.getElementById("gemini_smart_transcription")?.checked ? "SMART" : "VERBATIM"),
             custom_vocabulary: document.getElementById("gemini_custom_vocab").value.split(",").map(s => s.trim()).filter(Boolean),
-            smart_transcription: document.getElementById("gemini_smart_transcription").checked,
+            language_codes: document.getElementById("gemini_languages") ? document.getElementById("gemini_languages").value.split(",").map(s => s.trim()).filter(Boolean) : [],
+            smart_transcription: document.getElementById("gemini_mode") ? document.getElementById("gemini_mode").value === "SMART" : (document.getElementById("gemini_smart_transcription") ? document.getElementById("gemini_smart_transcription").checked : true),
+            enable_hybrid_vad: document.getElementById("gemini_hybrid_vad") ? document.getElementById("gemini_hybrid_vad").checked : true,
         },
         local_whisper: {
             model_size: document.getElementById("whisper_model").value,
@@ -3334,7 +3512,11 @@ function initTrimRamHandlers() {
                         heroRamText.textContent = `${trimData.current_ram_mb} MB`;
                     }
                     trimButtons.forEach(b => {
-                        b.textContent = `Freed ${trimData.freed_mb}MB!`;
+                        if (trimData.freed_mb > 0) {
+                            b.textContent = `✅ Freed ${trimData.freed_mb} MB!`;
+                        } else {
+                            b.textContent = `✅ Cleaned (${trimData.current_ram_mb} MB)`;
+                        }
                     });
                     setTimeout(() => {
                         trimButtons.forEach(b => {
@@ -3474,6 +3656,15 @@ function connectControlWs() {
                 refreshEngineStatus();
             } else if (msg.type === "config_updated") {
                 refreshEngineStatus();
+            } else if (msg.type === "ram_trimmed") {
+                const ramText = document.getElementById("hardware-ram-text");
+                if (ramText && msg.current_ram_mb !== undefined) {
+                    ramText.textContent = `🧠 ${msg.current_ram_mb} MB`;
+                }
+                const heroRamText = document.getElementById("hero-ram-text");
+                if (heroRamText && msg.current_ram_mb !== undefined) {
+                    heroRamText.textContent = `${msg.current_ram_mb} MB`;
+                }
             } else if (msg.type === "server_restarting") {
                 // Restart triggered elsewhere (another tab, API, Stream Deck)
                 beginRestartMonitor(msg.instance_id || currentInstanceId);
@@ -3547,7 +3738,17 @@ function connectCaptionWs() {
                 }
                 previewFinal.textContent = displayText;
                 previewInterim.textContent = "";
-                appendTranscriptItem(data);
+                if (data.replace_last) {
+                    const list = document.getElementById("transcript-list");
+                    const firstItem = list ? list.querySelector(".transcript-item") : null;
+                    if (firstItem) {
+                        firstItem.innerHTML = transcriptItemHtml("Just now", data);
+                    } else {
+                        appendTranscriptItem(data);
+                    }
+                } else {
+                    appendTranscriptItem(data);
+                }
             } else {
                 triggerModelTranscribingActivity(data.text);
                 const chkFinal = document.getElementById("overlay_final_only");
@@ -4443,6 +4644,22 @@ function initSecretClearHandlers() {
                     currentConfig.gemini_live.api_key = "";
                 }
                 await saveConfigPayload({ gemini_live: { api_key: "__CLEAR__" } }, "🔑 Gemini API key removed.");
+            }
+        });
+    }
+
+    const btnClearTrans = document.getElementById("btn-clear-translation-key");
+    if (btnClearTrans) {
+        btnClearTrans.addEventListener("click", async () => {
+            if (confirm("Are you sure you want to remove the dedicated translation API key?")) {
+                const input = document.getElementById("translation_gemini_key");
+                if (input) input.value = "";
+                const badge = document.getElementById("translation_key_status");
+                if (badge) badge.style.display = "none";
+                if (currentConfig && currentConfig.translation) {
+                    currentConfig.translation.gemini_api_key = "";
+                }
+                await saveConfigPayload({ translation: { gemini_api_key: "__CLEAR__" } }, "🔑 Dedicated translation API key removed.");
             }
         });
     }

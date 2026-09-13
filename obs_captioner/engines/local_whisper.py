@@ -305,7 +305,19 @@ class LocalWhisperEngine(BaseSTTEngine):
                     )
 
                 if is_final:
-                    buffer.clear()
+                    if is_silence_timeout:
+                        # Full breath/silence: safe to clear entire audio buffer
+                        buffer.clear()
+                    else:
+                        # Split occurred during continuous speech: retain trailing ~350ms overlap
+                        # so the next chunk starts with the complete transitioning syllable
+                        overlap_bytes = int(self.config.audio.sample_rate * 2 * 0.35) & ~1
+                        if len(buffer) > overlap_bytes:
+                            tail = buffer[-overlap_bytes:]
+                            buffer.clear()
+                            buffer.extend(tail)
+                        else:
+                            buffer.clear()
                     silence_start_time = None
 
         # Flush remaining audio buffer when stream terminates
@@ -334,3 +346,15 @@ class LocalWhisperEngine(BaseSTTEngine):
         from ..hardware import release_stt_memory
         release_stt_memory()
         logger.info("Faster-Whisper engine stopped and memory freed.")
+
+    def trim_memory(self) -> None:
+        """Release cached PyTorch CUDA/MPS memory."""
+        try:
+            if "torch" in sys.modules:
+                import torch
+                if hasattr(torch, "cuda") and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                if hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+                    torch.mps.empty_cache()
+        except Exception:
+            pass

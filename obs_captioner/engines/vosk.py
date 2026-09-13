@@ -16,6 +16,13 @@ from ..model_downloader import find_cached_vosk_model
 
 logger = logging.getLogger("obs_captioner.engine.vosk")
 
+DANGLING_CONNECTORS = {
+    "and", "but", "or", "nor", "so", "because", "that", "which", "who", "whom",
+    "where", "when", "if", "while", "though", "although", "to", "of", "in",
+    "into", "unto", "with", "for", "as", "than", "then", "since", "until",
+    "unless", "whether",
+}
+
 
 class VoskEngine(BaseSTTEngine):
     """Local, ultra-low latency continuous offline speech recognition using Vosk (Kaldi)."""
@@ -195,11 +202,18 @@ class VoskEngine(BaseSTTEngine):
             words = current_partial_text.split() if current_partial_text else []
             word_count = len(words)
 
+            # Adaptive pause extension: if the speaker paused immediately after a dangling connector,
+            # give them 1.5x breathing room (~975ms instead of 650ms) to continue their thought
+            last_word = words[-1].lower().rstrip(".,?!;:…") if words else ""
+            effective_pause_break = (
+                pause_break_seconds * 1.5 if last_word in DANGLING_CONNECTORS else pause_break_seconds
+            )
+
             # Condition A: Natural pause/breath detected (speaker stopped speaking for pause_break_seconds)
             is_pause_timeout = (
                 speech_started
                 and silence_start_time is not None
-                and (now - silence_start_time >= pause_break_seconds)
+                and (now - silence_start_time >= effective_pause_break)
                 and word_count >= 2
             )
 

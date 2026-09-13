@@ -59,8 +59,12 @@ class GoogleSTTConfig:
 class GeminiLiveConfig:
     api_key: str = ""
     model: str = "gemini-3.5-transcribe-live"
+    mode: str = "SMART"  # "SMART" (disfluency removal, formatting, grammar) or "VERBATIM"
     custom_vocabulary: List[str] = field(default_factory=lambda: ["OBS Studio", "Twitch", "Discord", "YouTube", "Jesus Christ"])
-    smart_transcription: bool = True
+    language_codes: List[str] = field(default_factory=list)  # [] for auto-detect, or e.g. ["en-US"]
+    smart_transcription: bool = True  # Backward-compatible toggle for SMART vs VERBATIM
+    enable_hybrid_vad: bool = True  # Client-side Silero VAD triggers instant audioStreamEnd finalization
+    transport: str = "websocket"  # "websocket" (direct raw BidiGenerateContent WS), "sdk", or "auto"
     system_instruction: str = (
         "You are Gemini 3.5 Transcribe, a real-time speech transcriber. Transcribe the incoming audio accurately into text verbatim. "
         "Output only the transcribed text without commentary, pleasantries, or conversation."

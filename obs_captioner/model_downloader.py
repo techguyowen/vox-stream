@@ -195,6 +195,15 @@ MODEL_CATALOG: List[ModelCatalogItem] = [
         description="Full-size offline Kaldi acoustic model for maximum vocabulary coverage (~1.8 GB).",
         recommended=False,
     ),
+    ModelCatalogItem(
+        id="nllb_200",
+        engine="nllb",
+        name="Meta NLLB-200 (600M INT8)",
+        model_key="JustFrederik/nllb-200-distilled-600M-ct2-int8",
+        size_mb=640,
+        description="Meta No Language Left Behind: 200 languages offline neural translation via CTranslate2 INT8. Zero API keys.",
+        recommended=True,
+    ),
 ]
 
 
@@ -252,6 +261,19 @@ class ModelDownloadManager:
                     for snap in c.iterdir():
                         if snap.is_dir() and (snap / "tokens.txt").exists():
                             return True, str(snap)
+            return False, None
+
+        elif item.engine == "nllb":
+            hf_cache = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub"
+            repo_slug = item.model_key.replace("/", "--")
+            snap_dir = hf_cache / f"models--{repo_slug}" / "snapshots"
+            if snap_dir.is_dir():
+                for snap in snap_dir.iterdir():
+                    if snap.is_dir() and (snap / "model.bin").exists():
+                        return True, str(snap)
+            vox_dir = Path.home() / ".cache" / "voxstream" / "models" / "nllb-200-600m-int8"
+            if vox_dir.is_dir() and (vox_dir / "model.bin").exists():
+                return True, str(vox_dir)
             return False, None
 
         return False, None
@@ -334,6 +356,11 @@ class ModelDownloadManager:
                 )
                 path = snapshot_download(repo_id=item.model_key, allow_patterns=patterns)
                 return bool(path and Path(path).exists())
+
+            elif item.engine == "nllb":
+                from huggingface_hub import snapshot_download
+                path = snapshot_download(repo_id=item.model_key)
+                return bool(path and Path(path).exists() and (Path(path) / "model.bin").exists())
 
             return False
         except Exception as e:
@@ -509,6 +536,23 @@ class ModelDownloadManager:
                         deleted = True
                 if deleted:
                     logger.info(f"Deleted model '{item.name}' from local cache")
+                    return True, f"Deleted {item.name} from local cache (freed ~{freed_mb} MB).", freed_mb
+                return False, f"Model directory for {item.name} not found in cache.", 0
+
+            elif item.engine == "nllb":
+                hf_cache = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub"
+                repo_slug = item.model_key.replace("/", "--")
+                deleted = False
+                d = hf_cache / f"models--{repo_slug}"
+                if d.exists():
+                    shutil.rmtree(d, ignore_errors=True)
+                    deleted = True
+                vox_dir = Path.home() / ".cache" / "voxstream" / "models" / "nllb-200-600m-int8"
+                if vox_dir.exists():
+                    shutil.rmtree(vox_dir, ignore_errors=True)
+                    deleted = True
+                if deleted:
+                    logger.info(f"Deleted NLLB model '{item.name}' from local cache")
                     return True, f"Deleted {item.name} from local cache (freed ~{freed_mb} MB).", freed_mb
                 return False, f"Model directory for {item.name} not found in cache.", 0
 

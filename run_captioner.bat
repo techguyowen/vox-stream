@@ -1,13 +1,15 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal EnableDelayedExpansion
 set "VOXSTREAM_RUNNER=bat"
 
-:: Ensure console and Python use UTF-8 encoding on Windows
-chcp 65001 >nul 2>&1
 set "PYTHONIOENCODING=utf-8"
 set "PYTHONUTF8=1"
 
 cd /d "%~dp0"
+set "ROOT_DIR=%~dp0"
+if "%ROOT_DIR:~-1%"=="\" set "ROOT_DIR=%ROOT_DIR:~0,-1%"
+set "VENV_DIR=%ROOT_DIR%\.venv"
+set "VENV_PY=%VENV_DIR%\Scripts\python.exe"
 
 echo =======================================================
 echo   VoxStream Live Captioner Launcher
@@ -15,50 +17,48 @@ echo =======================================================
 echo.
 
 :: 1. Verify virtual environment exists
-if not exist ".venv\Scripts\activate.bat" (
+if not exist "%VENV_PY%" (
     echo [INFO] Virtual environment not found or incomplete.
     echo [INFO] Launching setup_windows.bat now...
     echo.
-    call setup_windows.bat
+    call "%ROOT_DIR%\setup_windows.bat"
 )
 
-if not exist ".venv\Scripts\activate.bat" (
+if not exist "%VENV_PY%" (
     echo.
     echo =======================================================
     echo   [ERROR] Virtual environment is missing or incomplete!
-    echo   Setup did not finish creating .venv\Scripts\activate.bat.
+    echo   Setup did not finish creating .venv\Scripts\python.exe.
     echo.
     echo   Please run setup_windows.bat directly to see the error.
     echo =======================================================
     echo.
-    pause
+    echo Press any key to close this window...
+    pause >nul
     exit /b 1
 )
 
-:: 2. Activate virtual environment
-call .venv\Scripts\activate.bat
-
-:: 3. Prepend NVIDIA CUDA/cuDNN DLLs into PATH if present
-if exist ".venv\Lib\site-packages\nvidia" (
-    for /d %%D in (.venv\Lib\site-packages\nvidia\*) do (
-        if exist "%%D\bin" (
-            set "PATH=%%D\bin;!PATH!"
+:: 2. Prepend NVIDIA CUDA/cuDNN DLLs into PATH if present
+if exist "%VENV_DIR%\Lib\site-packages\nvidia" (
+    for /d %%D in ("%VENV_DIR%\Lib\site-packages\nvidia\*") do (
+        if exist "%%~D\bin" (
+            set "PATH=%%~D\bin;!PATH!"
         )
     )
 )
 
-:: 3b. Prepend DirectML DLLs for AMD Radeon GPUs if present
-if exist ".venv\Lib\site-packages\torch_directml" (
-    set "PATH=.venv\Lib\site-packages\torch_directml;!PATH!"
+:: 3. Prepend DirectML DLLs for AMD Radeon GPUs if present
+if exist "%VENV_DIR%\Lib\site-packages\torch_directml" (
+    set "PATH=%VENV_DIR%\Lib\site-packages\torch_directml;!PATH!"
 )
-if exist ".venv\Lib\site-packages\onnxruntime\capi" (
-    set "PATH=.venv\Lib\site-packages\onnxruntime\capi;!PATH!"
+if exist "%VENV_DIR%\Lib\site-packages\onnxruntime\capi" (
+    set "PATH=%VENV_DIR%\Lib\site-packages\onnxruntime\capi;!PATH!"
 )
 
 :: 4. Resolve library conflict: remove torchaudio if present
-if exist ".venv\Lib\site-packages\torchaudio" (
+if exist "%VENV_DIR%\Lib\site-packages\torchaudio" (
     echo [INFO] Resolving library conflict: removing torchaudio...
-    call .venv\Scripts\python.exe -m pip uninstall -y torchaudio >nul 2>&1
+    call "%VENV_PY%" -m pip uninstall -y torchaudio >nul 2>&1
 )
 
 :: 5. Main application loop (supports exit code 42 instant reload)
@@ -66,15 +66,15 @@ if exist ".venv\Lib\site-packages\torchaudio" (
 echo =======================================================
 echo   Starting VoxStream Live Captioner Backend...
 echo =======================================================
-call .venv\Scripts\python.exe -m obs_captioner.main %*
+call "%VENV_PY%" -m obs_captioner.main %*
 set "APP_EXIT_CODE=!errorlevel!"
 
 :: Exit code 42 indicates an intentional application restart
 if "!APP_EXIT_CODE!"=="42" (
     echo.
     echo [VoxStream] Application restart requested. Verifying dependencies and reloading...
-    if exist "requirements.txt" (
-        call .venv\Scripts\python.exe -m pip install -q -r requirements.txt
+    if exist "%ROOT_DIR%\requirements.txt" (
+        call "%VENV_PY%" -m pip install -q -r "%ROOT_DIR%\requirements.txt"
     )
     timeout /t 1 /nobreak >nul
     goto app_loop
@@ -91,3 +91,4 @@ if not "!APP_EXIT_CODE!"=="0" (
 echo   Press any key to close this window...
 echo =======================================================
 pause >nul
+exit /b !APP_EXIT_CODE!

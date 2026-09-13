@@ -861,45 +861,161 @@
             <!-- TAB 3: LIVE TRANSLATION -->
             <div id="tab-translation" class="tab-pane">
                 <div class="panel">
-                    <h2>🌐 Real-Time Multi-Language Translation</h2>
-                    <p class="subtext">Automatically translates spoken captions into 30+ languages live on stream.</p>
+                    <h2>🌐 Multi-Language Translation</h2>
+                    <p class="subtext">Configure real-time translation for your OBS broadcast overlay and on-demand viewer display tracks.</p>
 
-                    <div class="form-group toggle-row">
-                        <label class="switch-label">
-                            <input type="checkbox" id="translation_enabled">
-                            <span class="switch-text"><strong>Enable Real-Time Translation</strong></span>
-                        </label>
+                    <!-- SECTION 1: OBS Broadcast Stream & Overlays -->
+                    <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 18px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+                            <div>
+                                <h3 style="margin: 0; font-size: 14px; color: #F8FAFC; display: flex; align-items: center; gap: 8px;">
+                                    <span>📺 OBS Broadcast Stream Subtitles</span>
+                                </h3>
+                                <p style="font-size: 12px; color: var(--text-muted); margin: 3px 0 0 0;">
+                                    Shows translated subtitles directly on your stream video (Web Overlay &amp; OBS Text Source).
+                                </p>
+                            </div>
+                            <div class="form-group toggle-row" style="margin: 0;">
+                                <label class="switch-label">
+                                    <input type="checkbox" id="translation_enabled">
+                                    <span class="switch-text"><strong>Translate on OBS Stream</strong></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="translation_mode">OBS Subtitle Display Style</label>
+                                <select id="translation_mode" class="form-control">
+                                    <option value="dual" selected>Dual Subtitles (Original Spoken + Translated Underneath)</option>
+                                    <option value="translated_only">Translated Subtitles Only (Replaces original)</option>
+                                </select>
+                                <small class="text-muted" style="font-size: 11px; display: block; margin-top: 4px;">Dual mode stacks the translated sentence underneath your spoken words on the stream overlay.</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="translation_target">OBS Broadcast Target Language</label>
+                                <select id="translation_target" class="form-control">
+                                    <option value="es" selected>Spanish (Español)</option>
+                                    <option value="fr">French (Français)</option>
+                                    <option value="de">German (Deutsch)</option>
+                                    <option value="ja">Japanese (日本語)</option>
+                                    <option value="pt">Portuguese (Português)</option>
+                                    <option value="it">Italian (Italiano)</option>
+                                    <option value="zh">Chinese Simplified (中文)</option>
+                                    <option value="ko">Korean (한국어)</option>
+                                    <option value="ru">Russian (Русский)</option>
+                                    <option value="ar">Arabic (العربية)</option>
+                                    <option value="hi">Hindi (हिन्दी)</option>
+                                    <option value="nl">Dutch (Nederlands)</option>
+                                    <option value="pl">Polish (Polski)</option>
+                                    <option value="sv">Swedish (Svenska)</option>
+                                    <option value="tr">Turkish (Türkçe)</option>
+                                    <option value="uk">Ukrainian (Українська)</option>
+                                    <option value="vi">Vietnamese (Tiếng Việt)</option>
+                                </select>
+                                <small class="text-muted" style="font-size: 11px; display: block; margin-top: 4px;">The language shown on your on-screen broadcast overlay.</small>
+                            </div>
+                        </div>
+
+                        <!-- Dual Subtitle Appearance Controls -->
+                        <div id="dual-subtitle-appearance-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 14px; margin-top: 12px;">
+                            <h4 style="margin: 0 0 10px 0; font-size: 13px; color: #FCD34D; display: flex; align-items: center; gap: 6px;">
+                                <span>🎨 Dual Subtitle Visual Appearance</span>
+                            </h4>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px;">
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="translation_dual_format" style="font-size: 11.5px;">Secondary Subtitle Layout</label>
+                                    <select id="translation_dual_format" class="form-control" style="font-size: 12px;">
+                                        <option value="clean" selected>Clean Two-Line Stack (No Parentheses)</option>
+                                        <option value="parentheses">Parenthetical: (Translated Text)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <label for="translation_dual_color" style="font-size: 11.5px;">Secondary Text Color</label>
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <input type="color" id="translation_dual_color" value="#FFD700" style="width: 38px; height: 32px; padding: 2px; border: 1px solid var(--border-color); border-radius: 4px; background: transparent; cursor: pointer;">
+                                        <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                                            <button type="button" class="btn btn-sm btn-color-chip" data-color="#FFD700" style="background: #FFD700; width: 22px; height: 22px; border-radius: 4px; border: 1px solid #000; padding: 0; cursor: pointer;" title="Classic Subtitle Gold (#FFD700)"></button>
+                                            <button type="button" class="btn btn-sm btn-color-chip" data-color="#FBBF24" style="background: #FBBF24; width: 22px; height: 22px; border-radius: 4px; border: 1px solid #000; padding: 0; cursor: pointer;" title="Warm Amber (#FBBF24)"></button>
+                                            <button type="button" class="btn btn-sm btn-color-chip" data-color="#93C5FD" style="background: #93C5FD; width: 22px; height: 22px; border-radius: 4px; border: 1px solid #000; padding: 0; cursor: pointer;" title="Soft Cyan (#93C5FD)"></button>
+                                            <button type="button" class="btn btn-sm btn-color-chip" data-color="#FFFFFF" style="background: #FFFFFF; width: 22px; height: 22px; border-radius: 4px; border: 1px solid #000; padding: 0; cursor: pointer;" title="Clean White (#FFFFFF)"></button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="form-group" style="margin-bottom: 0;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                                        <label for="translation_dual_scale" style="font-size: 11.5px; margin-bottom: 0;">Font Size Scale</label>
+                                        <span id="translation_dual_scale_val" style="font-size: 11px; color: #38BDF8; font-weight: 700;">85%</span>
+                                    </div>
+                                    <input type="range" id="translation_dual_scale" min="0.60" max="1.00" step="0.05" value="0.85" style="width: 100%; margin-top: 6px;">
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
-                    <div class="form-row">
+                    <!-- SECTION 2: Translation Engine / Provider -->
+                    <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 18px;">
+                        <h3 style="margin: 0 0 4px 0; font-size: 14px; color: #F8FAFC;">⚙️ Translation Engine</h3>
+                        <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 12px 0;">Select which translation service powers your broadcast and viewer captions.</p>
+
                         <div class="form-group">
-                            <label for="translation_target">Target Language</label>
-                            <select id="translation_target" class="form-control">
-                                <option value="es" selected>Spanish (Español)</option>
-                                <option value="fr">French (Français)</option>
-                                <option value="de">German (Deutsch)</option>
-                                <option value="ja">Japanese (日本語)</option>
-                                <option value="pt">Portuguese (Português)</option>
-                                <option value="it">Italian (Italiano)</option>
-                                <option value="zh">Chinese Simplified (中文)</option>
-                                <option value="ko">Korean (한국어)</option>
-                                <option value="ru">Russian (Русский)</option>
-                                <option value="ar">Arabic (العربية)</option>
-                                <option value="hi">Hindi (हिन्दी)</option>
-                                <option value="nl">Dutch (Nederlands)</option>
-                                <option value="pl">Polish (Polski)</option>
-                                <option value="sv">Swedish (Svenska)</option>
-                                <option value="tr">Turkish (Türkçe)</option>
-                                <option value="uk">Ukrainian (Українська)</option>
-                                <option value="vi">Vietnamese (Tiếng Việt)</option>
+                            <label for="translation_provider">Translation Provider</label>
+                            <select id="translation_provider" class="form-control">
+                                <option value="google_free" selected>🆓 Google Free Translation (Built-in / Zero-Setup / Fast for Local Models)</option>
+                                <option value="nllb">💻 Meta NLLB-200 (100% Offline / Local GPU / Zero API Keys)</option>
+                                <option value="gemini_live">✨ Google Gemini Live Translate (gemini-3.5-live-translate-preview)</option>
                             </select>
                         </div>
-                        <div class="form-group">
-                            <label for="translation_mode">Display Mode</label>
-                            <select id="translation_mode" class="form-control">
-                                <option value="dual" selected>Dual Subtitles (Original Spoken + Translated Underneath)</option>
-                                <option value="translated_only">Translated Subtitles Only</option>
-                            </select>
+
+                        <div id="translation-nllb-fields" style="display: none; background: rgba(59, 130, 246, 0.06); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 8px; padding: 14px; margin-top: 12px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                <h4 style="margin: 0; color: #93C5FD; font-size: 13px;">💻 Meta NLLB-200 (No Language Left Behind)</h4>
+                                <span id="nllb-cache-badge" class="badge" style="background: rgba(148, 163, 184, 0.2); color: #94A3B8; font-size: 11px;">Checking...</span>
+                            </div>
+                            <p style="font-size: 11.5px; color: #94A3B8; margin: 0 0 10px 0;">
+                                Meta's breakthrough 200-language neural machine translation model running completely offline via CTranslate2 INT8 quantization (~640 MB RAM/VRAM). Zero API keys, zero internet required.
+                            </p>
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <button type="button" id="btn-download-nllb" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;">
+                                    📥 Download Meta NLLB-200 (~640 MB)
+                                </button>
+                                <span id="nllb-download-status" style="font-size: 12px; color: #CBD5E1;"></span>
+                            </div>
+                        </div>
+
+                        <div id="translation-gemini-fields" style="display: none; background: rgba(99, 102, 241, 0.06); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 8px; padding: 14px; margin-top: 12px;">
+                            <h4 style="margin: 0 0 6px 0; color: #A5B4FC; font-size: 13px;">✨ Google Gemini Live Translate (gemini-3.5-live-translate-preview)</h4>
+                            <p style="font-size: 11.5px; color: #94A3B8; margin: 0 0 12px 0;">
+                                Google's official dedicated Live Translate model. Streams raw microphone audio over WebSockets and produces live translated captions with sub-second latency.
+                            </p>
+                            <div class="form-group" style="margin-bottom: 0;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                                    <label for="translation_gemini_key" style="margin-bottom: 0;">Google AI Studio API Key</label>
+                                    <span id="translation_key_status" style="font-size: 11px; color: #22c55e; font-weight: 600; display: none;">✓ Key Configured</span>
+                                </div>
+                                <div style="display: flex; gap: 8px;">
+                                    <input type="password" id="translation_gemini_key" placeholder="AIzaSy... (leave blank to auto-use Gemini Live key)" class="form-control" style="flex: 1;">
+                                    <button type="button" id="btn-clear-translation-key" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px; white-space: nowrap;" title="Clear dedicated translation API key">Clear</button>
+                                </div>
+                                <small class="text-muted" style="font-size: 11px; display: block; margin-top: 4px;">If left blank, VoxStream automatically uses your saved Google AI Studio key from Gemini Live.</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SECTION 3: On-Demand Viewer Language Tracks -->
+                    <div style="background: rgba(16, 185, 129, 0.06); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 16px; margin-bottom: 18px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
+                            <h3 style="margin: 0; font-size: 14px; color: #34D399; display: flex; align-items: center; gap: 8px;">
+                                <span>📱 On-Demand Viewer Language Tracks (/display)</span>
+                            </h3>
+                            <span style="font-size: 11px; background: rgba(16, 185, 129, 0.2); color: #6EE7B7; padding: 2px 8px; border-radius: 4px; font-weight: 700;">Always Active on Demand</span>
+                        </div>
+                        <p style="font-size: 12px; color: #CBD5E1; margin: 0 0 10px 0; line-height: 1.5;">
+                            Viewers watching on phones or web browsers via the <strong>Display Page (<a href="/display" target="_blank" style="color: #38BDF8; text-decoration: underline;">/display</a>)</strong> can choose their own language track from the dropdown at any time.
+                        </p>
+                        <div style="font-size: 11.5px; color: #94A3B8; display: flex; flex-direction: column; gap: 4px;">
+                            <div>✅ <strong>Independent of OBS Stream:</strong> Viewers can read Spanish or Japanese on their phones even when the OBS Stream toggle above is turned off.</div>
+                            <div>✅ <strong>Zero-Waste Quota:</strong> Translations only occur when a viewer actively selects a language, and are cached so duplicate viewers don't burn extra requests.</div>
                         </div>
                     </div>
 
@@ -1183,6 +1299,7 @@
                                 <label for="gemini_model">Model Version</label>
                                 <select id="gemini_model" class="form-control">
                                     <option value="gemini-3.5-transcribe-live" selected>gemini-3.5-transcribe-live (Recommended - Sub-second Latency)</option>
+                                    <option value="gemini-3.5-live-translate-preview">gemini-3.5-live-translate-preview (Official Live Translate Speech-to-Speech Preview)</option>
                                     <option value="gemini-3.5-transcribe-live-preview">gemini-3.5-transcribe-live-preview (Enterprise Agent Preview)</option>
                                     <option value="gemini-3.5-transcribe">gemini-3.5-transcribe (Interactions / Batch API)</option>
                                     <option value="gemini-2.0-flash">gemini-2.0-flash (General Multimodal Live)</option>
@@ -1213,16 +1330,32 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="gemini_mode">Transcription Mode</label>
+                                <select id="gemini_mode" class="form-control">
+                                    <option value="SMART" selected>SMART (Cleans filler words 'um/uh', grammar & punctuation)</option>
+                                    <option value="VERBATIM">VERBATIM (Raw literal audio transcription, verbatim disfluencies)</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="gemini_languages">Spoken Language Codes (BCP-47)</label>
+                                <input type="text" id="gemini_languages" placeholder="Auto-detect (or e.g. en-US, es-ES)" class="form-control">
+                                <small class="text-muted" style="font-size: 11px; display: block; margin-top: 4px;">Leave blank for auto-detection, or specify comma-separated BCP-47 tags (e.g. <code>en-US</code>).</small>
+                            </div>
+                        </div>
                         <div class="form-group">
-                            <label for="gemini_custom_vocab">Custom Vocabulary (Comma-separated specialized words, names, jargon)</label>
+                            <label for="gemini_custom_vocab">Custom Vocabulary (Speech Biasing up to 1,000 terms - comma-separated)</label>
                             <input type="text" id="gemini_custom_vocab" placeholder="OBS Studio, Twitch, Discord, YouTube, Jesus Christ" class="form-control">
+                            <small class="text-muted" style="font-size: 11px; display: block; margin-top: 4px;">Provides acoustic biasing for specialized gaming tags, names, tech jargon, and streamer handles.</small>
                         </div>
                         <div class="form-group toggle-row">
                             <label class="switch-label">
-                                <input type="checkbox" id="gemini_smart_transcription" checked>
-                                <span class="switch-text"><strong>Smart Transcription</strong> (Clean up filler words 'ums/ahs', natural self-corrections, auto-punctuation)</span>
+                                <input type="checkbox" id="gemini_hybrid_vad" checked>
+                                <span class="switch-text"><strong>Zero-Latency Hybrid VAD</strong> (Client Silero VAD triggers instant audioStreamEnd cloud sealing)</span>
                             </label>
                         </div>
+                        <input type="checkbox" id="gemini_smart_transcription" style="display: none;" checked>
                     </div>
 
 

@@ -304,7 +304,13 @@ class ParakeetEngine(BaseSTTEngine):
                     audio_buffer.extend(chunk)
                     if len(audio_buffer) >= max_bytes or (len(audio_buffer) > 0 and approx_words >= max_sentence_words):
                         await self._process_utterance(bytes(audio_buffer), on_transcript)
-                        audio_buffer.clear()
+                        overlap_bytes = int(self.config.audio.sample_rate * 2 * 0.35) & ~1
+                        if len(audio_buffer) > overlap_bytes:
+                            tail = audio_buffer[-overlap_bytes:]
+                            audio_buffer.clear()
+                            audio_buffer.extend(tail)
+                        else:
+                            audio_buffer.clear()
                         silence_start_time = None
                 else:
                     if audio_buffer:

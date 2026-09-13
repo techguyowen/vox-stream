@@ -180,12 +180,12 @@ body.align-top .caption-box.hidden {
 }
 
 .translated-subtitle {
-    font-size: calc(var(--font-size) * 0.82);
-    color: var(--interim-color);
+    font-size: calc(var(--font-size) * 0.85);
+    color: var(--dual-subtitle-color, #FFD700);
     font-style: var(--font-style, normal);
-    opacity: 0.92;
+    opacity: 0.95;
     line-height: 1.25;
-    margin-top: 2px;
+    margin-top: 3px;
 }
 
 .interim-line {

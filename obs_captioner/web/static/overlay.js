@@ -80,6 +80,9 @@ let config = {
     animation_style: "word_pop",
     vertical_align: "bottom",
     final_only: false,
+    dual_subtitle_color: "#FFD700",
+    dual_subtitle_scale: 0.85,
+    dual_subtitle_format: "clean",
 };
 
 let hideTimer = null;
@@ -192,6 +195,11 @@ async function loadConfig() {
             if (data.overlay) {
                 applyStyles(data.overlay);
             }
+            if (data.translation) {
+                if (data.translation.dual_subtitle_color) config.dual_subtitle_color = data.translation.dual_subtitle_color;
+                if (data.translation.dual_subtitle_scale) config.dual_subtitle_scale = parseFloat(data.translation.dual_subtitle_scale) || 0.85;
+                if (data.translation.dual_subtitle_format) config.dual_subtitle_format = data.translation.dual_subtitle_format;
+            }
         }
     } catch (e) {
         console.warn("Could not load /api/config:", e);
@@ -271,10 +279,16 @@ function renderFinalLines(activeInterim = false) {
     finalLinesEl.innerHTML = linesToDisplay
         .map(item => {
             if (typeof item === "object" && item.translated) {
+                const color = item.dual_color || config.dual_subtitle_color || "#FFD700";
+                const scale = item.dual_scale || config.dual_subtitle_scale || 0.85;
+                const fmt = item.dual_format || config.dual_subtitle_format || "clean";
+                const transText = (fmt === "parentheses")
+                    ? `(${escapeHtml(item.translated)})`
+                    : escapeHtml(item.translated);
                 return `
                     <div class="final-line-item">
                         <div class="primary-text">${escapeHtml(item.text)}</div>
-                        <div class="translated-subtitle">${escapeHtml(item.translated)}</div>
+                        <div class="translated-subtitle" style="color: ${color}; font-size: calc(var(--font-size) * ${scale});">${transText}</div>
                     </div>
                 `;
             }
@@ -315,6 +329,10 @@ function escapeHtml(str) {
 }
 
 function handleCaption(data) {
+    if (data.dual_color) config.dual_subtitle_color = data.dual_color;
+    if (data.dual_scale) config.dual_subtitle_scale = parseFloat(data.dual_scale) || 0.85;
+    if (data.dual_format) config.dual_subtitle_format = data.dual_format;
+
     // Snapshot replay on (re)connect: reset stale local state, then adopt
     // the server's recent final lines.
     if (data.type === "snapshot") {
@@ -324,7 +342,14 @@ function handleCaption(data) {
         const now = Date.now();
         for (const line of data.lines || []) {
             const t = (line.text || "").trim();
-            if (t) finalLines.push({ text: t, translated: line.translated_text || null, displayedAt: now });
+            if (t) finalLines.push({
+                text: t,
+                translated: line.translated_text || null,
+                dual_color: line.dual_color || data.dual_color || config.dual_subtitle_color,
+                dual_scale: line.dual_scale || data.dual_scale || config.dual_subtitle_scale,
+                dual_format: line.dual_format || data.dual_format || config.dual_subtitle_format,
+                displayedAt: now,
+            });
         }
         while (finalLines.length > config.max_lines) finalLines.shift();
         if (finalLines.length) {
@@ -345,8 +370,29 @@ function handleCaption(data) {
                 deferredHideTimer = null;
             }
 
-            const lineItem = { text: text, translated: translated, displayedAt: 0 };
+            const lineItem = {
+                text: text,
+                translated: translated,
+                dual_color: data.dual_color || config.dual_subtitle_color,
+                dual_scale: data.dual_scale || config.dual_subtitle_scale,
+                dual_format: data.dual_format || config.dual_subtitle_format,
+                displayedAt: 0,
+            };
             const minDisp = Math.max(0, parseFloat(config.min_display_seconds) || 0);
+
+            // If replacing the last finalized line (e.g. clause or boundary stitch)
+            if (data.replace_last && finalLines.length > 0) {
+                finalLines[finalLines.length - 1].text = text;
+                if (translated) {
+                    finalLines[finalLines.length - 1].translated = translated;
+                }
+                finalLines[finalLines.length - 1].displayedAt = Date.now();
+                lastLineDisplayedAt = Date.now();
+                interimLineEl.innerHTML = "";
+                renderFinalLines(false);
+                showBox();
+                return;
+            }
 
             // If box has space and no lines are waiting in queue, display immediately
             if (finalLines.length < config.max_lines && pendingFinalQueue.length === 0) {

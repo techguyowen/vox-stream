@@ -267,6 +267,266 @@ class TestTranslator(unittest.TestCase):
         self.assertEqual(res, "Hello world")
         self.assertIsNone(trans)
 
+    def test_gemini_translation_success(self):
+        from unittest.mock import MagicMock, patch
+        cfg = TranslationConfig(
+            enabled=True,
+            provider="gemini",
+            gemini_api_key="mock_gemini_key",
+            target_language="es",
+            enable_disk_cache=False,
+        )
+        translator = SubtitleTranslator(cfg)
+
+        mock_resp_data = {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [{"text": "Hola mundo"}]
+                    }
+                }
+            ]
+        }
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps(mock_resp_data).encode("utf-8")
+        mock_resp.__enter__.return_value = mock_resp
+
+        with patch("urllib.request.urlopen", return_value=mock_resp):
+            loop = asyncio.new_event_loop()
+            res = loop.run_until_complete(translator.translate_to_language("Hello world", target_lang="es"))
+            loop.close()
+
+        self.assertEqual(res, "Hola mundo")
+        # Verify cached
+        self.assertIn("gemini:auto:es:Hello world", translator._cache)
+
+    def test_gemini_translation_fallback(self):
+        from unittest.mock import patch
+        cfg = TranslationConfig(
+            enabled=True,
+            provider="gemini",
+            gemini_api_key="mock_gemini_key",
+            target_language="es",
+            enable_disk_cache=False,
+        )
+        translator = SubtitleTranslator(cfg)
+
+        # Mock Gemini failing with None, fallback provider succeeding
+        with patch.object(translator, "_fetch_gemini_translation", return_value=None):
+            with patch.object(translator, "_fetch_translation", return_value="Hola mundo (fallback)"):
+                loop = asyncio.new_event_loop()
+                res = loop.run_until_complete(translator.translate_to_language("Hello world", target_lang="es"))
+                loop.close()
+
+        self.assertEqual(res, "Hola mundo (fallback)")
+
+    def test_gemini_api_key_resolution(self):
+        cfg = TranslationConfig(enabled=True, provider="gemini", gemini_api_key="")
+        translator = SubtitleTranslator(cfg, api_key_resolver=lambda: "resolved_live_key_999")
+        self.assertEqual(translator.get_gemini_api_key(), "resolved_live_key_999")
+
+    def test_nllb_language_code_resolution(self):
+        from obs_captioner.engines.nllb_translator import resolve_flores_code
+        self.assertEqual(resolve_flores_code("es"), "spa_Latn")
+        self.assertEqual(resolve_flores_code("fr"), "fra_Latn")
+        self.assertEqual(resolve_flores_code("de"), "deu_Latn")
+        self.assertEqual(resolve_flores_code("zh"), "zho_Hans")
+        self.assertEqual(resolve_flores_code("ja"), "jpn_Jpan")
+        self.assertEqual(resolve_flores_code("ko"), "kor_Hang")
+        self.assertEqual(resolve_flores_code("spa_Latn"), "spa_Latn")
+        self.assertEqual(resolve_flores_code("auto"), "eng_Latn")
+        self.assertEqual(resolve_flores_code(""), "eng_Latn")
+
+    def test_nllb_translation_success(self):
+        from unittest.mock import AsyncMock, MagicMock
+        from obs_captioner.engines.nllb_translator import NLLBTranslator
+
+        mock_nllb = MagicMock(spec=NLLBTranslator)
+        mock_nllb.translate = AsyncMock(return_value="Hola mundo desde NLLB")
+
+        cfg = TranslationConfig(enabled=True, provider="nllb", target_language="es", enable_disk_cache=False)
+        translator = SubtitleTranslator(cfg, nllb_translator=mock_nllb)
+
+        loop = asyncio.new_event_loop()
+        res = loop.run_until_complete(translator.translate_to_language("Hello world", target_lang="es"))
+        loop.close()
+
+        self.assertEqual(res, "Hola mundo desde NLLB")
+        mock_nllb.translate.assert_awaited_once_with("Hello world", target_lang="es", source_lang="en")
+
+    def test_nllb_translation_fallback(self):
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from obs_captioner.engines.nllb_translator import NLLBTranslator
+
+        mock_nllb = MagicMock(spec=NLLBTranslator)
+        mock_nllb.translate = AsyncMock(return_value=None)  # Model not downloaded / returns None
+
+        cfg = TranslationConfig(enabled=True, provider="nllb", target_language="es", enable_disk_cache=False)
+        translator = SubtitleTranslator(cfg, nllb_translator=mock_nllb)
+
+        with patch.object(translator, "_fetch_translation", return_value="Hola mundo (google fallback)"):
+            loop = asyncio.new_event_loop()
+            res = loop.run_until_complete(translator.translate_to_language("Hello world", target_lang="es"))
+            loop.close()
+
+        self.assertEqual(res, "Hola mundo (google fallback)")
+
+    def test_model_catalog_has_nllb(self):
+        from obs_captioner.model_downloader import MODEL_CATALOG
+        nllb_items = [m for m in MODEL_CATALOG if m.id == "nllb_200"]
+        self.assertEqual(len(nllb_items), 1)
+        item = nllb_items[0]
+        self.assertEqual(item.engine, "nllb")
+        self.assertEqual(item.model_key, "JustFrederik/nllb-200-distilled-600M-ct2-int8")
+        self.assertEqual(item.size_mb, 640)
+
+    def test_translation_disk_cache(self):
+        from obs_captioner.translation_cache import TranslationDiskCache
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "test_cache.db"
+            cache = TranslationDiskCache(db_path=db_path, max_entries=5)
+
+            # Test miss
+            self.assertIsNone(cache.get("key1"))
+
+            # Test set and hit
+            cache.set("key1", "Hello", "Hola", "nllb", "en", "es")
+            self.assertEqual(cache.get("key1"), "Hola")
+
+            stats = cache.get_stats()
+            self.assertEqual(stats["total_entries"], 1)
+            self.assertEqual(stats["total_hits"], 2)
+
+            # Test hit count increment
+            self.assertEqual(cache.get("key1"), "Hola")
+            stats = cache.get_stats()
+            self.assertEqual(stats["total_hits"], 3)
+
+            # Test auto-pruning with max_entries
+            for i in range(2, 8):
+                cache.set(f"key{i}", f"Text {i}", f"Texto {i}", "nllb", "en", "es")
+            stats = cache.get_stats()
+            self.assertLessEqual(stats["total_entries"], 5)
+
+            # Test clear
+            cache.clear()
+            self.assertEqual(cache.get_stats()["total_entries"], 0)
+            self.assertIsNone(cache.get("key1"))
+
+            cache.close()
+
+    def test_two_tier_translation_cache(self):
+        from unittest.mock import AsyncMock, MagicMock
+        from obs_captioner.engines.nllb_translator import NLLBTranslator
+        from obs_captioner.translation_cache import TranslationDiskCache
+
+        mock_nllb = MagicMock(spec=NLLBTranslator)
+        mock_nllb.translate = AsyncMock(return_value="Hola dos")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "test_cache.db"
+            disk_cache = TranslationDiskCache(db_path=db_path)
+            cfg = TranslationConfig(enabled=True, provider="nllb", target_language="es")
+            translator = SubtitleTranslator(cfg, nllb_translator=mock_nllb, disk_cache=disk_cache)
+
+            loop = asyncio.new_event_loop()
+            # 1st call: engine called, written to L1 and L2
+            res1 = loop.run_until_complete(translator.translate_to_language("Hello two", target_lang="es"))
+            self.assertEqual(res1, "Hola dos")
+            self.assertEqual(mock_nllb.translate.await_count, 1)
+
+            # Check L1
+            cache_key = "nllb:auto:es:Hello two"
+            self.assertIn(cache_key, translator._cache)
+            # Check L2
+            self.assertEqual(disk_cache.get(cache_key), "Hola dos")
+
+            # Simulate app restart / clear L1 memory cache
+            translator._cache.clear()
+            self.assertNotIn(cache_key, translator._cache)
+
+            # 2nd call: should hit L2 disk cache and populate L1 without calling engine again
+            res2 = loop.run_until_complete(translator.translate_to_language("Hello two", target_lang="es"))
+            self.assertEqual(res2, "Hola dos")
+            # Engine was NOT called again
+            self.assertEqual(mock_nllb.translate.await_count, 1)
+            # L1 re-populated
+            self.assertIn(cache_key, translator._cache)
+
+            loop.close()
+            disk_cache.close()
+
+    def test_translation_prewarm(self):
+        from unittest.mock import AsyncMock, MagicMock
+        from obs_captioner.engines.nllb_translator import NLLBTranslator
+
+        mock_nllb = MagicMock(spec=NLLBTranslator)
+        mock_nllb.prewarm = AsyncMock(return_value=True)
+
+        cfg = TranslationConfig(enabled=True, provider="nllb", target_language="es")
+        translator = SubtitleTranslator(cfg, nllb_translator=mock_nllb)
+
+        loop = asyncio.new_event_loop()
+        res = loop.run_until_complete(translator.prewarm_async())
+        loop.close()
+
+        self.assertTrue(res)
+        mock_nllb.prewarm.assert_awaited_once()
+
+        # Prewarming a non-NLLB provider returns False and doesn't call NLLB
+        translator.config.provider = "gemini"
+        mock_nllb.prewarm.reset_mock()
+        loop = asyncio.new_event_loop()
+        res2 = loop.run_until_complete(translator.prewarm_async())
+        loop.close()
+        self.assertFalse(res2)
+        mock_nllb.prewarm.assert_not_awaited()
+
+    def test_dual_subtitle_config_and_formatting(self):
+        from unittest.mock import AsyncMock, MagicMock
+        from obs_captioner.config import AppConfig
+        from obs_captioner.obs.caption_sink import CaptionSink
+
+        cfg = AppConfig()
+        cfg.overlay.auto_hide_seconds = 0
+        self.assertEqual(cfg.translation.dual_subtitle_color, "#FFD700")
+        self.assertEqual(cfg.translation.dual_subtitle_scale, 0.85)
+        self.assertEqual(cfg.translation.dual_subtitle_format, "clean")
+        if hasattr(cfg, "bible") and cfg.bible:
+            cfg.bible.enabled = False
+
+        sink = CaptionSink(cfg)
+        mock_web = MagicMock()
+        mock_web.broadcast_caption = AsyncMock()
+        sink.web_server = mock_web
+
+        sink.config.translation.enabled = True
+        sink.config.translation.display_mode = "dual"
+        sink.config.translation.dual_subtitle_format = "clean"
+        sink.config.translation.dual_subtitle_color = "#93C5FD"
+        sink.config.translation.dual_subtitle_scale = 0.9
+
+        event = TranscriptEvent(text="Live broadcast", is_final=True, timestamp=time.time())
+        event.translated_text = "Transmisión en vivo"
+
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(sink.handle_transcript(event))
+        loop.close()
+
+        # Check broadcast payload
+        mock_web.broadcast_caption.assert_awaited_once()
+        payload = mock_web.broadcast_caption.call_args[0][0]
+        self.assertEqual(payload["text"], "Live broadcast.")
+        self.assertEqual(payload["translated_text"], "Transmisión en vivo")
+        self.assertEqual(payload["dual_color"], "#93C5FD")
+        self.assertEqual(payload["dual_scale"], 0.9)
+        self.assertEqual(payload["dual_format"], "clean")
+
+        # Check history entry formatted with clean stack separator (" / ")
+        hist = sink.history.get_history()
+        self.assertEqual(len(hist), 1)
+        self.assertEqual(hist[0]["text"], "Live broadcast. / Transmisión en vivo")
+
 
 class TestTwitchBot(unittest.TestCase):
 
@@ -458,6 +718,96 @@ class TestConfigAndEngines(unittest.TestCase):
         self.assertEqual(events[2].text, "Welcome to church this morning.")
         self.assertTrue(events[3].is_final)
         self.assertEqual(events[3].text, "Welcome to church this morning.")
+
+    def test_gemini_live_official_setup_payload(self):
+        """Verify Gemini Live official setup payload format per Google specifications."""
+        cfg = AppConfig()
+        cfg.gemini_live.api_key = "test-key"
+        cfg.gemini_live.mode = "SMART"
+        cfg.gemini_live.custom_vocabulary = ["OBS Studio", "Twitch", "YouTube", "Jesus Christ"]
+        cfg.gemini_live.language_codes = ["en-US"]
+        cfg.gemini_live.enable_hybrid_vad = True
+
+        engine = GeminiLiveEngine(cfg)
+        payload = engine.build_setup_payload()
+        self.assertIn("setup", payload)
+        setup = payload["setup"]
+        self.assertEqual(setup["model"], "models/gemini-3.5-transcribe-live")
+        self.assertEqual(setup["generationConfig"]["responseModalities"], ["TEXT"])
+
+        transcription = setup["inputAudioTranscription"]
+        self.assertEqual(transcription["mode"], "SMART")
+        self.assertEqual(transcription["customVocabulary"], ["OBS Studio", "Twitch", "YouTube", "Jesus Christ"])
+        self.assertEqual(transcription["languageCodes"], ["en-US"])
+
+        # Test VERBATIM mode
+        cfg.gemini_live.smart_transcription = False
+        payload_verbatim = engine.build_setup_payload()
+        self.assertEqual(payload_verbatim["setup"]["inputAudioTranscription"]["mode"], "VERBATIM")
+
+    def test_gemini_live_parse_dual_stream_messages(self):
+        """Verify dual-stream interimInputTranscription and inputTranscription parsing."""
+        cfg = AppConfig()
+        engine = GeminiLiveEngine(cfg)
+
+        # 1. Speculative interim update
+        interim_data = {
+            "serverContent": {
+                "interimInputTranscription": {
+                    "text": "Hello world"
+                }
+            }
+        }
+        events = engine.parse_server_message(interim_data)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0], ("Hello world", False))
+
+        # 2. Authoritative finalized update
+        final_data = {
+            "serverContent": {
+                "inputTranscription": {
+                    "text": "Hello world."
+                }
+            }
+        }
+        events2 = engine.parse_server_message(final_data)
+        self.assertEqual(len(events2), 1)
+        self.assertEqual(events2[0], ("Hello world.", True))
+
+        # 3. Empty or malformed payloads
+        self.assertEqual(engine.parse_server_message({}), [])
+        self.assertEqual(engine.parse_server_message({"serverContent": {}}), [])
+
+    def test_gemini_live_translate_model_setup(self):
+        cfg = AppConfig()
+        cfg.gemini_live.api_key = "test-key"
+        cfg.gemini_live.model = "gemini-3.5-live-translate-preview"
+        cfg.translation.target_language = "es"
+
+        engine = GeminiLiveEngine(cfg)
+        setup = engine.build_setup_payload()["setup"]
+
+        self.assertEqual(setup["model"], "models/gemini-3.5-live-translate-preview")
+        gen_cfg = setup["generationConfig"]
+        self.assertEqual(gen_cfg["responseModalities"], ["AUDIO"])
+        self.assertIn("translationConfig", gen_cfg)
+        self.assertEqual(gen_cfg["translationConfig"]["targetLanguageCode"], "es")
+        self.assertTrue(gen_cfg["translationConfig"]["echoTargetLanguage"])
+
+    def test_gemini_live_parse_output_transcription(self):
+        cfg = AppConfig()
+        cfg.gemini_live.api_key = "test-key"
+        engine = GeminiLiveEngine(cfg)
+
+        msg = {
+            "serverContent": {
+                "inputTranscription": {"text": "Hello everyone"},
+                "outputTranscription": {"text": "Hola a todos"}
+            }
+        }
+        events = engine.parse_server_message(msg)
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0], ("Hola a todos", True))
 
     def test_vad_energy_calculation(self):
         vad = VoiceActivityDetector(enable_silero=False, noise_gate_db=-40.0)
@@ -1060,6 +1410,42 @@ class TestServerEndpoints(AioHTTPTestCase):
         })
         self.assertEqual(resp5.status, 200)
         self.assertEqual(self.overlay_server.config.gemini_live.api_key, '')
+
+        # 6. Update Gemini Live advanced settings (mode, language_codes, enable_hybrid_vad)
+        resp6 = await self.client.request('POST', '/api/config', json={
+            'gemini_live': {
+                'mode': 'VERBATIM',
+                'language_codes': ['en-US', 'es-ES'],
+                'enable_hybrid_vad': False
+            }
+        })
+        self.assertEqual(resp6.status, 200)
+        self.assertEqual(self.overlay_server.config.gemini_live.mode, 'VERBATIM')
+        self.assertEqual(self.overlay_server.config.gemini_live.language_codes, ['en-US', 'es-ES'])
+        self.assertFalse(self.overlay_server.config.gemini_live.enable_hybrid_vad)
+
+        # 7. Translation gemini_api_key masking, update, and clear
+        resp7 = await self.client.request('POST', '/api/config', json={
+            'translation': {
+                'provider': 'gemini_live',
+                'gemini_api_key': 'test_mock_trans_key_777'
+            }
+        })
+        self.assertEqual(resp7.status, 200)
+        self.assertEqual(self.overlay_server.config.translation.gemini_api_key, 'test_mock_trans_key_777')
+        self.assertEqual(self.overlay_server.config.translation.provider, 'gemini_live')
+
+        get_trans = await self.client.request('GET', '/api/config')
+        data_trans = await get_trans.json()
+        self.assertEqual(data_trans['translation']['gemini_api_key'], '•••')
+        self.assertEqual(data_trans['translation']['provider'], 'gemini_live')
+
+        # Clear key via __CLEAR__
+        resp8 = await self.client.request('POST', '/api/config', json={
+            'translation': {'gemini_api_key': '__CLEAR__'}
+        })
+        self.assertEqual(resp8.status, 200)
+        self.assertEqual(self.overlay_server.config.translation.gemini_api_key, '')
 
     async def test_bible_route_variants(self):
         # Verify /bible, /bible/, and /bible.html all resolve correctly
@@ -1890,6 +2276,34 @@ class TestHardwareAndMemoryManagement(unittest.IsolatedAsyncioTestCase):
         finally:
             await client.close()
 
+    async def test_trim_memory_endpoint_with_hook(self):
+        from obs_captioner.web.server import WebOverlayServer
+        from obs_captioner.config import AppConfig
+        from aiohttp.test_utils import TestClient, TestServer
+
+        hook_called = False
+
+        def mock_trim():
+            nonlocal hook_called
+            hook_called = True
+            return 12.5
+
+        cfg = AppConfig()
+        server = WebOverlayServer(cfg, on_trim_memory=mock_trim)
+        client = TestClient(TestServer(server.app))
+        await client.start_server()
+        try:
+            resp = await client.post("/api/system/trim_memory")
+            self.assertEqual(resp.status, 200)
+            data = await resp.json()
+            self.assertEqual(data.get("status"), "success")
+            self.assertTrue(hook_called)
+            self.assertEqual(data.get("freed_mb"), 12.5)
+            self.assertIn("current_ram_mb", data)
+            self.assertGreater(data["current_ram_mb"], 0.0)
+        finally:
+            await client.close()
+
     async def test_status_endpoint_includes_hardware_and_ram(self):
         from obs_captioner.web.server import WebOverlayServer
         from obs_captioner.config import AppConfig
@@ -1981,6 +2395,25 @@ class TestVersioningAndSemanticUpdater(unittest.TestCase):
             self.assertEqual(status["latest_version"], "1.2.0")
             self.assertEqual(status["update_type"], "minor")
             self.assertEqual(status["current_version"], "1.1.0")
+
+    def test_updater_sync_check_ahead_of_remote_not_flagged(self):
+        from unittest.mock import patch, MagicMock
+        from obs_captioner.updater import UpdateManager
+
+        updater = UpdateManager()
+
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0  # 0 indicates remote commit is an ancestor of local HEAD
+
+        with patch("urllib.request.urlopen", side_effect=Exception("offline")), \
+             patch.object(updater, "is_git_repo", return_value=True), \
+             patch.object(updater, "get_git_cmd", return_value="git"), \
+             patch.object(updater, "get_local_commit", return_value="6a4a98d"), \
+             patch.object(updater, "get_local_full_commit", return_value="6a4a98d000000000000000000000000000000000"), \
+             patch("subprocess.run", return_value=mock_proc):
+
+            status = updater._sync_check_update()
+            self.assertFalse(status["update_available"])
 
     def test_git_update_fallback_to_zip_on_failure(self):
         from unittest.mock import patch, MagicMock
@@ -2841,6 +3274,179 @@ class TestSermonSummaryAndAIChapters(unittest.TestCase):
             loop.run_until_complete(run_checks())
         finally:
             loop.close()
+
+
+class TestSentenceStabilizationAndStitching(unittest.IsolatedAsyncioTestCase):
+    """Tests for preventing half cut-off sentences, dangling connector handling, and clause stitching."""
+
+    def test_dangling_connector_preservation(self):
+        from obs_captioner.formatter import TextFormatter
+
+        fmt = TextFormatter(auto_capitalization=True, auto_punctuation=True)
+
+        # 1. Dangling connectors should not be forced with a terminal period
+        self.assertEqual(
+            fmt.format_text("we are coming together because", is_final=True),
+            "We are coming together because"
+        )
+        self.assertEqual(
+            fmt.format_text("he stepped onto the platform and", is_final=True),
+            "He stepped onto the platform and"
+        )
+        self.assertEqual(
+            fmt.format_text("we know that", is_final=True),
+            "We know that"
+        )
+
+        # 2. Strips false periods attached by models on dangling conjunctions
+        self.assertEqual(
+            fmt.format_text("we are coming together because.", is_final=True),
+            "We are coming together because"
+        )
+
+        # 3. Questions ending with prepositions still get a question mark
+        self.assertEqual(
+            fmt.format_text("what are you waiting for", is_final=True),
+            "What are you waiting for?"
+        )
+        self.assertEqual(
+            fmt.format_text("who are you speaking to", is_final=True),
+            "Who are you speaking to?"
+        )
+
+        # 4. Standard complete statements still get a period
+        self.assertEqual(
+            fmt.format_text("we are gathered here today in faith", is_final=True),
+            "We are gathered here today in faith."
+        )
+
+    async def test_clause_stitching_and_overlay_broadcast(self):
+        from obs_captioner.obs.caption_sink import CaptionSink
+        from obs_captioner.history import TranscriptHistory
+        from obs_captioner.config import AppConfig
+        from obs_captioner.engines.base import TranscriptEvent
+
+        config = AppConfig()
+        config.obs.update_text_source = True
+        config.obs.text_source_name = "Captions"
+        history = TranscriptHistory()
+
+        class MockWebServer:
+            def __init__(self):
+                self.broadcasts = []
+            async def broadcast_caption(self, payload):
+                self.broadcasts.append(payload)
+            async def trigger_scripture_lookup(self, text):
+                pass
+
+        class MockObsClient:
+            def __init__(self):
+                self.is_connected = True
+                self.updated_texts = []
+            async def update_text_source(self, source, text):
+                self.updated_texts.append((source, text))
+            async def send_stream_caption(self, text):
+                pass
+
+        mock_web = MockWebServer()
+        mock_obs = MockObsClient()
+
+        sink = CaptionSink(
+            config=config,
+            obs_client=mock_obs,
+            web_server=mock_web,
+            history=history,
+        )
+
+        # Chunk 1: Cut off at dangling connector
+        evt1 = TranscriptEvent(text="We are called to love one another and", is_final=True)
+        await sink.handle_transcript(evt1)
+        self.assertEqual(len(history.entries), 1)
+        self.assertEqual(history.entries[0].text, "We are called to love one another and")
+
+        # Chunk 2: Second half arrives within 3.5s
+        evt2 = TranscriptEvent(text="To bear each other's burdens.", is_final=True)
+        await sink.handle_transcript(evt2)
+
+        # Should be absorbed and stitched into one unbroken sentence
+        self.assertEqual(len(history.entries), 1)
+        self.assertEqual(
+            history.entries[0].text,
+            "We are called to love one another and to bear each other's burdens."
+        )
+
+        # Verify MockWebServer received broadcast with replace_last=True
+        self.assertTrue(any(b.get("replace_last") is True for b in mock_web.broadcasts))
+        last_b = [b for b in mock_web.broadcasts if b.get("replace_last") is True][-1]
+        self.assertEqual(
+            last_b["text"],
+            "We are called to love one another and to bear each other's burdens."
+        )
+
+        # Verify Mock OBS received updated text source
+        self.assertIn(
+            ("Captions", "We are called to love one another and to bear each other's burdens."),
+            mock_obs.updated_texts,
+        )
+
+    async def test_clause_stitching_proper_noun_preservation(self):
+        from obs_captioner.obs.caption_sink import CaptionSink
+        from obs_captioner.history import TranscriptHistory
+        from obs_captioner.config import AppConfig
+        from obs_captioner.engines.base import TranscriptEvent
+
+        config = AppConfig()
+        history = TranscriptHistory()
+        sink = CaptionSink(config=config, history=history)
+
+        evt1 = TranscriptEvent(text="We put all our trust in", is_final=True)
+        await sink.handle_transcript(evt1)
+
+        evt2 = TranscriptEvent(text="Jesus Christ who reigns forever.", is_final=True)
+        await sink.handle_transcript(evt2)
+
+        self.assertEqual(len(history.entries), 1)
+        self.assertEqual(
+            history.entries[0].text,
+            "We put all our trust in Jesus Christ who reigns forever."
+        )
+
+    async def test_clause_stitching_word_ceiling_protection(self):
+        from obs_captioner.obs.caption_sink import CaptionSink
+        from obs_captioner.history import TranscriptHistory
+        from obs_captioner.config import AppConfig
+        from obs_captioner.engines.base import TranscriptEvent
+
+        config = AppConfig()
+        config.audio.max_sentence_words = 15  # Strict ceiling for test
+        history = TranscriptHistory()
+        sink = CaptionSink(config=config, history=history)
+
+        # 12 words ending in 'and'
+        long_chunk_1 = "Now we are going to look into the scriptures together as a church family and"
+        evt1 = TranscriptEvent(text=long_chunk_1, is_final=True)
+        await sink.handle_transcript(evt1)
+        self.assertEqual(len(history.entries), 1)
+
+        # 10 words (total 22 words, exceeds max_words + 4 = 19)
+        chunk_2 = "we will discover the truth of God's holy word today."
+        evt2 = TranscriptEvent(text=chunk_2, is_final=True)
+        await sink.handle_transcript(evt2)
+
+        # Should NOT merge into one giant run-on; should create two separate entries,
+        # with chunk 1 sealed gracefully with a period.
+        self.assertEqual(len(history.entries), 2)
+        self.assertTrue(history.entries[0].text.endswith("."))
+        self.assertTrue(history.entries[1].text.startswith("We will discover"))
+
+    def test_vosk_dangling_connectors(self):
+        from obs_captioner.engines.vosk import DANGLING_CONNECTORS
+
+        self.assertIn("and", DANGLING_CONNECTORS)
+        self.assertIn("because", DANGLING_CONNECTORS)
+        self.assertIn("that", DANGLING_CONNECTORS)
+        self.assertIn("unto", DANGLING_CONNECTORS)
+        self.assertIn("while", DANGLING_CONNECTORS)
 
 
 if __name__ == "__main__":

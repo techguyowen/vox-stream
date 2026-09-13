@@ -195,17 +195,62 @@ def get_ram_usage_mb() -> float:
         except Exception:
             pass
     elif sys.platform == "darwin":
+        # Mach task_info accurately reports real-time physical resident size (RSS)
         try:
-            import resource
-            return round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / (1024.0 * 1024.0), 1)
+            class mach_task_basic_info(ctypes.Structure):
+                _fields_ = [
+                    ("virtual_size", ctypes.c_uint64),
+                    ("resident_size", ctypes.c_uint64),
+                    ("resident_size_max", ctypes.c_uint64),
+                    ("user_time", ctypes.c_uint32 * 2),
+                    ("system_time", ctypes.c_uint32 * 2),
+                    ("policy", ctypes.c_int32),
+                    ("suspend_count", ctypes.c_int32),
+                ]
+            libc = ctypes.CDLL(None)
+            task_info = libc.task_info
+            task_info.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32)]
+            task_info.restype = ctypes.c_int
+            mach_task_self = libc.mach_task_self
+            mach_task_self.restype = ctypes.c_uint32
+            info = mach_task_basic_info()
+            count = ctypes.c_uint32(ctypes.sizeof(info) // 4)
+            if task_info(mach_task_self(), 20, ctypes.byref(info), ctypes.byref(count)) == 0:
+                return round(info.resident_size / (1024.0 * 1024.0), 1)
+        except Exception:
+            pass
+        try:
+            import os, subprocess
+            out = subprocess.check_output(["ps", "-o", "rss=", "-p", str(os.getpid())], timeout=0.5)
+            return round(float(out.strip()) / 1024.0, 1)
         except Exception:
             pass
     elif sys.platform.startswith("linux"):
+        # Real-time physical VmRSS from /proc/self/status
         try:
-            import resource
-            return round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0, 1)
+            with open("/proc/self/status", "r", encoding="utf-8") as f:
+                for line in f:
+                    if line.startswith("VmRSS:"):
+                        parts = line.split()
+                        return round(float(parts[1]) / 1024.0, 1)
         except Exception:
             pass
+        try:
+            import os
+            with open("/proc/self/statm", "r", encoding="utf-8") as f:
+                pages = int(f.read().split()[1])
+                return round((pages * os.sysconf("SC_PAGE_SIZE")) / (1024.0 * 1024.0), 1)
+        except Exception:
+            pass
+
+    # Generic Unix fallback (peak maxrss)
+    try:
+        import resource
+        raw = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        scale = (1024.0 * 1024.0) if sys.platform == "darwin" else 1024.0
+        return round(raw / scale, 1)
+    except Exception:
+        pass
     return 0.0
 
 
@@ -225,6 +270,10 @@ def release_stt_memory(old_engine=None, log_details: bool = True) -> float:
                 old_engine.tokenizer = None
             if hasattr(old_engine, "processor"):
                 old_engine.processor = None
+            if hasattr(old_engine, "recognizer"):
+                old_engine.recognizer = None
+            if hasattr(old_engine, "trim_memory"):
+                old_engine.trim_memory()
         except Exception:
             pass
 
@@ -236,7 +285,7 @@ def release_stt_memory(old_engine=None, log_details: bool = True) -> float:
     except Exception:
         pass
 
-    # 3. Flush PyTorch CUDA / DirectML caching allocators
+    # 3. Flush PyTorch CUDA / MPS / XPU caching allocators
     try:
         if "torch" in sys.modules:
             import torch
@@ -244,14 +293,41 @@ def release_stt_memory(old_engine=None, log_details: bool = True) -> float:
                 torch.cuda.empty_cache()
                 if hasattr(torch.cuda, "ipc_collect"):
                     torch.cuda.ipc_collect()
+            if hasattr(torch, "mps") and hasattr(torch.mps, "empty_cache"):
+                torch.mps.empty_cache()
+            if hasattr(torch, "xpu") and hasattr(torch.xpu, "empty_cache"):
+                torch.xpu.empty_cache()
     except Exception:
         pass
 
-    # 4. Flush OS Process Working Set on Windows
+    # 4. Flush OS Process Working Set / Heap Allocator Pressure
     if sys.platform == "win32":
         try:
             handle = ctypes.windll.kernel32.GetCurrentProcess()
             ctypes.windll.psapi.EmptyWorkingSet(handle)
+        except Exception:
+            pass
+    elif sys.platform == "darwin":
+        try:
+            libc = ctypes.CDLL(None)
+            if hasattr(libc, "malloc_zone_pressure_relief"):
+                if hasattr(libc, "malloc_default_zone"):
+                    libc.malloc_default_zone.restype = ctypes.c_void_p
+                    zone = libc.malloc_default_zone()
+                else:
+                    zone = None
+                libc.malloc_zone_pressure_relief.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+                libc.malloc_zone_pressure_relief.restype = None
+                libc.malloc_zone_pressure_relief(zone, 0)
+        except Exception:
+            pass
+    elif sys.platform.startswith("linux"):
+        try:
+            libc = ctypes.CDLL("libc.so.6")
+            if hasattr(libc, "malloc_trim"):
+                libc.malloc_trim.argtypes = [ctypes.c_size_t]
+                libc.malloc_trim.restype = ctypes.c_int
+                libc.malloc_trim(0)
         except Exception:
             pass
 

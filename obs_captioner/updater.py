@@ -243,12 +243,30 @@ class UpdateManager:
             update_type = get_version_bump_type(remote_version, local_version)
         elif is_git and latest_sha:
             # Even if semantic version is identical (e.g. unreleased commits on main)
-            if local_full != "unknown" and local_full.lower() != latest_sha.lower():
-                update_available = True
-                update_type = "commit"
-            elif local_short != "unknown" and not latest_sha.startswith(local_short):
-                update_available = True
-                update_type = "commit"
+            # Only trigger update if remote commit is not already part of our local git history (ancestor)
+            is_ancestor = False
+            git_cmd = self.get_git_cmd()
+            if git_cmd:
+                try:
+                    chk = subprocess.run(
+                        [git_cmd, "merge-base", "--is-ancestor", latest_sha, "HEAD"],
+                        cwd=str(self.app_root),
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+                    if chk.returncode == 0:
+                        is_ancestor = True
+                except Exception:
+                    pass
+
+            if not is_ancestor:
+                if local_full != "unknown" and local_full.lower() != latest_sha.lower():
+                    update_available = True
+                    update_type = "commit"
+                elif local_short != "unknown" and not latest_sha.startswith(local_short):
+                    update_available = True
+                    update_type = "commit"
 
         result: Dict[str, Any] = {
             "current_version": local_version,
