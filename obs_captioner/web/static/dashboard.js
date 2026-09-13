@@ -1714,6 +1714,10 @@ function populateFormFields(cfg) {
         if (cfg.general.church_mode !== undefined) {
             document.getElementById("church_mode").checked = !!cfg.general.church_mode;
         }
+        const geminiChurchBadge = document.getElementById("gemini_church_lexicon_badge");
+        if (geminiChurchBadge) {
+            geminiChurchBadge.style.display = (cfg.general.church_mode !== false) ? "flex" : "none";
+        }
         const churchName = cfg.general.church_name || "Waypoint Church";
         const cNameEl = document.getElementById("church_name");
         if (cNameEl && document.activeElement !== cNameEl) {
@@ -4746,6 +4750,17 @@ function initChurchNameHandlers() {
 
 // Initialize on page load
 window.addEventListener("DOMContentLoaded", async () => {
+    // Dynamic church lexicon badge on Gemini settings
+    const churchModeToggle = document.getElementById("church_mode");
+    if (churchModeToggle) {
+        churchModeToggle.addEventListener("change", (e) => {
+            const geminiChurchBadge = document.getElementById("gemini_church_lexicon_badge");
+            if (geminiChurchBadge) {
+                geminiChurchBadge.style.display = e.target.checked ? "flex" : "none";
+            }
+        });
+    }
+
     // Initialize Models Status
     const btnDeleteAll = document.getElementById("btn-delete-all-models");
     if (btnDeleteAll) {

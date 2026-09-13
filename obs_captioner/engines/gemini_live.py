@@ -17,6 +17,7 @@ import base64
 import json
 import logging
 import os
+import re
 import time
 from typing import AsyncGenerator, Callable, Dict, List, Optional, Tuple, Any
 
@@ -51,10 +52,109 @@ class GeminiLiveEngine(BaseSTTEngine):
             suppress_music=getattr(config.audio, "suppress_music", True),
         )
 
+    @staticmethod
+    def _clean_vocab_term(term: str) -> str:
+        """Sanitize an individual custom vocabulary term for Gemini speech biasing."""
+        if not isinstance(term, str):
+            return ""
+        cleaned = term.strip()
+        # Strip extraneous outer quotes, commas, semicolons, and periods while preserving internal apostrophes
+        cleaned = re.sub(r'^[",`\s]+|[",`\s.]+$', '', cleaned)
+        # Drop empty strings or single characters (preserving 2+ letter acronyms)
+        if len(cleaned) < 2:
+            return ""
+        return cleaned
+
+    def _get_effective_custom_vocabulary(self) -> List[str]:
+        """Construct an optimized, sanitized custom vocabulary list for Gemini Live speech biasing.
+
+        Gathers in priority order:
+          1. Explicit Gemini Live custom vocabulary (config.gemini_live.custom_vocabulary)
+          2. Canonical replacement values from user glossary (config.vocabulary.terms.values())
+          3. When church_mode is enabled:
+             - Configured church name and campus terms (ChurchLexiconFormatter.generate_church_name_terms)
+             - Canonical sacred titles, biblical figures, holy places, doctrines, pastoral names (ChurchLexiconFormatter.CHURCH_TERMS.values())
+             - Canonical books of the Bible (ChurchLexiconFormatter.BOOKS_OF_BIBLE.values())
+             - Custom censor whitelist words (config.censor.custom_whitelist)
+
+        Gemini Neural Biasing Principles:
+          - Canonical target phrases ONLY (never phonetic mishearings or regex keys like 'ben luthi' or 'dog solid g').
+          - Case-insensitive deduplication that retains the properly capitalized canonical representation.
+          - Enforces Gemini Live API limit of 1,000 terms.
+        """
+        candidates: List[str] = []
+
+        # 1. User-specified Gemini custom vocabulary
+        raw_vocab = getattr(self.config.gemini_live, "custom_vocabulary", []) or []
+        for v in raw_vocab:
+            if isinstance(v, str) and v.strip():
+                candidates.append(v.strip())
+
+        # 2. User glossary replacement values (canonical targets only, never misheard keys)
+        vocab_cfg = getattr(self.config, "vocabulary", None)
+        if vocab_cfg and getattr(vocab_cfg, "enabled", True):
+            terms_dict = getattr(vocab_cfg, "terms", {}) or {}
+            for target_val in terms_dict.values():
+                if isinstance(target_val, str) and target_val.strip():
+                    candidates.append(target_val.strip())
+
+        # 3. Church-specific vocabulary (when Church Mode is enabled)
+        if getattr(self.config.general, "church_mode", True):
+            church_name = (getattr(self.config.general, "church_name", "") or "").strip()
+            try:
+                from ..church_lexicon import ChurchLexiconFormatter
+
+                # 3a. Church name variations and campus terms
+                if church_name:
+                    name_terms = ChurchLexiconFormatter.generate_church_name_terms(church_name)
+                    for val in name_terms.values():
+                        if isinstance(val, str) and val.strip():
+                            candidates.append(val.strip())
+
+                # 3b. Sacred titles, biblical figures, holy places, doctrines, pastoral names
+                for val in ChurchLexiconFormatter.CHURCH_TERMS.values():
+                    if isinstance(val, str) and val.strip():
+                        candidates.append(val.strip())
+
+                # 3c. Books of the Bible (canonical 66 books)
+                for val in ChurchLexiconFormatter.BOOKS_OF_BIBLE.values():
+                    if isinstance(val, str) and val.strip():
+                        candidates.append(val.strip())
+
+            except Exception as e:
+                logger.warning(f"Failed to load ChurchLexiconFormatter for Gemini Live vocabulary: {e}")
+
+            # 3d. Censor custom whitelist words
+            censor_cfg = getattr(self.config, "censor", None)
+            if censor_cfg:
+                whitelist = getattr(censor_cfg, "custom_whitelist", []) or []
+                for w in whitelist:
+                    if isinstance(w, str) and w.strip():
+                        candidates.append(w.strip())
+
+        # Clean and case-insensitively deduplicate, preserving best casing and insertion order
+        seen_lower: Dict[str, str] = {}
+        for item in candidates:
+            cleaned = self._clean_vocab_term(item)
+            if not cleaned:
+                continue
+            key = cleaned.lower()
+            if key not in seen_lower:
+                seen_lower[key] = cleaned
+            else:
+                # If existing stored version is all-lowercase and the new version has proper capitalization, upgrade it
+                existing = seen_lower[key]
+                if existing.islower() and not cleaned.islower():
+                    seen_lower[key] = cleaned
+
+        return list(seen_lower.values())[:1000]
+
     def _build_system_instruction(self) -> str:
-        """Build system instruction for backward compatibility."""
+        """Construct system instruction with domain conditioning and transcription guidelines."""
         base = getattr(self.config.gemini_live, "system_instruction", None) or (
-            "You are Gemini 3.5 Transcribe. Transcribe the incoming audio stream into text verbatim. Output ONLY the transcribed words."
+            "You are Gemini 3.5 Transcribe, a real-time speech transcriber. "
+            "Transcribe the incoming audio stream into text accurately and verbatim. "
+            "Output only the transcribed words without commentary, conversation, or filler."
         )
         extras = []
         if getattr(self.config.gemini_live, "smart_transcription", True):
@@ -62,10 +162,25 @@ class GeminiLiveEngine(BaseSTTEngine):
                 "Clean up speech disfluencies (such as 'ums' and 'ahs'), handle natural self-corrections, "
                 "and format proper capitalization and punctuation."
             )
-        vocab = getattr(self.config.gemini_live, "custom_vocabulary", []) or []
-        vocab_list = ", ".join(f'"{v}"' for v in vocab if isinstance(v, str) and v.strip())
-        if vocab_list:
-            extras.append(f"Adapt accurately to this custom specialized vocabulary: [{vocab_list}].")
+
+        # Domain conditioning for church ministry & biblical preaching
+        if getattr(self.config.general, "church_mode", True):
+            church_context = (
+                "Domain context: Church worship service, scripture readings, theology, and biblical sermon preaching. "
+                "Accurately transcribe sacred titles, biblical person names, scriptural book citations, and theological terms."
+            )
+            church_name = (getattr(self.config.general, "church_name", "") or "").strip()
+            if church_name:
+                church_context += f" Local ministry organization: {church_name}."
+            extras.append(church_context)
+
+        # User-specified custom vocabulary hints (keep compact in system instruction)
+        user_vocab = getattr(self.config.gemini_live, "custom_vocabulary", []) or []
+        clean_user_vocab = [v.strip() for v in user_vocab if isinstance(v, str) and v.strip()]
+        if clean_user_vocab:
+            sample_list = ", ".join(f'"{v}"' for v in clean_user_vocab[:20])
+            extras.append(f"Adapt accurately to this custom specialized vocabulary: [{sample_list}].")
+
         if extras:
             return f"{base} {' '.join(extras)}"
         return base
@@ -95,8 +210,7 @@ class GeminiLiveEngine(BaseSTTEngine):
         mode_str = "SMART" if str(mode).upper() == "SMART" else "VERBATIM"
 
         # Custom vocabulary speech biasing (up to 1,000 terms)
-        raw_vocab = getattr(self.config.gemini_live, "custom_vocabulary", []) or []
-        vocab = [v.strip() for v in raw_vocab if isinstance(v, str) and v.strip()]
+        vocab = self._get_effective_custom_vocabulary()
 
         # Language code hints (empty list triggers automatic language detection)
         lang_codes = list(getattr(self.config.gemini_live, "language_codes", []) or [])
@@ -144,7 +258,7 @@ class GeminiLiveEngine(BaseSTTEngine):
         }
 
         # Optional system instructions (supported on standard transcribe / agent models, not live-translate)
-        instruction = (getattr(self.config.gemini_live, "system_instruction", "") or "").strip()
+        instruction = self._build_system_instruction()
         if instruction:
             setup_dict["setup"]["systemInstruction"] = {
                 "parts": [{"text": instruction}]

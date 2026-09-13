@@ -737,13 +737,99 @@ class TestConfigAndEngines(unittest.TestCase):
 
         transcription = setup["inputAudioTranscription"]
         self.assertEqual(transcription["mode"], "SMART")
-        self.assertEqual(transcription["customVocabulary"], ["OBS Studio", "Twitch", "YouTube", "Jesus Christ"])
+        # With default church_mode=True, both user terms and canonical church terms are present
+        for term in ["OBS Studio", "Twitch", "YouTube", "Jesus Christ", "Ben Uthe", "Doxology", "Genesis"]:
+            self.assertIn(term, transcription["customVocabulary"])
         self.assertEqual(transcription["languageCodes"], ["en-US"])
+
+        # When church_mode and user glossary are disabled, only explicit custom vocabulary is sent
+        cfg.general.church_mode = False
+        cfg.vocabulary.enabled = False
+        payload_standalone = engine.build_setup_payload()
+        self.assertEqual(
+            payload_standalone["setup"]["inputAudioTranscription"]["customVocabulary"],
+            ["OBS Studio", "Twitch", "YouTube", "Jesus Christ"],
+        )
 
         # Test VERBATIM mode
         cfg.gemini_live.smart_transcription = False
         payload_verbatim = engine.build_setup_payload()
         self.assertEqual(payload_verbatim["setup"]["inputAudioTranscription"]["mode"], "VERBATIM")
+
+    def test_gemini_live_church_vocabulary_processing(self):
+        """Verify Gemini Live extracts canonical target terms and never acoustic mishearings."""
+        cfg = AppConfig()
+        cfg.general.church_mode = True
+        cfg.general.church_name = "Grace Fellowship"
+        cfg.gemini_live.custom_vocabulary = ["Streaming Setup", "Discord", "obs"]
+        cfg.vocabulary.enabled = True
+        cfg.vocabulary.terms = {
+            "pastor tim": "Pastor Tim",
+            "rev": "Revelation",
+            "obs": "OBS",
+        }
+
+        engine = GeminiLiveEngine(cfg)
+        vocab = engine._get_effective_custom_vocabulary()
+
+        # 1. Verify user explicit terms and proper casing resolution
+        self.assertIn("Streaming Setup", vocab)
+        self.assertIn("Discord", vocab)
+        self.assertIn("OBS", vocab)  # Upgraded from lowercase 'obs' via canonical 'OBS'
+        self.assertNotIn("obs", vocab)
+
+        # 2. Verify glossary canonical replacement targets are included
+        self.assertIn("Pastor Tim", vocab)
+        self.assertIn("Revelation", vocab)
+        # Verify glossary phonetic mishearing keys are NOT included
+        self.assertNotIn("pastor tim", vocab)
+        self.assertNotIn("rev", vocab)
+
+        # 3. Verify church name and variations are included
+        self.assertIn("Grace Fellowship", vocab)
+
+        # 4. Verify canonical church terms and books of the Bible
+        self.assertIn("Ben Uthe", vocab)
+        self.assertIn("Doxology", vocab)
+        self.assertIn("1 Thessalonians", vocab)
+        self.assertIn("Genesis", vocab)
+
+        # 5. Verify acoustic mishearings from church lexicon are strictly EXCLUDED
+        acoustic_mishearings = [
+            "ben luthi", "ben lut", "ben luther",
+            "dog solid g", "solid g",
+            "said corinthians", "cried the ends",
+            "top 24", "he took a cop",
+            "a socioplship", "the cyber",
+            "pissed back up",
+        ]
+        for mishearing in acoustic_mishearings:
+            self.assertNotIn(mishearing, vocab)
+
+        # 6. Verify total list length obeys 1000 limit
+        self.assertLessEqual(len(vocab), 1000)
+
+    def test_gemini_live_system_instruction_church_context(self):
+        """Verify Gemini Live system instruction injects church domain context when active."""
+        cfg = AppConfig()
+        cfg.general.church_mode = True
+        cfg.general.church_name = "Waypoint Church"
+        cfg.gemini_live.custom_vocabulary = ["OBS Studio", "YouTube"]
+
+        engine = GeminiLiveEngine(cfg)
+        instruction = engine._build_system_instruction()
+
+        self.assertIn("Domain context: Church worship service", instruction)
+        self.assertIn("biblical sermon preaching", instruction)
+        self.assertIn("Waypoint Church", instruction)
+        self.assertIn("OBS Studio", instruction)
+
+        # Test when church mode is disabled
+        cfg.general.church_mode = False
+        instruction_secular = engine._build_system_instruction()
+        self.assertNotIn("Domain context: Church worship service", instruction_secular)
+        self.assertNotIn("Waypoint Church", instruction_secular)
+        self.assertIn("OBS Studio", instruction_secular)
 
     def test_gemini_live_parse_dual_stream_messages(self):
         """Verify dual-stream interimInputTranscription and inputTranscription parsing."""
