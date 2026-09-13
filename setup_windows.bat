@@ -230,18 +230,19 @@ if "!REBUILD_VENV!"=="1" (
             ren "%VENV_DIR%" ".venv_old_!RANDOM!" >nul 2>&1
         )
     )
-    echo [INFO] Creating clean virtual environment with %PY_CMD%...
+    echo [INFO] Creating clean virtual environment with %PY_CMD% (takes ~15 seconds)...
     call %PY_CMD% -m venv "%VENV_DIR%"
     if not exist "%VENV_PY%" (
         echo [WARNING] Standard venv creation failed. Retrying with --without-pip...
         call %PY_CMD% -m venv --without-pip "%VENV_DIR%"
         if exist "%VENV_PY%" (
             echo [INFO] Virtual environment created. Bootstrapping pip...
-            call "%VENV_PY%" -m ensurepip --default-pip >nul 2>&1
+            call "%VENV_PY%" -m ensurepip --default-pip
             if not exist "%VENV_DIR%\Scripts\pip.exe" (
-                powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile('https://bootstrap.pypa.io/get-pip.py', '%TEMP%\get-pip.py')" >nul 2>&1
+                echo [INFO] Fetching get-pip.py bootstrap...
+                powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; (New-Object System.Net.WebClient).DownloadFile('https://bootstrap.pypa.io/get-pip.py', '%TEMP%\get-pip.py')"
                 if exist "%TEMP%\get-pip.py" (
-                    call "%VENV_PY%" "%TEMP%\get-pip.py" --no-warn-script-location >nul 2>&1
+                    call "%VENV_PY%" "%TEMP%\get-pip.py" --no-warn-script-location
                     del "%TEMP%\get-pip.py" 2>nul
                 )
             )
@@ -264,7 +265,12 @@ echo.
 :: ---------------------------------------------------------------------------
 :: STEP 5: Fast Dependency Installation (uv with safe pip fallback)
 :: ---------------------------------------------------------------------------
-echo [5/8] Installing project dependencies...
+echo =======================================================
+echo   [5/8] Installing project dependencies...
+echo   Downloading speech AI models and libraries (Torch, Whisper, ONNX)
+echo   This typically takes 1 to 3 minutes on the first run.
+echo =======================================================
+echo.
 
 set "VIRTUAL_ENV=%VENV_DIR%"
 set "USE_UV=0"
@@ -276,8 +282,8 @@ if exist "%VENV_DIR%\Scripts\uv.exe" (
 )
 
 if "!USE_UV!"=="0" (
-    echo [INFO] Setting up high-speed package installer (uv)...
-    call "%VENV_PY%" -m pip install --default-timeout=120 uv >nul 2>&1
+    echo [INFO] Setting up high-speed parallel package installer (uv)...
+    call "%VENV_PY%" -m pip install --default-timeout=120 uv
     if exist "%VENV_DIR%\Scripts\uv.exe" (
         "%VENV_DIR%\Scripts\uv.exe" --version >nul 2>&1
         if !errorlevel! equ 0 set "USE_UV=1"
