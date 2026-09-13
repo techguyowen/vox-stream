@@ -217,8 +217,12 @@ if "!REBUILD_VENV!"=="0" (
 
 if "!REBUILD_VENV!"=="1" (
     if exist "%VENV_DIR%" (
-        echo [INFO] Freeing any background file locks in .venv...
-        powershell -NoProfile -Command "Get-Process | Where-Object { $_.Path -like '*\.venv\*' } | Stop-Process -Force" >nul 2>&1
+        echo [INFO] Freeing background locks and resetting permissions on .venv...
+        powershell -NoProfile -Command "taskkill /F /IM python.exe 2>$null; Get-Process | Where-Object { $_.Path -like '*\.venv\*' } | Stop-Process -Force -ErrorAction SilentlyContinue" >nul 2>&1
+        attrib -r -s -h "%VENV_DIR%" /s /d >nul 2>&1
+        takeown /f "%VENV_DIR%" /r /d y >nul 2>&1
+        icacls "%VENV_DIR%" /grant *S-1-1-0:F /t /c /q >nul 2>&1
+        echo [INFO] Wiping previous virtual environment to start fresh...
         powershell -NoProfile -Command "Remove-Item -LiteralPath '%VENV_DIR%' -Recurse -Force -ErrorAction SilentlyContinue" >nul 2>&1
         rmdir /s /q "%VENV_DIR%" >nul 2>&1
         if exist "%VENV_DIR%" (
