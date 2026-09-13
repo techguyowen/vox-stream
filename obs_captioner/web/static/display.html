@@ -1429,7 +1429,7 @@
         // -------------------------------------------------------------
         function connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws?lang=${encodeURIComponent(currentLang)}`;
+            const wsUrl = `${protocol}//${window.location.host}/ws?lang=${encodeURIComponent(currentLang)}&role=display`;
 
             ws = new WebSocket(wsUrl);
 

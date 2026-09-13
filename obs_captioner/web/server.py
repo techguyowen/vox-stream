@@ -131,6 +131,7 @@ class WebOverlayServer:
         self.runner: web.AppRunner = None
         self.site: web.TCPSite = None
         self.caption_sockets: Dict[web.WebSocketResponse, str] = {}
+        self.socket_roles: Dict[web.WebSocketResponse, str] = {}
         self.control_sockets: Set[web.WebSocketResponse] = set()
 
         self._setup_routes()
@@ -172,6 +173,8 @@ class WebOverlayServer:
         
         # WebSockets
         self.app.router.add_get("/ws", self._handle_caption_ws)
+        self.app.router.add_get("/ws/bible", self._handle_caption_ws)
+        self.app.router.add_get("/ws/stage", self._handle_caption_ws)
         self.app.router.add_get("/api/control/ws", self._handle_control_ws)
         self.app.router.add_get("/api/audio/stream", self._handle_audio_stream_ws)
         self.app.router.add_post("/api/audio/chunk", self._handle_audio_chunk_post)
@@ -274,11 +277,11 @@ class WebOverlayServer:
 
     async def _handle_index(self, request: web.Request) -> web.FileResponse:
         index_file = Path(__file__).parent / "static" / "index.html"
-        return web.FileResponse(index_file)
+        return web.FileResponse(index_file, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
     async def _handle_bible_page(self, request: web.Request) -> web.FileResponse:
         bible_file = Path(__file__).parent / "static" / "bible.html"
-        return web.FileResponse(bible_file)
+        return web.FileResponse(bible_file, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
     async def _handle_dashboard(self, request: web.Request) -> web.FileResponse:
         dash_file = Path(__file__).parent / "static" / "dashboard.html"
@@ -1324,7 +1327,18 @@ class WebOverlayServer:
         ws = web.WebSocketResponse(heartbeat=25.0)
         await ws.prepare(request)
         lang = sanitize_text(request.query.get("lang", "en")).lower().strip() or "en"
+        role = sanitize_text(request.query.get("role") or request.query.get("type") or "").lower().strip()
+        referer = request.headers.get("Referer", "").lower()
+        if not role:
+            if "/ws/bible" in request.path or "/bible" in referer:
+                role = "bible"
+            elif "/ws/stage" in request.path or "/display" in referer or "/stage" in referer:
+                role = "display"
+            else:
+                role = "caption"
+
         self.caption_sockets[ws] = lang
+        self.socket_roles[ws] = role
         try:
             try:
                 snapshot_lines = list(self._recent_finals)
@@ -1350,6 +1364,7 @@ class WebOverlayServer:
                 pass
         finally:
             self.caption_sockets.pop(ws, None)
+            self.socket_roles.pop(ws, None)
         return ws
 
     async def _handle_control_ws(self, request: web.Request) -> web.WebSocketResponse:
@@ -1526,6 +1541,7 @@ class WebOverlayServer:
 
         all_sockets = list(set(self.caption_sockets.keys()) | self.control_sockets)
         self.caption_sockets.clear()
+        self.socket_roles.clear()
         self.control_sockets.clear()
 
         for ws in all_sockets:
@@ -1698,6 +1714,9 @@ class WebOverlayServer:
 
     async def broadcast_scripture(self, res: ScriptureLookupResult, duration_seconds: float = 14.0):
         """Broadcast scripture passage payload to all connected caption overlays and control dashboards."""
+        show_on_stream = bool(getattr(self.config.bible, "show_on_stream_overlay", False)) if getattr(self.config, "bible", None) else False
+        show_on_stage = bool(getattr(self.config.bible, "show_on_stage_display", True)) if getattr(self.config, "bible", None) else True
+
         msg = {
             "type": "scripture_verse",
             "citation": res.citation,
@@ -1710,19 +1729,31 @@ class WebOverlayServer:
             "version_name": res.version_name,
             "duration_seconds": duration_seconds,
             "timestamp": time.time(),
-            "show_on_stream_overlay": bool(getattr(self.config.bible, "show_on_stream_overlay", False)) if getattr(self.config, "bible", None) else False,
-            "show_on_stage_display": bool(getattr(self.config.bible, "show_on_stage_display", True)) if getattr(self.config, "bible", None) else True,
+            "show_on_stream_overlay": show_on_stream,
+            "show_on_stage_display": show_on_stage,
         }
         
-        # Broadcast to stream overlay WebSockets (/ws)
+        # Broadcast to overlay WebSockets (/ws, /ws/bible, /ws/stage)
         dead_caps = []
-        for ws in self.caption_sockets:
+        for ws in list(self.caption_sockets.keys()):
+            role = self.socket_roles.get(ws, "caption")
+            # Dedicated scripture overlay ALWAYS receives scripture
+            if role == "bible":
+                pass
+            # Stage prompter receives scripture only if stage display is enabled
+            elif role == "display" and not show_on_stage:
+                continue
+            # Main caption overlay (OBS overlay) receives scripture ONLY if explicitly enabled
+            elif role == "caption" and not show_on_stream:
+                continue
+
             try:
                 await ws.send_json(msg)
             except Exception:
                 dead_caps.append(ws)
         for ws in dead_caps:
             self.caption_sockets.pop(ws, None)
+            self.socket_roles.pop(ws, None)
             
         # Broadcast to control dashboards & docks (/api/control/ws)
         dead_ctrls = []

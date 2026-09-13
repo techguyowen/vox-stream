@@ -1464,7 +1464,7 @@ class TestServerEndpoints(AioHTTPTestCase):
         data = await get_resp.json()
         self.assertFalse(data['bible']['show_on_stream_overlay'])
 
-        # 3. Verify broadcast_scripture payload structure
+        # 3. Verify broadcast_scripture role filtering & payload structure
         from obs_captioner.bible_engine import ScriptureLookupResult
         mock_verse = ScriptureLookupResult(
             citation="John 1:1",
@@ -1476,20 +1476,46 @@ class TestServerEndpoints(AioHTTPTestCase):
             version="bsb",
             version_name="Berean Standard Bible"
         )
-        received_msgs = []
+        caption_msgs = []
+        bible_msgs = []
+
         class MockWs:
+            def __init__(self, target_list):
+                self.target_list = target_list
             async def send_json(self, m):
-                received_msgs.append(m)
-        mock_ws = MockWs()
-        self.overlay_server.caption_sockets[mock_ws] = "en"
+                self.target_list.append(m)
+
+        caption_ws = MockWs(caption_msgs)
+        bible_ws = MockWs(bible_msgs)
+
+        self.overlay_server.caption_sockets[caption_ws] = "en"
+        self.overlay_server.socket_roles[caption_ws] = "caption"
+
+        self.overlay_server.caption_sockets[bible_ws] = "en"
+        self.overlay_server.socket_roles[bible_ws] = "bible"
+
         try:
+            # When show_on_stream_overlay is False (default):
+            self.overlay_server.config.bible.show_on_stream_overlay = False
             await self.overlay_server.broadcast_scripture(mock_verse, duration_seconds=10.0)
-            self.assertEqual(len(received_msgs), 1)
-            self.assertEqual(received_msgs[0]['type'], 'scripture_verse')
-            self.assertFalse(received_msgs[0]['show_on_stream_overlay'])
-            self.assertTrue(received_msgs[0]['show_on_stage_display'])
+
+            # Caption socket should have received NOTHING
+            self.assertEqual(len(caption_msgs), 0, "Caption overlay socket must NOT receive scripture when show_on_stream_overlay is False")
+            # Dedicated Bible overlay socket must have received the scripture
+            self.assertEqual(len(bible_msgs), 1, "Dedicated scripture overlay socket must receive scripture")
+            self.assertEqual(bible_msgs[0]['type'], 'scripture_verse')
+            self.assertEqual(bible_msgs[0]['citation'], 'John 1:1')
+
+            # When show_on_stream_overlay is toggled to True:
+            self.overlay_server.config.bible.show_on_stream_overlay = True
+            await self.overlay_server.broadcast_scripture(mock_verse, duration_seconds=10.0)
+            self.assertEqual(len(caption_msgs), 1, "Caption overlay socket receives scripture only when show_on_stream_overlay is True")
         finally:
-            self.overlay_server.caption_sockets.pop(mock_ws, None)
+            self.overlay_server.caption_sockets.pop(caption_ws, None)
+            self.overlay_server.socket_roles.pop(caption_ws, None)
+            self.overlay_server.caption_sockets.pop(bible_ws, None)
+            self.overlay_server.socket_roles.pop(bible_ws, None)
+            self.overlay_server.config.bible.show_on_stream_overlay = False
 
     async def test_accessibility_config_fields(self):
         # Test saving and reading accessibility configuration parameters

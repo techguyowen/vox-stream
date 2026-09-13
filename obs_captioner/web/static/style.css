@@ -229,6 +229,7 @@ body.align-top .caption-box.hidden {
    Scripture Verse Lower-Third Card (Live Auto-Lookup)
    ============================================================================== */
 .scripture-card {
+    display: none !important;
     position: fixed;
     bottom: 160px;
     left: 50%;
@@ -246,6 +247,10 @@ body.align-top .caption-box.hidden {
     pointer-events: none;
     opacity: 1;
     text-align: left;
+}
+
+body.enable-stream-scripture .scripture-card {
+    display: block !important;
 }
 
 body.align-top .scripture-card {

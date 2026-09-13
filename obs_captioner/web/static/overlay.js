@@ -73,6 +73,7 @@ function showScriptureVerse(data) {
 
     if (scriptureTimer) clearTimeout(scriptureTimer);
 
+    document.body.classList.add("enable-stream-scripture");
     scriptureCitationEl.textContent = `📖 ${data.citation || ''} • ${data.version || 'BSB'}`;
     scriptureTextEl.textContent = `"${data.text || ''}"`;
     scriptureCard.classList.remove("hidden");
@@ -89,6 +90,8 @@ function dismissScriptureVerse() {
     if (scriptureCard) {
         scriptureCard.classList.add("hidden");
     }
+    document.body.classList.remove("enable-stream-scripture");
+}
 }
 
 // OBS Live Captions WebSocket Overlay Client (Multi-Theme & Translation Support)
@@ -487,7 +490,7 @@ function connectCaptionWebSocket() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const urlParams = new URLSearchParams(window.location.search);
     const lang = urlParams.get('lang') || 'en';
-    const wsUrl = `${protocol}//${window.location.host}/ws?lang=${encodeURIComponent(lang)}`;
+    const wsUrl = `${protocol}//${window.location.host}/ws?lang=${encodeURIComponent(lang)}&role=caption`;
 
     ws = new WebSocket(wsUrl);
 
