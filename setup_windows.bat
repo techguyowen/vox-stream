@@ -77,21 +77,24 @@ echo.
 echo [2/8] Detecting Python installation...
 set "PY_CMD="
 
-:: Check if py launcher works
-py -3 -c "import sys" >nul 2>&1
+:: Check py launcher for Python 3.11, 3.12, 3.10 specifically
+py -3.11 -c "import sys" >nul 2>&1
 if !errorlevel! equ 0 (
-    set "PY_CMD=py -3"
+    set "PY_CMD=py -3.11"
+    goto :python_found
+)
+py -3.12 -c "import sys" >nul 2>&1
+if !errorlevel! equ 0 (
+    set "PY_CMD=py -3.12"
+    goto :python_found
+)
+py -3.10 -c "import sys" >nul 2>&1
+if !errorlevel! equ 0 (
+    set "PY_CMD=py -3.10"
     goto :python_found
 )
 
-:: Check if standard python in PATH is a real working Python (NOT Microsoft Store stub)
-python -c "import sys" >nul 2>&1
-if !errorlevel! equ 0 (
-    set "PY_CMD=python"
-    goto :python_found
-)
-
-:: Check known default installation paths
+:: Check known default installation paths for Python 3.11 and 3.12
 if not defined PY_CMD if exist "%LocalAppData%\Programs\Python\Python311\python.exe" (
     "%LocalAppData%\Programs\Python\Python311\python.exe" -c "import sys" >nul 2>&1
     if !errorlevel! equ 0 set "PY_CMD="%LocalAppData%\Programs\Python\Python311\python.exe""
@@ -119,8 +122,15 @@ if not defined PY_CMD if exist "C:\Python312\python.exe" (
 
 if defined PY_CMD goto :python_found
 
+:: Check if standard python in PATH is a real working Python between 3.10 and 3.12
+python -c "import sys; sys.exit(0 if (3, 10) <= sys.version_info[:2] <= (3, 12) else 1)" >nul 2>&1
+if !errorlevel! equ 0 (
+    set "PY_CMD=python"
+    goto :python_found
+)
+
 :: If not found, download and install Python 3.11 automatically from python.org
-echo [INFO] Python was not detected on your system.
+echo [INFO] Python 3.10-3.12 was not detected on your system.
 echo [INFO] Downloading official Python 3.11 installer from python.org...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { (New-Object System.Net.WebClient).DownloadFile('https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe', '%TEMP%\python-3.11.9-amd64.exe') } catch { exit 1 }"
 if exist "%TEMP%\python-3.11.9-amd64.exe" (
@@ -174,12 +184,40 @@ echo [4/8] Setting up Python virtual environment [.venv]...
 set "VENV_DIR=%ROOT_DIR%\.venv"
 set "VENV_PY=%VENV_DIR%\Scripts\python.exe"
 
-if not exist "%VENV_PY%" (
+set "REBUILD_VENV=0"
+if not exist "%VENV_PY%" set "REBUILD_VENV=1"
+
+:: Validate existing virtual environment
+if "!REBUILD_VENV!"=="0" (
+    "%VENV_PY%" -c "import sys" >nul 2>&1
+    if !errorlevel! neq 0 (
+        echo [INFO] Existing virtual environment executable is invalid.
+        set "REBUILD_VENV=1"
+    )
+)
+
+if "!REBUILD_VENV!"=="0" (
+    "%VENV_PY%" -c "import sys; sys.exit(0 if (3, 10) <= sys.version_info[:2] <= (3, 12) else 1)" >nul 2>&1
+    if !errorlevel! neq 0 (
+        echo [INFO] Existing virtual environment was built with an incompatible Python version.
+        set "REBUILD_VENV=1"
+    )
+)
+
+if "!REBUILD_VENV!"=="0" (
+    "%VENV_PY%" -m pip --version >nul 2>&1
+    if !errorlevel! neq 0 (
+        echo [INFO] Existing virtual environment has a missing or damaged pip.
+        set "REBUILD_VENV=1"
+    )
+)
+
+if "!REBUILD_VENV!"=="1" (
     if exist "%VENV_DIR%" (
-        echo [INFO] Removing broken virtual environment folder...
+        echo [INFO] Removing previous virtual environment...
         rmdir /s /q "%VENV_DIR%" >nul 2>&1
     )
-    echo [INFO] Creating new virtual environment...
+    echo [INFO] Creating clean virtual environment with %PY_CMD%...
     call %PY_CMD% -m venv "%VENV_DIR%"
 )
 
@@ -200,27 +238,43 @@ echo.
 :: ---------------------------------------------------------------------------
 echo [5/8] Installing project dependencies...
 
-:: Try installing uv for fast parallel downloads, but NEVER break if it fails
+set "VIRTUAL_ENV=%VENV_DIR%"
 set "USE_UV=0"
-call "%VENV_PY%" -m pip install uv >nul 2>&1
+
+:: Check if uv is already working in venv
 if exist "%VENV_DIR%\Scripts\uv.exe" (
     "%VENV_DIR%\Scripts\uv.exe" --version >nul 2>&1
     if !errorlevel! equ 0 set "USE_UV=1"
 )
 
-if "!USE_UV!"=="1" (
-    echo [INFO] Using fast parallel package installer (uv)...
-    call "%VENV_DIR%\Scripts\uv.exe" pip install -r "%ROOT_DIR%\requirements.txt"
-    if !errorlevel! neq 0 (
-        echo [WARNING] uv installation encountered an issue. Falling back to standard pip...
-        call "%VENV_PY%" -m pip install -r "%ROOT_DIR%\requirements.txt"
+if "!USE_UV!"=="0" (
+    echo [INFO] Setting up high-speed package installer (uv)...
+    call "%VENV_PY%" -m pip install --default-timeout=120 uv >nul 2>&1
+    if exist "%VENV_DIR%\Scripts\uv.exe" (
+        "%VENV_DIR%\Scripts\uv.exe" --version >nul 2>&1
+        if !errorlevel! equ 0 set "USE_UV=1"
     )
-) else (
-    echo [INFO] Using standard pip installer...
-    call "%VENV_PY%" -m pip install -r "%ROOT_DIR%\requirements.txt"
 )
 
-if !errorlevel! neq 0 (
+set "INSTALL_SUCCESS=0"
+
+if "!USE_UV!"=="1" (
+    echo [INFO] Using fast parallel package installer (uv)...
+    call "%VENV_DIR%\Scripts\uv.exe" pip install --python "%VENV_PY%" -r "%ROOT_DIR%\requirements.txt"
+    if !errorlevel! equ 0 (
+        set "INSTALL_SUCCESS=1"
+    ) else (
+        echo [WARNING] uv parallel installer encountered an issue. Falling back to standard pip...
+    )
+)
+
+if "!INSTALL_SUCCESS!"=="0" (
+    echo [INFO] Installing dependencies via standard pip (this may take 2-3 minutes)...
+    call "%VENV_PY%" -m pip install --default-timeout=120 -r "%ROOT_DIR%\requirements.txt"
+    if !errorlevel! equ 0 set "INSTALL_SUCCESS=1"
+)
+
+if "!INSTALL_SUCCESS!"=="0" (
     echo.
     echo =======================================================
     echo   [ERROR] Failed to install dependencies from requirements.txt!
@@ -256,9 +310,9 @@ if "!HAS_NVIDIA!"=="1" (
     echo [SUCCESS] NVIDIA GPU detected!
     echo [INFO] Installing CUDA and cuDNN runtime packages for Faster-Whisper...
     if "!USE_UV!"=="1" (
-        call "%VENV_DIR%\Scripts\uv.exe" pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+        call "%VENV_DIR%\Scripts\uv.exe" pip install --python "%VENV_PY%" nvidia-cublas-cu12 nvidia-cudnn-cu12
     ) else (
-        call "%VENV_PY%" -m pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+        call "%VENV_PY%" -m pip install --default-timeout=120 nvidia-cublas-cu12 nvidia-cudnn-cu12
     )
     echo [SUCCESS] NVIDIA GPU acceleration installed!
     goto :gpu_done
@@ -268,9 +322,9 @@ if "!HAS_AMD!"=="1" (
     echo [SUCCESS] AMD Radeon GPU detected!
     echo [INFO] Installing DirectML runtime packages for AMD GPU acceleration...
     if "!USE_UV!"=="1" (
-        call "%VENV_DIR%\Scripts\uv.exe" pip install onnxruntime-directml torch-directml
+        call "%VENV_DIR%\Scripts\uv.exe" pip install --python "%VENV_PY%" onnxruntime-directml torch-directml
     ) else (
-        call "%VENV_PY%" -m pip install onnxruntime-directml torch-directml
+        call "%VENV_PY%" -m pip install --default-timeout=120 onnxruntime-directml torch-directml
     )
     echo [SUCCESS] AMD Radeon GPU DirectML and OpenMP CPU acceleration configured!
     goto :gpu_done
@@ -278,9 +332,9 @@ if "!HAS_AMD!"=="1" (
 
 echo [INFO] Configuring DirectML and CPU int8 acceleration...
 if "!USE_UV!"=="1" (
-    call "%VENV_DIR%\Scripts\uv.exe" pip install onnxruntime-directml >nul 2>&1
+    call "%VENV_DIR%\Scripts\uv.exe" pip install --python "%VENV_PY%" onnxruntime-directml >nul 2>&1
 ) else (
-    call "%VENV_PY%" -m pip install onnxruntime-directml >nul 2>&1
+    call "%VENV_PY%" -m pip install --default-timeout=120 onnxruntime-directml >nul 2>&1
 )
 echo [SUCCESS] Configured for fast CPU int8 and DirectML inference.
 
