@@ -65,6 +65,9 @@ if "!HAS_GIT!"=="1" (
         git fetch origin main --depth=1 -q >nul 2>&1
         git reset --soft origin/main >nul 2>&1
         echo [SUCCESS] Repository linked! Future updates will pull in seconds.
+    ) else (
+        echo [INFO] Checking for latest updates from GitHub repository...
+        git pull origin main --ff-only -q >nul 2>&1
     )
 ) else (
     echo [NOTE] Git installation skipped or unavailable. Auto-updater will use direct ZIP download.
@@ -214,6 +217,8 @@ if "!REBUILD_VENV!"=="0" (
 
 if "!REBUILD_VENV!"=="1" (
     if exist "%VENV_DIR%" (
+        echo [INFO] Freeing any background file locks in .venv...
+        powershell -NoProfile -Command "Get-Process | Where-Object { $_.Path -like '*\.venv\*' } | Stop-Process -Force" >nul 2>&1
         echo [INFO] Removing previous virtual environment...
         rmdir /s /q "%VENV_DIR%" >nul 2>&1
     )
@@ -269,8 +274,8 @@ if "!USE_UV!"=="1" (
 )
 
 if "!INSTALL_SUCCESS!"=="0" (
-    echo [INFO] Installing dependencies via standard pip (this may take 2-3 minutes)...
-    call "%VENV_PY%" -m pip install --default-timeout=120 -r "%ROOT_DIR%\requirements.txt"
+    echo [INFO] Installing dependencies via standard pip (preferring binary wheels)...
+    call "%VENV_PY%" -m pip install --default-timeout=120 --prefer-binary -r "%ROOT_DIR%\requirements.txt"
     if !errorlevel! equ 0 set "INSTALL_SUCCESS=1"
 )
 
@@ -278,8 +283,12 @@ if "!INSTALL_SUCCESS!"=="0" (
     echo.
     echo =======================================================
     echo   [ERROR] Failed to install dependencies from requirements.txt!
-    echo   Please check your internet connection and try again.
+    echo   Please check the error messages displayed above.
     echo =======================================================
+    echo [DIAGNOSTICS] Python version:
+    call "%VENV_PY%" -V
+    echo [DIAGNOSTICS] Pip version:
+    call "%VENV_PY%" -m pip -V
     goto :setup_failed
 )
 

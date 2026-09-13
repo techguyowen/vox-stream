@@ -1,0 +1,4 @@
+# Optional Dependencies for Local Useful-Moonshine Engine
+# Moonshine requires specific versions of PyTorch and Keras
+useful-moonshine; python_version < '3.13'
+keras>=3.0.0; python_version < '3.13'
