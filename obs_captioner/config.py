@@ -268,7 +268,7 @@ class UpdateConfig:
 class SummaryConfig:
     enabled: bool = True
     provider: str = "auto"  # "auto", "gemini", "ollama", "heuristic"
-    gemini_model: str = "gemini-2.0-flash"
+    gemini_model: str = "gemini-3.8-flash"
     gemini_api_key: str = ""
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.2"

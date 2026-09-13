@@ -3861,7 +3861,7 @@ async function loadYouTubeChapters(forcedEngine = null) {
     const format = formatEl ? formatEl.value : "hhmmss";
 
     const modelEl = document.getElementById("select-summary-model");
-    const model = modelEl ? modelEl.value : "gemini-2.0-flash";
+    const model = modelEl ? modelEl.value : "gemini-3.8-flash";
 
     try {
         const url = `/api/transcript/chapters?anchor=${encodeURIComponent(anchor)}&min_interval=${encodeURIComponent(interval)}&offset=${encodeURIComponent(offset)}&format=${encodeURIComponent(format)}&engine=${encodeURIComponent(engine)}&model=${encodeURIComponent(model)}`;
@@ -4102,7 +4102,7 @@ if (btnGenerateSummary) {
         const actionBarEl = document.getElementById("summary-action-bar");
         const badgeEl = document.getElementById("summary-provider-badge");
         const provider = document.getElementById("select-summary-provider")?.value || "auto";
-        const model = document.getElementById("select-summary-model")?.value || "gemini-2.0-flash";
+        const model = document.getElementById("select-summary-model")?.value || "gemini-3.8-flash";
 
         const origBtnText = btnGenerateSummary.innerHTML;
         btnGenerateSummary.innerHTML = "✨ Generating...";

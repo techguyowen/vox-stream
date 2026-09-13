@@ -3284,7 +3284,7 @@ class TestSermonSummaryAndAIChapters(unittest.TestCase):
         self.assertTrue(hasattr(cfg, "summary"))
         self.assertTrue(cfg.summary.enabled)
         self.assertEqual(cfg.summary.provider, "auto")
-        self.assertEqual(cfg.summary.gemini_model, "gemini-2.0-flash")
+        self.assertEqual(cfg.summary.gemini_model, "gemini-3.8-flash")
 
     def test_empty_transcript_handling(self):
         loop = asyncio.new_event_loop()
