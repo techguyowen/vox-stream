@@ -3918,7 +3918,11 @@ try {
 
 // Restore saved summary/chapter Gemini model preference if available
 try {
-    const savedSummaryModel = localStorage.getItem("voxstream_summary_model");
+    let savedSummaryModel = localStorage.getItem("voxstream_summary_model");
+    if (savedSummaryModel === "gemini-2.0-flash" || savedSummaryModel === "gemini-1.5-flash") {
+        savedSummaryModel = "gemini-3.8-flash";
+        localStorage.setItem("voxstream_summary_model", "gemini-3.8-flash");
+    }
     const summaryModelEl = document.getElementById("select-summary-model");
     if (savedSummaryModel && summaryModelEl) {
         summaryModelEl.value = savedSummaryModel;
