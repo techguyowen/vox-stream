@@ -705,6 +705,7 @@ class WebOverlayServer:
             format_style = "hhmmss"
 
         engine = sanitize_text(request.query.get("engine", "") or request.query.get("provider", "")).strip().lower()
+        model = sanitize_text(request.query.get("model", "")).strip() or None
 
         if engine in ("gemini", "ai"):
             result = await self.summary_engine.generate_ai_chapters(
@@ -714,6 +715,7 @@ class WebOverlayServer:
                 anchor=anchor,
                 format_style=format_style,
                 provider_override="gemini",
+                model_override=model,
             )
             return web.json_response(result)
 
@@ -752,6 +754,7 @@ class WebOverlayServer:
                 anchor=anchor,
                 format_style=format_style,
                 provider_override="gemini",
+                model_override=model,
             )
             return web.json_response(result)
 
@@ -799,6 +802,7 @@ class WebOverlayServer:
         anchor = "first_speech"
         format_style = "hhmmss"
         provider = None
+        model = None
 
         if request.method == "POST":
             try:
@@ -808,6 +812,7 @@ class WebOverlayServer:
                 anchor = sanitize_text(body.get("anchor", anchor)).strip().lower()
                 format_style = sanitize_text(body.get("format", format_style)).strip().lower()
                 provider = sanitize_text(body.get("provider", "") or body.get("engine", "")).strip().lower() or None
+                model = sanitize_text(body.get("model", "")).strip() or None
             except Exception:
                 pass
         else:
@@ -817,6 +822,7 @@ class WebOverlayServer:
                 anchor = sanitize_text(request.query.get("anchor", "first_speech")).strip().lower()
                 format_style = sanitize_text(request.query.get("format", "hhmmss")).strip().lower()
                 provider = sanitize_text(request.query.get("provider", "") or request.query.get("engine", "")).strip().lower() or None
+                model = sanitize_text(request.query.get("model", "")).strip() or None
             except Exception:
                 pass
 
@@ -832,6 +838,7 @@ class WebOverlayServer:
             anchor=anchor,
             format_style=format_style,
             provider_override=provider,
+            model_override=model,
         )
         return web.json_response(result)
 
@@ -842,18 +849,22 @@ class WebOverlayServer:
             return web.json_response({"error": "Rate limit exceeded"}, status=429)
 
         provider = None
+        model = None
         if request.method == "POST":
             try:
                 body = await request.json()
                 provider = sanitize_text(body.get("provider", "")).strip().lower() or None
+                model = sanitize_text(body.get("model", "")).strip() or None
             except Exception:
                 pass
         else:
             provider = sanitize_text(request.query.get("provider", "")).strip().lower() or None
+            model = sanitize_text(request.query.get("model", "")).strip() or None
 
         result = await self.summary_engine.generate_sermon_summary(
             entries=self.history.entries,
             provider_override=provider,
+            model_override=model,
         )
         return web.json_response(result)
 

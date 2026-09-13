@@ -3860,8 +3860,11 @@ async function loadYouTubeChapters(forcedEngine = null) {
     const offset = offsetEl ? (parseFloat(offsetEl.value) || 0) : 0;
     const format = formatEl ? formatEl.value : "hhmmss";
 
+    const modelEl = document.getElementById("select-summary-model");
+    const model = modelEl ? modelEl.value : "gemini-2.0-flash";
+
     try {
-        const url = `/api/transcript/chapters?anchor=${encodeURIComponent(anchor)}&min_interval=${encodeURIComponent(interval)}&offset=${encodeURIComponent(offset)}&format=${encodeURIComponent(format)}&engine=${encodeURIComponent(engine)}`;
+        const url = `/api/transcript/chapters?anchor=${encodeURIComponent(anchor)}&min_interval=${encodeURIComponent(interval)}&offset=${encodeURIComponent(offset)}&format=${encodeURIComponent(format)}&engine=${encodeURIComponent(engine)}&model=${encodeURIComponent(model)}`;
         const res = await fetch(url);
         if (res.ok) {
             const data = await res.json();
@@ -3912,6 +3915,29 @@ try {
         chapterEngineEl.value = savedChapterEngine;
     }
 } catch (e) {}
+
+// Restore saved summary/chapter Gemini model preference if available
+try {
+    const savedSummaryModel = localStorage.getItem("voxstream_summary_model");
+    const summaryModelEl = document.getElementById("select-summary-model");
+    if (savedSummaryModel && summaryModelEl) {
+        summaryModelEl.value = savedSummaryModel;
+    }
+} catch (e) {}
+
+const summaryModelEl = document.getElementById("select-summary-model");
+if (summaryModelEl) {
+    summaryModelEl.addEventListener("change", async (e) => {
+        try {
+            localStorage.setItem("voxstream_summary_model", e.target.value);
+        } catch (err) {}
+        const chapterEngine = document.getElementById("select-chapter-engine")?.value;
+        if (chapterEngine === "gemini") {
+            await loadYouTubeChapters();
+            showToast("🔄 Chapter markers updated with new Gemini model!", "info", 1500);
+        }
+    });
+}
 
 // Re-generate chapters on control adjustments
 ["select-chapter-engine", "select-chapter-anchor", "select-chapter-interval", "select-chapter-format"].forEach(id => {
@@ -4076,6 +4102,7 @@ if (btnGenerateSummary) {
         const actionBarEl = document.getElementById("summary-action-bar");
         const badgeEl = document.getElementById("summary-provider-badge");
         const provider = document.getElementById("select-summary-provider")?.value || "auto";
+        const model = document.getElementById("select-summary-model")?.value || "gemini-2.0-flash";
 
         const origBtnText = btnGenerateSummary.innerHTML;
         btnGenerateSummary.innerHTML = "✨ Generating...";
@@ -4089,7 +4116,7 @@ if (btnGenerateSummary) {
             const resp = await fetch("/api/transcript/summary", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ provider: provider }),
+                body: JSON.stringify({ provider: provider, model: model }),
             });
             if (!resp.ok) {
                 throw new Error(`HTTP ${resp.status}`);

@@ -71,6 +71,7 @@ class SermonSummaryEngine:
         anchor: str = "first_speech",
         format_style: str = "hhmmss",
         provider_override: Optional[str] = None,
+        model_override: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Generate semantic, YouTube-compliant timestamped chapters."""
         active_entries = entries or (self.history.entries if self.history else [])
@@ -108,6 +109,7 @@ class SermonSummaryEngine:
                     time_offset_seconds=time_offset_seconds,
                     anchor=anchor,
                     format_style=format_style,
+                    model_override=model_override,
                 )
                 if chapters and len(chapters) >= 3:
                     provider_used = "gemini"
@@ -165,6 +167,7 @@ class SermonSummaryEngine:
         self,
         entries: Optional[List[HistoryEntry]] = None,
         provider_override: Optional[str] = None,
+        model_override: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Generate structured sermon summary, bulletin outline, and discussion questions."""
         active_entries = entries or (self.history.entries if self.history else [])
@@ -173,7 +176,9 @@ class SermonSummaryEngine:
                 "title": "No Spoken Transcript Recorded",
                 "scriptures": [],
                 "big_idea": "No speech entries were found in the current session.",
+                "overview": "",
                 "key_points": [],
+                "action_steps": [],
                 "quotes": [],
                 "discussion_questions": [],
                 "markdown": "## 📖 Sermon Summary\n*No spoken transcript recorded in this session.*",
@@ -196,7 +201,10 @@ class SermonSummaryEngine:
 
         if selected_provider == "gemini":
             try:
-                summary_data = await self._generate_gemini_summary(active_entries)
+                summary_data = await self._generate_gemini_summary(
+                    active_entries,
+                    model_override=model_override,
+                )
                 if summary_data and summary_data.get("big_idea"):
                     provider_used = "gemini"
             except Exception as e:
@@ -231,6 +239,7 @@ class SermonSummaryEngine:
         time_offset_seconds: float,
         anchor: str,
         format_style: str,
+        model_override: Optional[str] = None,
     ) -> Optional[List[Dict[str, Any]]]:
         """Prompt Gemini Flash for semantic YouTube chapters across the entire recording."""
         api_key = self.get_api_key()
@@ -263,7 +272,8 @@ class SermonSummaryEngine:
             f"COMPLETE TRANSCRIPT:\n{transcript_text}"
         )
 
-        response_text = await self._call_gemini_api(prompt, api_key=api_key, model=self.config.gemini_model)
+        model = model_override or self.config.gemini_model
+        response_text = await self._call_gemini_api(prompt, api_key=api_key, model=model)
         if not response_text:
             return None
 
@@ -286,7 +296,11 @@ class SermonSummaryEngine:
 
         return chapters if len(chapters) >= 3 else None
 
-    async def _generate_gemini_summary(self, entries: List[HistoryEntry]) -> Optional[Dict[str, Any]]:
+    async def _generate_gemini_summary(
+        self,
+        entries: List[HistoryEntry],
+        model_override: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
         """Prompt Gemini Flash for a comprehensive, descriptive, and actionable sermon recap."""
         api_key = self.get_api_key()
         if not api_key:
@@ -336,7 +350,8 @@ class SermonSummaryEngine:
             f"COMPLETE TRANSCRIPT:\n{transcript_text}"
         )
 
-        response_text = await self._call_gemini_api(prompt, api_key=api_key, model=self.config.gemini_model)
+        model = model_override or self.config.gemini_model
+        response_text = await self._call_gemini_api(prompt, api_key=api_key, model=model)
         if not response_text:
             return None
 
@@ -690,6 +705,15 @@ class SermonSummaryEngine:
         action_steps = data.get("action_steps", [])
         quotes = data.get("quotes", [])
         questions = data.get("discussion_questions", [])
+
+        # Normalize key_points so string entries don't raise AttributeError
+        normalized_points = []
+        for p in key_points:
+            if isinstance(p, dict):
+                normalized_points.append(p)
+            elif isinstance(p, str):
+                normalized_points.append({"title": p, "description": "", "timecode": "00:00:00"})
+        key_points = normalized_points
 
         # 1. Full Markdown
         md_lines = [

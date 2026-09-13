@@ -3435,6 +3435,87 @@ class TestSermonSummaryAndAIChapters(unittest.TestCase):
         finally:
             loop.close()
 
+    def test_gemini_model_override_parameterization(self):
+        from unittest.mock import AsyncMock, patch
+
+        t0 = 100.0
+        self.history.add_entry("Welcome to our service.", start_time=t0, end_time=t0 + 5.0)
+        self.history.add_entry("Today we read from John chapter 1.", start_time=t0 + 10.0, end_time=t0 + 15.0)
+        self.history.add_entry("In conclusion, love one another.", start_time=t0 + 60.0, end_time=t0 + 65.0)
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            with patch.object(self.engine, "get_api_key", return_value="dummy-key"):
+                with patch.object(self.engine, "_call_gemini_api", new_callable=AsyncMock) as mock_api:
+                    # Test chapters with model override
+                    mock_api.return_value = json.dumps([
+                        {"timecode": "00:00:00", "title": "Welcome"},
+                        {"timecode": "00:00:10", "title": "Scripture"},
+                        {"timecode": "00:01:00", "title": "Conclusion"}
+                    ])
+                    res_chapters = loop.run_until_complete(
+                        self.engine.generate_ai_chapters(
+                            provider_override="gemini",
+                            model_override="gemini-2.0-flash-lite"
+                        )
+                    )
+                    self.assertEqual(res_chapters["provider_used"], "gemini")
+                    mock_api.assert_called()
+                    _, kwargs = mock_api.call_args
+                    self.assertEqual(kwargs.get("model"), "gemini-2.0-flash-lite")
+
+                    # Test summary with model override
+                    mock_api.reset_mock()
+                    mock_api.return_value = json.dumps({
+                        "title": "Lite Sermon Summary",
+                        "scriptures": ["John 1"],
+                        "big_idea": "The Word became flesh.",
+                        "overview": "Overview text",
+                        "key_points": ["Point 1"],
+                        "action_steps": ["Action 1"],
+                        "quotes": [],
+                        "discussion_questions": ["Q1"]
+                    })
+                    res_summary = loop.run_until_complete(
+                        self.engine.generate_sermon_summary(
+                            provider_override="gemini",
+                            model_override="gemini-2.0-flash-lite"
+                        )
+                    )
+                    self.assertEqual(res_summary["provider_used"], "gemini")
+                    self.assertEqual(res_summary["title"], "Lite Sermon Summary")
+                    mock_api.assert_called()
+                    _, kwargs = mock_api.call_args
+                    self.assertEqual(kwargs.get("model"), "gemini-2.0-flash-lite")
+
+                    # Test webserver endpoint model passthrough
+                    from obs_captioner.config import AppConfig
+                    from obs_captioner.web.server import WebServer
+                    cfg = AppConfig()
+                    server = WebServer(cfg, self.history)
+                    server.summary_engine = self.engine
+
+                    class FakeServerReq:
+                        remote = "127.0.0.1"
+                        method = "POST"
+                        query = {}
+                        def __init__(self, data):
+                            self._data = data
+                        async def json(self):
+                            return self._data
+
+                    mock_api.reset_mock()
+                    resp_srv_summary = loop.run_until_complete(
+                        server._handle_sermon_summary(FakeServerReq({"provider": "gemini", "model": "gemini-2.0-flash-lite"}))
+                    )
+                    self.assertEqual(resp_srv_summary.status, 200)
+                    mock_api.assert_called()
+                    _, kwargs = mock_api.call_args
+                    self.assertEqual(kwargs.get("model"), "gemini-2.0-flash-lite")
+        finally:
+            loop.close()
+
 
 class TestSentenceStabilizationAndStitching(unittest.IsolatedAsyncioTestCase):
     """Tests for preventing half cut-off sentences, dangling connector handling, and clause stitching."""
