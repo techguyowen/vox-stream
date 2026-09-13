@@ -17,34 +17,65 @@ echo =======================================================
 echo.
 
 :: ============================================================
-:: STEP 1: Detect Python (3.10 - 3.13, skip WindowsApps stub)
+:: STEP 1: Detect Python (3.9 - 3.13)
 :: ============================================================
 echo [1/6] Detecting Python installation...
 echo.
 
 set "PYTHON_EXE="
 
-:: 1. Check py launcher for versions 3.11, 3.12, 3.10, 3.13, -3
-for %%V in (-3.11 -3.12 -3.10 -3.13 -3) do (
+:: 1. Check known official python.org installation directories first
+for %%P in (
+    "%LocalAppData%\Programs\Python\Python311\python.exe"
+    "%LocalAppData%\Programs\Python\Python312\python.exe"
+    "%LocalAppData%\Programs\Python\Python310\python.exe"
+    "%LocalAppData%\Programs\Python\Python313\python.exe"
+    "%LocalAppData%\Programs\Python\Python39\python.exe"
+    "%ProgramFiles%\Python311\python.exe"
+    "%ProgramFiles%\Python312\python.exe"
+    "%ProgramFiles%\Python310\python.exe"
+    "%ProgramFiles%\Python313\python.exe"
+    "%ProgramFiles%\Python39\python.exe"
+    "C:\Python311\python.exe"
+    "C:\Python312\python.exe"
+    "C:\Python310\python.exe"
+    "C:\Python313\python.exe"
+    "C:\Python39\python.exe"
+) do (
     if not defined PYTHON_EXE (
-        py %%V -c "import sys; sys.exit(0 if (3,10) <= sys.version_info[:2] <= (3,13) and 'windowsapps' not in sys.executable.lower() else 1)" >nul 2>&1
-        if !errorlevel! equ 0 (
-            for /f "delims=" %%I in ('py %%V -c "import sys; print(sys.executable)" 2^>nul') do (
-                if not defined PYTHON_EXE (
-                    set "PYTHON_EXE=%%I"
-                    echo [OK] Found Python via py %%V: %%I
+        if exist %%P (
+            %%P -c "import sys; sys.exit(0 if sys.version_info >= (3,9) and sys.version_info < (3,14) else 1)" >nul 2>&1
+            if !errorlevel! equ 0 (
+                set "PYTHON_EXE=%%~P"
+                echo [OK] Found Python at: %%~P
+            )
+        )
+    )
+)
+
+:: 2. Check Windows py launcher
+if not defined PYTHON_EXE (
+    for %%V in (-3.11 -3.12 -3.10 -3.13 -3) do (
+        if not defined PYTHON_EXE (
+            py %%V -c "import sys; sys.exit(0 if sys.version_info >= (3,9) and sys.version_info < (3,14) else 1)" >nul 2>&1
+            if !errorlevel! equ 0 (
+                for /f "delims=" %%I in ('py %%V -c "import sys; print(sys.executable)" 2^>nul') do (
+                    if not defined PYTHON_EXE (
+                        set "PYTHON_EXE=%%I"
+                        echo [OK] Found Python via py %%V: %%I
+                    )
                 )
             )
         )
     )
 )
 
-:: 2. Check standard python in PATH (reject Microsoft Store stub)
+:: 3. Check every Python executable found in system PATH
 if not defined PYTHON_EXE (
-    python -c "import sys; sys.exit(0 if (3,10) <= sys.version_info[:2] <= (3,13) and 'windowsapps' not in sys.executable.lower() else 1)" >nul 2>&1
-    if !errorlevel! equ 0 (
-        for /f "delims=" %%I in ('python -c "import sys; print(sys.executable)" 2^>nul') do (
-            if not defined PYTHON_EXE (
+    for /f "delims=" %%I in ('where python 2^>nul') do (
+        if not defined PYTHON_EXE (
+            "%%I" -c "import sys; sys.exit(0 if sys.version_info >= (3,9) and sys.version_info < (3,14) else 1)" >nul 2>&1
+            if !errorlevel! equ 0 (
                 set "PYTHON_EXE=%%I"
                 echo [OK] Found Python in PATH: %%I
             )
@@ -52,55 +83,34 @@ if not defined PYTHON_EXE (
     )
 )
 
-:: 3. Check known default installation folders
+:: If Python is still not found, show live diagnostics
 if not defined PYTHON_EXE (
-    for %%P in (
-        "%LocalAppData%\Programs\Python\Python311\python.exe"
-        "%LocalAppData%\Programs\Python\Python312\python.exe"
-        "%LocalAppData%\Programs\Python\Python310\python.exe"
-        "%LocalAppData%\Programs\Python\Python313\python.exe"
-        "%ProgramFiles%\Python311\python.exe"
-        "%ProgramFiles%\Python312\python.exe"
-        "%ProgramFiles%\Python310\python.exe"
-        "%ProgramFiles%\Python313\python.exe"
-        "C:\Python311\python.exe"
-        "C:\Python312\python.exe"
-        "C:\Python310\python.exe"
-        "C:\Python313\python.exe"
-    ) do (
-        if not defined PYTHON_EXE (
-            if exist %%P (
-                %%P -c "import sys; sys.exit(0 if (3,10) <= sys.version_info[:2] <= (3,13) else 1)" >nul 2>&1
-                if !errorlevel! equ 0 (
-                    set "PYTHON_EXE=%%~P"
-                    echo [OK] Found Python at: %%~P
-                )
-            )
-        )
-    )
-)
-
-:: If Python is not found, guide the user directly to the official download
-if not defined PYTHON_EXE (
-    echo =======================================================
-    echo   [ERROR] Python 3.10, 3.11, or 3.12 was NOT found.
+    echo [DIAGNOSTICS] What Windows sees in your environment:
+    echo   - where python:
+    where python 2>nul
+    echo   - python --version:
+    python --version 2>nul
+    echo   - py launcher versions:
+    py -0p 2>nul
     echo.
-    echo   Please install Python:
-    echo   1. Download: https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe
-    echo   2. Run the installer
-    echo   3. CRITICAL: Check the box "Add python.exe to PATH"
-    echo   4. Click "Install Now"
-    echo   5. Re-run setup_windows.bat
+    echo =======================================================
+    echo   [ERROR] A compatible Python (3.9 - 3.13) was not found.
+    echo.
+    echo   If you already installed Python:
+    echo   1. Close ALL command prompt windows and re-open them
+    echo      (so the new PATH is loaded by Windows).
+    echo   2. Or install Python 3.11 directly:
+    echo      https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe
+    echo      CRITICAL: Check "Add python.exe to PATH"
     echo =======================================================
     echo.
-    start https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe
     echo Press any key to close this window...
     pause
     exit /b 1
 )
 
 echo.
-echo [INFO] Python executable: !PYTHON_EXE!
+echo [INFO] Selected Python: !PYTHON_EXE!
 "!PYTHON_EXE!" --version
 echo.
 
@@ -149,9 +159,10 @@ if not exist "%VENV_PY%" (
     echo   was unable to write to: %VENV%
     echo.
     echo   Possible causes:
+    echo   - Microsoft Store Python sandbox restrictions
     echo   - Antivirus blocking python from creating executables
     echo   - Folder path permissions (extract outside OneDrive, e.g. C:\vox-stream)
-    echo   - Incomplete Python install: reinstall with "Add to PATH"
+    echo   - Incomplete Python install: install from python.org with "Add to PATH"
     echo =======================================================
     echo.
     echo Press any key to close this window...
