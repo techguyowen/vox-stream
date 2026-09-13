@@ -34,7 +34,7 @@ if not exist "%VENV_PY%" (
     echo =======================================================
     echo.
     echo Press any key to close this window...
-    pause >nul
+    pause
     exit /b 1
 )
 
@@ -94,5 +94,5 @@ if not "!APP_EXIT_CODE!"=="0" (
 )
 echo   Press any key to close this window...
 echo =======================================================
-pause >nul
+pause
 exit /b !APP_EXIT_CODE!
