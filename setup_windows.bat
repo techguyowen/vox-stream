@@ -60,87 +60,67 @@ echo.
 echo [2/8] Detecting Python installation...
 set "PY_CMD="
 
-:: Check py launcher for Python 3.11, 3.12, 3.10 specifically
-py -3.11 -c "import sys" >nul 2>&1
-if !errorlevel! equ 0 (
-    set "PY_CMD=py -3.11"
-    goto :python_found
-)
-py -3.12 -c "import sys" >nul 2>&1
-if !errorlevel! equ 0 (
-    set "PY_CMD=py -3.12"
-    goto :python_found
-)
-py -3.10 -c "import sys" >nul 2>&1
-if !errorlevel! equ 0 (
-    set "PY_CMD=py -3.10"
-    goto :python_found
-)
-
-py -3.13 -c "import sys" >nul 2>&1
-if !errorlevel! equ 0 (
-    set "PY_CMD=py -3.13"
-    goto :python_found
-)
-py -3.9 -c "import sys" >nul 2>&1
-if !errorlevel! equ 0 (
-    set "PY_CMD=py -3.9"
-    goto :python_found
-)
-
-:: Check known default installation paths for Python 3.11, 3.12, 3.10, 3.13, 3.9
-if not defined PY_CMD if exist "%LocalAppData%\Programs\Python\Python311\python.exe" (
-    "%LocalAppData%\Programs\Python\Python311\python.exe" -c "import sys" >nul 2>&1
-    if !errorlevel! equ 0 set "PY_CMD="%LocalAppData%\Programs\Python\Python311\python.exe""
-)
-if not defined PY_CMD if exist "%LocalAppData%\Programs\Python\Python312\python.exe" (
-    "%LocalAppData%\Programs\Python\Python312\python.exe" -c "import sys" >nul 2>&1
-    if !errorlevel! equ 0 set "PY_CMD="%LocalAppData%\Programs\Python\Python312\python.exe""
-)
-if not defined PY_CMD if exist "%LocalAppData%\Programs\Python\Python310\python.exe" (
-    "%LocalAppData%\Programs\Python\Python310\python.exe" -c "import sys" >nul 2>&1
-    if !errorlevel! equ 0 set "PY_CMD="%LocalAppData%\Programs\Python\Python310\python.exe""
-)
-if not defined PY_CMD if exist "%LocalAppData%\Programs\Python\Python313\python.exe" (
-    "%LocalAppData%\Programs\Python\Python313\python.exe" -c "import sys" >nul 2>&1
-    if !errorlevel! equ 0 set "PY_CMD="%LocalAppData%\Programs\Python\Python313\python.exe""
-)
-if not defined PY_CMD if exist "%ProgramFiles%\Python311\python.exe" (
-    "%ProgramFiles%\Python311\python.exe" -c "import sys" >nul 2>&1
-    if !errorlevel! equ 0 set "PY_CMD="%ProgramFiles%\Python311\python.exe""
-)
-if not defined PY_CMD if exist "%ProgramFiles%\Python312\python.exe" (
-    "%ProgramFiles%\Python312\python.exe" -c "import sys" >nul 2>&1
-    if !errorlevel! equ 0 set "PY_CMD="%ProgramFiles%\Python312\python.exe""
-)
-if not defined PY_CMD if exist "C:\Python311\python.exe" (
-    "C:\Python311\python.exe" -c "import sys" >nul 2>&1
-    if !errorlevel! equ 0 set "PY_CMD="C:\Python311\python.exe""
-)
-if not defined PY_CMD if exist "C:\Python312\python.exe" (
-    "C:\Python312\python.exe" -c "import sys" >nul 2>&1
-    if !errorlevel! equ 0 set "PY_CMD="C:\Python312\python.exe""
-)
-
-if defined PY_CMD goto :python_found
-
-:: Check all python executables in system PATH (via where python)
-for /f "delims=" %%I in ('where python 2^>nul') do (
+:: 1. Check py launcher for Python 3.11, 3.12, 3.10, 3.13, 3.9
+for %%V in (-3.11 -3.12 -3.10 -3.13 -3.9 -3) do (
     if not defined PY_CMD (
-        "%%I" -c "import sys" >nul 2>&1
+        py %%V -c "import sys" >nul 2>&1
         if !errorlevel! equ 0 (
-            set "PY_CMD="%%I""
-            goto :python_found
+            for /f "delims=" %%X in ('py %%V -c "import sys; print(sys.executable)" 2^>nul') do (
+                if not defined PY_CMD set "PY_CMD=%%X"
+            )
         )
     )
 )
 
-:: Check standard python command in PATH
-python -c "import sys" >nul 2>&1
-if !errorlevel! equ 0 (
-    set "PY_CMD=python"
-    goto :python_found
+:: 2. Check known default installation paths for Python 3.11, 3.12, 3.10, 3.13, 3.9
+if not defined PY_CMD (
+    for %%P in (
+        "%LocalAppData%\Programs\Python\Python311\python.exe"
+        "%LocalAppData%\Programs\Python\Python312\python.exe"
+        "%LocalAppData%\Programs\Python\Python310\python.exe"
+        "%LocalAppData%\Programs\Python\Python313\python.exe"
+        "%LocalAppData%\Programs\Python\Python39\python.exe"
+        "%ProgramFiles%\Python311\python.exe"
+        "%ProgramFiles%\Python312\python.exe"
+        "%ProgramFiles%\Python310\python.exe"
+        "%ProgramFiles%\Python313\python.exe"
+        "%ProgramFiles%\Python39\python.exe"
+        "C:\Python311\python.exe"
+        "C:\Python312\python.exe"
+        "C:\Python310\python.exe"
+        "C:\Python313\python.exe"
+        "C:\Python39\python.exe"
+    ) do (
+        if not defined PY_CMD (
+            if exist %%P (
+                %%P -c "import sys" >nul 2>&1
+                if !errorlevel! equ 0 set "PY_CMD=%%~P"
+            )
+        )
+    )
 )
+
+:: 3. Check all python executables in system PATH (via where python)
+if not defined PY_CMD (
+    for /f "delims=" %%I in ('where python 2^>nul') do (
+        if not defined PY_CMD (
+            "%%I" -c "import sys" >nul 2>&1
+            if !errorlevel! equ 0 set "PY_CMD=%%I"
+        )
+    )
+)
+
+:: 4. Check standard python command in PATH
+if not defined PY_CMD (
+    python -c "import sys" >nul 2>&1
+    if !errorlevel! equ 0 (
+        for /f "delims=" %%X in ('python -c "import sys; print(sys.executable)" 2^>nul') do (
+            if not defined PY_CMD set "PY_CMD=%%X"
+        )
+    )
+)
+
+if defined PY_CMD goto :python_found
 
 :: If not found, download and install Python 3.11 automatically from python.org
 echo [INFO] Python 3.10-3.12 was not detected on your system.
@@ -153,7 +133,7 @@ if exist "%TEMP%\python-3.11.9-amd64.exe" (
 )
 
 if exist "%LocalAppData%\Programs\Python\Python311\python.exe" (
-    set "PY_CMD="%LocalAppData%\Programs\Python\Python311\python.exe""
+    set "PY_CMD=%LocalAppData%\Programs\Python\Python311\python.exe"
     goto :python_found
 )
 
@@ -168,8 +148,8 @@ start https://www.python.org/downloads/
 goto :setup_failed
 
 :python_found
-echo [SUCCESS] Using Python:
-call %PY_CMD% --version
+echo [SUCCESS] Using Python: !PY_CMD!
+call "!PY_CMD!" --version
 echo.
 
 :: ---------------------------------------------------------------------------
@@ -240,11 +220,11 @@ if "!REBUILD_VENV!"=="1" (
             ren "%VENV_DIR%" ".venv_old_!RANDOM!" >nul 2>&1
         )
     )
-    echo [INFO] Creating clean virtual environment with %PY_CMD% (takes ~15 seconds)...
-    call %PY_CMD% -m venv "%VENV_DIR%"
+    echo [INFO] Creating clean virtual environment with !PY_CMD! (takes ~15 seconds)...
+    call "!PY_CMD!" -m venv "%VENV_DIR%"
     if not exist "%VENV_PY%" (
         echo [WARNING] Standard venv creation failed. Retrying with --without-pip...
-        call %PY_CMD% -m venv --without-pip "%VENV_DIR%"
+        call "!PY_CMD!" -m venv --without-pip "%VENV_DIR%"
         if exist "%VENV_PY%" (
             echo [INFO] Virtual environment created. Bootstrapping pip...
             call "%VENV_PY%" -m ensurepip --default-pip
