@@ -47,7 +47,20 @@ class UpdateManager:
         self._last_checked_time = 0.0
         self._cached_status: Optional[Dict[str, Any]] = None
         self._is_updating = False
+        self._update_progress_message: str = ""
+        self._update_progress_percent: int = 0
         self._update_lock: Optional[asyncio.Lock] = None
+
+    def _safe_progress(self, progress_cb: Optional[Callable[[str], None]], message: str, percent: int = 0) -> None:
+        """Record update progress state and safely invoke external callback."""
+        self._update_progress_message = message
+        if percent > 0:
+            self._update_progress_percent = percent
+        if progress_cb:
+            try:
+                progress_cb(message)
+            except Exception as e:
+                logger.debug(f"Progress callback ignored error: {e}")
 
     @property
     def update_lock(self) -> asyncio.Lock:
@@ -283,6 +296,9 @@ class UpdateManager:
             "commit_author": author,
             "error": None,
             "last_checked": time.time(),
+            "is_updating": self._is_updating,
+            "progress_message": self._update_progress_message,
+            "progress_percent": self._update_progress_percent,
         }
 
         return result
@@ -294,7 +310,10 @@ class UpdateManager:
                 return False, "An update is already in progress."
 
             self._is_updating = True
-            loop = asyncio.get_event_loop()
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = asyncio.get_event_loop()
             try:
                 success, msg = await loop.run_in_executor(None, self._sync_apply_update, progress_cb)
                 if success:
@@ -302,11 +321,10 @@ class UpdateManager:
                     self._cached_status = None
                     self._last_checked_time = 0.0
 
-                    # Trigger restart handover
+                    # Trigger restart handover (1.5s allows HTTP response to flush cleanly on Windows/all platforms)
                     if self.on_restart_requested:
                         logger.info("Triggering application restart to apply update...")
-                        # Run callback after brief pause so API response completes
-                        loop.call_later(0.5, self.on_restart_requested)
+                        loop.call_later(1.5, self.on_restart_requested)
                 return success, msg
             finally:
                 self._is_updating = False
@@ -320,8 +338,7 @@ class UpdateManager:
             if success:
                 return True, msg
             logger.warning(f"Git update failed ({msg}). Falling back to clean archive download...")
-            if progress_cb:
-                progress_cb("⚠️ Git update failed. Falling back to clean GitHub archive download...")
+            self._safe_progress(progress_cb, "⚠️ Git update failed. Falling back to clean GitHub archive download...", 20)
             return self._apply_update_zip(progress_cb)
         else:
             return self._apply_update_zip(progress_cb)
@@ -329,8 +346,7 @@ class UpdateManager:
     def _apply_update_git(self, progress_cb: Optional[Callable[[str], None]] = None) -> Tuple[bool, str]:
         """Update via Git pull with safe stash and dependency check."""
         try:
-            if progress_cb:
-                progress_cb("⬇️ Downloading latest updates from GitHub (git pull)...")
+            self._safe_progress(progress_cb, "💾 Step 1/4: Preserving local configs and stashing changes...", 20)
             logger.info("Executing git pull origin main...")
 
             git_cmd = self.get_git_cmd() or "git"
@@ -342,6 +358,8 @@ class UpdateManager:
                 text=True,
                 timeout=15,
             )
+
+            self._safe_progress(progress_cb, "⬇️ Step 2/4: Pulling latest changes from GitHub (git pull)...", 45)
 
             # 2. Pull from origin main
             pull_res = subprocess.run(
@@ -375,8 +393,7 @@ class UpdateManager:
             # 3. Update Python dependencies
             req_file = self.app_root / "requirements.txt"
             if req_file.exists():
-                if progress_cb:
-                    progress_cb("📦 Checking and updating Python dependencies...")
+                self._safe_progress(progress_cb, "📦 Step 3/4: Updating Python dependencies (pip install)...", 75)
                 logger.info("Checking Python package dependencies...")
                 pip_res = subprocess.run(
                     [sys.executable, "-m", "pip", "install", "-r", str(req_file)],
@@ -389,10 +406,10 @@ class UpdateManager:
                     logger.warning(f"pip install completed with warnings: {pip_res.stderr.strip()[:200]}")
 
             # Ensure Windows batch files maintain CRLF line endings
+            self._safe_progress(progress_cb, "⚙️ Step 4/4: Finalizing update and normalizing scripts...", 90)
             self._ensure_windows_batch_crlf()
 
-            if progress_cb:
-                progress_cb("🎉 Update applied successfully! Restarting VoxStream...")
+            self._safe_progress(progress_cb, "🎉 Update applied successfully! Restarting VoxStream...", 100)
             logger.info("Git update applied successfully.")
             return True, "VoxStream updated successfully to the latest version!"
 
@@ -406,8 +423,7 @@ class UpdateManager:
         import zipfile
 
         try:
-            if progress_cb:
-                progress_cb("⬇️ Downloading latest release archive from GitHub...")
+            self._safe_progress(progress_cb, "⬇️ Step 1/4: Downloading release archive from GitHub...", 25)
             logger.info(f"Downloading release archive from {GITHUB_ZIP_URL}...")
 
             with tempfile.TemporaryDirectory() as tmp_dir:
@@ -422,8 +438,7 @@ class UpdateManager:
                 with urllib.request.urlopen(req, timeout=60) as resp, open(zip_path, "wb") as f:
                     shutil.copyfileobj(resp, f)
 
-                if progress_cb:
-                    progress_cb("📂 Extracting files...")
+                self._safe_progress(progress_cb, "📂 Step 2/4: Extracting files from archive...", 50)
                 with zipfile.ZipFile(zip_path, "r") as zf:
                     zf.extractall(extract_path)
 
@@ -486,8 +501,7 @@ class UpdateManager:
                                 continue
                             _safe_copy_file(Path(root) / f, target_sub / f)
 
-                if progress_cb:
-                    progress_cb("🔄 Updating application files...")
+                self._safe_progress(progress_cb, "🔄 Step 3/4: Updating application files (preserving configurations)...", 70)
                 for item in source_dir.iterdir():
                     if is_protected_item(item.name):
                         continue
@@ -500,8 +514,7 @@ class UpdateManager:
                 # Update dependencies
                 req_file = self.app_root / "requirements.txt"
                 if req_file.exists():
-                    if progress_cb:
-                        progress_cb("📦 Verifying Python dependencies...")
+                    self._safe_progress(progress_cb, "📦 Step 4/4: Updating Python dependencies (pip install)...", 85)
                     subprocess.run(
                         [sys.executable, "-m", "pip", "install", "-r", str(req_file)],
                         cwd=str(self.app_root),
@@ -513,8 +526,7 @@ class UpdateManager:
             # Ensure Windows batch files maintain CRLF line endings
             self._ensure_windows_batch_crlf()
 
-            if progress_cb:
-                progress_cb("🎉 Update applied successfully! Restarting VoxStream...")
+            self._safe_progress(progress_cb, "🎉 Update applied successfully! Restarting VoxStream...", 100)
             logger.info("Zip update applied successfully.")
             return True, "VoxStream updated successfully from GitHub archive!"
 

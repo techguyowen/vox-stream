@@ -1772,14 +1772,31 @@ class WebOverlayServer:
         if not self.updater:
             return web.json_response({"error": "Updater not configured"}, status=503)
 
-        def progress_cb(msg: str):
-            asyncio.create_task(self.broadcast_control({"type": "updater_progress", "message": msg}))
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.get_event_loop()
 
-        success, message = await self.updater.apply_update(progress_cb=progress_cb)
-        if success:
-            return web.json_response({"status": "restarting", "message": message})
-        else:
-            return web.json_response({"status": "error", "message": message}, status=500)
+        def progress_cb(msg: str):
+            logger.info(f"[UPDATER] {msg}")
+            try:
+                loop.call_soon_threadsafe(
+                    lambda m=msg: asyncio.create_task(
+                        self.broadcast_control({"type": "updater_progress", "message": m})
+                    )
+                )
+            except Exception as ex:
+                logger.debug(f"Failed to dispatch progress broadcast: {ex}")
+
+        try:
+            success, message = await self.updater.apply_update(progress_cb=progress_cb)
+            if success:
+                return web.json_response({"status": "restarting", "message": message})
+            else:
+                return web.json_response({"status": "error", "message": message}, status=500)
+        except Exception as e:
+            logger.error(f"Error executing update apply: {e}", exc_info=True)
+            return web.json_response({"status": "error", "message": str(e)}, status=500)
 
     async def _auto_check_updates_loop(self):
         """Background periodic update checker."""

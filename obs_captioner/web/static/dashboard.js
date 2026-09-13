@@ -4570,12 +4570,16 @@ function handleUpdaterProgress(message) {
     }
     if (updateProgressBar && message) {
         const lower = message.toLowerCase();
-        if (lower.includes("downloading") || lower.includes("pulling")) {
-            updateProgressBar.style.width = "40%";
-        } else if (lower.includes("dependencies") || lower.includes("pip") || lower.includes("install")) {
+        if (lower.includes("preserving") || lower.includes("step 1")) {
+            updateProgressBar.style.width = "25%";
+        } else if (lower.includes("downloading") || lower.includes("pulling") || lower.includes("step 2")) {
+            updateProgressBar.style.width = "50%";
+        } else if (lower.includes("dependencies") || lower.includes("pip") || lower.includes("step 3")) {
             updateProgressBar.style.width = "75%";
-        } else if (lower.includes("restarting")) {
+        } else if (lower.includes("finalizing") || lower.includes("normalizing") || lower.includes("step 4")) {
             updateProgressBar.style.width = "90%";
+        } else if (lower.includes("restarting") || lower.includes("successfully") || lower.includes("100%")) {
+            updateProgressBar.style.width = "100%";
         }
     }
 }
@@ -4605,21 +4609,45 @@ async function applyVoxStreamUpdate() {
     if (updateTitle) updateTitle.textContent = "Updating VoxStream...";
     if (updateSub) updateSub.textContent = "Downloading latest release from GitHub and syncing dependencies...";
     if (updateProgressBar) {
-        updateProgressBar.style.width = "25%";
+        updateProgressBar.style.width = "20%";
         updateProgressBar.style.background = "linear-gradient(90deg, #10B981, #38BDF8)";
     }
-    if (updateStepStatus) updateStepStatus.textContent = "⬇️ Step 1/3: Downloading code from GitHub...";
+    if (updateStepStatus) updateStepStatus.textContent = "💾 Step 1/4: Preserving local configs...";
 
+    let progressPollInterval = null;
     try {
-        const res = await fetch("/api/updater/apply", { method: "POST" });
-        const data = await res.json();
+        // Poll status every 1s while update is applying so progress is visible even if WebSocket drops
+        progressPollInterval = setInterval(async () => {
+            try {
+                const sRes = await fetch("/api/updater/status");
+                if (sRes.ok) {
+                    const sData = await sRes.json();
+                    if (sData && sData.is_updating && sData.progress_message) {
+                        handleUpdaterProgress(sData.progress_message);
+                    }
+                }
+            } catch (pollErr) {}
+        }, 1000);
 
-        if (!res.ok || data.status === "error") {
-            throw new Error(data.message || "Update installation failed");
+        const res = await fetch("/api/updater/apply", { method: "POST" });
+        const text = await res.text();
+        let data = null;
+        try {
+            data = JSON.parse(text);
+        } catch (parseErr) {
+            if (res.ok) {
+                data = { status: "restarting", message: "Update initiated, restarting..." };
+            } else {
+                throw new Error(text || `Server returned HTTP ${res.status}`);
+            }
         }
 
-        if (updateProgressBar) updateProgressBar.style.width = "90%";
-        if (updateStepStatus) updateStepStatus.textContent = "🔄 Step 3/3: Backend restarting to finalize update...";
+        if (!res.ok || (data && data.status === "error")) {
+            throw new Error((data && data.message) || `Update installation failed (HTTP ${res.status})`);
+        }
+
+        if (updateProgressBar) updateProgressBar.style.width = "95%";
+        if (updateStepStatus) updateStepStatus.textContent = "🔄 Step 4/4: Backend restarting to finalize update...";
 
         // Begin polling for backend recovery
         pollForUpdateRestartSuccess();
@@ -4628,6 +4656,10 @@ async function applyVoxStreamUpdate() {
         if (updateModal) updateModal.style.display = "none";
         if (btnApply) btnApply.disabled = false;
         showToast(`❌ Update failed: ${err.message}`, "error", 6000);
+    } finally {
+        if (progressPollInterval) {
+            clearInterval(progressPollInterval);
+        }
     }
 }
 
