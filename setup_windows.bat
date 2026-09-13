@@ -27,26 +27,31 @@ if "!HAS_GIT!"=="0" (
         set "PATH=%ProgramFiles%\Git\cmd;!PATH!"
         set "HAS_GIT=1"
     )
+    if exist "%LocalAppData%\Programs\Git\cmd\git.exe" (
+        set "PATH=%LocalAppData%\Programs\Git\cmd;!PATH!"
+        set "HAS_GIT=1"
+    )
+    if exist "C:\Git\cmd\git.exe" (
+        set "PATH=C:\Git\cmd;!PATH!"
+        set "HAS_GIT=1"
+    )
 )
 
 if "!HAS_GIT!"=="0" (
-    echo [INFO] Git for Windows not found in PATH. Checking winget...
-    where winget >nul 2>&1
-    if !errorlevel! equ 0 (
-        echo [INFO] Installing Git via Windows Package Manager...
-        winget install --id Git.Git -e --source winget --silent --accept-package-agreements --accept-source-agreements
-    )
-    if not exist "%ProgramFiles%\Git\cmd\git.exe" (
-        echo [INFO] Downloading official Git for Windows installer...
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri 'https://github.com/git-for-windows/git/releases/download/v2.46.0.windows.1/Git-2.46.0-64-bit.exe' -OutFile '%TEMP%\git_installer.exe'"
-        if exist "%TEMP%\git_installer.exe" (
-            echo [INFO] Installing Git for Windows silently...
-            start /wait "" "%TEMP%\git_installer.exe" /VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS
-            del "%TEMP%\git_installer.exe" 2>nul
-        )
+    echo [INFO] Git for Windows not detected.
+    echo [INFO] Downloading official Git for Windows installer...
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { (New-Object System.Net.WebClient).DownloadFile('https://github.com/git-for-windows/git/releases/download/v2.46.0.windows.1/Git-2.46.0-64-bit.exe', '%TEMP%\git_installer.exe') } catch { exit 1 }"
+    if exist "%TEMP%\git_installer.exe" (
+        echo [INFO] Installing Git for Windows silently...
+        start /wait "" "%TEMP%\git_installer.exe" /VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS
+        del "%TEMP%\git_installer.exe" 2>nul
     )
     if exist "%ProgramFiles%\Git\cmd\git.exe" (
         set "PATH=%ProgramFiles%\Git\cmd;!PATH!"
+        set "HAS_GIT=1"
+    )
+    if exist "%LocalAppData%\Programs\Git\cmd\git.exe" (
+        set "PATH=%LocalAppData%\Programs\Git\cmd;!PATH!"
         set "HAS_GIT=1"
     )
 )
@@ -86,7 +91,7 @@ if !errorlevel! equ 0 (
     goto :python_found
 )
 
-:: Check known default installation paths without parentheses in for loops
+:: Check known default installation paths
 if not defined PY_CMD if exist "%LocalAppData%\Programs\Python\Python311\python.exe" (
     "%LocalAppData%\Programs\Python\Python311\python.exe" -c "import sys" >nul 2>&1
     if !errorlevel! equ 0 set "PY_CMD="%LocalAppData%\Programs\Python\Python311\python.exe""
@@ -114,26 +119,12 @@ if not defined PY_CMD if exist "C:\Python312\python.exe" (
 
 if defined PY_CMD goto :python_found
 
-:: If not found, install Python 3.11 automatically
+:: If not found, download and install Python 3.11 automatically from python.org
 echo [INFO] Python was not detected on your system.
-echo [INFO] Installing Python 3.11 automatically...
-echo.
-
-where winget >nul 2>&1
-if !errorlevel! equ 0 (
-    echo [INFO] Installing Python 3.11 via Windows Package Manager...
-    winget install --id Python.Python.3.11 -e --silent --accept-package-agreements --accept-source-agreements
-)
-
-if exist "%LocalAppData%\Programs\Python\Python311\python.exe" (
-    set "PY_CMD="%LocalAppData%\Programs\Python\Python311\python.exe""
-    goto :python_found
-)
-
 echo [INFO] Downloading official Python 3.11 installer from python.org...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe' -OutFile '%TEMP%\python-3.11.9-amd64.exe'"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { (New-Object System.Net.WebClient).DownloadFile('https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe', '%TEMP%\python-3.11.9-amd64.exe') } catch { exit 1 }"
 if exist "%TEMP%\python-3.11.9-amd64.exe" (
-    echo [INFO] Installing Python 3.11.9 - please wait 30 to 60 seconds...
+    echo [INFO] Installing Python 3.11.9 (user-level, no admin required) - please wait 30 to 60 seconds...
     start /wait "" "%TEMP%\python-3.11.9-amd64.exe" /passive InstallAllUsers=0 PrependPath=1 Include_pip=1 Include_test=0 Shortcuts=0 TargetDir="%LocalAppData%\Programs\Python\Python311"
     del "%TEMP%\python-3.11.9-amd64.exe" 2>nul
 )
@@ -165,7 +156,7 @@ echo [3/8] Checking Microsoft Visual C++ 2015-2022 Runtime...
 if not exist "%SystemRoot%\System32\vcruntime140.dll" (
     echo [INFO] Microsoft Visual C++ 2015-2022 Redistributable not detected.
     echo [INFO] Downloading and installing VC++ runtime for AI models...
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "Invoke-WebRequest -Uri 'https://aka.ms/vs/17/release/vc_redist.x64.exe' -OutFile '%TEMP%\vc_redist.x64.exe'"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; try { (New-Object System.Net.WebClient).DownloadFile('https://aka.ms/vs/17/release/vc_redist.x64.exe', '%TEMP%\vc_redist.x64.exe') } catch { exit 1 }"
     if exist "%TEMP%\vc_redist.x64.exe" (
         start /wait "" "%TEMP%\vc_redist.x64.exe" /install /passive /norestart
         del "%TEMP%\vc_redist.x64.exe" 2>nul
@@ -205,23 +196,42 @@ echo [SUCCESS] Virtual environment ready.
 echo.
 
 :: ---------------------------------------------------------------------------
-:: STEP 5: Fast Multi-Threaded Package Installation via uv (10x-50x Faster)
+:: STEP 5: Fast Dependency Installation (uv with safe pip fallback)
 :: ---------------------------------------------------------------------------
-echo [5/8] Installing high-speed package installer (uv)...
-call "%VENV_PY%" -m pip install --upgrade pip
-call "%VENV_PY%" -m pip install uv >nul 2>&1
+echo [5/8] Installing project dependencies...
 
-set "INSTALLER="%VENV_PY%" -m pip install"
+:: Try installing uv for fast parallel downloads, but NEVER break if it fails
+set "USE_UV=0"
+call "%VENV_PY%" -m pip install uv >nul 2>&1
 if exist "%VENV_DIR%\Scripts\uv.exe" (
-    set "INSTALLER="%VENV_DIR%\Scripts\uv.exe" pip install"
-    echo [SUCCESS] High-speed Rust package manager (uv) active!
-) else (
-    echo [INFO] Using standard pip installer.
+    "%VENV_DIR%\Scripts\uv.exe" --version >nul 2>&1
+    if !errorlevel! equ 0 set "USE_UV=1"
 )
 
-echo [INFO] Installing required dependencies in parallel (this is much faster)...
-call %INSTALLER% -r "%ROOT_DIR%\requirements.txt"
+if "!USE_UV!"=="1" (
+    echo [INFO] Using fast parallel package installer (uv)...
+    call "%VENV_DIR%\Scripts\uv.exe" pip install -r "%ROOT_DIR%\requirements.txt"
+    if !errorlevel! neq 0 (
+        echo [WARNING] uv installation encountered an issue. Falling back to standard pip...
+        call "%VENV_PY%" -m pip install -r "%ROOT_DIR%\requirements.txt"
+    )
+) else (
+    echo [INFO] Using standard pip installer...
+    call "%VENV_PY%" -m pip install -r "%ROOT_DIR%\requirements.txt"
+)
+
+if !errorlevel! neq 0 (
+    echo.
+    echo =======================================================
+    echo   [ERROR] Failed to install dependencies from requirements.txt!
+    echo   Please check your internet connection and try again.
+    echo =======================================================
+    goto :setup_failed
+)
+
+echo [INFO] Cleaning up incompatible audio packages...
 call "%VENV_PY%" -m pip uninstall -y torchaudio >nul 2>&1
+echo [SUCCESS] Core dependencies installed successfully.
 echo.
 
 :: ---------------------------------------------------------------------------
@@ -245,7 +255,11 @@ if !errorlevel! equ 0 set "HAS_AMD=1"
 if "!HAS_NVIDIA!"=="1" (
     echo [SUCCESS] NVIDIA GPU detected!
     echo [INFO] Installing CUDA and cuDNN runtime packages for Faster-Whisper...
-    call %INSTALLER% nvidia-cublas-cu12 nvidia-cudnn-cu12
+    if "!USE_UV!"=="1" (
+        call "%VENV_DIR%\Scripts\uv.exe" pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+    ) else (
+        call "%VENV_PY%" -m pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
+    )
     echo [SUCCESS] NVIDIA GPU acceleration installed!
     goto :gpu_done
 )
@@ -253,13 +267,21 @@ if "!HAS_NVIDIA!"=="1" (
 if "!HAS_AMD!"=="1" (
     echo [SUCCESS] AMD Radeon GPU detected!
     echo [INFO] Installing DirectML runtime packages for AMD GPU acceleration...
-    call %INSTALLER% onnxruntime-directml torch-directml
+    if "!USE_UV!"=="1" (
+        call "%VENV_DIR%\Scripts\uv.exe" pip install onnxruntime-directml torch-directml
+    ) else (
+        call "%VENV_PY%" -m pip install onnxruntime-directml torch-directml
+    )
     echo [SUCCESS] AMD Radeon GPU DirectML and OpenMP CPU acceleration configured!
     goto :gpu_done
 )
 
 echo [INFO] Configuring DirectML and CPU int8 acceleration...
-call %INSTALLER% onnxruntime-directml >nul 2>&1
+if "!USE_UV!"=="1" (
+    call "%VENV_DIR%\Scripts\uv.exe" pip install onnxruntime-directml >nul 2>&1
+) else (
+    call "%VENV_PY%" -m pip install onnxruntime-directml >nul 2>&1
+)
 echo [SUCCESS] Configured for fast CPU int8 and DirectML inference.
 
 :gpu_done
@@ -285,7 +307,7 @@ echo.
 :: STEP 8: Pre-cache Offline AI Models & Create Desktop Shortcut
 :: ---------------------------------------------------------------------------
 echo [8/8] Pre-caching default offline AI models and creating Desktop shortcut...
-call "%VENV_PY%" -m obs_captioner.model_downloader --preload-defaults
+call "%VENV_PY%" -m obs_captioner.model_downloader --preload-defaults >nul 2>&1
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $d = [Environment]::GetFolderPath('Desktop'); $lnk = Join-Path $d 'VoxStream Live Captioner.lnk'; $s = $ws.CreateShortcut($lnk); $s.TargetPath = '%ROOT_DIR%\run_captioner.bat'; $s.WorkingDirectory = '%ROOT_DIR%'; $s.Description = 'Launch VoxStream Real-Time Live Captioner'; $s.Save()" >nul 2>&1
 
@@ -306,7 +328,7 @@ echo   2. Dashboard is available at: http://127.0.0.1:8765
 echo =======================================================
 echo.
 echo Setup finished successfully. Press any key to close this window...
-pause >nul
+pause
 exit /b 0
 
 :setup_failed
@@ -317,5 +339,5 @@ echo   Please check the error messages displayed above.
 echo =======================================================
 echo.
 echo Press any key to close this window...
-pause >nul
+pause
 exit /b 1
