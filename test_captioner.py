@@ -3892,6 +3892,18 @@ class TestSentenceStabilizationAndStitching(unittest.IsolatedAsyncioTestCase):
         tray._handle_exit(None, None)
         self.assertEqual(len(shutdown_state), 1)
 
+    def test_updater_fast_dependency_installer(self):
+        from pathlib import Path
+        from obs_captioner.updater import UpdateManager
+
+        um = UpdateManager()
+        req_file = Path(__file__).parent / "requirements.txt"
+        self.assertTrue(req_file.exists())
+
+        res = um._install_dependencies(req_file)
+        self.assertIsNotNone(res)
+        self.assertEqual(res.returncode, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

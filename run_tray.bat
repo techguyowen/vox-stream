@@ -36,16 +36,26 @@ if exist "%VENV_DIR%\Lib\site-packages\onnxruntime\capi" (
     set "PATH=%VENV_DIR%\Lib\site-packages\onnxruntime\capi;!PATH!"
 )
 
-:: 3. Launch with system tray icon
+:: 3. Main application loop (supports exit code 42 instant reload)
+:app_loop
 echo [INFO] Starting VoxStream with Taskbar System Tray active...
 echo [INFO] Look for the VoxStream icon in the Windows notification area (bottom-right).
 call "%VENV_PY%" -m obs_captioner.main --tray %*
 set "APP_EXIT_CODE=!errorlevel!"
 
+:: Exit code 42 indicates an intentional application restart
 if "!APP_EXIT_CODE!"=="42" (
-    echo [VoxStream] Restart requested. Reloading...
+    echo.
+    echo [VoxStream] Application restart requested. Verifying dependencies and reloading...
+    if exist "%ROOT_DIR%\requirements.txt" (
+        if exist "%VENV_DIR%\Scripts\uv.exe" (
+            call "%VENV_DIR%\Scripts\uv.exe" pip install -q -r "%ROOT_DIR%\requirements.txt"
+        ) else (
+            call "%VENV_PY%" -m pip install -q -r "%ROOT_DIR%\requirements.txt"
+        )
+    )
     timeout /t 1 /nobreak >nul
-    goto :app_loop
+    goto app_loop
 )
 
 if not "!APP_EXIT_CODE!"=="0" (

@@ -393,17 +393,10 @@ class UpdateManager:
             # 3. Update Python dependencies
             req_file = self.app_root / "requirements.txt"
             if req_file.exists():
-                self._safe_progress(progress_cb, "📦 Step 3/4: Updating Python dependencies (pip install)...", 75)
-                logger.info("Checking Python package dependencies...")
-                pip_res = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "-r", str(req_file)],
-                    cwd=str(self.app_root),
-                    capture_output=True,
-                    text=True,
-                    timeout=90,
-                )
+                self._safe_progress(progress_cb, "📦 Step 3/4: Verifying dependencies (uv / pip)...", 75)
+                pip_res = self._install_dependencies(req_file)
                 if pip_res.returncode != 0:
-                    logger.warning(f"pip install completed with warnings: {pip_res.stderr.strip()[:200]}")
+                    logger.warning(f"Dependency install completed with warnings: {pip_res.stderr.strip()[:200]}")
 
             # Ensure Windows batch files maintain CRLF line endings
             self._safe_progress(progress_cb, "⚙️ Step 4/4: Finalizing update and normalizing scripts...", 90)
@@ -514,14 +507,8 @@ class UpdateManager:
                 # Update dependencies
                 req_file = self.app_root / "requirements.txt"
                 if req_file.exists():
-                    self._safe_progress(progress_cb, "📦 Step 4/4: Updating Python dependencies (pip install)...", 85)
-                    subprocess.run(
-                        [sys.executable, "-m", "pip", "install", "-r", str(req_file)],
-                        cwd=str(self.app_root),
-                        capture_output=True,
-                        text=True,
-                        timeout=90,
-                    )
+                    self._safe_progress(progress_cb, "📦 Step 4/4: Verifying dependencies (uv / pip)...", 85)
+                    self._install_dependencies(req_file)
 
             # Ensure Windows batch files maintain CRLF line endings
             self._ensure_windows_batch_crlf()
@@ -533,6 +520,46 @@ class UpdateManager:
         except Exception as e:
             logger.error(f"Error applying Zip update: {e}", exc_info=True)
             return False, f"Failed to download or apply update: {e}"
+
+    def _install_dependencies(self, req_file: Path) -> subprocess.CompletedProcess:
+        """Install or verify dependencies using uv (ultra-fast) with seamless pip fallback."""
+        # 1. Fast path: check for uv in active virtual environment
+        uv_candidates = [
+            Path(sys.prefix) / "Scripts" / "uv.exe",
+            Path(sys.prefix) / "bin" / "uv",
+        ]
+        uv_bin = next((c for c in uv_candidates if c.is_file()), None)
+        if not uv_bin:
+            import shutil
+            uv_in_path = shutil.which("uv")
+            if uv_in_path:
+                uv_bin = Path(uv_in_path)
+
+        if uv_bin:
+            try:
+                logger.info(f"Verifying dependencies via fast package manager ({uv_bin})...")
+                res = subprocess.run(
+                    [str(uv_bin), "pip", "install", "-r", str(req_file)],
+                    cwd=str(self.app_root),
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
+                if res.returncode == 0:
+                    return res
+                logger.warning(f"uv returned code {res.returncode}; falling back to standard pip...")
+            except Exception as e:
+                logger.warning(f"uv execution error ({e}); falling back to standard pip...")
+
+        # 2. Standard pip fallback
+        logger.info("Verifying dependencies via standard pip...")
+        return subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-r", str(req_file)],
+            cwd=str(self.app_root),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
 
     def _ensure_windows_batch_crlf(self) -> None:
         """Normalize line endings of all .bat and .cmd files to CRLF for Windows cmd.exe compatibility."""
