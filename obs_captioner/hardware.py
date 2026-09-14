@@ -120,14 +120,24 @@ def get_gpu_info(force_refresh: bool = False) -> Dict[str, Any]:
                                 elif "intel" in desc_lower:
                                     info["vendor"] = "Intel"
                                     info["backend"] = "DirectML / CPU"
+
+                                # Query VRAM from registry
+                                for vram_key in ["HardwareInformation.qwMemorySize", "HardwareInformation.MemorySize"]:
+                                    try:
+                                        raw_vram, _ = winreg.QueryValueEx(dev_key, vram_key)
+                                        if raw_vram and isinstance(raw_vram, (int, float)) and raw_vram > 0:
+                                            info["vram_mb"] = int(raw_vram / (1024 * 1024))
+                                            break
+                                    except OSError:
+                                        pass
                                 break
                     except Exception:
                         pass
         except Exception as e:
             logger.debug(f"winreg GPU detection: {e}")
 
-        # 4b. PowerShell fallback if registry didn't find a recognized GPU
-        if info["vendor"] == "CPU":
+        # 4b. PowerShell fallback if registry didn't find GPU or VRAM was 0
+        if info["vendor"] == "CPU" or info["vram_mb"] == 0:
             try:
                 cmd = [
                     "powershell",
@@ -147,7 +157,7 @@ def get_gpu_info(force_refresh: bool = False) -> Dict[str, Any]:
                             break
                     selected = discrete_item or items[0]
                     detected_name = str(selected.get("Name", "")).strip()
-                    if detected_name:
+                    if detected_name and info["vendor"] == "CPU":
                         info["name"] = detected_name
                         lower = detected_name.lower()
                         if "radeon" in lower or "amd" in lower:
@@ -160,6 +170,7 @@ def get_gpu_info(force_refresh: bool = False) -> Dict[str, Any]:
                             info["vendor"] = "Intel"
                             info["backend"] = "DirectML / CPU"
 
+                    if info["vram_mb"] == 0:
                         raw_ram = selected.get("AdapterRAM")
                         if raw_ram and isinstance(raw_ram, (int, float)) and raw_ram > 0:
                             info["vram_mb"] = int(raw_ram / (1024 * 1024))
@@ -172,7 +183,17 @@ def get_gpu_info(force_refresh: bool = False) -> Dict[str, Any]:
 
 def get_ram_usage_mb() -> float:
     """Return current process physical RAM footprint (Working Set / RSS) in megabytes."""
+    # 0. Fast psutil check if available (cross-platform, sub-millisecond)
+    try:
+        import psutil
+        rss = psutil.Process().memory_info().rss
+        if rss and rss > 0:
+            return round(rss / (1024.0 * 1024.0), 1)
+    except Exception:
+        pass
+
     if sys.platform == "win32":
+        # 1. Native Windows K32GetProcessMemoryInfo / GetProcessMemoryInfo via ctypes
         try:
             class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
                 _fields_ = [
@@ -187,11 +208,49 @@ def get_ram_usage_mb() -> float:
                     ("PagefileUsage", ctypes.c_size_t),
                     ("PeakPagefileUsage", ctypes.c_size_t),
                 ]
-            counters = PROCESS_MEMORY_COUNTERS()
-            counters.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
-            handle = ctypes.windll.kernel32.GetCurrentProcess()
-            if ctypes.windll.psapi.GetProcessMemoryInfo(handle, ctypes.byref(counters), counters.cb):
-                return round(counters.WorkingSetSize / (1024.0 * 1024.0), 1)
+
+            kernel32 = ctypes.windll.kernel32
+            kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+            handle = kernel32.GetCurrentProcess()
+
+            # On Windows 7/8/10/11, K32GetProcessMemoryInfo is in kernel32; psapi is fallback
+            get_mem_info = getattr(kernel32, "K32GetProcessMemoryInfo", None)
+            if get_mem_info is None and hasattr(ctypes.windll, "psapi"):
+                get_mem_info = getattr(ctypes.windll.psapi, "GetProcessMemoryInfo", None)
+            if get_mem_info is None:
+                get_mem_info = getattr(kernel32, "GetProcessMemoryInfo", None)
+
+            if get_mem_info is not None:
+                get_mem_info.argtypes = [ctypes.c_void_p, ctypes.POINTER(PROCESS_MEMORY_COUNTERS), ctypes.c_ulong]
+                get_mem_info.restype = ctypes.c_int
+                counters = PROCESS_MEMORY_COUNTERS()
+                counters.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
+                if get_mem_info(handle, ctypes.byref(counters), counters.cb):
+                    val = round(counters.WorkingSetSize / (1024.0 * 1024.0), 1)
+                    if val > 0:
+                        return val
+        except Exception as e:
+            logger.debug(f"Windows ctypes memory query error: {e}")
+
+        # 2. Windows tasklist CLI fallback (built into every Windows installation)
+        try:
+            import csv, io, os, subprocess
+            pid = os.getpid()
+            CREATE_NO_WINDOW = 0x08000000
+            out = subprocess.check_output(
+                ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+                creationflags=CREATE_NO_WINDOW,
+                timeout=1.0,
+            ).decode("utf-8", errors="ignore")
+            reader = csv.reader(io.StringIO(out.strip()))
+            for row in reader:
+                if len(row) >= 5:
+                    mem_str = row[4].replace(",", "").replace(" ", "").upper()
+                    if mem_str.endswith("K"):
+                        mem_str = mem_str[:-1]
+                    val = round(float(mem_str) / 1024.0, 1)
+                    if val > 0:
+                        return val
         except Exception:
             pass
     elif sys.platform == "darwin":
@@ -303,8 +362,18 @@ def release_stt_memory(old_engine=None, log_details: bool = True) -> float:
     # 4. Flush OS Process Working Set / Heap Allocator Pressure
     if sys.platform == "win32":
         try:
-            handle = ctypes.windll.kernel32.GetCurrentProcess()
-            ctypes.windll.psapi.EmptyWorkingSet(handle)
+            kernel32 = ctypes.windll.kernel32
+            kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+            handle = kernel32.GetCurrentProcess()
+            empty_ws = getattr(kernel32, "K32EmptyWorkingSet", None)
+            if empty_ws is None and hasattr(ctypes.windll, "psapi"):
+                empty_ws = getattr(ctypes.windll.psapi, "EmptyWorkingSet", None)
+            if empty_ws is None:
+                empty_ws = getattr(kernel32, "EmptyWorkingSet", None)
+            if empty_ws:
+                empty_ws.argtypes = [ctypes.c_void_p]
+                empty_ws.restype = ctypes.c_int
+                empty_ws(handle)
         except Exception:
             pass
     elif sys.platform == "darwin":

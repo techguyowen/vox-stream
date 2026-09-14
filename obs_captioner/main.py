@@ -160,6 +160,7 @@ async def main_async(args):
             "last_caption_time": getattr(sink_obj, "_last_caption_time", 0.0) if sink_obj else 0.0,
             "total_captions": len(hist_obj.entries) if hist_obj else 0,
             "ram_usage_mb": get_ram_usage_mb(),
+            "gpu": get_gpu_info(),
             "gpu_info": get_gpu_info(),
         }
 
