@@ -112,6 +112,8 @@ exports/
 captions_*.srt
 captions_*.vtt
 captions_*.txt
+*.srt
+*.vtt
 
 # Audio & Media Scratch Clips / Test Recordings
 mtest.*
