@@ -28,7 +28,16 @@ if not exist "%VENV_PY%" (
     exit /b 1
 )
 
-:: 2. Prepend DLLs
+:: 2. Prepend NVIDIA CUDA/cuDNN DLLs into PATH if present
+if exist "%VENV_DIR%\Lib\site-packages\nvidia" (
+    for /d %%D in ("%VENV_DIR%\Lib\site-packages\nvidia\*") do (
+        if exist "%%~D\bin" (
+            set "PATH=%%~D\bin;!PATH!"
+        )
+    )
+)
+
+:: 3. Prepend DirectML DLLs for AMD Radeon GPUs if present
 if exist "%VENV_DIR%\Lib\site-packages\torch_directml" (
     set "PATH=%VENV_DIR%\Lib\site-packages\torch_directml;!PATH!"
 )
@@ -36,7 +45,13 @@ if exist "%VENV_DIR%\Lib\site-packages\onnxruntime\capi" (
     set "PATH=%VENV_DIR%\Lib\site-packages\onnxruntime\capi;!PATH!"
 )
 
-:: 3. Main application loop (supports exit code 42 instant reload)
+:: 4. Resolve library conflict: remove torchaudio if present
+if exist "%VENV_DIR%\Lib\site-packages\torchaudio" (
+    echo [INFO] Resolving library conflict: removing torchaudio...
+    call "%VENV_PY%" -m pip uninstall -y torchaudio >nul 2>&1
+)
+
+:: 5. Main application loop (supports exit code 42 instant reload)
 :app_loop
 echo [INFO] Starting VoxStream with Taskbar System Tray active...
 echo [INFO] Look for the VoxStream icon in the Windows notification area (bottom-right).
