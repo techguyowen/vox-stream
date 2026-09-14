@@ -424,9 +424,13 @@ async def main_async(args):
                 except Exception:
                     pass
 
-    # 4. Initialize Windows System Tray Applet if requested
+    # 4. Initialize Windows System Tray Applet (automatic by default on Windows)
     tray_app = None
-    if getattr(args, "tray", False):
+    should_enable_tray = getattr(args, "tray", None)
+    if should_enable_tray is None:
+        should_enable_tray = getattr(config.general, "tray_icon", True) and sys.platform == "win32"
+
+    if should_enable_tray:
         try:
             from .tray import VoxStreamTray, is_tray_supported
             if is_tray_supported():
@@ -442,7 +446,7 @@ async def main_async(args):
                 )
                 tray_app.start()
             else:
-                logger.info("System tray requested but pystray/Pillow is not installed.")
+                logger.info("System tray enabled but pystray/Pillow is not installed.")
         except Exception as te:
             logger.warning(f"Could not initialize system tray applet: {te}")
 
@@ -692,7 +696,8 @@ def main():
     parser.add_argument("--list-devices", "-l", action="store_true", help="List all available audio input devices and exit")
     parser.add_argument("--no-obs", action="store_true", help="Disable OBS WebSocket client")
     parser.add_argument("--no-overlay", action="store_true", help="Disable Browser Source web overlay")
-    parser.add_argument("--tray", action="store_true", help="Launch with Windows taskbar system tray icon")
+    parser.add_argument("--tray", dest="tray", action="store_true", default=None, help="Enable Windows taskbar system tray icon (default: auto-enabled on Windows)")
+    parser.add_argument("--no-tray", dest="tray", action="store_false", help="Disable Windows taskbar system tray icon")
 
     args = parser.parse_args()
 

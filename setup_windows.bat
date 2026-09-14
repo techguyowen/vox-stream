@@ -273,6 +273,27 @@ if not exist "config.json" (
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone" /v Value /t REG_SZ /d Allow /f >nul 2>&1
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\microphone\NonPackaged" /v Value /t REG_SZ /d Allow /f >nul 2>&1
 echo [SUCCESS] Windows microphone access verified.
+
+:: Configure Windows Defender Firewall for port 8765
+echo [INFO] Configuring Windows Defender Firewall for port 8765...
+netsh advfirewall firewall show rule name="VoxStream Overlay TCP 8765" >nul 2>&1
+if !errorlevel! equ 0 (
+    echo [SUCCESS] Windows Defender Firewall rule is already active for port 8765.
+) else (
+    netsh advfirewall firewall add rule name="VoxStream Overlay TCP 8765" dir=in action=allow protocol=TCP localport=8765 profile=any description="Allows inbound connections to VoxStream overlay, stage display, and control dashboard" >nul 2>&1
+    if !errorlevel! equ 0 (
+        echo [SUCCESS] Windows Defender Firewall opened for port 8765!
+    ) else (
+        echo [INFO] Requesting Administrator permission (UAC) to configure firewall rule...
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process cmd.exe -ArgumentList '/c \"\"%ROOT_DIR%\setup_firewall.bat\" /add' -Verb RunAs -Wait" >nul 2>&1
+        netsh advfirewall firewall show rule name="VoxStream Overlay TCP 8765" >nul 2>&1
+        if !errorlevel! equ 0 (
+            echo [SUCCESS] Windows Defender Firewall opened for port 8765!
+        ) else (
+            echo [NOTE] Firewall rule was not added. You can add it anytime by running setup_firewall.bat
+        )
+    )
+)
 echo.
 
 :: ---------------------------------------------------------------------------

@@ -25,6 +25,7 @@ class GeneralConfig:
     auto_punctuation: bool = True
     church_mode: bool = True
     church_name: str = "Waypoint Church"
+    tray_icon: bool = True  # Enable taskbar system tray icon on desktop systems
 
 
 @dataclass
