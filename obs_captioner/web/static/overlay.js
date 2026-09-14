@@ -92,7 +92,6 @@ function dismissScriptureVerse() {
     }
     document.body.classList.remove("enable-stream-scripture");
 }
-}
 
 // OBS Live Captions WebSocket Overlay Client (Multi-Theme & Translation Support)
 

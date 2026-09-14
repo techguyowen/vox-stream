@@ -1,15 +1,32 @@
-# Virtual Environments
+# Virtual Environments & Package Managers
 .venv/
 venv/
 env/
 ENV/
+env.bak/
+venv.bak/
 
 # Python Cache & Bytecode
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.pyd
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Python Packaging & Distribution
+dist/
+build/
+bin/
+out/
+develop-eggs/
+eggs/
+.eggs/
+*.egg-info/
+*.egg
+.installed.cfg
 
 # User Configurations, API Keys & Secrets
 config.json
@@ -17,24 +34,52 @@ config.*.json
 *.local.json
 *.tmp
 *.bak
+*.temp
+*.orig
 google_credentials.json
 credentials*.json
 client_secret*.json
 token*.json
+*.token
+tokens/
+oauth/
 *.key
 *.pem
 *.p12
 *.pfx
+*.crt
+*.cer
+*.der
+id_rsa*
+id_ed25519*
 .env
 .env.*
 .env*.local
 *.env
 
-# Build Artifacts (C++ OBS Plugin)
+# IDEs, Editors & Workspaces
+.vscode/
+.idea/
+.vs/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# Build Artifacts & Toolchains (C++, CMake, OBS Plugin)
 obs_native_plugin/build/
 obs_native_plugin/bin/
-build/
-bin/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CMakeScripts/
+Testing/
+Makefile
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.sln
 *.dll
 *.lib
 *.exp
@@ -42,23 +87,66 @@ bin/
 *.obj
 *.exe
 *.zip
+*.7z
+*.tar.gz
 
-# OS generated files
+# OS Generated Files
 .DS_Store
 .DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
 ehthumbs.db
+ehthumbs_vista.db
 Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
 
-# Logs & Transcripts
+# Logs, Transcripts & Recorded Subtitles
 *.log
+logs/
+recordings/
+subtitles/
+transcripts/
+exports/
 captions_*.srt
 captions_*.vtt
 captions_*.txt
 
+# Audio & Media Scratch Clips / Test Recordings
+mtest.*
+*.wav
+*.aiff
+*.mp3
+*.flac
+*.m4a
+*.ogg
+!obs_captioner/web/static/**
+
 # Node / Headless Browser
 node_modules/
 package-lock.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Tests & Test Artifacts
+test/
+tests/
+/test
+/test.*
+/test_*
+.coverage
+.coverage.*
+htmlcov/
+nosetests.xml
+coverage.xml
+
+# Local Model Downloads & Scratch Caches
+models/
+weights/
+checkpoints/
+*.weights
+
 

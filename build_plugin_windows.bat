@@ -4,8 +4,24 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 echo =======================================================
-echo   Building VoxStream Native OBS C++ Plugin (.dll)
+echo   VoxStream Native OBS C++ Plugin [LEGACY / DEPRECATED]
 echo =======================================================
+echo.
+echo [NOTE] You DO NOT NEED this native C++ plugin!
+echo.
+echo Modern OBS Studio (v28+) connects directly via:
+echo   1. Transparent Browser Source: http://127.0.0.1:8765/
+echo   2. Native Closed Captions [CC]: OBS WebSocket v5 (port 4455)
+echo   3. Clean Audio Capture: Windows WASAPI Loopback (built-in)
+echo.
+echo Double-click 'run_captioner.bat' to start VoxStream immediately.
+echo =======================================================
+echo.
+set /p CONTINUE_BUILD="Do you still want to compile the legacy C++ plugin? (y/N): "
+if /i not "!CONTINUE_BUILD!"=="y" (
+    echo [INFO] Skipping legacy C++ plugin build.
+    exit /b 0
+)
 echo.
 
 :: 1. Check for CMake, auto-install via winget if missing

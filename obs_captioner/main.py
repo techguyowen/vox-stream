@@ -6,8 +6,14 @@ import signal
 import subprocess
 import sys
 import time
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 if __name__ == "__main__" and not __package__:
-    import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     __package__ = "obs_captioner"
