@@ -221,19 +221,39 @@ def get_available_gpus(force_refresh: bool = False) -> List[Dict[str, Any]]:
 
     # 3. Linux with CUDA
     elif sys.platform.startswith("linux") and has_cuda:
-        gpus.append({
-            "id": "gpu_nvidia_0",
-            "device_id": "gpu_nvidia_0",
-            "name": cuda_name or "NVIDIA CUDA GPU",
-            "vendor": "NVIDIA",
-            "vram_mb": cuda_vram,
-            "backend": "CUDA",
-            "is_cuda": True,
-            "is_directml": False,
-            "is_mps": False,
-            "is_discrete": True,
-            "recommended": True,
-        })
+        try:
+            import torch
+            num_cuda = torch.cuda.device_count() if torch.cuda.is_available() else 1
+            for i in range(num_cuda):
+                d_name = torch.cuda.get_device_name(i) if torch.cuda.is_available() else (cuda_name or "NVIDIA CUDA GPU")
+                d_vram = int(torch.cuda.get_device_properties(i).total_memory / (1024 * 1024)) if torch.cuda.is_available() else cuda_vram
+                gpus.append({
+                    "id": f"gpu_nvidia_{i}",
+                    "device_id": f"gpu_nvidia_{i}",
+                    "name": d_name,
+                    "vendor": "NVIDIA",
+                    "vram_mb": d_vram,
+                    "backend": "CUDA",
+                    "is_cuda": True,
+                    "is_directml": False,
+                    "is_mps": False,
+                    "is_discrete": True,
+                    "recommended": (i == 0),
+                })
+        except Exception:
+            gpus.append({
+                "id": "gpu_nvidia_0",
+                "device_id": "gpu_nvidia_0",
+                "name": cuda_name or "NVIDIA CUDA GPU",
+                "vendor": "NVIDIA",
+                "vram_mb": cuda_vram,
+                "backend": "CUDA",
+                "is_cuda": True,
+                "is_directml": False,
+                "is_mps": False,
+                "is_discrete": True,
+                "recommended": True,
+            })
 
     # Deduplicate by name if needed
     unique_gpus = []

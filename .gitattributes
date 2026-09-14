@@ -4,3 +4,6 @@
 # Windows batch files MUST use CRLF line endings in the repository itself so raw downloads preserve CRLF
 *.bat -text
 *.cmd -text
+
+# Shell scripts MUST use LF line endings so Linux and macOS do not get ^M bad interpreter errors
+*.sh text eol=lf

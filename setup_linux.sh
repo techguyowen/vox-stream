@@ -110,8 +110,13 @@ fi
 # STEP 5: Install Python Dependencies & Hardware Acceleration
 # ------------------------------------------------------------------------------
 echo -e "${CYAN}[5/7] Installing Python dependencies & speech engines...${NC}"
-.venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install -r requirements.txt
+if [ -f ".venv/bin/uv" ]; then
+    echo -e "${GREEN}⚡ Using fast package manager [uv]...${NC}"
+    .venv/bin/uv pip install -r requirements.txt
+else
+    .venv/bin/python -m pip install --upgrade pip -q
+    .venv/bin/python -m pip install -r requirements.txt
+fi
 
 # Hardware acceleration check (NVIDIA CUDA)
 if command -v nvidia-smi &>/dev/null; then
@@ -136,7 +141,7 @@ fi
 # STEP 7: Desktop Launcher & Permissions
 # ------------------------------------------------------------------------------
 echo -e "${CYAN}[7/7] Setting permissions & creating application launcher...${NC}"
-chmod +x run_captioner.sh setup_linux.sh setup_mac.sh 2>/dev/null || true
+chmod +x run_captioner.sh setup_linux.sh setup_mac.sh uninstall_linux.sh uninstall_mac.sh 2>/dev/null || true
 
 # Optional: Create .desktop file if desktop environment exists
 DESKTOP_DIR="$HOME/.local/share/applications"
