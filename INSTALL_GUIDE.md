@@ -2,6 +2,8 @@
 
 This step-by-step guide walks you through setting up the **VoxStream Real-Time Live Captioner & Broadcast Suite** on **macOS**, **Windows**, and **Linux**.
 
+> 💡 **Looking for day-to-day operator instructions?** Check out the [**User Manual & Quick Start Guide (USER_MANUAL.md)**](USER_MANUAL.md) for 3-minute quick starts, stage monitor QR codes, teleprompter modes, and accessibility features.
+
 ---
 
 ## 📋 Table of Contents

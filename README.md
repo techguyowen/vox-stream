@@ -10,6 +10,8 @@
 
 It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Multi-Tier Speech Recognition Engines** with **Local Faster-Whisper** as the verified #1 Champion for church sermons, an **In-App Church Sermon Benchmark Leaderboard**, a **Universal Live Read-Along Display (`/display`)** with WCAG 2.2 AAA accessibility, **Real-Time Words Per Minute (WPM) Speaking Pace Analytics**, **⛪ Church & Biblical Lexicon with Offline Bible Engine (KJV, BSB, WEB)**, **Smart Punctuation & Capitalization**, **Multi-Language Live Translation**, **1-Click Theme Gallery**, **Twitch Chat Caption Bot**, **YouTube Live CEA-608 Closed Captions**, and **Automated YouTube Chapters & Subtitle Exporter (SRT/VTT/TXT)**.
 
+> 📖 **Need a quick start or operator guide?** Read our comprehensive [**User Manual & Quick Start Guide (USER_MANUAL.md)**](USER_MANUAL.md) for 3-minute setup, stage QR codes, OBS docks, accessibility settings, and troubleshooting.
+
 ---
 
 <p align="center">
@@ -418,6 +420,16 @@ You can have OBS Studio launch VoxStream in the background automatically wheneve
 | `GET` | `/sw.js` | PWA Service Worker |
 | `WS` | `/ws` | Real-time caption event broadcast stream (`?lang=es` for translated) |
 | `WS` | `/api/control/ws` | Real-time telemetry, VU meter, and control stream |
+
+---
+
+## 📚 Documentation & Guides
+
+* 📖 [**User Manual & Quick Start Guide (USER_MANUAL.md)**](USER_MANUAL.md): Complete operator manual, 3-minute setup, stage QR codes, OBS docks, accessibility settings, and troubleshooting.
+* 🛠️ [**Installation & Setup Guide (INSTALL_GUIDE.md)**](INSTALL_GUIDE.md): In-depth operating system prerequisites, dependency management, and hardware requirements.
+* 🎛️ [**REST & WebSocket API Guide (API_GUIDE.md)**](API_GUIDE.md): Full documentation of all HTTP endpoints, WebSocket messages, and automation webhooks.
+* 🎚️ [**Bitfocus Companion & Stream Deck Guide (integrations/streamdeck_companion.md)**](integrations/streamdeck_companion.md): Hardware setup for live production switchers and button controllers.
+* 🏆 [**Church Sermon Model Benchmark (docs/MODEL_BENCHMARK_REPORT.md)**](docs/MODEL_BENCHMARK_REPORT.md): Comprehensive evaluation of accuracy, proper noun recognition, and latency across all speech models.
 
 ---
 
