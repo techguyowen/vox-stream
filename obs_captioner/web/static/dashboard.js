@@ -1,4 +1,90 @@
 
+// Global Machine Network IP & Base URL Resolver
+let currentLanIp = "";
+let currentPort = window.location.port || "8765";
+
+function getMachineBaseUrl() {
+    if (currentLanIp && currentLanIp !== "127.0.0.1" && currentLanIp !== "0.0.0.0") {
+        return `http://${currentLanIp}:${currentPort}`;
+    }
+    if (window.location.hostname && !window.location.hostname.startsWith("127.") && window.location.hostname !== "localhost") {
+        return window.location.origin;
+    }
+    return `http://127.0.0.1:${currentPort}`;
+}
+
+function updateNetworkUrls(data) {
+    if (!data) return;
+    if (data.lan_ip) currentLanIp = data.lan_ip;
+    if (data.port) currentPort = data.port;
+
+    const base = getMachineBaseUrl();
+    const isNetwork = currentLanIp && currentLanIp !== "127.0.0.1" && currentLanIp !== "0.0.0.0";
+
+    // 1. Header Captions Link
+    const headerCaptionsLink = document.getElementById("btn-header-captions-view");
+    if (headerCaptionsLink) {
+        headerCaptionsLink.href = data.display_url || `${base}/display`;
+        headerCaptionsLink.title = `Open live reader display: ${data.display_url || `${base}/display`}`;
+    }
+
+    // 2. OBS Overlay Live URL display
+    const obsUrlEl = document.getElementById("obs-overlay-live-url");
+    if (obsUrlEl) {
+        const primaryUrl = `${base}/`;
+        if (isNetwork) {
+            obsUrlEl.innerHTML = `<span style="color: #38BDF8; font-weight: 700;">${primaryUrl}</span> <span style="color: #64748B; font-size: 11px; margin-left: 6px;">(Local: http://127.0.0.1:${currentPort}/)</span>`;
+        } else {
+            obsUrlEl.innerHTML = `<span style="color: #38BDF8; font-weight: 700;">${primaryUrl}</span>`;
+        }
+    }
+
+    // 3. Bible Overlay Live URL display
+    const bibleUrlEl = document.getElementById("bible-overlay-live-url");
+    if (bibleUrlEl) {
+        const primaryBibleUrl = `${base}/bible`;
+        if (isNetwork) {
+            bibleUrlEl.innerHTML = `<span style="color: #FBBF24; font-weight: 700;">${primaryBibleUrl}</span> <span style="color: #64748B; font-size: 11px; margin-left: 6px;">(Local: http://127.0.0.1:${currentPort}/bible)</span>`;
+        } else {
+            bibleUrlEl.innerHTML = `<span style="color: #FBBF24; font-weight: 700;">${primaryBibleUrl}</span>`;
+        }
+    }
+
+    // 4. QR Direct Input field & modal
+    if (typeof qrDirectUrl !== "undefined" && qrDirectUrl) {
+        qrDirectUrl.dataset.baseUrl = data.display_url || `${base}/display`;
+        if (typeof updateDisplayQrUrl === "function") {
+            updateDisplayQrUrl();
+        }
+    }
+
+    // 5. Multi-Language Display & Stream URLs Card
+    const streamDisplayEl = document.getElementById("stream-url-display");
+    if (streamDisplayEl) streamDisplayEl.textContent = data.display_url || `${base}/display`;
+
+    const streamOverlayEl = document.getElementById("stream-url-overlay");
+    if (streamOverlayEl) streamOverlayEl.textContent = `${base}/`;
+
+    const streamOverlayEsEl = document.getElementById("stream-url-overlay-es");
+    if (streamOverlayEsEl) streamOverlayEsEl.textContent = `${base}/?lang=es`;
+
+    const streamDashboardEl = document.getElementById("stream-url-dashboard");
+    if (streamDashboardEl) streamDashboardEl.textContent = data.dashboard_url || `${base}/dashboard`;
+
+    // 6. REST API Control Endpoints
+    const apiPanic = document.getElementById("api-url-panic");
+    if (apiPanic) apiPanic.textContent = `POST ${base}/api/control/panic`;
+
+    const apiToggle = document.getElementById("api-url-toggle");
+    if (apiToggle) apiToggle.textContent = `POST ${base}/api/control/toggle`;
+
+    const apiReopen = document.getElementById("api-url-reopen");
+    if (apiReopen) apiReopen.textContent = `POST ${base}/api/control/reopen-screen`;
+
+    const apiPreset = document.getElementById("api-url-preset");
+    if (apiPreset) apiPreset.textContent = `POST ${base}/api/presets/apply`;
+}
+
 function setupA11yPresets() {
     // Accessibility-first workflow preset in Features Modal
     const btnA11yPreset = document.querySelector('.btn-workflow-preset[data-preset="a11y"]');
@@ -460,14 +546,14 @@ function initBibleHandlers() {
     // 1. Populate Live Scripture URL
     const bibleUrlEl = document.getElementById("bible-overlay-live-url");
     if (bibleUrlEl) {
-        bibleUrlEl.textContent = window.location.origin + "/bible";
+        bibleUrlEl.textContent = `${getMachineBaseUrl()}/bible`;
     }
 
     // 2. Copy Scripture URL Button
     const btnCopyBible = document.getElementById("btn-copy-bible-overlay-url");
     if (btnCopyBible) {
         btnCopyBible.addEventListener("click", () => {
-            const url = window.location.origin + "/bible";
+            const url = `${getMachineBaseUrl()}/bible`;
             navigator.clipboard.writeText(url).then(() => {
                 showToast("📋 Copied OBS Scripture Browser Source URL to clipboard!", "success", 3000);
             }).catch(() => {
@@ -648,7 +734,7 @@ function initBibleHandlers() {
     const btnCopyOverlay = document.getElementById("btn-copy-obs-overlay-url");
     if (btnCopyOverlay) {
         btnCopyOverlay.addEventListener("click", () => {
-            const url = window.location.origin + "/";
+            const url = `${getMachineBaseUrl()}/`;
             navigator.clipboard.writeText(url).then(() => {
                 showToast("📋 Copied OBS Browser Source URL to clipboard!", "success", 3000);
             }).catch(() => {
@@ -1078,14 +1164,17 @@ const qrLanguageSelect = document.getElementById("qr-language-select");
 function updateDisplayQrUrl() {
     if (!qrDirectUrl || !qrCodeImg) return;
     const lang = qrLanguageSelect ? qrLanguageSelect.value : "en";
-    let base = qrDirectUrl.dataset.baseUrl || qrDirectUrl.value.split("?")[0];
+    let base = qrDirectUrl.dataset.baseUrl || `${getMachineBaseUrl()}/display`;
     qrDirectUrl.dataset.baseUrl = base;
     const finalUrl = (lang && lang !== "en") ? `${base}?lang=${encodeURIComponent(lang)}` : base;
     qrDirectUrl.value = finalUrl;
     if (qrOpenTabBtn) qrOpenTabBtn.href = finalUrl;
+
+    const host = (currentLanIp && currentLanIp !== "127.0.0.1") ? currentLanIp : "";
+    const hostParam = host ? `&host=${encodeURIComponent(host)}` : "";
     qrCodeImg.src = (lang && lang !== "en")
-        ? `/api/display/qr?lang=${encodeURIComponent(lang)}&t=${Date.now()}`
-        : `/api/display/qr?t=${Date.now()}`;
+        ? `/api/display/qr?lang=${encodeURIComponent(lang)}${hostParam}&t=${Date.now()}`
+        : `/api/display/qr?t=${Date.now()}${hostParam}`;
 }
 
 if (qrLanguageSelect) {
@@ -1098,11 +1187,7 @@ async function openDisplayQrModal() {
         const res = await fetch("/api/network/info");
         if (res.ok) {
             const data = await res.json();
-            if (qrDirectUrl && data.display_url) {
-                qrDirectUrl.dataset.baseUrl = data.display_url;
-                qrDirectUrl.value = data.display_url;
-            }
-            if (qrOpenTabBtn && data.display_url) qrOpenTabBtn.href = data.display_url;
+            updateNetworkUrls(data);
         }
     } catch (e) {
         console.warn("Error fetching network info:", e);
@@ -3475,6 +3560,7 @@ async function refreshEngineStatus() {
         const res = await fetch("/api/status", { cache: "no-store" });
         if (res.ok) {
             const data = await res.json();
+            updateNetworkUrls(data);
             if (data.instance_id) {
                 currentInstanceId = data.instance_id;
             }
@@ -5093,6 +5179,22 @@ window.addEventListener("DOMContentLoaded", async () => {
     loadUpdateStatus(false);
     connectControlWs();
     connectCaptionWs();
+
+    // Setup copy buttons for stream and API links
+    document.querySelectorAll(".btn-copy-code").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const targetId = btn.dataset.target;
+            const targetEl = document.getElementById(targetId);
+            if (targetEl) {
+                const text = targetEl.textContent.trim();
+                navigator.clipboard.writeText(text).then(() => {
+                    showToast(`📋 Copied ${text} to clipboard!`, "success", 3000);
+                }).catch(() => {
+                    showToast(`URL: ${text}`, "info", 4000);
+                });
+            }
+        });
+    });
 
     // Periodic status poll (every 4s)
     setInterval(refreshEngineStatus, 4000);

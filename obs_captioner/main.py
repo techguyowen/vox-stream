@@ -596,9 +596,18 @@ async def main_async(args):
     except Exception:
         pass
 
-    logger.info("OBS Live Captioner ready!")
-    logger.info(f"👉 Web Control Panel & OBS Dock: http://127.0.0.1:{config.overlay.port}/dashboard")
-    logger.info(f"👉 OBS Browser Source URL: http://127.0.0.1:{config.overlay.port}/")
+    from .hardware import get_local_ip
+    lan_ip = get_local_ip()
+    port = config.overlay.port or 8765
+
+    logger.info("═" * 60)
+    logger.info("🎙️  VoxStream Live Captioner Ready!")
+    logger.info(f"👉 Local Dashboard:        http://127.0.0.1:{port}/dashboard")
+    logger.info(f"👉 OBS Browser Source:     http://127.0.0.1:{port}/")
+    if lan_ip and lan_ip != "127.0.0.1":
+        logger.info(f"🌐 Network Dashboard:      http://{lan_ip}:{port}/dashboard")
+        logger.info(f"📱 Mobile & Stage Display: http://{lan_ip}:{port}/display")
+    logger.info("═" * 60)
 
     async def run_pipeline():
         while not shutdown_event.is_set():

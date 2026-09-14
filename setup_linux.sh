@@ -167,9 +167,14 @@ echo -e "${CYAN}   Available Audio Input Devices:${NC}"
 echo -e "${CYAN}======================================================${NC}"
 .venv/bin/python -m obs_captioner.main --list-devices 2>/dev/null || true
 
+LAN_IP=$(.venv/bin/python -c "from obs_captioner.hardware import get_local_ip; print(get_local_ip())" 2>/dev/null || echo "127.0.0.1")
 echo ""
 echo -e "${GREEN}======================================================${NC}"
 echo -e "${GREEN}🎉 Setup complete! You can now start VoxStream:${NC}"
 echo -e "   ${CYAN}./run_captioner.sh${NC}"
-echo -e "   Dashboard available at: ${CYAN}http://127.0.0.1:8765${NC}"
+echo -e "   Local Dashboard:   ${CYAN}http://127.0.0.1:8765/dashboard${NC}"
+if [ "$LAN_IP" != "127.0.0.1" ]; then
+    echo -e "   Network Dashboard: ${CYAN}http://${LAN_IP}:8765/dashboard${NC}"
+    echo -e "   Stage / Mobile:    ${CYAN}http://${LAN_IP}:8765/display${NC}"
+fi
 echo -e "${GREEN}======================================================${NC}"

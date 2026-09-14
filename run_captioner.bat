@@ -63,8 +63,12 @@ if exist "%VENV_DIR%\Lib\site-packages\torchaudio" (
 
 :: 5. Main application loop (supports exit code 42 instant reload)
 :app_loop
+for /f "tokens=*" %%i in ('call "%VENV_PY%" -c "from obs_captioner.hardware import get_local_ip; print(get_local_ip())" 2^>nul') do set "LAN_IP=%%i"
 echo =======================================================
 echo   Starting VoxStream Live Captioner Backend...
+if defined LAN_IP if not "!LAN_IP!"=="127.0.0.1" (
+    echo   Network IP: http://!LAN_IP!:8765
+)
 echo =======================================================
 call "%VENV_PY%" -m obs_captioner.main %*
 set "APP_EXIT_CODE=!errorlevel!"

@@ -20,7 +20,11 @@ if [ ! -d ".venv" ]; then
 fi
 
 while true; do
+    LAN_IP=$("$SCRIPT_DIR/.venv/bin/python" -c "from obs_captioner.hardware import get_local_ip; print(get_local_ip())" 2>/dev/null || echo "127.0.0.1")
     echo "🚀 Starting VoxStream Live Captioner..."
+    if [ "$LAN_IP" != "127.0.0.1" ]; then
+        echo "🌐 Network IP: http://$LAN_IP:8765 (Local: http://127.0.0.1:8765)"
+    fi
     "$SCRIPT_DIR/.venv/bin/python" -m obs_captioner.main "$@"
     EXIT_CODE=$?
 

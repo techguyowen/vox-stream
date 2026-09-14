@@ -589,6 +589,9 @@
             <div class="clock-display" id="clockDisplay">12:00:00 PM</div>
 
             <div class="header-quick-actions">
+                <button class="ctrl-btn" id="btnShareDisplay" title="Share Screen / Show QR Code" aria-label="Share Display" style="background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.4); color: #34D399;">
+                    📱 <span class="settings-label" style="font-size: 11.5px; margin-left: 2px;">Share</span>
+                </button>
                 <button class="ctrl-btn" id="btnOpenSettings" title="Display &amp; Reading Settings (S)" aria-label="Settings" style="background: rgba(56, 189, 248, 0.18); border-color: rgba(56, 189, 248, 0.45); color: #38BDF8;">
                     ⚙️ <span class="settings-label" style="font-size: 11.5px; margin-left: 2px;">Settings</span>
                 </button>
@@ -734,6 +737,29 @@
                     </button>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- Share & QR Modal -->
+    <div id="shareModal" class="modal-backdrop" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);">
+        <div class="modal-content" style="background: #111827; border: 1.5px solid rgba(56, 189, 248, 0.4); border-radius: 16px; padding: 24px; width: 92%; max-width: 400px; box-shadow: 0 24px 48px rgba(0,0,0,0.9); color: #F9FAFB; text-align: center;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.12); padding-bottom: 12px; margin-bottom: 16px;">
+                <h3 style="margin: 0; font-size: 17px; font-weight: 700; color: #38BDF8; display: flex; align-items: center; gap: 8px;">
+                    <span>📱 Scan to Read Along</span>
+                </h3>
+                <button id="btnCloseShare" style="background: none; border: none; color: #9CA3AF; font-size: 24px; font-weight: bold; cursor: pointer; padding: 0 6px; line-height: 1;">✕</button>
+            </div>
+            <p style="font-size: 12.5px; color: #94A3B8; margin-bottom: 14px; line-height: 1.4;">
+                Scan with any phone, tablet, or laptop on the local Wi-Fi to join this live caption read-along screen.
+            </p>
+            <div style="display: flex; justify-content: center; align-items: center; background: #FFFFFF; padding: 12px; border-radius: 12px; margin: 0 auto 16px auto; width: 200px; height: 200px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);">
+                <img id="displayQrImg" src="/api/display/qr" alt="QR Code" width="176" height="176" style="display: block;">
+            </div>
+            <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+                <input type="text" id="displayShareUrl" readonly style="flex: 1; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #38BDF8; font-family: monospace; font-size: 12px; padding: 8px 10px; text-align: center;" value="">
+                <button type="button" id="btnCopyDisplayShare" class="ctrl-btn" style="background: #2563EB; color: #fff; font-weight: 700; font-size: 12px; border: none; padding: 8px 14px; border-radius: 8px; cursor: pointer;">📋 Copy</button>
+            </div>
+            <button id="btnDoneShare" class="ctrl-btn" style="width: 100%; padding: 10px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #fff; font-size: 13.5px; border-radius: 8px; font-weight: 600; cursor: pointer;">Done</button>
         </div>
     </div>
 
@@ -1570,6 +1596,10 @@
                                 statusPill.style.borderColor = "rgba(16, 185, 129, 0.25)";
                                 statusPill.title = `Active Model: ${data.model_detail || data.engine_name || data.engine} | Uptime: ${data.uptime_seconds || 0}s`;
                             }
+                    if (data.display_url) {
+                        displayLanUrl = data.display_url;
+                        if (displayShareUrl && (!displayShareUrl.value || displayShareUrl.value.includes('localhost') || displayShareUrl.value.includes('127.0.0.1'))) {
+                            displayShareUrl.value = data.display_url;
                         }
                     }
                 }
@@ -1663,6 +1693,64 @@
 
         if (btnDismissStageScripture) {
             btnDismissStageScripture.addEventListener("click", dismissStageScripture);
+        }
+
+        // --- Share & QR Modal Handlers for Stage Display ---
+        let displayLanUrl = "";
+        const btnShareDisplay = document.getElementById("btnShareDisplay");
+        const shareModal = document.getElementById("shareModal");
+        const btnCloseShare = document.getElementById("btnCloseShare");
+        const btnDoneShare = document.getElementById("btnDoneShare");
+        const btnCopyDisplayShare = document.getElementById("btnCopyDisplayShare");
+        const displayShareUrl = document.getElementById("displayShareUrl");
+        const displayQrImg = document.getElementById("displayQrImg");
+
+        function openShareModal() {
+            if (!shareModal) return;
+            const currentLang = (langSelect && langSelect.value) ? langSelect.value : "";
+            let target = displayLanUrl || window.location.href.split("#")[0];
+            if (currentLang && currentLang !== "en" && currentLang !== "original") {
+                try {
+                    const urlObj = new URL(target, window.location.origin);
+                    urlObj.searchParams.set("lang", currentLang);
+                    target = urlObj.toString();
+                } catch (e) {
+                    target = `${target}?lang=${encodeURIComponent(currentLang)}`;
+                }
+            }
+            if (displayShareUrl) displayShareUrl.value = target;
+            if (displayQrImg) {
+                const langParam = (currentLang && currentLang !== "en" && currentLang !== "original") ? `?lang=${encodeURIComponent(currentLang)}` : "";
+                displayQrImg.src = `/api/display/qr${langParam}${langParam ? '&' : '?'}t=${Date.now()}`;
+            }
+            shareModal.style.display = "flex";
+        }
+
+        function closeShareModal() {
+            if (shareModal) shareModal.style.display = "none";
+        }
+
+        if (btnShareDisplay) btnShareDisplay.addEventListener("click", openShareModal);
+        if (btnCloseShare) btnCloseShare.addEventListener("click", closeShareModal);
+        if (btnDoneShare) btnDoneShare.addEventListener("click", closeShareModal);
+        if (shareModal) {
+            shareModal.addEventListener("click", (e) => {
+                if (e.target === shareModal) closeShareModal();
+            });
+        }
+        if (btnCopyDisplayShare && displayShareUrl) {
+            btnCopyDisplayShare.addEventListener("click", async () => {
+                try {
+                    await navigator.clipboard.writeText(displayShareUrl.value);
+                    btnCopyDisplayShare.textContent = "✓ Copied!";
+                    setTimeout(() => { btnCopyDisplayShare.textContent = "📋 Copy"; }, 2500);
+                } catch (e) {
+                    displayShareUrl.select();
+                    document.execCommand("copy");
+                    btnCopyDisplayShare.textContent = "✓ Copied!";
+                    setTimeout(() => { btnCopyDisplayShare.textContent = "📋 Copy"; }, 2500);
+                }
+            });
         }
     
     </script>

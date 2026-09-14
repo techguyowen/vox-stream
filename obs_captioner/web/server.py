@@ -319,6 +319,9 @@ class WebOverlayServer:
 
         from ..hardware import get_ram_usage_mb, get_gpu_info, get_available_gpus, get_local_ip
         lan_ip = get_local_ip()
+        req_host = (request.host or "").split(":")[0].strip()
+        if lan_ip == "127.0.0.1" and req_host and req_host not in ("127.0.0.1", "localhost", "0.0.0.0"):
+            lan_ip = req_host
         port = self.config.overlay.port or 8765
         preferred_gpu = getattr(self.config.general, "preferred_gpu", "auto")
         status_info = {
@@ -337,8 +340,11 @@ class WebOverlayServer:
             "preferred_gpu": preferred_gpu,
             "available_gpus": get_available_gpus(),
             "lan_ip": lan_ip,
+            "port": port,
             "display_url": f"http://{lan_ip}:{port}/display",
             "dashboard_url": f"http://{lan_ip}:{port}/dashboard",
+            "overlay_url": f"http://{lan_ip}:{port}/",
+            "bible_url": f"http://{lan_ip}:{port}/bible",
         }
         if self.subtitle_recorder:
             status_info["recording"] = self.subtitle_recorder.get_status()
@@ -357,6 +363,9 @@ class WebOverlayServer:
         """Return LAN IP address and direct mobile/stage display links."""
         from ..hardware import get_local_ip
         lan_ip = get_local_ip()
+        req_host = (request.host or "").split(":")[0].strip()
+        if lan_ip == "127.0.0.1" and req_host and req_host not in ("127.0.0.1", "localhost", "0.0.0.0"):
+            lan_ip = req_host
         port = self.config.overlay.port or 8765
         return web.json_response({
             "lan_ip": lan_ip,
@@ -364,20 +373,39 @@ class WebOverlayServer:
             "display_url": f"http://{lan_ip}:{port}/display",
             "dashboard_url": f"http://{lan_ip}:{port}/dashboard",
             "overlay_url": f"http://{lan_ip}:{port}/",
+            "bible_url": f"http://{lan_ip}:{port}/bible",
         })
 
     async def _handle_get_display_qr(self, request: web.Request) -> web.Response:
-        """Return scalable vector SVG QR code for the Stage Confidence Monitor / Reader Display."""
+        """Return scalable vector SVG QR code for the Stage Confidence Monitor / Reader Display or Dashboard."""
         from ..hardware import get_local_ip
         from ..qr_generator import generate_qr_svg
-        lan_ip = get_local_ip()
+        lan_ip = sanitize_text(request.query.get("host", "")).strip() or sanitize_text(request.query.get("ip", "")).strip()
+        if not lan_ip:
+            lan_ip = get_local_ip()
+            req_host = (request.host or "").split(":")[0].strip()
+            if lan_ip == "127.0.0.1" and req_host and req_host not in ("127.0.0.1", "localhost", "0.0.0.0"):
+                lan_ip = req_host
         port = self.config.overlay.port or 8765
-        lang = sanitize_text(request.query.get("lang", "")).lower().strip()
-        if lang and lang not in ("en", "original", "none"):
-            display_url = f"http://{lan_ip}:{port}/display?lang={urllib.parse.quote(lang)}"
+
+        custom_url = request.query.get("url", "").strip()
+        qr_type = request.query.get("type", "").strip().lower()
+        if custom_url:
+            target_url = custom_url
+        elif qr_type == "dashboard":
+            target_url = f"http://{lan_ip}:{port}/dashboard"
+        elif qr_type == "overlay":
+            target_url = f"http://{lan_ip}:{port}/"
+        elif qr_type == "bible":
+            target_url = f"http://{lan_ip}:{port}/bible"
         else:
-            display_url = f"http://{lan_ip}:{port}/display"
-        svg_content = generate_qr_svg(display_url)
+            lang = sanitize_text(request.query.get("lang", "")).lower().strip()
+            if lang and lang not in ("en", "original", "none"):
+                target_url = f"http://{lan_ip}:{port}/display?lang={urllib.parse.quote(lang)}"
+            else:
+                target_url = f"http://{lan_ip}:{port}/display"
+
+        svg_content = generate_qr_svg(target_url)
         return web.Response(
             body=svg_content,
             content_type="image/svg+xml",
@@ -1529,11 +1557,13 @@ class WebOverlayServer:
                 await self.site.start()
                 self.config.overlay.port = current_port
                 
-                if offset > 0:
-                    logger.warning(f"⚠️ Port {initial_port} was already in use by another app (e.g. REAPER). Auto-switched to port {current_port}!")
-                
-                logger.info(f"✅ Web Control Dashboard live at: http://{host}:{current_port}/dashboard")
-                logger.info(f"✅ Overlay URL: http://{host}:{current_port}/")
+                from ..hardware import get_local_ip
+                lan_ip = get_local_ip()
+                logger.info(f"✅ Local Dashboard:       http://127.0.0.1:{current_port}/dashboard")
+                logger.info(f"✅ OBS Browser Source:     http://127.0.0.1:{current_port}/")
+                if lan_ip and lan_ip != "127.0.0.1":
+                    logger.info(f"🌐 Network Dashboard:     http://{lan_ip}:{current_port}/dashboard")
+                    logger.info(f"📱 Mobile / Stage View:   http://{lan_ip}:{current_port}/display")
                 if getattr(self.config, "update", None) and self.config.update.auto_check and self.updater:
                     self._updater_task = asyncio.create_task(self._auto_check_updates_loop())
                 return True

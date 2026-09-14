@@ -598,24 +598,60 @@ def get_torch_device(preferred_gpu: Optional[str] = "auto") -> Tuple[Any, str]:
 
 
 def get_local_ip() -> str:
-    """Detect the machine's primary local network (LAN) IPv4 address."""
+    """Detect the machine's primary local network (LAN) IPv4 address.
+    Prioritizes physical Wi-Fi and Ethernet adapters over virtual/VPN interfaces.
+    """
     import socket
+
+    # 1. Inspect physical network interfaces via psutil (if available)
+    try:
+        import psutil
+        virtual_prefixes = (
+            "lo", "utun", "tun", "tap", "docker", "veth", "br-", "tailscale",
+            "wg", "virbr", "vmnet", "vbox", "vethernet"
+        )
+        candidates = []
+        for iface, addrs in psutil.net_if_addrs().items():
+            iface_lower = iface.lower()
+            is_virt = any(iface_lower.startswith(v) for v in virtual_prefixes)
+            for addr in addrs:
+                if addr.family == socket.AF_INET and addr.address:
+                    ip = addr.address
+                    if ip.startswith("127.") or ip.startswith("169.254."):
+                        continue
+                    # Check for standard RFC 1918 private subnets
+                    is_private = (
+                        ip.startswith("192.168.") or
+                        ip.startswith("10.") or
+                        (ip.startswith("172.") and 16 <= int(ip.split(".")[1]) <= 31)
+                    )
+                    # Physical private IPs get highest priority (score 10)
+                    score = (8 if not is_virt else 0) + (2 if is_private else 0)
+                    candidates.append((score, ip))
+        if candidates:
+            candidates.sort(key=lambda x: x[0], reverse=True)
+            return candidates[0][1]
+    except Exception:
+        pass
+
+    # 2. Fallback: UDP connect to public DNS (routes to default gateway without sending packets)
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.settimeout(0.5)
-        # Connect to public DNS address without sending network packets
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
         s.close()
-        if ip and not ip.startswith("127."):
+        if ip and not ip.startswith("127.") and not ip.startswith("169.254."):
             return ip
     except Exception:
         pass
 
+    # 3. Fallback: Hostname DNS resolution
     try:
-        ip = socket.gethostbyname(socket.gethostname())
-        if ip and not ip.startswith("127."):
-            return ip
+        host_name = socket.gethostname()
+        for ip in socket.gethostbyname_ex(host_name)[2]:
+            if ip and not ip.startswith("127.") and not ip.startswith("169.254."):
+                return ip
     except Exception:
         pass
 

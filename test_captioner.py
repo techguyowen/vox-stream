@@ -2580,6 +2580,79 @@ class TestHardwareAndMemoryManagement(unittest.IsolatedAsyncioTestCase):
         finally:
             await client.close()
 
+    async def test_status_endpoint_includes_lan_ip_and_urls(self):
+        from obs_captioner.web.server import WebOverlayServer
+        from obs_captioner.config import AppConfig
+        from aiohttp.test_utils import TestClient, TestServer
+
+        cfg = AppConfig()
+        server = WebOverlayServer(cfg)
+        client = TestClient(TestServer(server.app))
+        await client.start_server()
+        try:
+            resp = await client.get("/api/status")
+            self.assertEqual(resp.status, 200)
+            data = await resp.json()
+            self.assertIn("lan_ip", data)
+            self.assertIn("display_url", data)
+            self.assertIn("dashboard_url", data)
+            self.assertIn("overlay_url", data)
+            self.assertIn("bible_url", data)
+            self.assertTrue(data["display_url"].endswith("/display"))
+            self.assertTrue(data["dashboard_url"].endswith("/dashboard"))
+        finally:
+            await client.close()
+
+    async def test_network_info_endpoint(self):
+        from obs_captioner.web.server import WebOverlayServer
+        from obs_captioner.config import AppConfig
+        from aiohttp.test_utils import TestClient, TestServer
+
+        cfg = AppConfig()
+        server = WebOverlayServer(cfg)
+        client = TestClient(TestServer(server.app))
+        await client.start_server()
+        try:
+            resp = await client.get("/api/network/info")
+            self.assertEqual(resp.status, 200)
+            data = await resp.json()
+            self.assertIn("lan_ip", data)
+            self.assertIn("port", data)
+            self.assertIn("display_url", data)
+            self.assertIn("dashboard_url", data)
+            self.assertIn("overlay_url", data)
+            self.assertIn("bible_url", data)
+        finally:
+            await client.close()
+
+    async def test_display_qr_endpoints(self):
+        from obs_captioner.web.server import WebOverlayServer
+        from obs_captioner.config import AppConfig
+        from aiohttp.test_utils import TestClient, TestServer
+
+        cfg = AppConfig()
+        server = WebOverlayServer(cfg)
+        client = TestClient(TestServer(server.app))
+        await client.start_server()
+        try:
+            resp = await client.get("/api/display/qr")
+            self.assertEqual(resp.status, 200)
+            self.assertEqual(resp.headers.get("Content-Type"), "image/svg+xml")
+            text = await resp.text()
+            self.assertIn("<svg", text)
+
+            resp_es = await client.get("/api/display/qr?lang=es")
+            self.assertEqual(resp_es.status, 200)
+            text_es = await resp_es.text()
+            self.assertIn("<svg", text_es)
+
+            resp_dash = await client.get("/api/display/qr?type=dashboard")
+            self.assertEqual(resp_dash.status, 200)
+            text_dash = await resp_dash.text()
+            self.assertIn("<svg", text_dash)
+        finally:
+            await client.close()
+
 
 class TestVersioningAndSemanticUpdater(unittest.TestCase):
     """Unit tests for semantic versioning, bump helpers, and multi-source updater."""

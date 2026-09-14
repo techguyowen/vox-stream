@@ -319,12 +319,17 @@ call "%VENV_PY%" -m obs_captioner.main --list-devices
 echo.
 
 :setup_done
+for /f "tokens=*" %%i in ('call "%VENV_PY%" -c "from obs_captioner.hardware import get_local_ip; print(get_local_ip())" 2^>nul') do set "LAN_IP=%%i"
 echo =======================================================
 echo   [SUCCESS] 100%% Turnkey Setup Complete!
 echo.
 echo   1. A shortcut 'VoxStream Live Captioner' was created
 echo      on your Desktop. Double-click it anytime to run!
-echo   2. Dashboard is available at: http://127.0.0.1:8765
+echo   2. Local Dashboard:   http://127.0.0.1:8765/dashboard
+if defined LAN_IP if not "!LAN_IP!"=="127.0.0.1" (
+    echo   3. Network Dashboard: http://!LAN_IP!:8765/dashboard
+    echo   4. Stage / Mobile:    http://!LAN_IP!:8765/display
+)
 echo =======================================================
 echo.
 echo Setup finished successfully. Press any key to close this window...
