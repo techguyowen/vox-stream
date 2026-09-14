@@ -118,7 +118,8 @@ class SenseVoiceEngine(BaseSTTEngine):
     async def initialize(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
         """Initialize SenseVoice model via FunASR / ONNX Runtime."""
         from ..hardware import get_torch_device
-        torch_dev, device_label = get_torch_device()
+        preferred = getattr(self.config.general, "preferred_gpu", "auto")
+        torch_dev, device_label = get_torch_device(preferred)
         if self.device == "auto":
             self.device = torch_dev
             self._device = torch_dev

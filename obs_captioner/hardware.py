@@ -20,83 +20,88 @@ from typing import Any, Dict, Optional, Tuple
 
 logger = logging.getLogger("obs_captioner.hardware")
 
-# Cached GPU detection result
+# Cached GPU detection results
+_CACHED_AVAILABLE_GPUS: Optional[List[Dict[str, Any]]] = None
 _CACHED_GPU_INFO: Optional[Dict[str, Any]] = None
 
 
-def get_gpu_info(force_refresh: bool = False) -> Dict[str, Any]:
-    """Detect available GPU hardware and capabilities across Windows, macOS, and Linux."""
-    global _CACHED_GPU_INFO
-    if _CACHED_GPU_INFO is not None and not force_refresh:
-        return _CACHED_GPU_INFO
+def _parse_vram_bytes(raw_val: Any) -> int:
+    """Safely decode registry integer or binary memory size into bytes."""
+    if isinstance(raw_val, (int, float)):
+        return int(raw_val)
+    if isinstance(raw_val, (bytes, bytearray)):
+        try:
+            return int.from_bytes(raw_val, byteorder="little")
+        except Exception:
+            return 0
+    return 0
 
-    info: Dict[str, Any] = {
-        "vendor": "CPU",
-        "name": "Standard CPU",
-        "vram_mb": 0,
-        "backend": "CPU",
-        "is_cuda": False,
-        "is_directml": False,
-        "is_mps": False,
-    }
 
-    # 1. Check NVIDIA CUDA via PyTorch
+def get_available_gpus(force_refresh: bool = False) -> List[Dict[str, Any]]:
+    """Enumerate all compute/GPU devices on the system, ranked best-first with CPU fallback."""
+    global _CACHED_AVAILABLE_GPUS
+    if _CACHED_AVAILABLE_GPUS is not None and not force_refresh:
+        return _CACHED_AVAILABLE_GPUS
+
+    gpus: List[Dict[str, Any]] = []
+
+    # Check CUDA capability
+    has_cuda = False
+    cuda_name = None
+    cuda_vram = 0
+    try:
+        from .engines.local_whisper import _setup_windows_cuda_dlls
+        _setup_windows_cuda_dlls()
+    except Exception:
+        pass
+    try:
+        import ctranslate2
+        if ctranslate2.get_cuda_device_count() > 0:
+            has_cuda = True
+    except Exception:
+        pass
     try:
         import torch
         if torch.cuda.is_available():
-            info["vendor"] = "NVIDIA"
-            info["name"] = torch.cuda.get_device_name(0)
-            info["backend"] = "CUDA"
-            info["is_cuda"] = True
+            has_cuda = True
+            cuda_name = torch.cuda.get_device_name(0)
             try:
-                info["vram_mb"] = int(torch.cuda.get_device_properties(0).total_memory / (1024 * 1024))
+                cuda_vram = int(torch.cuda.get_device_properties(0).total_memory / (1024 * 1024))
             except Exception:
                 pass
-            _CACHED_GPU_INFO = info
-            return info
     except Exception:
         pass
 
-    # 2. Check Apple Silicon MPS via PyTorch
-    try:
-        import torch
-        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            info["vendor"] = "Apple"
-            info["name"] = "Apple Silicon GPU (Metal)"
-            info["backend"] = "MPS"
-            info["is_mps"] = True
-            _CACHED_GPU_INFO = info
-            return info
-    except Exception:
-        pass
-
-    # 3. Check DirectML via torch_directml
+    # Check DirectML capability
+    has_directml = False
     try:
         import torch_directml
         if torch_directml.is_available():
-            info["backend"] = "DirectML"
-            info["is_directml"] = True
-            try:
-                name = torch_directml.device_name(0)
-                if name:
-                    info["name"] = name
-                    if "amd" in name.lower() or "radeon" in name.lower():
-                        info["vendor"] = "AMD"
-                    elif "nvidia" in name.lower() or "geforce" in name.lower():
-                        info["vendor"] = "NVIDIA"
-                    elif "intel" in name.lower():
-                        info["vendor"] = "Intel"
-            except Exception:
-                pass
+            has_directml = True
+    except Exception:
+        pass
+    if not has_directml:
+        try:
+            import onnxruntime
+            if "DmlExecutionProvider" in onnxruntime.get_available_providers():
+                has_directml = True
+        except Exception:
+            pass
+
+    # Check Apple Silicon MPS
+    has_mps = False
+    try:
+        import torch
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            has_mps = True
     except Exception:
         pass
 
-    # 4. On Windows, query Display Class in Registry (instant 0ms lookup, no subprocess)
-    if sys.platform == "win32" and info["vendor"] == "CPU":
+    # 1. Windows Hardware Display Adapters
+    if sys.platform == "win32":
         try:
             import winreg
             class_path = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
-            detected_gpus = []
             with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, class_path) as class_key:
                 num_subkeys = winreg.QueryInfoKey(class_key)[0]
                 for i in range(num_subkeys):
@@ -116,42 +121,52 @@ def get_gpu_info(force_refresh: bool = False) -> Dict[str, Any]:
                                 for vram_key in ["HardwareInformation.qwMemorySize", "HardwareInformation.MemorySize"]:
                                     try:
                                         raw_vram, _ = winreg.QueryValueEx(dev_key, vram_key)
-                                        if raw_vram and isinstance(raw_vram, (int, float)) and raw_vram > 0:
-                                            vram_mb = int(raw_vram / (1024 * 1024))
+                                        parsed = _parse_vram_bytes(raw_vram)
+                                        if parsed > 0:
+                                            vram_mb = int(parsed / (1024 * 1024))
                                             break
                                     except OSError:
                                         pass
+
                                 is_discrete = any(k in desc_lower for k in ["geforce", "nvidia", "rtx", "gtx", "radeon", "amd"])
-                                detected_gpus.append({
+                                if "nvidia" in desc_lower or "geforce" in desc_lower or "rtx" in desc_lower or "gtx" in desc_lower:
+                                    vendor = "NVIDIA"
+                                    is_cuda = has_cuda
+                                    backend = "CUDA" if is_cuda else "CPU"
+                                elif "radeon" in desc_lower or "amd" in desc_lower:
+                                    vendor = "AMD"
+                                    is_cuda = False
+                                    backend = "DirectML" if has_directml else "DirectML / OpenMP CPU"
+                                elif "intel" in desc_lower or "arc" in desc_lower:
+                                    vendor = "Intel"
+                                    is_cuda = False
+                                    backend = "DirectML / CPU"
+                                else:
+                                    vendor = "Other"
+                                    is_cuda = False
+                                    backend = "CPU"
+
+                                dev_id = f"gpu_{vendor.lower()}_{len(gpus)}"
+                                gpus.append({
+                                    "id": dev_id,
+                                    "device_id": dev_id,
                                     "name": desc_str,
-                                    "lower": desc_lower,
-                                    "vram_mb": vram_mb,
+                                    "vendor": vendor,
+                                    "vram_mb": vram_mb or (cuda_vram if vendor == "NVIDIA" else 0),
+                                    "backend": backend,
+                                    "is_cuda": is_cuda,
+                                    "is_directml": has_directml or vendor in ("AMD", "Intel"),
+                                    "is_mps": False,
                                     "is_discrete": is_discrete,
+                                    "recommended": False,
                                 })
                     except Exception:
                         pass
-
-            if detected_gpus:
-                # Prioritize discrete GPUs (NVIDIA GeForce/RTX, AMD Radeon) over integrated Intel graphics
-                detected_gpus.sort(key=lambda g: (1 if g["is_discrete"] else 0, g["vram_mb"]), reverse=True)
-                best = detected_gpus[0]
-                info["name"] = best["name"]
-                info["vram_mb"] = best["vram_mb"]
-                b_lower = best["lower"]
-                if "radeon" in b_lower or "amd" in b_lower:
-                    info["vendor"] = "AMD"
-                    info["backend"] = "DirectML / OpenMP CPU"
-                elif "nvidia" in b_lower or "geforce" in b_lower or "rtx" in b_lower or "gtx" in b_lower:
-                    info["vendor"] = "NVIDIA"
-                    info["backend"] = "CUDA"
-                elif "intel" in b_lower or "arc" in b_lower:
-                    info["vendor"] = "Intel"
-                    info["backend"] = "DirectML / CPU"
         except Exception as e:
-            logger.debug(f"winreg GPU detection: {e}")
+            logger.debug(f"winreg available GPUs detection: {e}")
 
-        # 4b. PowerShell fallback if registry didn't find GPU or VRAM was 0
-        if info["vendor"] == "CPU" or info["vram_mb"] == 0:
+        # Fallback to PowerShell if registry was empty
+        if not gpus:
             try:
                 cmd = [
                     "powershell",
@@ -163,50 +178,131 @@ def get_gpu_info(force_refresh: bool = False) -> Dict[str, Any]:
                 if res.returncode == 0 and res.stdout.strip():
                     data = json.loads(res.stdout.strip())
                     items = data if isinstance(data, list) else [data]
-                    discrete_item = None
                     for it in items:
                         c_name = str(it.get("Name", "")).strip()
-                        if any(k in c_name.lower() for k in ["radeon", "amd", "geforce", "nvidia", "rtx", "gtx"]):
-                            discrete_item = it
-                            break
-                    selected = discrete_item or items[0]
-                    detected_name = str(selected.get("Name", "")).strip()
-                    if detected_name and info["vendor"] == "CPU":
-                        info["name"] = detected_name
-                        lower = detected_name.lower()
-                        if "radeon" in lower or "amd" in lower:
-                            info["vendor"] = "AMD"
-                            info["backend"] = "DirectML / OpenMP CPU"
-                        elif "nvidia" in lower or "geforce" in lower:
-                            info["vendor"] = "NVIDIA"
-                            info["backend"] = "CUDA"
-                        elif "intel" in lower:
-                            info["vendor"] = "Intel"
-                            info["backend"] = "DirectML / CPU"
-
-                    if info["vram_mb"] == 0:
-                        raw_ram = selected.get("AdapterRAM")
-                        if raw_ram and isinstance(raw_ram, (int, float)) and raw_ram > 0:
-                            info["vram_mb"] = int(raw_ram / (1024 * 1024))
+                        c_lower = c_name.lower()
+                        if any(k in c_lower for k in ["radeon", "amd", "geforce", "nvidia", "rtx", "gtx", "intel", "arc"]):
+                            is_discrete = any(k in c_lower for k in ["geforce", "nvidia", "rtx", "gtx", "radeon", "amd"])
+                            vendor = "NVIDIA" if ("nvidia" in c_lower or "geforce" in c_lower) else ("AMD" if ("radeon" in c_lower or "amd" in c_lower) else "Intel")
+                            raw_ram = it.get("AdapterRAM", 0) or 0
+                            vram_mb = int(raw_ram / (1024 * 1024)) if raw_ram > 0 else 0
+                            dev_id = f"gpu_{vendor.lower()}_{len(gpus)}"
+                            gpus.append({
+                                "id": dev_id,
+                                "device_id": dev_id,
+                                "name": c_name,
+                                "vendor": vendor,
+                                "vram_mb": vram_mb,
+                                "backend": "CUDA" if (vendor == "NVIDIA" and has_cuda) else "DirectML / CPU",
+                                "is_cuda": vendor == "NVIDIA" and has_cuda,
+                                "is_directml": True,
+                                "is_mps": False,
+                                "is_discrete": is_discrete,
+                                "recommended": False,
+                            })
             except Exception as e:
-                logger.debug(f"PowerShell GPU detection fallback: {e}")
+                logger.debug(f"PowerShell available GPUs fallback: {e}")
 
-    # 5. Check if CUDA is available via CTranslate2 (for Faster-Whisper on NVIDIA GPUs)
-    if not info.get("is_cuda", False):
-        try:
-            from .engines.local_whisper import _setup_windows_cuda_dlls
-            _setup_windows_cuda_dlls()
-            import ctranslate2
-            if ctranslate2.get_cuda_device_count() > 0:
-                info["is_cuda"] = True
-                if info["vendor"] in ("CPU", "Intel"):
-                    info["vendor"] = "NVIDIA"
-                    info["backend"] = "CUDA"
-        except Exception:
-            pass
+    # 2. Apple Silicon
+    elif sys.platform == "darwin" and has_mps:
+        gpus.append({
+            "id": "gpu_apple_0",
+            "device_id": "gpu_apple_0",
+            "name": "Apple Silicon GPU (Metal)",
+            "vendor": "Apple",
+            "vram_mb": 0,
+            "backend": "MPS",
+            "is_cuda": False,
+            "is_directml": False,
+            "is_mps": True,
+            "is_discrete": True,
+            "recommended": True,
+        })
 
-    _CACHED_GPU_INFO = info
-    return info
+    # 3. Linux with CUDA
+    elif sys.platform.startswith("linux") and has_cuda:
+        gpus.append({
+            "id": "gpu_nvidia_0",
+            "device_id": "gpu_nvidia_0",
+            "name": cuda_name or "NVIDIA CUDA GPU",
+            "vendor": "NVIDIA",
+            "vram_mb": cuda_vram,
+            "backend": "CUDA",
+            "is_cuda": True,
+            "is_directml": False,
+            "is_mps": False,
+            "is_discrete": True,
+            "recommended": True,
+        })
+
+    # Deduplicate by name if needed
+    unique_gpus = []
+    seen_names = set()
+    for g in gpus:
+        if g["name"] not in seen_names:
+            seen_names.add(g["name"])
+            unique_gpus.append(g)
+
+    # Sort so discrete GPUs with highest VRAM come first
+    unique_gpus.sort(key=lambda g: (1 if g["is_discrete"] else 0, g["vram_mb"]), reverse=True)
+    if unique_gpus:
+        unique_gpus[0]["recommended"] = True
+
+    # 4. CPU Option is always available as safe fallback
+    cpu_option = {
+        "id": "cpu",
+        "device_id": "cpu",
+        "name": "CPU Only (Safe Mode / Multi-core Int8)",
+        "vendor": "CPU",
+        "vram_mb": 0,
+        "backend": "CPU",
+        "is_cuda": False,
+        "is_directml": False,
+        "is_mps": False,
+        "is_discrete": False,
+        "recommended": False if unique_gpus else True,
+    }
+
+    result = unique_gpus + [cpu_option]
+    _CACHED_AVAILABLE_GPUS = result
+    return result
+
+
+def get_gpu_info(preferred_gpu: Optional[str] = "auto", force_refresh: bool = False) -> Dict[str, Any]:
+    """Detect and return compute/GPU hardware info, respecting preferred_gpu setting.
+    
+    Defaults to the best recommended discrete GPU when preferred_gpu is 'auto' or empty.
+    """
+    global _CACHED_GPU_INFO
+    pref = (preferred_gpu or "auto").strip().lower()
+    
+    # If using cached result with identical preference and not force_refresh
+    if _CACHED_GPU_INFO is not None and not force_refresh and _CACHED_GPU_INFO.get("preferred_gpu") == pref:
+        return _CACHED_GPU_INFO
+
+    all_gpus = get_available_gpus(force_refresh=force_refresh)
+
+    selected = None
+    if pref in ("cpu", "none"):
+        selected = next((g for g in all_gpus if g["id"] == "cpu"), None)
+    elif pref not in ("auto", "default", ""):
+        # Match by ID, vendor, or substring in name
+        for g in all_gpus:
+            if g["id"].lower() == pref or g["vendor"].lower() == pref or pref in g["name"].lower():
+                selected = g
+                break
+
+    if selected is None:
+        # Auto mode: select the best recommended GPU
+        selected = next((g for g in all_gpus if g.get("recommended")), all_gpus[0])
+
+    res = dict(selected)
+    res["id"] = selected.get("id") or selected.get("device_id")
+    res["device_id"] = selected.get("device_id") or selected.get("id")
+    res["preferred_gpu"] = preferred_gpu or "auto"
+    res["available_gpus"] = all_gpus
+    _CACHED_GPU_INFO = res
+    return res
 
 
 def get_ram_usage_mb() -> float:
@@ -435,40 +531,49 @@ def release_stt_memory(old_engine=None, log_details: bool = True) -> float:
     return freed
 
 
-def get_torch_device() -> Tuple[Any, str]:
-    """Determine the optimal PyTorch compute device (DirectML / CUDA / MPS / CPU).
+def get_torch_device(preferred_gpu: Optional[str] = "auto") -> Tuple[Any, str]:
+    """Determine compute device (CUDA / DirectML / MPS / CPU) respecting preferred_gpu setting.
 
     Returns:
         Tuple[device_object_or_string, device_label_string]
     """
-    # 1. DirectML (AMD Radeon RX 580, Intel Arc, etc. on Windows)
-    try:
-        import torch_directml
-        if torch_directml.is_available():
-            dml_device = torch_directml.device()
-            gpu_info = get_gpu_info()
-            label = f"DirectML GPU ({gpu_info.get('name', 'AMD Radeon')})"
-            return dml_device, label
-    except Exception:
-        pass
+    pref = (preferred_gpu or "auto").strip().lower()
+    if pref in ("cpu", "none"):
+        return "cpu", "Standard CPU (Safe Mode)"
 
-    # 2. NVIDIA CUDA
-    try:
-        import torch
-        if torch.cuda.is_available():
-            return "cuda", f"NVIDIA CUDA GPU ({torch.cuda.get_device_name(0)})"
-    except Exception:
-        pass
+    gpu_info = get_gpu_info(preferred_gpu)
+
+    # 1. NVIDIA CUDA
+    if gpu_info.get("is_cuda"):
+        try:
+            import torch
+            if torch.cuda.is_available():
+                return "cuda", f"NVIDIA CUDA GPU ({torch.cuda.get_device_name(0)})"
+        except Exception:
+            pass
+        return "cuda", f"NVIDIA CUDA GPU ({gpu_info.get('name', 'NVIDIA')})"
+
+    # 2. DirectML (AMD Radeon, Intel Arc, etc. on Windows)
+    if gpu_info.get("is_directml"):
+        try:
+            import torch_directml
+            if torch_directml.is_available():
+                dml_device = torch_directml.device()
+                label = f"DirectML GPU ({gpu_info.get('name', 'DirectML')})"
+                return dml_device, label
+        except Exception:
+            pass
 
     # 3. Apple Silicon Metal (MPS)
-    try:
-        import torch
-        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            return "mps", "Apple Silicon GPU (MPS)"
-    except Exception:
-        pass
+    if gpu_info.get("is_mps"):
+        try:
+            import torch
+            if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                return "mps", "Apple Silicon GPU (MPS)"
+        except Exception:
+            pass
 
-    # 4. High-Performance CPU
+    # 4. CPU Fallback
     return "cpu", "CPU"
 
 

@@ -153,8 +153,9 @@ class ParakeetEngine(BaseSTTEngine):
     async def initialize(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
         """Initialize Parakeet model on GPU or CPU."""
         from ..hardware import get_gpu_info, get_torch_device
-        gpu_info = get_gpu_info()
-        self._device, device_label = get_torch_device()
+        preferred = getattr(self.config.general, "preferred_gpu", "auto")
+        gpu_info = get_gpu_info(preferred)
+        self._device, device_label = get_torch_device(preferred)
 
         model_name = self.config.parakeet.model_name or self.DEFAULT_MODEL_NAME
         repo_id = resolve_parakeet_repo(model_name)

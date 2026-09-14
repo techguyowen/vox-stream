@@ -1529,6 +1529,96 @@ async function loadAudioDevices() {
     }
 }
 
+// Load Available System GPUs and populate #preferred_gpu_select
+async function loadAvailableGpus() {
+    try {
+        const res = await fetch("/api/hardware/gpus");
+        if (!res.ok) return;
+        const data = await res.json();
+        const select = document.getElementById("preferred_gpu_select");
+        if (!select) return;
+
+        const currentVal = (currentConfig && currentConfig.general && currentConfig.general.preferred_gpu) || data.preferred_gpu || "auto";
+        select.innerHTML = "";
+
+        // Option 1: Auto (Recommended)
+        const recGpu = (data.gpus || []).find(g => g.recommended && g.device_id !== "cpu");
+        const autoOpt = document.createElement("option");
+        autoOpt.value = "auto";
+        if (recGpu && recGpu.name) {
+            autoOpt.textContent = `⚡ Auto (Best Available: ${recGpu.name})`;
+        } else {
+            autoOpt.textContent = "⚡ Auto (Selects Best GPU with Highest VRAM)";
+        }
+        select.appendChild(autoOpt);
+
+        // Individual GPU Options
+        (data.gpus || []).forEach(gpu => {
+            const opt = document.createElement("option");
+            opt.value = gpu.device_id;
+            let label = gpu.name || gpu.device_id;
+            const details = [];
+            if (gpu.recommended && gpu.device_id !== "cpu") details.push("Recommended");
+            if (gpu.vram_mb > 0) details.push(`${gpu.vram_mb} MB VRAM`);
+            if (gpu.is_cuda) details.push("CUDA");
+            else if (gpu.is_directml) details.push("DirectML");
+            if (details.length > 0) {
+                label += ` [${details.join(" • ")}]`;
+            }
+            opt.textContent = label;
+            select.appendChild(opt);
+        });
+
+        setSelectValue(select, currentVal);
+
+        // Update hint
+        const hint = document.getElementById("preferred_gpu_hint");
+        if (hint && data.active_gpu) {
+            const vramStr = data.active_gpu.vram_mb > 0 ? ` (${data.active_gpu.vram_mb} MB VRAM)` : "";
+            const accelType = data.active_gpu.is_cuda ? " • CUDA Hardware Accelerated" : (data.active_gpu.is_directml ? " • DirectML" : "");
+            hint.innerHTML = `Active AI compute: <strong>${data.active_gpu.name || 'CPU'}</strong>${vramStr}${accelType}. Changes take effect dynamically.`;
+        }
+    } catch (e) {
+        console.error("Failed to load available GPUs:", e);
+    }
+}
+
+function initGpuSelector() {
+    const gpuSelect = document.getElementById("preferred_gpu_select");
+    if (!gpuSelect || gpuSelect.dataset.initialized) return;
+    gpuSelect.dataset.initialized = "true";
+
+    gpuSelect.addEventListener("change", async (e) => {
+        const val = e.target.value;
+        const selText = gpuSelect.options[gpuSelect.selectedIndex] ? gpuSelect.options[gpuSelect.selectedIndex].text : val;
+        showToast(`🔄 Switching AI compute device to: ${selText}...`, "info", 3500);
+
+        try {
+            const resp = await fetch("/api/config", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    general: { preferred_gpu: val }
+                })
+            });
+
+            if (resp.ok) {
+                showToast("✅ AI compute device updated! Reloading speech engine...", "success", 3000);
+                if (currentConfig && currentConfig.general) {
+                    currentConfig.general.preferred_gpu = val;
+                }
+                await refreshEngineStatus();
+                await loadAvailableGpus();
+            } else {
+                showToast("Failed to save GPU preference", "error", 3000);
+            }
+        } catch (err) {
+            console.error("Error saving preferred GPU:", err);
+            showToast("Network error saving GPU preference", "error", 3000);
+        }
+    });
+}
+
 // Set a <select> value, adding the option dynamically if it's missing so an
 // unlisted config value (e.g. a theme's font) can't collapse to "" and get
 // written back to config.json as an empty string on the next auto-sync.
@@ -1706,6 +1796,9 @@ function populateFormFields(cfg) {
     if (cfg.general) {
         document.getElementById("engine_select").value = cfg.general.engine || "vosk";
         document.getElementById("language_select").value = cfg.general.language || "en-US";
+        if (document.getElementById("preferred_gpu_select")) {
+            setSelectValue(document.getElementById("preferred_gpu_select"), cfg.general.preferred_gpu || "auto");
+        }
         if (cfg.general.auto_capitalization !== undefined) {
             document.getElementById("auto_capitalization").checked = !!cfg.general.auto_capitalization;
         }
@@ -2795,6 +2888,7 @@ document.getElementById("btn-save-audio").addEventListener("click", async () => 
 
     const payload = {
         general: {
+            preferred_gpu: document.getElementById("preferred_gpu_select") ? document.getElementById("preferred_gpu_select").value : "auto",
             engine: selectedEngine,
             language: document.getElementById("language_select").value,
             auto_capitalization: document.getElementById("auto_capitalization").checked,
@@ -3526,9 +3620,9 @@ async function refreshEngineStatus() {
             const gpuText = document.getElementById("hardware-gpu-text");
             const ramText = document.getElementById("hardware-ram-text");
             if (gpuText && data.gpu) {
-                const vendorEmoji = (data.gpu.vendor === "AMD") ? "🔴" : (data.gpu.vendor === "NVIDIA") ? "🟢" : (data.gpu.vendor === "Apple") ? "🍎" : "💻";
+                const vendorEmoji = (data.gpu.vendor === "AMD") ? "🔴" : (data.gpu.vendor === "NVIDIA") ? "🟢" : (data.gpu.vendor === "Apple") ? "🍎" : (data.gpu.vendor === "Intel") ? "🔷" : "💻";
                 gpuText.textContent = `${vendorEmoji} ${data.gpu.name || 'CPU'}`;
-                gpuText.title = `GPU: ${data.gpu.name} (${data.gpu.backend || 'CPU'}) • VRAM: ${data.gpu.vram_mb || 0} MB`;
+                gpuText.title = `Compute Device: ${data.gpu.name} (${data.gpu.backend || 'CPU'}) • VRAM: ${data.gpu.vram_mb || 0} MB • Click to select GPU`;
             }
             if (ramText && data.ram_usage_mb !== undefined) {
                 ramText.textContent = `🧠 ${data.ram_usage_mb} MB`;
@@ -4961,6 +5055,23 @@ window.addEventListener("DOMContentLoaded", async () => {
         });
     }
 
+    const hardwarePill = document.getElementById("hardware-pill");
+    if (hardwarePill) {
+        hardwarePill.style.cursor = "pointer";
+        hardwarePill.addEventListener("click", (e) => {
+            if (e.target && (e.target.id === "btn-trim-ram" || e.target.closest("#btn-trim-ram"))) return;
+            const audioTabBtn = document.querySelector('.tab-btn[data-tab="audio"]');
+            if (audioTabBtn) audioTabBtn.click();
+            const gpuSel = document.getElementById("preferred_gpu_select");
+            if (gpuSel) {
+                setTimeout(() => {
+                    gpuSel.scrollIntoView({ behavior: "smooth", block: "center" });
+                    gpuSel.focus();
+                }, 100);
+            }
+        });
+    }
+
     await loadConfig();
     setupPresetCategoryFilters();
     await loadThemes();
@@ -4970,6 +5081,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     initSecretClearHandlers();
     initChurchNameHandlers();
     await loadAudioDevices();
+    await loadAvailableGpus();
+    initGpuSelector();
     await loadObsMonitors();
     await loadVocabularyState();
     await loadFilterState();

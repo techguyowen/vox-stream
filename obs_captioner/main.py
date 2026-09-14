@@ -166,8 +166,9 @@ async def main_async(args):
             "last_caption_time": getattr(sink_obj, "_last_caption_time", 0.0) if sink_obj else 0.0,
             "total_captions": len(hist_obj.entries) if hist_obj else 0,
             "ram_usage_mb": get_ram_usage_mb(),
-            "gpu": get_gpu_info(),
-            "gpu_info": get_gpu_info(),
+            "gpu": get_gpu_info(getattr(config.general, "preferred_gpu", "auto")),
+            "gpu_info": get_gpu_info(getattr(config.general, "preferred_gpu", "auto")),
+            "preferred_gpu": getattr(config.general, "preferred_gpu", "auto"),
         }
 
     async def switch_engine_async(new_cfg: AppConfig):
@@ -240,6 +241,7 @@ async def main_async(args):
                     active_sensevoice_threads = new_cfg.sensevoice.num_threads
                     active_sensevoice_events = new_cfg.sensevoice.detect_events
                     active_sensevoice_language = new_cfg.sensevoice.language
+                    active_preferred_gpu = getattr(new_cfg.general, "preferred_gpu", "auto")
                     logger.info(f"✅ STT engine switched to: {engine.name} ({get_model_detail(new_cfg)})")
                     if web_server:
                         await web_server.broadcast_control({
@@ -280,6 +282,7 @@ async def main_async(args):
                         "is_error": bool(engine_switch_error),
                     })
 
+    active_preferred_gpu = getattr(config.general, "preferred_gpu", "auto")
     active_engine_type = config.general.engine
     active_vosk_model = config.vosk.model_name
     active_whisper_model = config.local_whisper.model_size
@@ -301,7 +304,7 @@ async def main_async(args):
     active_sensevoice_language = config.sensevoice.language
 
     def on_config_updated(new_cfg: AppConfig):
-        nonlocal config, active_engine_type, active_vosk_model, active_whisper_model, active_moonshine_model, active_gemini_key, active_gemini_model, active_bandwidth_key
+        nonlocal config, active_preferred_gpu, active_engine_type, active_vosk_model, active_whisper_model, active_moonshine_model, active_gemini_key, active_gemini_model, active_bandwidth_key
         nonlocal active_sherpa_model, active_sherpa_path, active_sherpa_threads, active_sherpa_device
         nonlocal active_parakeet_model, active_parakeet_device, active_parakeet_threads
         nonlocal active_sensevoice_model, active_sensevoice_device, active_sensevoice_threads, active_sensevoice_events, active_sensevoice_language
@@ -322,6 +325,7 @@ async def main_async(args):
 
         needs_engine_reload = (
             new_cfg.general.engine != active_engine_type
+            or (getattr(new_cfg.general, "preferred_gpu", "auto") != active_preferred_gpu)
             or (new_cfg.general.engine == "vosk" and new_cfg.vosk.model_name != active_vosk_model)
             or (new_cfg.general.engine == "local_whisper" and new_cfg.local_whisper.model_size != active_whisper_model)
             or (new_cfg.general.engine == "moonshine" and new_cfg.moonshine.model_name != active_moonshine_model)

@@ -26,6 +26,7 @@ class GeneralConfig:
     church_mode: bool = True
     church_name: str = "Waypoint Church"
     tray_icon: bool = True  # Enable taskbar system tray icon on desktop systems
+    preferred_gpu: str = "auto"  # "auto", "nvidia", "intel", "cpu", or adapter name
 
 
 @dataclass

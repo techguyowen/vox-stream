@@ -1854,6 +1854,7 @@ class TestSentenceBreakConfiguration(unittest.IsolatedAsyncioTestCase):
 
         await engine.start_streaming(mock_stream(), on_transcript)
         await engine.stop()
+        wf.close()
         self.assertGreater(len(finals), 0)
 
 
@@ -3903,6 +3904,104 @@ class TestSentenceStabilizationAndStitching(unittest.IsolatedAsyncioTestCase):
         res = um._install_dependencies(req_file)
         self.assertIsNotNone(res)
         self.assertEqual(res.returncode, 0)
+
+
+class TestGPUSelectionAndHardwareFeatures(unittest.IsolatedAsyncioTestCase):
+    """Test hardware GPU enumeration, VRAM parsing, GPU ranking, API endpoints, and engine integration."""
+
+    def test_parse_vram_bytes(self):
+        from obs_captioner.hardware import _parse_vram_bytes
+        self.assertEqual(_parse_vram_bytes(8589934592), 8589934592)
+        self.assertEqual(int(_parse_vram_bytes(8589934592) / (1024 * 1024)), 8192)
+        self.assertEqual(_parse_vram_bytes(1073741824), 1073741824)
+        reg_binary_1gb = (1073741824).to_bytes(4, "little")
+        self.assertEqual(_parse_vram_bytes(reg_binary_1gb), 1073741824)
+        reg_binary_8gb = (8589934592).to_bytes(8, "little")
+        self.assertEqual(_parse_vram_bytes(reg_binary_8gb), 8589934592)
+        self.assertEqual(_parse_vram_bytes(None), 0)
+        self.assertEqual(_parse_vram_bytes("invalid"), 0)
+
+    def test_get_available_gpus(self):
+        from obs_captioner.hardware import get_available_gpus
+        gpus = get_available_gpus(force_refresh=True)
+        self.assertIsInstance(gpus, list)
+        self.assertGreaterEqual(len(gpus), 1)
+
+        cpu_entry = next((g for g in gpus if g.get("device_id") == "cpu" or g.get("id") == "cpu"), None)
+        self.assertIsNotNone(cpu_entry)
+        self.assertIn("CPU Only (Safe Mode", cpu_entry["name"])
+
+        recommended_count = sum(1 for g in gpus if g.get("recommended"))
+        self.assertEqual(recommended_count, 1)
+
+    def test_get_gpu_info_auto_vs_explicit(self):
+        from obs_captioner.hardware import get_gpu_info
+        info_auto = get_gpu_info("auto", force_refresh=True)
+        self.assertIsInstance(info_auto, dict)
+        self.assertIn("name", info_auto)
+        self.assertIn("vendor", info_auto)
+
+        info_cpu = get_gpu_info("cpu", force_refresh=True)
+        self.assertEqual(info_cpu["device_id"], "cpu")
+        self.assertEqual(info_cpu["vendor"], "CPU")
+
+    def test_get_torch_device_preferred_gpu(self):
+        from obs_captioner.hardware import get_torch_device
+        dev_cpu, label_cpu = get_torch_device("cpu")
+        self.assertEqual(dev_cpu, "cpu")
+        self.assertIn("Safe Mode", label_cpu)
+
+    async def test_local_whisper_device_selection_cpu(self):
+        from unittest.mock import patch
+        from obs_captioner.config import AppConfig
+        from obs_captioner.engines.local_whisper import LocalWhisperEngine
+
+        cfg = AppConfig()
+        cfg.general.preferred_gpu = "cpu"
+        cfg.audio.enable_vad = False
+        engine = LocalWhisperEngine(cfg)
+
+        with patch("faster_whisper.WhisperModel") as mock_model, \
+             patch("obs_captioner.engines.local_whisper._setup_windows_cuda_dlls"):
+            res = await engine.initialize()
+            self.assertTrue(res)
+            mock_model.assert_called_once()
+            _, kwargs = mock_model.call_args
+            self.assertEqual(kwargs.get("device"), "cpu")
+            self.assertEqual(kwargs.get("compute_type"), "int8")
+            await engine.stop()
+
+    async def test_local_whisper_device_selection_cuda(self):
+        from unittest.mock import patch
+        from obs_captioner.config import AppConfig
+        from obs_captioner.engines.local_whisper import LocalWhisperEngine
+
+        cfg = AppConfig()
+        cfg.general.preferred_gpu = "auto"
+        cfg.audio.enable_vad = False
+        engine = LocalWhisperEngine(cfg)
+
+        mock_gpu = {
+            "device_id": "nvidia_0",
+            "name": "NVIDIA GeForce RTX 2070",
+            "vendor": "NVIDIA",
+            "vram_mb": 8192,
+            "is_cuda": True,
+            "is_directml": True,
+            "recommended": True,
+        }
+
+        with patch("obs_captioner.hardware.get_gpu_info", return_value=mock_gpu):
+            with patch("faster_whisper.WhisperModel") as mock_model, \
+                 patch("obs_captioner.engines.local_whisper._setup_windows_cuda_dlls"):
+                res = await engine.initialize()
+                self.assertTrue(res)
+                mock_model.assert_called_once()
+                _, kwargs = mock_model.call_args
+                self.assertEqual(kwargs.get("device"), "cuda")
+                self.assertEqual(kwargs.get("device_index"), 0)
+                self.assertEqual(kwargs.get("compute_type"), "float16")
+                await engine.stop()
 
 
 if __name__ == "__main__":

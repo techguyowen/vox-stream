@@ -111,47 +111,64 @@ class LocalWhisperEngine(BaseSTTEngine):
             import torch
 
             from ..hardware import get_gpu_info
-            gpu_info = get_gpu_info()
+            preferred = getattr(self.config.general, "preferred_gpu", "auto")
+            gpu_info = get_gpu_info(preferred)
             is_amd = gpu_info.get("vendor") == "AMD"
 
             device = (self.config.local_whisper.device or "auto").strip().lower()
             compute_type = (self.config.local_whisper.compute_type or "auto").strip().lower()
 
             # CTranslate2 supports NVIDIA CUDA and CPU (x86_64 AVX2 / ARM NEON / Accelerate).
-            # On AMD Radeon / Apple Silicon / non-CUDA systems, CTranslate2 uses multi-threaded CPU int8.
-            if device in ("mps", "directml"):
+            # On AMD Radeon / Apple Silicon / non-CUDA systems or when CPU is selected, use multi-threaded CPU int8.
+            if preferred == "cpu" or gpu_info.get("device_id") == "cpu":
+                device = "cpu"
+            elif device in ("mps", "directml"):
                 device = "cpu"
             elif device == "auto":
                 has_cuda = False
-                try:
-                    import ctranslate2
-                    if ctranslate2.get_cuda_device_count() > 0:
-                        has_cuda = True
-                except Exception:
-                    pass
-                if not has_cuda:
+                if gpu_info.get("is_cuda"):
                     try:
-                        if torch.cuda.is_available():
+                        import ctranslate2
+                        if ctranslate2.get_cuda_device_count() > 0:
                             has_cuda = True
                     except Exception:
                         pass
-                if not has_cuda and gpu_info.get("is_cuda"):
-                    has_cuda = True
+                    if not has_cuda:
+                        try:
+                            if torch.cuda.is_available():
+                                has_cuda = True
+                        except Exception:
+                            pass
+                    if not has_cuda:
+                        has_cuda = True
 
                 device = "cuda" if has_cuda else "cpu"
+            elif device == "cuda" and not gpu_info.get("is_cuda") and preferred != "auto":
+                device = "cpu"
 
             if compute_type == "auto":
                 compute_type = "float16" if device == "cuda" else "int8"
 
+            device_index = 0
+            if device == "cuda" and gpu_info.get("device_id", "").startswith("nvidia_"):
+                try:
+                    device_index = int(gpu_info["device_id"].split("_")[1])
+                except Exception:
+                    device_index = 0
+
             model_size = self.resolve_model_name(self.config.local_whisper.model_size)
             if device == "cuda":
                 device_label = f"NVIDIA CUDA GPU ({gpu_info.get('name', 'NVIDIA')})"
+            elif preferred == "cpu" or gpu_info.get("device_id") == "cpu":
+                device_label = "CPU Only (Safe Mode)"
+            elif gpu_info.get("vendor") == "Intel":
+                device_label = f"CPU Accelerated ({gpu_info.get('name', 'Intel Graphics')})"
             elif is_amd:
                 device_label = f"CPU int8 ({gpu_info.get('name', 'AMD Radeon')} Host)"
             else:
                 device_label = "CPU int8 (Accelerate)"
 
-            logger.info(f"Faster-Whisper loading on {device_label} [device={device}, compute_type={compute_type}]")
+            logger.info(f"Faster-Whisper loading on {device_label} [device={device}, device_index={device_index}, compute_type={compute_type}]")
             if status_callback:
                 status_callback(f"Loading Faster-Whisper '{model_size}' on {device_label} ({compute_type})...")
 
@@ -161,6 +178,7 @@ class LocalWhisperEngine(BaseSTTEngine):
                     return WhisperModel(
                         model_size,
                         device=device,
+                        device_index=device_index,
                         compute_type=compute_type,
                         cpu_threads=threads,
                     )

@@ -185,6 +185,7 @@ class WebOverlayServer:
         self.app.router.add_post("/api/config", self._handle_post_config)
         self.app.router.add_get("/api/devices", self._handle_get_devices)
         self.app.router.add_get("/api/audio/devices", self._handle_get_devices)
+        self.app.router.add_get("/api/hardware/gpus", self._handle_get_hardware_gpus)
         self.app.router.add_get("/api/presets", self._handle_get_presets)
         self.app.router.add_post("/api/presets/apply", self._handle_apply_preset)
         self.app.router.add_post("/api/presets/save", self._handle_save_preset)
@@ -316,9 +317,10 @@ class WebOverlayServer:
         if not self.rate_limiter.is_allowed(client_ip):
             return web.json_response({"error": "Rate limit exceeded"}, status=429)
 
-        from ..hardware import get_ram_usage_mb, get_gpu_info, get_local_ip
+        from ..hardware import get_ram_usage_mb, get_gpu_info, get_available_gpus, get_local_ip
         lan_ip = get_local_ip()
         port = self.config.overlay.port or 8765
+        preferred_gpu = getattr(self.config.general, "preferred_gpu", "auto")
         status_info = {
             "engine": self.config.general.engine,
             "language": self.config.general.language,
@@ -331,7 +333,9 @@ class WebOverlayServer:
             "server_start_time": self.server_start_time,
             "uptime_seconds": round(time.time() - self.server_start_time, 1),
             "ram_usage_mb": get_ram_usage_mb(),
-            "gpu": get_gpu_info(),
+            "gpu": get_gpu_info(preferred_gpu),
+            "preferred_gpu": preferred_gpu,
+            "available_gpus": get_available_gpus(),
             "lan_ip": lan_ip,
             "display_url": f"http://{lan_ip}:{port}/display",
             "dashboard_url": f"http://{lan_ip}:{port}/dashboard",
@@ -524,6 +528,16 @@ class WebOverlayServer:
     async def _handle_get_devices(self, request: web.Request) -> web.Response:
         devices = list_audio_devices()
         return web.json_response({"devices": devices})
+
+    async def _handle_get_hardware_gpus(self, request: web.Request) -> web.Response:
+        """Return list of available system GPUs, selected preference, and active GPU."""
+        from ..hardware import get_available_gpus, get_gpu_info
+        preferred = getattr(self.config.general, "preferred_gpu", "auto")
+        return web.json_response({
+            "gpus": get_available_gpus(),
+            "preferred_gpu": preferred,
+            "active_gpu": get_gpu_info(preferred),
+        })
 
     async def _handle_get_presets(self, request: web.Request) -> web.Response:
         return web.json_response({"presets": get_all_presets(self.config.custom_presets)})
