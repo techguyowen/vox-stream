@@ -184,7 +184,8 @@ class CaptionSink:
             return
 
         # Music Suppression Check
-        if getattr(self.config.audio, "suppress_music", True) and is_music_text(raw_text):
+        strict_music = getattr(self.config.audio, "suppress_music_strict", False)
+        if getattr(self.config.audio, "suppress_music", True) and is_music_text(raw_text, strict=strict_music):
             if event.is_final:
                 logger.info(f"✓ [FINAL]   🎵 [MUSIC SUPPRESSED] {raw_text}")
                 self._utterance_active = False

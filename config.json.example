@@ -17,7 +17,8 @@
     "vad_threshold": 0.35,
     "noise_gate_db": -52,
     "sentence_break_ms": 650,
-    "suppress_music": true
+    "suppress_music": true,
+    "suppress_music_strict": false
   },
   "vocabulary": {
     "enabled": true,

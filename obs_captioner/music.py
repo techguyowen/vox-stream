@@ -112,7 +112,7 @@ def is_repetition_loop(text: str) -> bool:
     return False
 
 
-def is_orphan_noise(text: str) -> bool:
+def is_orphan_noise(text: str, strict: bool = False) -> bool:
     """Detect isolated 1-2 word noise fragments/clicks during pauses or music (e.g. 'It.', 'Sun.', 'S new.', 'In.')."""
     if not text:
         return False
@@ -121,7 +121,17 @@ def is_orphan_noise(text: str) -> bool:
         return False
 
     if len(words) == 1:
+        if strict:
+            # In strict mode, single orphan words (except sacred essentials) are dropped during music
+            if words[0] in {"amen", "hallelujah", "jesus", "christ", "god", "pray", "praying", "prayer", "bible"}:
+                return False
+            return True
         return words[0] in ORPHAN_NOISE_WORDS
+
+    if len(words) <= 3 and strict:
+        # In strict mode, drop fragmented 2-3 word lyric mutterings
+        if all(w in ORPHAN_NOISE_WORDS or w in {"friend", "liar", "water", "speak", "wait", "side", "bye", "sigh", "now", "glory", "thee"} for w in words):
+            return True
 
     if len(words) == 2:
         phrase = " ".join(words)
@@ -133,7 +143,7 @@ def is_orphan_noise(text: str) -> bool:
     return False
 
 
-def is_music_text(text: str) -> bool:
+def is_music_text(text: str, strict: bool = False) -> bool:
     """Return True if the transcript is identified as music, singing, or a music hallucination."""
     if not text:
         return False
@@ -171,7 +181,7 @@ def is_music_text(text: str) -> bool:
         return True
 
     # 5. Orphan single-token noise click artifacts (e.g. 'It.', 'Sun.', 'S new.', 'And.')
-    if is_orphan_noise(stripped):
+    if is_orphan_noise(stripped, strict=strict):
         return True
 
     return False
@@ -183,6 +193,8 @@ class AcousticMusicDetector:
     Analyzes spectral flatness and zero-crossing rates over 1.0–1.5s sliding windows.
     Sustained musical chords (organ, worship synth pads, piano decay) exhibit near-zero
     spectral flatness and harmonic stability without the rapid consonant transients of speech.
+    Supports a Strict mode that accommodates full worship band percussion and introduces a
+    3-second hold hangover so singing between bars is completely silenced.
     """
 
     def __init__(self, window_frames: int = 12):
@@ -190,17 +202,20 @@ class AcousticMusicDetector:
         # Each entry: (rms_db, spectral_flatness, zcr)
         self._history: Deque[Tuple[float, float, float]] = collections.deque(maxlen=window_frames)
         self.music_detected: bool = False
+        self._music_hold_counter: int = 0
 
     def reset(self) -> None:
         """Clear analysis history."""
         self._history.clear()
         self.music_detected = False
+        self._music_hold_counter = 0
 
     def process_chunk(
         self,
         audio_chunk_bytes: bytes,
         sample_rate: int = 16000,
         noise_gate_db: float = -45.0,
+        strict: bool = False,
     ) -> bool:
         """Process one 100ms PCM chunk and return True if sustained acoustic music is detected."""
         if np is None or not audio_chunk_bytes:
@@ -219,6 +234,9 @@ class AcousticMusicDetector:
             rms = np.sqrt(np.mean(samples ** 2))
             if rms <= 0:
                 self._history.append((-100.0, 1.0, 0.0))
+                if self._music_hold_counter > 0:
+                    self._music_hold_counter -= 1
+                    return True
                 self.music_detected = False
                 return False
 
@@ -226,6 +244,9 @@ class AcousticMusicDetector:
             if rms_db < noise_gate_db:
                 # Below noise gate -> silence/inactive
                 self._history.append((rms_db, 1.0, 0.0))
+                if self._music_hold_counter > 0:
+                    self._music_hold_counter -= 1
+                    return True
                 self.music_detected = False
                 return False
 
@@ -253,11 +274,17 @@ class AcousticMusicDetector:
 
             # Need at least 6 frames (~600ms) of history to evaluate stability
             if len(self._history) < 6:
+                if self._music_hold_counter > 0:
+                    self._music_hold_counter -= 1
+                    return True
                 return False
 
             # Filter for active frames (above noise gate)
             active_frames = [f for f in self._history if f[0] >= noise_gate_db]
             if len(active_frames) < 5:
+                if self._music_hold_counter > 0:
+                    self._music_hold_counter -= 1
+                    return True
                 self.music_detected = False
                 return False
 
@@ -270,18 +297,32 @@ class AcousticMusicDetector:
             max_zcr = float(np.max(zcr_values))
 
             # Acoustic music signature:
-            # - Very low spectral flatness (< 0.045) indicating discrete harmonic musical pitches
-            # - Low variance in flatness (< 0.025) indicating sustained chords/pads without consonant transients
-            # - Low ZCR without high-frequency unvoiced consonant bursts (mean_zcr < 0.16, max_zcr < 0.25)
+            # In strict mode: thresholds are broader to reliably detect full worship bands with drums/percussion
+            flatness_limit = 0.085 if strict else 0.045
+            std_flatness_limit = 0.038 if strict else 0.025
+            zcr_limit = 0.24 if strict else 0.16
+            max_zcr_limit = 0.32 if strict else 0.25
+
             is_tonal_music = (
-                mean_flatness < 0.045
-                and std_flatness < 0.025
-                and mean_zcr < 0.16
-                and max_zcr < 0.25
+                mean_flatness < flatness_limit
+                and std_flatness < std_flatness_limit
+                and mean_zcr < zcr_limit
+                and max_zcr < max_zcr_limit
             )
 
-            self.music_detected = is_tonal_music
-            return self.music_detected
+            if is_tonal_music:
+                # Hold hangover: 30 frames (3.0s) in strict mode, 10 frames (1.0s) in standard mode
+                self._music_hold_counter = 30 if strict else 10
+                self.music_detected = True
+                return True
+
+            if self._music_hold_counter > 0:
+                self._music_hold_counter -= 1
+                self.music_detected = True
+                return True
+
+            self.music_detected = False
+            return False
 
         except Exception as e:
             logger.debug(f"Acoustic music analysis error: {e}")

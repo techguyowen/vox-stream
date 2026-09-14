@@ -29,11 +29,13 @@ class VoiceActivityDetector:
         vad_threshold: float = 0.5,
         enable_silero: bool = True,
         suppress_music: bool = True,
+        suppress_music_strict: bool = False,
     ):
         self.sample_rate = sample_rate
         self.noise_gate_db = noise_gate_db
         self.vad_threshold = vad_threshold
         self.suppress_music = suppress_music
+        self.suppress_music_strict = suppress_music_strict
         self.music_detector = AcousticMusicDetector()
         self.silero_model = None
         self.silero_mode = None  # "torch" or "onnx"
@@ -97,13 +99,16 @@ class VoiceActivityDetector:
         self.noise_gate_db = getattr(audio_config, "noise_gate_db", self.noise_gate_db)
         self.vad_threshold = getattr(audio_config, "vad_threshold", self.vad_threshold)
         self.suppress_music = getattr(audio_config, "suppress_music", self.suppress_music)
+        self.suppress_music_strict = getattr(audio_config, "suppress_music_strict", self.suppress_music_strict)
 
-    def is_music(self, audio_chunk_bytes: bytes) -> bool:
+    def is_music(self, audio_chunk_bytes: bytes, strict: Optional[bool] = None) -> bool:
         """Return True if sustained acoustic music (chords, organ, worship pads) is detected."""
+        use_strict = strict if strict is not None else self.suppress_music_strict
         return self.music_detector.process_chunk(
             audio_chunk_bytes,
             sample_rate=self.sample_rate,
             noise_gate_db=self.noise_gate_db,
+            strict=use_strict,
         )
 
     def calculate_rms_db(self, audio_chunk_bytes: bytes) -> float:
@@ -172,7 +177,11 @@ class VoiceActivityDetector:
                         if prob > max_prob:
                             max_prob = prob
 
-                # If sustained music is detected and speech confidence is not decisively high, suppress speech
+                # In strict mode, any detected sustained music completely suppresses speech (silencing singing/worship)
+                if is_music_active and self.suppress_music_strict:
+                    return False
+
+                # In standard mode, allow clear speech over background music if confidence is high (e.g. pastor speaking over organ/pad)
                 if is_music_active and max_prob < 0.75:
                     return False
 

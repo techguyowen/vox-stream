@@ -51,6 +51,7 @@ class SenseVoiceEngine(BaseSTTEngine):
             vad_threshold=config.audio.vad_threshold,
             enable_silero=getattr(config.audio, "enable_vad", True),
             suppress_music=getattr(config.audio, "suppress_music", True),
+            suppress_music_strict=getattr(config.audio, "suppress_music_strict", False),
         )
 
     def _find_model_dir(self) -> Optional[Path]:

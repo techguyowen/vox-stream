@@ -25,6 +25,7 @@ import aiohttp
 
 from .base import BaseSTTEngine, CaptionCallback, TranscriptEvent
 from ..config import AppConfig
+from ..music import is_music_text
 from ..vad import VoiceActivityDetector
 
 logger = logging.getLogger("obs_captioner.engine.gemini")
@@ -50,6 +51,7 @@ class GeminiLiveEngine(BaseSTTEngine):
             vad_threshold=config.audio.vad_threshold,
             enable_silero=getattr(config.audio, "enable_vad", True),
             suppress_music=getattr(config.audio, "suppress_music", True),
+            suppress_music_strict=getattr(config.audio, "suppress_music_strict", False),
         )
 
     @staticmethod
@@ -436,6 +438,24 @@ class GeminiLiveEngine(BaseSTTEngine):
                                 even_len = len(chunk) & ~1
                                 pcm_chunk = chunk[:even_len]
 
+                                # Music suppression gating:
+                                # When strict music suppression is active and acoustic music is detected,
+                                # halt streaming audio to Gemini so singing and worship instruments are completely silenced.
+                                suppress_music = getattr(self.config.audio, "suppress_music", True)
+                                strict_music = getattr(self.config.audio, "suppress_music_strict", False)
+                                is_music_active = False
+                                if suppress_music:
+                                    is_music_active = self.vad.is_music(pcm_chunk, strict=strict_music)
+
+                                if suppress_music and strict_music and is_music_active:
+                                    if speech_active:
+                                        speech_active = False
+                                        try:
+                                            await ws.send_str(json.dumps({"realtimeInput": {"audioStreamEnd": True}}))
+                                        except Exception:
+                                            pass
+                                    continue
+
                                 # Base64 encode raw PCM audio chunk
                                 b64_audio = base64.b64encode(pcm_chunk).decode("utf-8")
                                 audio_payload = {
@@ -488,7 +508,13 @@ class GeminiLiveEngine(BaseSTTEngine):
 
                                     events = self.parse_server_message(data)
                                     is_trans_model = "translate" in getattr(self.config.gemini_live, "model", "").lower()
+                                    suppress_music = getattr(self.config.audio, "suppress_music", True)
+                                    strict_music = getattr(self.config.audio, "suppress_music_strict", False)
                                     for text, is_final in events:
+                                        if suppress_music:
+                                            if (strict_music and self.vad.music_detector.music_detected) or is_music_text(text, strict=strict_music):
+                                                logger.debug(f"Gemini Live suppressed singing/music text: {text}")
+                                                continue
                                         await on_transcript(
                                             TranscriptEvent(
                                                 text=text,

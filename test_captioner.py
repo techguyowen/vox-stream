@@ -1965,6 +1965,68 @@ class TestMusicSuppressionAndOverlayMinimumDuration(unittest.IsolatedAsyncioTest
         vad.update_config(AudioConfig(suppress_music=False))
         self.assertFalse(vad.suppress_music)
 
+    def test_music_suppression_strict_config_and_vad(self):
+        from obs_captioner.vad import VoiceActivityDetector
+        from obs_captioner.config import AudioConfig
+
+        ac_default = AudioConfig()
+        self.assertFalse(ac_default.suppress_music_strict)
+
+        ac_strict = AudioConfig(suppress_music_strict=True)
+        self.assertTrue(ac_strict.suppress_music_strict)
+
+        vad = VoiceActivityDetector(suppress_music=True, suppress_music_strict=False)
+        self.assertFalse(vad.suppress_music_strict)
+
+        vad.update_config(ac_strict)
+        self.assertTrue(vad.suppress_music_strict)
+
+    def test_acoustic_music_detector_strict_hangover(self):
+        import numpy as np
+        from obs_captioner.music import AcousticMusicDetector
+
+        detector = AcousticMusicDetector(window_frames=8)
+        sr = 16000
+        duration = 0.1
+        t = np.linspace(0, duration, int(sr * duration), endpoint=False)
+        chord = (
+            0.25 * np.sin(2 * np.pi * 261.6 * t)
+            + 0.25 * np.sin(2 * np.pi * 329.6 * t)
+            + 0.25 * np.sin(2 * np.pi * 392.0 * t)
+        )
+        chord_bytes = (chord * 32767).astype(np.int16).tobytes()
+
+        # In strict mode, trigger detection
+        for _ in range(8):
+            is_music = detector.process_chunk(chord_bytes, sample_rate=sr, noise_gate_db=-45.0, strict=True)
+        self.assertTrue(is_music)
+        # Check that hangover counter is set to 30 in strict mode
+        self.assertEqual(detector._music_hold_counter, 30)
+
+        # In standard mode
+        detector.reset()
+        for _ in range(8):
+            is_music = detector.process_chunk(chord_bytes, sample_rate=sr, noise_gate_db=-45.0, strict=False)
+        self.assertTrue(is_music)
+        self.assertEqual(detector._music_hold_counter, 10)
+
+    def test_orphan_noise_strict_mode(self):
+        from obs_captioner.music import is_orphan_noise, is_music_text
+
+        # In strict mode, single orphan words (except sacred words) are dropped
+        self.assertTrue(is_orphan_noise("friend", strict=True))
+        self.assertFalse(is_orphan_noise("friend", strict=False))
+
+        # Sacred essentials are preserved even in strict mode
+        self.assertFalse(is_orphan_noise("amen", strict=True))
+        self.assertFalse(is_orphan_noise("jesus", strict=True))
+        self.assertFalse(is_orphan_noise("prayer", strict=True))
+
+        # 2-3 word lyric mutterings dropped in strict mode
+        self.assertTrue(is_orphan_noise("friend liar", strict=True))
+        self.assertTrue(is_music_text("friend liar", strict=True))
+        self.assertFalse(is_music_text("friend liar", strict=False))
+
     async def test_auto_clear_respects_min_display_seconds(self):
         import time
         from obs_captioner.config import AppConfig

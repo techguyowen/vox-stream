@@ -1766,6 +1766,10 @@ function populateFormFields(cfg) {
             const smEl = document.getElementById("suppress_music");
             if (smEl) smEl.checked = !!cfg.audio.suppress_music;
         }
+        if (cfg.audio.suppress_music_strict !== undefined) {
+            const smsEl = document.getElementById("suppress_music_strict");
+            if (smsEl) smsEl.value = cfg.audio.suppress_music_strict ? "true" : "false";
+        }
         if (cfg.audio.enable_agc !== undefined) {
             const agcEl = document.getElementById("enable_agc");
             if (agcEl) agcEl.checked = !!cfg.audio.enable_agc;
@@ -2813,6 +2817,7 @@ document.getElementById("btn-save-audio").addEventListener("click", async () => 
             max_sentence_duration_seconds: parseFloat(document.getElementById("max_sentence_slider").value),
             max_sentence_words: parseInt(document.getElementById("max_words_slider") ? document.getElementById("max_words_slider").value : "24", 10) || 24,
             suppress_music: document.getElementById("suppress_music") ? document.getElementById("suppress_music").checked : true,
+            suppress_music_strict: document.getElementById("suppress_music_strict") ? (document.getElementById("suppress_music_strict").value === "true") : false,
             enable_agc: document.getElementById("enable_agc") ? document.getElementById("enable_agc").checked : true,
         },
         bandwidth: {
