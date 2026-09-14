@@ -726,6 +726,11 @@
                     </select>
                 </div>
 
+                <!-- Share QR button inside Settings -->
+                <button id="btnSettingsShareQr" class="ctrl-btn" style="padding: 10px; font-weight: 700; width: 100%; justify-content: center; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #7DD3FC; font-size: 13.5px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                    📱 Share Live Screen / QR Code
+                </button>
+
                 <!-- Install PWA Button inside Settings -->
                 <button id="btnInstallPwa" class="ctrl-btn" style="display: none; padding: 10px; font-weight: 700; width: 100%; justify-content: center; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #60A5FA; font-size: 13px; border-radius: 8px; cursor: pointer;">
                     📲 Install Stage Display PWA
@@ -1573,6 +1578,8 @@
             return clean;
         }
 
+        let displayLanUrl = "";
+
         async function updateDisplayStatus() {
             try {
                 const res = await fetch('/api/status');
@@ -1596,10 +1603,13 @@
                                 statusPill.style.borderColor = "rgba(16, 185, 129, 0.25)";
                                 statusPill.title = `Active Model: ${data.model_detail || data.engine_name || data.engine} | Uptime: ${data.uptime_seconds || 0}s`;
                             }
+                        }
+                    }
                     if (data.display_url) {
                         displayLanUrl = data.display_url;
-                        if (displayShareUrl && (!displayShareUrl.value || displayShareUrl.value.includes('localhost') || displayShareUrl.value.includes('127.0.0.1'))) {
-                            displayShareUrl.value = data.display_url;
+                        const shareInput = document.getElementById("displayShareUrl");
+                        if (shareInput && (!shareInput.value || shareInput.value.includes('localhost') || shareInput.value.includes('127.0.0.1'))) {
+                            shareInput.value = data.display_url;
                         }
                     }
                 }
@@ -1696,7 +1706,6 @@
         }
 
         // --- Share & QR Modal Handlers for Stage Display ---
-        let displayLanUrl = "";
         const btnShareDisplay = document.getElementById("btnShareDisplay");
         const shareModal = document.getElementById("shareModal");
         const btnCloseShare = document.getElementById("btnCloseShare");
@@ -1720,8 +1729,17 @@
             }
             if (displayShareUrl) displayShareUrl.value = target;
             if (displayQrImg) {
-                const langParam = (currentLang && currentLang !== "en" && currentLang !== "original") ? `?lang=${encodeURIComponent(currentLang)}` : "";
-                displayQrImg.src = `/api/display/qr${langParam}${langParam ? '&' : '?'}t=${Date.now()}`;
+                const langParam = (currentLang && currentLang !== "en" && currentLang !== "original") ? `&lang=${encodeURIComponent(currentLang)}` : "";
+                let hostParam = "";
+                if (displayLanUrl) {
+                    try {
+                        const parsed = new URL(displayLanUrl);
+                        if (parsed.hostname && parsed.hostname !== "127.0.0.1" && parsed.hostname !== "localhost") {
+                            hostParam = `&host=${encodeURIComponent(parsed.hostname)}`;
+                        }
+                    } catch (e) {}
+                }
+                displayQrImg.src = `/api/display/qr?t=${Date.now()}${langParam}${hostParam}`;
             }
             shareModal.style.display = "flex";
         }
@@ -1731,6 +1749,13 @@
         }
 
         if (btnShareDisplay) btnShareDisplay.addEventListener("click", openShareModal);
+        const btnSettingsShareQr = document.getElementById("btnSettingsShareQr");
+        if (btnSettingsShareQr) {
+            btnSettingsShareQr.addEventListener("click", () => {
+                if (settingsModal) settingsModal.style.display = "none";
+                openShareModal();
+            });
+        }
         if (btnCloseShare) btnCloseShare.addEventListener("click", closeShareModal);
         if (btnDoneShare) btnDoneShare.addEventListener("click", closeShareModal);
         if (shareModal) {

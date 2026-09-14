@@ -28,6 +28,12 @@ function updateNetworkUrls(data) {
         headerCaptionsLink.title = `Open live reader display: ${data.display_url || `${base}/display`}`;
     }
 
+    // 1b. Captions Display Pill
+    const pillCaptionsDisplayUrl = document.getElementById("pill-captions-display-url");
+    if (pillCaptionsDisplayUrl) {
+        pillCaptionsDisplayUrl.textContent = data.display_url || `${base}/display`;
+    }
+
     // 2. OBS Overlay Live URL display
     const obsUrlEl = document.getElementById("obs-overlay-live-url");
     if (obsUrlEl) {
@@ -1201,6 +1207,11 @@ function closeDisplayQrModal() {
 }
 
 if (btnHeaderQr) btnHeaderQr.addEventListener("click", openDisplayQrModal);
+const btnHeaderCaptionsQr = document.getElementById("btn-header-captions-qr");
+if (btnHeaderCaptionsQr) btnHeaderCaptionsQr.addEventListener("click", openDisplayQrModal);
+document.querySelectorAll(".btn-open-captions-qr").forEach(btn => {
+    btn.addEventListener("click", openDisplayQrModal);
+});
 if (btnCloseQrModal) btnCloseQrModal.addEventListener("click", closeDisplayQrModal);
 if (btnDoneQr) btnDoneQr.addEventListener("click", closeDisplayQrModal);
 if (modalDisplayQr) {
