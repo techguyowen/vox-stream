@@ -275,25 +275,32 @@ reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\
 echo [SUCCESS] Windows microphone access verified.
 
 :: Configure Windows Defender Firewall for port 8765
-echo [INFO] Configuring Windows Defender Firewall for port 8765...
+echo [INFO] Checking Windows Defender Firewall for port 8765...
 netsh advfirewall firewall show rule name="VoxStream Overlay TCP 8765" >nul 2>&1
 if !errorlevel! equ 0 (
     echo [SUCCESS] Windows Defender Firewall rule is already active for port 8765.
-) else (
-    netsh advfirewall firewall add rule name="VoxStream Overlay TCP 8765" dir=in action=allow protocol=TCP localport=8765 profile=any description="Allows inbound connections to VoxStream overlay, stage display, and control dashboard" >nul 2>&1
-    if !errorlevel! equ 0 (
-        echo [SUCCESS] Windows Defender Firewall opened for port 8765!
-    ) else (
-        echo [INFO] Requesting Administrator permission (UAC) to configure firewall rule...
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process cmd.exe -ArgumentList '/c \"\"%ROOT_DIR%\setup_firewall.bat\" /add' -Verb RunAs -Wait" >nul 2>&1
-        netsh advfirewall firewall show rule name="VoxStream Overlay TCP 8765" >nul 2>&1
-        if !errorlevel! equ 0 (
-            echo [SUCCESS] Windows Defender Firewall opened for port 8765!
-        ) else (
-            echo [NOTE] Firewall rule was not added. You can add it anytime by running setup_firewall.bat
-        )
-    )
+    goto :firewall_done
 )
+
+:: Attempt direct rule addition (works immediately if run as administrator)
+netsh advfirewall firewall add rule name="VoxStream Overlay TCP 8765" dir=in action=allow protocol=TCP localport=8765 profile=any description="Allows inbound connections to VoxStream overlay, stage display, and control dashboard" >nul 2>&1
+if !errorlevel! equ 0 (
+    echo [SUCCESS] Windows Defender Firewall opened for port 8765!
+    goto :firewall_done
+)
+
+:: Non-elevated: attempt elevation via PowerShell
+echo [INFO] Requesting administrator permission to configure firewall rule...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Start-Process netsh.exe -ArgumentList 'advfirewall firewall add rule name=\"VoxStream Overlay TCP 8765\" dir=in action=allow protocol=TCP localport=8765 profile=any description=\"Allows inbound connections to VoxStream overlay, stage display, and control dashboard\"' -Verb RunAs -Wait" >nul 2>&1
+
+netsh advfirewall firewall show rule name="VoxStream Overlay TCP 8765" >nul 2>&1
+if !errorlevel! equ 0 (
+    echo [SUCCESS] Windows Defender Firewall opened for port 8765!
+) else (
+    echo [NOTE] Firewall rule was not added. You can configure it anytime via setup_firewall.bat
+)
+
+:firewall_done
 echo.
 
 :: ---------------------------------------------------------------------------
