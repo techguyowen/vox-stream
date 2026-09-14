@@ -424,6 +424,28 @@ async def main_async(args):
                 except Exception:
                     pass
 
+    # 4. Initialize Windows System Tray Applet if requested
+    tray_app = None
+    if getattr(args, "tray", False):
+        try:
+            from .tray import VoxStreamTray, is_tray_supported
+            if is_tray_supported():
+                port = config.overlay.port if config.overlay.enabled else 8765
+                host = config.overlay.host if config.overlay.enabled else "127.0.0.1"
+                tray_app = VoxStreamTray(
+                    port=port,
+                    host=host,
+                    on_pause=on_stop_requested,
+                    on_resume=on_start_requested,
+                    on_restart=on_restart_requested,
+                    on_shutdown=on_shutdown_requested,
+                )
+                tray_app.start()
+            else:
+                logger.info("System tray requested but pystray/Pillow is not installed.")
+        except Exception as te:
+            logger.warning(f"Could not initialize system tray applet: {te}")
+
         audio_capture.on_recovery_status = on_recovery_status
 
     # 4. Initialize Twitch Chat Bot
@@ -638,6 +660,11 @@ async def main_async(args):
                 await asyncio.wait_for(web_server.stop(), timeout=1.5)
             except Exception as e:
                 logger.debug(f"Error stopping web server: {e}")
+        if tray_app:
+            try:
+                tray_app.stop()
+            except Exception:
+                pass
         logger.info("OBS Live Captioner stopped gracefully.")
 
     # Wait until shutdown requested
@@ -665,6 +692,7 @@ def main():
     parser.add_argument("--list-devices", "-l", action="store_true", help="List all available audio input devices and exit")
     parser.add_argument("--no-obs", action="store_true", help="Disable OBS WebSocket client")
     parser.add_argument("--no-overlay", action="store_true", help="Disable Browser Source web overlay")
+    parser.add_argument("--tray", action="store_true", help="Launch with Windows taskbar system tray icon")
 
     args = parser.parse_args()
 

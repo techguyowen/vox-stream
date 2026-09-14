@@ -31,3 +31,5 @@ colorama>=0.4.6
 pydantic>=2.5.0
 qrcode>=8.0.0
 psutil>=5.9.0
+pillow>=10.0.0
+pystray>=0.19.5

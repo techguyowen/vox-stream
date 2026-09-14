@@ -3824,9 +3824,78 @@ class TestSentenceStabilizationAndStitching(unittest.IsolatedAsyncioTestCase):
         self.assertIn("unto", DANGLING_CONNECTORS)
         self.assertIn("while", DANGLING_CONNECTORS)
 
+    def test_windows_firewall_module(self):
+        from obs_captioner.firewall import (
+            DEFAULT_PORT,
+            DEFAULT_RULE_NAME,
+            check_firewall_rule,
+            is_admin,
+            is_windows,
+        )
+
+        self.assertEqual(DEFAULT_PORT, 8765)
+        self.assertIn("VoxStream", DEFAULT_RULE_NAME)
+        # Verify function calls execute safely without crashing
+        rule_active = check_firewall_rule()
+        self.assertIsInstance(rule_active, bool)
+        admin_status = is_admin()
+        self.assertIsInstance(admin_status, bool)
+        win_status = is_windows()
+        self.assertIsInstance(win_status, bool)
+
+    def test_windows_system_tray_module(self):
+        from obs_captioner.tray import (
+            VoxStreamTray,
+            _create_fallback_icon,
+            get_tray_icon_image,
+            is_tray_supported,
+        )
+
+        self.assertTrue(is_tray_supported())
+        fallback_img = _create_fallback_icon(size=64)
+        self.assertIsNotNone(fallback_img)
+        self.assertEqual(fallback_img.size, (64, 64))
+
+        icon_img = get_tray_icon_image()
+        self.assertIsNotNone(icon_img)
+
+        # Test tray instance & callbacks
+        paused_state = []
+        resumed_state = []
+        shutdown_state = []
+
+        tray = VoxStreamTray(
+            port=8765,
+            host="127.0.0.1",
+            on_pause=lambda: paused_state.append(True),
+            on_resume=lambda: resumed_state.append(True),
+            on_shutdown=lambda: shutdown_state.append(True),
+        )
+        self.assertEqual(tray.port, 8765)
+        self.assertEqual(tray.base_url, "http://localhost:8765")
+
+        # Test menu building
+        menu = tray._build_menu()
+        menu_items = list(menu)
+        self.assertGreaterEqual(len(menu_items), 7)
+
+        # Test pause toggle logic
+        tray._toggle_pause(None, None)
+        self.assertTrue(tray.is_paused)
+        self.assertEqual(len(paused_state), 1)
+
+        tray._toggle_pause(None, None)
+        self.assertFalse(tray.is_paused)
+        self.assertEqual(len(resumed_state), 1)
+
+        # Test exit logic
+        tray._handle_exit(None, None)
+        self.assertEqual(len(shutdown_state), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
 
