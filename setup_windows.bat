@@ -207,9 +207,14 @@ echo.
 :: ---------------------------------------------------------------------------
 :: STEP 5: Install Python Dependencies
 :: ---------------------------------------------------------------------------
-echo [5/8] Upgrading pip and installing required packages...
-call "%VENV_PY%" -m pip install --upgrade pip
-call "%VENV_PY%" -m pip install -r "%ROOT_DIR%\requirements.txt"
+echo [5/8] Upgrading package manager and installing dependencies...
+if exist "%VENV_DIR%\Scripts\uv.exe" (
+    echo [INFO] Using fast package manager [uv]...
+    call "%VENV_DIR%\Scripts\uv.exe" pip install -r "%ROOT_DIR%\requirements.txt"
+) else (
+    call "%VENV_PY%" -m pip install --upgrade pip
+    call "%VENV_PY%" -m pip install -r "%ROOT_DIR%\requirements.txt"
+)
 call "%VENV_PY%" -m pip uninstall -y torchaudio >nul 2>&1
 echo.
 
