@@ -566,6 +566,12 @@ if __name__ == "__main__":
     import argparse
     import sys
 
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
     parser = argparse.ArgumentParser(description="VoxStream AI Model Pre-Downloader & Cache Manager")

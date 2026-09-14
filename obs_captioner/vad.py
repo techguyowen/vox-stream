@@ -58,9 +58,12 @@ class VoiceActivityDetector:
                     # 1. Primary: Bundled JIT model (PyTorch native, zero torchaudio dependency)
                     if jit_path.exists():
                         try:
+                            import warnings
                             import torch
                             torch.set_num_threads(1)
-                            model = torch.jit.load(str(jit_path), map_location="cpu")
+                            with warnings.catch_warnings():
+                                warnings.filterwarnings("ignore", category=FutureWarning, module=r".*torch.*")
+                                model = torch.jit.load(str(jit_path), map_location="cpu")
                             model.eval()
                             _SILERO_CACHE["model"] = model
                             _SILERO_CACHE["mode"] = "torch"
