@@ -96,6 +96,7 @@ def get_gpu_info(force_refresh: bool = False) -> Dict[str, Any]:
         try:
             import winreg
             class_path = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
+            detected_gpus = []
             with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, class_path) as class_key:
                 num_subkeys = winreg.QueryInfoKey(class_key)[0]
                 for i in range(num_subkeys):
@@ -108,31 +109,44 @@ def get_gpu_info(force_refresh: bool = False) -> Dict[str, Any]:
                                 desc, _ = winreg.QueryValueEx(dev_key, "DriverDesc")
                             except OSError:
                                 continue
-                            desc_lower = str(desc).lower()
+                            desc_str = str(desc).strip()
+                            desc_lower = desc_str.lower()
                             if any(k in desc_lower for k in ["radeon", "amd", "geforce", "nvidia", "rtx", "gtx", "intel", "arc"]):
-                                info["name"] = str(desc).strip()
-                                if "radeon" in desc_lower or "amd" in desc_lower:
-                                    info["vendor"] = "AMD"
-                                    info["backend"] = "DirectML / OpenMP CPU"
-                                elif "nvidia" in desc_lower or "geforce" in desc_lower:
-                                    info["vendor"] = "NVIDIA"
-                                    info["backend"] = "CUDA"
-                                elif "intel" in desc_lower:
-                                    info["vendor"] = "Intel"
-                                    info["backend"] = "DirectML / CPU"
-
-                                # Query VRAM from registry
+                                vram_mb = 0
                                 for vram_key in ["HardwareInformation.qwMemorySize", "HardwareInformation.MemorySize"]:
                                     try:
                                         raw_vram, _ = winreg.QueryValueEx(dev_key, vram_key)
                                         if raw_vram and isinstance(raw_vram, (int, float)) and raw_vram > 0:
-                                            info["vram_mb"] = int(raw_vram / (1024 * 1024))
+                                            vram_mb = int(raw_vram / (1024 * 1024))
                                             break
                                     except OSError:
                                         pass
-                                break
+                                is_discrete = any(k in desc_lower for k in ["geforce", "nvidia", "rtx", "gtx", "radeon", "amd"])
+                                detected_gpus.append({
+                                    "name": desc_str,
+                                    "lower": desc_lower,
+                                    "vram_mb": vram_mb,
+                                    "is_discrete": is_discrete,
+                                })
                     except Exception:
                         pass
+
+            if detected_gpus:
+                # Prioritize discrete GPUs (NVIDIA GeForce/RTX, AMD Radeon) over integrated Intel graphics
+                detected_gpus.sort(key=lambda g: (1 if g["is_discrete"] else 0, g["vram_mb"]), reverse=True)
+                best = detected_gpus[0]
+                info["name"] = best["name"]
+                info["vram_mb"] = best["vram_mb"]
+                b_lower = best["lower"]
+                if "radeon" in b_lower or "amd" in b_lower:
+                    info["vendor"] = "AMD"
+                    info["backend"] = "DirectML / OpenMP CPU"
+                elif "nvidia" in b_lower or "geforce" in b_lower or "rtx" in b_lower or "gtx" in b_lower:
+                    info["vendor"] = "NVIDIA"
+                    info["backend"] = "CUDA"
+                elif "intel" in b_lower or "arc" in b_lower:
+                    info["vendor"] = "Intel"
+                    info["backend"] = "DirectML / CPU"
         except Exception as e:
             logger.debug(f"winreg GPU detection: {e}")
 
@@ -176,6 +190,20 @@ def get_gpu_info(force_refresh: bool = False) -> Dict[str, Any]:
                             info["vram_mb"] = int(raw_ram / (1024 * 1024))
             except Exception as e:
                 logger.debug(f"PowerShell GPU detection fallback: {e}")
+
+    # 5. Check if CUDA is available via CTranslate2 (for Faster-Whisper on NVIDIA GPUs)
+    if not info.get("is_cuda", False):
+        try:
+            from .engines.local_whisper import _setup_windows_cuda_dlls
+            _setup_windows_cuda_dlls()
+            import ctranslate2
+            if ctranslate2.get_cuda_device_count() > 0:
+                info["is_cuda"] = True
+                if info["vendor"] in ("CPU", "Intel"):
+                    info["vendor"] = "NVIDIA"
+                    info["backend"] = "CUDA"
+        except Exception:
+            pass
 
     _CACHED_GPU_INFO = info
     return info

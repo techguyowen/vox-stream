@@ -122,10 +122,23 @@ class LocalWhisperEngine(BaseSTTEngine):
             if device in ("mps", "directml"):
                 device = "cpu"
             elif device == "auto":
-                if torch.cuda.is_available():
-                    device = "cuda"
-                else:
-                    device = "cpu"
+                has_cuda = False
+                try:
+                    import ctranslate2
+                    if ctranslate2.get_cuda_device_count() > 0:
+                        has_cuda = True
+                except Exception:
+                    pass
+                if not has_cuda:
+                    try:
+                        if torch.cuda.is_available():
+                            has_cuda = True
+                    except Exception:
+                        pass
+                if not has_cuda and gpu_info.get("is_cuda"):
+                    has_cuda = True
+
+                device = "cuda" if has_cuda else "cpu"
 
             if compute_type == "auto":
                 compute_type = "float16" if device == "cuda" else "int8"
