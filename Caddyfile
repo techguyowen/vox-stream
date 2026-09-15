@@ -1,0 +1,25 @@
+{
+    # Global options
+    admin off
+}
+
+# HTTP Port 80 (Clean URLs without :8765)
+:80 {
+    # Reverse proxy all HTTP and WebSocket traffic to VoxStream
+    reverse_proxy 127.0.0.1:8765
+
+    # High-performance compression for dashboard and stage assets
+    encode gzip zstd
+}
+
+# HTTPS Port 443 (Local SSL / TLS with Caddy's internal CA)
+:443 {
+    # Automatically issue & manage local certificates for localhost, .local, and LAN IPs
+    tls internal
+
+    # Reverse proxy all HTTP and WebSocket traffic to VoxStream
+    reverse_proxy 127.0.0.1:8765
+
+    # High-performance compression for dashboard and stage assets
+    encode gzip zstd
+}

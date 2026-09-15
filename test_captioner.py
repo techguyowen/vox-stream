@@ -1745,6 +1745,39 @@ class TestServerEndpoints(AioHTTPTestCase):
         self.assertEqual(data['status'], 'restarting')
         self.assertIn('updated successfully', data['message'])
 
+    async def test_caddy_api_endpoints(self):
+        from unittest.mock import patch
+
+        # 1. Status endpoint
+        resp = await self.client.request('GET', '/api/caddy/status')
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertIn("enabled", data)
+        self.assertIn("installed", data)
+        self.assertIn("running", data)
+        self.assertIn("ssl_enabled", data)
+        self.assertIn("http_display_url", data)
+
+        # 2. CA certificate download endpoint when not present returns 404
+        with patch("obs_captioner.caddy_manager.get_caddy_root_ca_path", return_value=None):
+            resp = await self.client.request('GET', '/api/caddy/ca.crt')
+            self.assertEqual(resp.status, 404)
+
+        # 3. Network info includes clean URLs and Caddy status
+        resp_net = await self.client.request('GET', '/api/network/info')
+        self.assertEqual(resp_net.status, 200)
+        net_data = await resp_net.json()
+        self.assertIn("caddy_active", net_data)
+        self.assertIn("caddy_ssl", net_data)
+        self.assertIn("display_url", net_data)
+        self.assertIn("lan_ip", net_data)
+
+        # 4. QR code endpoint generates SVG
+        resp_qr = await self.client.request('GET', '/api/display/qr')
+        self.assertEqual(resp_qr.status, 200)
+        self.assertIn("image/svg+xml", resp_qr.content_type)
+
+
 
 class TestCaptionSinkFinalOnly(unittest.IsolatedAsyncioTestCase):
     async def test_caption_sink_final_only_obs_text_source(self):
@@ -4075,6 +4108,77 @@ class TestGPUSelectionAndHardwareFeatures(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(kwargs.get("device_index"), 0)
                 self.assertEqual(kwargs.get("compute_type"), "float16")
                 await engine.stop()
+
+
+class TestCaddyReverseProxy(unittest.TestCase):
+    def test_caddy_config_defaults(self):
+        from obs_captioner.config import CaddyConfig, AppConfig
+        cfg = CaddyConfig()
+        self.assertFalse(cfg.enabled)
+        self.assertTrue(cfg.ssl)
+        self.assertEqual(cfg.port_http, 80)
+        self.assertEqual(cfg.port_https, 443)
+        self.assertEqual(cfg.bin_path, "")
+
+        app_cfg = AppConfig()
+        self.assertIsInstance(app_cfg.caddy, CaddyConfig)
+
+    def test_caddy_config_load_save(self):
+        import tempfile
+        import json
+        from pathlib import Path
+        from obs_captioner.config import load_config
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_cfg = Path(tmpdir) / "config.json"
+            cfg_data = {
+                "caddy": {
+                    "enabled": True,
+                    "ssl": False,
+                    "port_http": 8080,
+                    "port_https": 8443,
+                    "bin_path": "/usr/local/bin/caddy"
+                }
+            }
+            tmp_cfg.write_text(json.dumps(cfg_data))
+            loaded = load_config(tmp_cfg)
+            self.assertTrue(loaded.caddy.enabled)
+            self.assertFalse(loaded.caddy.ssl)
+            self.assertEqual(loaded.caddy.port_http, 8080)
+            self.assertEqual(loaded.caddy.port_https, 8443)
+            self.assertEqual(loaded.caddy.bin_path, "/usr/local/bin/caddy")
+
+    def test_caddy_manager_telemetry(self):
+        from obs_captioner.caddy_manager import get_caddy_telemetry
+        from obs_captioner.config import AppConfig
+
+        cfg = AppConfig()
+        cfg.caddy.enabled = False
+        telem = get_caddy_telemetry(cfg)
+        self.assertIsInstance(telem, dict)
+        self.assertIn("enabled", telem)
+        self.assertIn("running", telem)
+        self.assertIn("installed", telem)
+        self.assertIn("http_display_url", telem)
+        self.assertIn("https_display_url", telem)
+        self.assertIn("preferred_display_url", telem)
+
+    def test_caddy_manager_start_stop(self):
+        from unittest.mock import patch, MagicMock
+        from obs_captioner.caddy_manager import start_caddy, stop_caddy
+
+        with patch("subprocess.run") as mock_run, patch("obs_captioner.caddy_manager.find_caddy_binary", return_value="/bin/caddy"):
+            mock_res = MagicMock()
+            mock_res.returncode = 0
+            mock_run.return_value = mock_res
+
+            ok, msg = start_caddy()
+            self.assertTrue(ok)
+            self.assertIn("started", msg)
+
+            ok2, msg2 = stop_caddy()
+            self.assertTrue(ok2)
+            self.assertIn("stopped", msg2)
 
 
 if __name__ == "__main__":

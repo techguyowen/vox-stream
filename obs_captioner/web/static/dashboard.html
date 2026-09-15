@@ -2068,6 +2068,29 @@
                         </div>
                         <code id="stream-url-dashboard">http://127.0.0.1:8765/dashboard</code> (Add via OBS <strong>Docks -&gt; Custom Browser Docks</strong>)
                     </div>
+
+                    <h2>🔒 Caddy Reverse Proxy &amp; Local SSL (Port 80 &amp; 443)</h2>
+                    <div class="api-card" style="border-left: 4px solid #10B981;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                            <div>
+                                <h3 style="margin: 0; color: #10B981; display: flex; align-items: center; gap: 8px;">
+                                    <span>🛡️ Reverse Proxy Status:</span>
+                                    <span id="caddy-status-badge" style="background: rgba(100, 116, 139, 0.2); color: #94A3B8; font-size: 11px; padding: 3px 8px; border-radius: 4px; font-weight: 700;">Checking...</span>
+                                </h3>
+                                <p style="font-size: 12px; color: var(--text-muted); margin: 4px 0 0 0;">
+                                    Serves clean URLs without port :8765 and provides local HTTPS for mobile PWA install and Screen Wake Lock.
+                                </p>
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <button type="button" id="btn-caddy-toggle" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 5px 12px; font-weight: 600;">▶ Start Caddy</button>
+                                <a id="btn-caddy-ca-download" href="/api/ssl/ca.crt" download class="btn btn-secondary btn-sm" style="display: none; font-size: 11px; padding: 5px 12px; font-weight: 600; text-decoration: none; color: #38BDF8;">📲 Download Root CA</a>
+                            </div>
+                        </div>
+                        <div id="caddy-url-box" style="margin-top: 10px; font-family: 'JetBrains Mono', monospace; font-size: 12px; display: none;">
+                            <div style="color: #94A3B8; font-size: 11px; margin-bottom: 2px;">SECURE STAGE URL (HTTPS):</div>
+                            <code id="caddy-https-url" style="color: #34D399; font-weight: 700;">https://127.0.0.1/display</code>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

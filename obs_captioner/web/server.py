@@ -273,6 +273,15 @@ class WebOverlayServer:
         # Hardware & Memory System Controls
         self.app.router.add_post("/api/system/trim_memory", self._handle_trim_memory)
 
+        # Caddy Reverse Proxy & Local SSL Endpoints
+        self.app.router.add_get("/api/caddy/status", self._handle_get_caddy_status)
+        self.app.router.add_post("/api/caddy/start", self._handle_post_caddy_start)
+        self.app.router.add_post("/api/caddy/stop", self._handle_post_caddy_stop)
+        self.app.router.add_post("/api/caddy/download", self._handle_post_caddy_download)
+        self.app.router.add_post("/api/caddy/trust", self._handle_post_caddy_trust)
+        self.app.router.add_get("/api/caddy/ca.crt", self._handle_get_caddy_ca)
+        self.app.router.add_get("/api/ssl/ca.crt", self._handle_get_caddy_ca)
+
         # Static Assets
         self.app.router.add_static("/static/", path=str(static_dir), name="static")
 
@@ -341,11 +350,32 @@ class WebOverlayServer:
             "available_gpus": get_available_gpus(),
             "lan_ip": lan_ip,
             "port": port,
-            "display_url": f"http://{lan_ip}:{port}/display",
-            "dashboard_url": f"http://{lan_ip}:{port}/dashboard",
-            "overlay_url": f"http://{lan_ip}:{port}/",
-            "bible_url": f"http://{lan_ip}:{port}/bible",
         }
+
+        # Caddy reverse proxy detection
+        from ..caddy_manager import is_caddy_running
+        caddy_cfg = getattr(self.config, "caddy", None)
+        port_http = getattr(caddy_cfg, "port_http", 80) if caddy_cfg else 80
+        port_https = getattr(caddy_cfg, "port_https", 443) if caddy_cfg else 443
+        caddy_ssl = getattr(caddy_cfg, "ssl", True) if caddy_cfg else True
+        caddy_active = is_caddy_running(port_http, port_https)
+
+        if caddy_active:
+            scheme = "https" if caddy_ssl else "http"
+            p_str = "" if ((caddy_ssl and port_https == 443) or (not caddy_ssl and port_http == 80)) else f":{port_https if caddy_ssl else port_http}"
+            status_info["display_url"] = f"{scheme}://{lan_ip}{p_str}/display"
+            status_info["dashboard_url"] = f"{scheme}://{lan_ip}{p_str}/dashboard"
+            status_info["overlay_url"] = f"{scheme}://{lan_ip}{p_str}/"
+            status_info["bible_url"] = f"{scheme}://{lan_ip}{p_str}/bible"
+        else:
+            status_info["display_url"] = f"http://{lan_ip}:{port}/display"
+            status_info["dashboard_url"] = f"http://{lan_ip}:{port}/dashboard"
+            status_info["overlay_url"] = f"http://{lan_ip}:{port}/"
+            status_info["bible_url"] = f"http://{lan_ip}:{port}/bible"
+
+        status_info["caddy_active"] = caddy_active
+        status_info["caddy_ssl"] = caddy_ssl
+
         if self.subtitle_recorder:
             status_info["recording"] = self.subtitle_recorder.get_status()
         if self.history:
@@ -362,23 +392,47 @@ class WebOverlayServer:
     async def _handle_get_network_info(self, request: web.Request) -> web.Response:
         """Return LAN IP address and direct mobile/stage display links."""
         from ..hardware import get_local_ip
+        from ..caddy_manager import is_caddy_running
         lan_ip = get_local_ip()
         req_host = (request.host or "").split(":")[0].strip()
         if lan_ip == "127.0.0.1" and req_host and req_host not in ("127.0.0.1", "localhost", "0.0.0.0"):
             lan_ip = req_host
         port = self.config.overlay.port or 8765
+
+        caddy_cfg = getattr(self.config, "caddy", None)
+        port_http = getattr(caddy_cfg, "port_http", 80) if caddy_cfg else 80
+        port_https = getattr(caddy_cfg, "port_https", 443) if caddy_cfg else 443
+        caddy_ssl = getattr(caddy_cfg, "ssl", True) if caddy_cfg else True
+        caddy_active = is_caddy_running(port_http, port_https)
+
+        if caddy_active:
+            scheme = "https" if caddy_ssl else "http"
+            p_str = "" if ((caddy_ssl and port_https == 443) or (not caddy_ssl and port_http == 80)) else f":{port_https if caddy_ssl else port_http}"
+            display_url = f"{scheme}://{lan_ip}{p_str}/display"
+            dashboard_url = f"{scheme}://{lan_ip}{p_str}/dashboard"
+            overlay_url = f"{scheme}://{lan_ip}{p_str}/"
+            bible_url = f"{scheme}://{lan_ip}{p_str}/bible"
+        else:
+            display_url = f"http://{lan_ip}:{port}/display"
+            dashboard_url = f"http://{lan_ip}:{port}/dashboard"
+            overlay_url = f"http://{lan_ip}:{port}/"
+            bible_url = f"http://{lan_ip}:{port}/bible"
+
         return web.json_response({
             "lan_ip": lan_ip,
             "port": port,
-            "display_url": f"http://{lan_ip}:{port}/display",
-            "dashboard_url": f"http://{lan_ip}:{port}/dashboard",
-            "overlay_url": f"http://{lan_ip}:{port}/",
-            "bible_url": f"http://{lan_ip}:{port}/bible",
+            "caddy_active": caddy_active,
+            "caddy_ssl": caddy_ssl,
+            "display_url": display_url,
+            "dashboard_url": dashboard_url,
+            "overlay_url": overlay_url,
+            "bible_url": bible_url,
         })
 
     async def _handle_get_display_qr(self, request: web.Request) -> web.Response:
         """Return scalable vector SVG QR code for the Stage Confidence Monitor / Reader Display or Dashboard."""
         from ..hardware import get_local_ip
+        from ..caddy_manager import is_caddy_running
         from ..qr_generator import generate_qr_svg
         lan_ip = sanitize_text(request.query.get("host", "")).strip() or sanitize_text(request.query.get("ip", "")).strip()
         if not lan_ip:
@@ -388,28 +442,94 @@ class WebOverlayServer:
                 lan_ip = req_host
         port = self.config.overlay.port or 8765
 
+        caddy_cfg = getattr(self.config, "caddy", None)
+        port_http = getattr(caddy_cfg, "port_http", 80) if caddy_cfg else 80
+        port_https = getattr(caddy_cfg, "port_https", 443) if caddy_cfg else 443
+        caddy_ssl = getattr(caddy_cfg, "ssl", True) if caddy_cfg else True
+        caddy_active = is_caddy_running(port_http, port_https)
+
+        if caddy_active:
+            scheme = "https" if caddy_ssl else "http"
+            p_str = "" if ((caddy_ssl and port_https == 443) or (not caddy_ssl and port_http == 80)) else f":{port_https if caddy_ssl else port_http}"
+            base_url = f"{scheme}://{lan_ip}{p_str}"
+        else:
+            base_url = f"http://{lan_ip}:{port}"
+
         custom_url = request.query.get("url", "").strip()
         qr_type = request.query.get("type", "").strip().lower()
         if custom_url:
             target_url = custom_url
         elif qr_type == "dashboard":
-            target_url = f"http://{lan_ip}:{port}/dashboard"
+            target_url = f"{base_url}/dashboard"
         elif qr_type == "overlay":
-            target_url = f"http://{lan_ip}:{port}/"
+            target_url = f"{base_url}/"
         elif qr_type == "bible":
-            target_url = f"http://{lan_ip}:{port}/bible"
+            target_url = f"{base_url}/bible"
         else:
             lang = sanitize_text(request.query.get("lang", "")).lower().strip()
             if lang and lang not in ("en", "original", "none"):
-                target_url = f"http://{lan_ip}:{port}/display?lang={urllib.parse.quote(lang)}"
+                target_url = f"{base_url}/display?lang={urllib.parse.quote(lang)}"
             else:
-                target_url = f"http://{lan_ip}:{port}/display"
+                target_url = f"{base_url}/display"
 
         svg_content = generate_qr_svg(target_url)
         return web.Response(
             body=svg_content,
             content_type="image/svg+xml",
             headers={"Cache-Control": "public, max-age=60"},
+        )
+
+    # --- Caddy Reverse Proxy Endpoints ---
+    async def _handle_get_caddy_status(self, request: web.Request) -> web.Response:
+        """Return Caddy reverse proxy telemetry, status, and clean URLs."""
+        from ..caddy_manager import get_caddy_telemetry
+        data = get_caddy_telemetry(self.config)
+        return web.json_response(data)
+
+    async def _handle_post_caddy_start(self, request: web.Request) -> web.Response:
+        """Start Caddy reverse proxy."""
+        from ..caddy_manager import start_caddy
+        success, msg = start_caddy()
+        if success and getattr(self.config, "caddy", None):
+            self.config.caddy.enabled = True
+            from ..config import save_config
+            save_config(self.config)
+        return web.json_response({"success": success, "message": msg}, status=200 if success else 400)
+
+    async def _handle_post_caddy_stop(self, request: web.Request) -> web.Response:
+        """Stop Caddy reverse proxy."""
+        from ..caddy_manager import stop_caddy
+        success, msg = stop_caddy()
+        if success and getattr(self.config, "caddy", None):
+            self.config.caddy.enabled = False
+            from ..config import save_config
+            save_config(self.config)
+        return web.json_response({"success": success, "message": msg}, status=200 if success else 400)
+
+    async def _handle_post_caddy_download(self, request: web.Request) -> web.Response:
+        """Download Caddy binary."""
+        from ..caddy_manager import download_caddy
+        success, msg = download_caddy()
+        return web.json_response({"success": success, "message": msg}, status=200 if success else 400)
+
+    async def _handle_post_caddy_trust(self, request: web.Request) -> web.Response:
+        """Install Caddy root CA into system trust store."""
+        from ..caddy_manager import trust_caddy_ca
+        success, msg = trust_caddy_ca()
+        return web.json_response({"success": success, "message": msg}, status=200 if success else 400)
+
+    async def _handle_get_caddy_ca(self, request: web.Request) -> web.Response:
+        """Download Caddy's auto-generated local Root CA certificate."""
+        from ..caddy_manager import get_caddy_root_ca_path
+        ca_path = get_caddy_root_ca_path()
+        if not ca_path or not ca_path.is_file():
+            return web.Response(text="Caddy Root CA certificate not found. Start Caddy with SSL first.", status=404)
+        return web.FileResponse(
+            ca_path,
+            headers={
+                "Content-Type": "application/x-x509-ca-cert",
+                "Content-Disposition": 'attachment; filename="voxstream-caddy-ca.crt"',
+            },
         )
 
     async def _handle_get_recording_status(self, request: web.Request) -> web.Response:

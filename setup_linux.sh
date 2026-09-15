@@ -167,14 +167,45 @@ echo -e "${CYAN}   Available Audio Input Devices:${NC}"
 echo -e "${CYAN}======================================================${NC}"
 .venv/bin/python -m obs_captioner.main --list-devices 2>/dev/null || true
 
+# ------------------------------------------------------------------------------
+# STEP 8: Optional Caddy Reverse Proxy & Local SSL (Port 80 & 443)
+# ------------------------------------------------------------------------------
+echo ""
+echo -e "${CYAN}======================================================${NC}"
+echo -e "${CYAN}   Caddy Reverse Proxy & Local SSL Configuration${NC}"
+echo -e "${CYAN}======================================================${NC}"
+echo "VoxStream can configure Caddy to provide clean URLs (no :8765)"
+echo "and local SSL/HTTPS for mobile PWA install and Screen Wake Lock."
+echo ""
+read -p "Would you like to install & enable Caddy with local SSL? [Y/n]: " INSTALL_CADDY
+INSTALL_CADDY=${INSTALL_CADDY:-Y}
+if [[ "$INSTALL_CADDY" =~ ^[Yy]$ ]]; then
+    echo -e "${CYAN}ℹ️  Downloading Caddy Reverse Proxy...${NC}"
+    .venv/bin/python -c "from obs_captioner.caddy_manager import download_caddy, trust_caddy_ca; s, m = download_caddy(); print(m); s2, m2 = trust_caddy_ca(); print(m2)"
+    .venv/bin/python -c "from obs_captioner.config import load_config, save_config; c = load_config(); c.caddy.enabled = True; c.caddy.ssl = True; save_config(c)"
+    echo -e "${GREEN}✅ Caddy Reverse Proxy and local SSL configured!${NC}"
+else
+    echo -e "${YELLOW}ℹ️  Caddy Reverse Proxy skipped. You can enable it anytime in the Dashboard.${NC}"
+fi
+
 LAN_IP=$(.venv/bin/python -c "from obs_captioner.hardware import get_local_ip; print(get_local_ip())" 2>/dev/null || echo "127.0.0.1")
+CADDY_ON=$(.venv/bin/python -c "from obs_captioner.config import load_config; print(load_config().caddy.enabled)" 2>/dev/null || echo "False")
 echo ""
 echo -e "${GREEN}======================================================${NC}"
 echo -e "${GREEN}🎉 Setup complete! You can now start VoxStream:${NC}"
 echo -e "   ${CYAN}./run_captioner.sh${NC}"
-echo -e "   Local Dashboard:   ${CYAN}http://127.0.0.1:8765/dashboard${NC}"
-if [ "$LAN_IP" != "127.0.0.1" ]; then
-    echo -e "   Network Dashboard: ${CYAN}http://${LAN_IP}:8765/dashboard${NC}"
-    echo -e "   Stage / Mobile:    ${CYAN}http://${LAN_IP}:8765/display${NC}"
+if [ "$CADDY_ON" = "True" ]; then
+    echo -e "   Local Dashboard:   ${CYAN}https://127.0.0.1/dashboard${NC} (or http://127.0.0.1:8765/dashboard)"
+    if [ "$LAN_IP" != "127.0.0.1" ]; then
+        echo -e "   Clean Stage SSL:   ${CYAN}https://${LAN_IP}/display${NC}"
+        echo -e "   Clean Stage HTTP:  ${CYAN}http://${LAN_IP}/display${NC}"
+    fi
+else
+    echo -e "   Local Dashboard:   ${CYAN}http://127.0.0.1:8765/dashboard${NC}"
+    if [ "$LAN_IP" != "127.0.0.1" ]; then
+        echo -e "   Network Dashboard: ${CYAN}http://${LAN_IP}:8765/dashboard${NC}"
+        echo -e "   Stage / Mobile:    ${CYAN}http://${LAN_IP}:8765/display${NC}"
+    fi
 fi
 echo -e "${GREEN}======================================================${NC}"
+

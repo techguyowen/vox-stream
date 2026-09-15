@@ -18,7 +18,8 @@ Welcome to the **VoxStream Live Captioner & Broadcast Suite** user manual. This 
 10. [⚡ Real-Time Speaking Pace (WPM) Analytics](#-real-time-speaking-pace-wpm-analytics)
 11. [🎛️ Keyboard Hotkeys & Stream Deck Automation](#️-keyboard-hotkeys--stream-deck-automation)
 12. [🔧 Audio Setup & Tuning](#-audio-setup--tuning)
-13. [❓ Troubleshooting & Frequently Asked Questions](#-troubleshooting--frequently-asked-questions)
+13. [🔒 Caddy Reverse Proxy & Local SSL (Clean URLs & HTTPS)](#-caddy-reverse-proxy--local-ssl-clean-urls--https)
+14. [❓ Troubleshooting & Frequently Asked Questions](#-troubleshooting--frequently-asked-questions)
 
 ---
 
@@ -344,6 +345,37 @@ You can control VoxStream from hardware broadcast controllers using HTTP REST ca
 ### 2. Voice Activity Detection (VAD) & Music Suppression
 * **Silero VAD**: VoxStream includes a built-in neural Voice Activity Detector that filters out room rumble, air conditioning noise, and silence.
 * **Music Suppression**: When worship teams are playing music between preaching, enable **Suppress Music & Organ** in the Audio tab to prevent the AI from generating gibberish lyrics during instrumental segments.
+
+---
+
+## 🔒 Caddy Reverse Proxy & Local SSL (Clean URLs & HTTPS)
+
+VoxStream includes optional, first-class integration with **Caddy**, a modern, high-performance web server. When enabled, Caddy runs as a lightweight reverse proxy in front of VoxStream's port `8765`.
+
+### Key Benefits
+1. **Clean URLs (No `:8765` Port Number)**:
+   * **Stage Display**: `http://<LAN_IP>/display` or `https://<LAN_IP>/display`
+   * **Dashboard**: `http://<LAN_IP>/dashboard` or `https://<LAN_IP>/dashboard`
+   * QR codes automatically generate clean, simple URLs that are easy to type and scan.
+2. **Local SSL / HTTPS (`tls internal`)**:
+   * Caddy automatically generates and manages an internal local Certificate Authority (CA) with zero external dependencies.
+   * **Mobile PWA Installation**: iOS Safari and Android Chrome require HTTPS to allow users to "Add to Home Screen" as a standalone web app.
+   * **Screen Wake Lock**: Mobile browsers require a secure context (HTTPS) to keep screens from sleeping during church services or long presentations.
+3. **Automatic Zero-Configuration WebSockets**:
+   * Caddy proxies WebSocket live caption feeds transparently with high-speed compression (`zstd` & `gzip`).
+4. **Direct OBS Speed Preserved**:
+   * In OBS Studio, the Browser Source continues to connect directly to `http://127.0.0.1:8765/`, ensuring zero proxy latency for your broadcast feed.
+
+### How to Enable or Disable Caddy
+* **During Setup**: Both `setup_windows.bat` and `setup_mac.sh` / `setup_linux.sh` offer a prompt:
+  ```
+  Would you like to install & enable Caddy with local SSL? [Y/n]
+  ```
+* **In the Dashboard**: Navigate to **Tab 5: Advanced Settings** ➔ **Caddy Reverse Proxy & Local SSL**:
+  * Click **Download Caddy** if not installed.
+  * Click **Start Caddy** or **Stop Caddy** to toggle on-demand.
+  * Click **Trust Local CA** to register the root certificate in your host OS certificate store.
+* **Automatic Background Supervision**: When enabled, launching `run_captioner.bat` or `run_captioner.sh` automatically starts Caddy and cleanly terminates it when VoxStream exits.
 
 ---
 

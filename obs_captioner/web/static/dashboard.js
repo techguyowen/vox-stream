@@ -5207,6 +5207,83 @@ window.addEventListener("DOMContentLoaded", async () => {
         });
     });
 
+    // Caddy Reverse Proxy Status & Controls
+    async function checkCaddyStatus() {
+        const badge = document.getElementById("caddy-status-badge");
+        const toggleBtn = document.getElementById("btn-caddy-toggle");
+        const caLink = document.getElementById("btn-caddy-ca-download");
+        const urlBox = document.getElementById("caddy-url-box");
+        const httpsUrl = document.getElementById("caddy-https-url");
+        if (!badge || !toggleBtn) return;
+
+        try {
+            const res = await fetch("/api/caddy/status");
+            if (res.ok) {
+                const data = await res.json();
+                if (data.running) {
+                    badge.textContent = data.ssl_enabled ? "🟢 Active (SSL Ports 443 & 80)" : "🟢 Active (Port 80)";
+                    badge.style.background = "rgba(16, 185, 129, 0.2)";
+                    badge.style.color = "#34D399";
+                    toggleBtn.textContent = "⏹ Stop Caddy";
+                    toggleBtn.className = "btn btn-danger btn-sm";
+                    if (urlBox && httpsUrl) {
+                        urlBox.style.display = "block";
+                        httpsUrl.textContent = data.preferred_display_url || data.https_display_url;
+                    }
+                    if (caLink && data.ca_installed) {
+                        caLink.style.display = "inline-flex";
+                    }
+                } else {
+                    badge.textContent = data.installed ? "⚪ Inactive (Ready)" : "⚠️ Not Downloaded";
+                    badge.style.background = "rgba(100, 116, 139, 0.2)";
+                    badge.style.color = "#94A3B8";
+                    toggleBtn.textContent = data.installed ? "▶ Start Caddy" : "⬇ Download Caddy";
+                    toggleBtn.className = "btn btn-secondary btn-sm";
+                    if (urlBox) urlBox.style.display = "none";
+                    if (caLink) caLink.style.display = "none";
+                }
+            }
+        } catch (e) {}
+    }
+
+    const btnCaddyToggle = document.getElementById("btn-caddy-toggle");
+    if (btnCaddyToggle) {
+        btnCaddyToggle.addEventListener("click", async () => {
+            const isStop = btnCaddyToggle.textContent.includes("Stop");
+            const isDownload = btnCaddyToggle.textContent.includes("Download");
+            btnCaddyToggle.disabled = true;
+            btnCaddyToggle.textContent = "Working...";
+            try {
+                if (isDownload) {
+                    const res = await fetch("/api/caddy/download", { method: "POST" });
+                    const d = await res.json();
+                    if (d.success) showToast("✓ Caddy binary downloaded successfully!", "success");
+                    else showToast(`Download failed: ${d.message}`, "error");
+                } else if (isStop) {
+                    const res = await fetch("/api/caddy/stop", { method: "POST" });
+                    const d = await res.json();
+                    if (d.success) showToast("Caddy reverse proxy stopped.", "info");
+                } else {
+                    const res = await fetch("/api/caddy/start", { method: "POST" });
+                    const d = await res.json();
+                    if (d.success) showToast("🚀 Caddy reverse proxy started with SSL!", "success");
+                    else showToast(`Start failed: ${d.message}`, "error");
+                }
+            } catch (e) {
+                showToast(`Error: ${e.message}`, "error");
+            } finally {
+                btnCaddyToggle.disabled = false;
+                await checkCaddyStatus();
+                try {
+                    const nRes = await fetch("/api/network/info");
+                    if (nRes.ok) updateNetworkUrls(await nRes.json());
+                } catch (e) {}
+            }
+        });
+    }
+
+    await checkCaddyStatus();
+
     // Periodic status poll (every 4s)
     setInterval(refreshEngineStatus, 4000);
 });

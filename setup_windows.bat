@@ -318,17 +318,47 @@ echo =======================================================
 call "%VENV_PY%" -m obs_captioner.main --list-devices
 echo.
 
+:: ---------------------------------------------------------------------------
+:: STEP 9: Optional Caddy Reverse Proxy & Local SSL (Port 80 & 443)
+:: ---------------------------------------------------------------------------
+echo =======================================================
+echo   Caddy Reverse Proxy & Local SSL Configuration
+echo =======================================================
+echo VoxStream can install Caddy to provide clean URLs (no :8765)
+echo and local SSL/HTTPS for mobile PWA install and Screen Wake Lock.
+echo.
+set "INSTALL_CADDY=Y"
+set /p "INSTALL_CADDY=Would you like to install & enable Caddy with local SSL? (Y/N, default: Y): "
+if /i "!INSTALL_CADDY!"=="Y" (
+    echo [INFO] Downloading Caddy Reverse Proxy into bin\caddy.exe...
+    call "%VENV_PY%" -c "from obs_captioner.caddy_manager import download_caddy, trust_caddy_ca; s, m = download_caddy(); print(m); s2, m2 = trust_caddy_ca(); print(m2)"
+    call "%VENV_PY%" -c "from obs_captioner.config import load_config, save_config; c = load_config(); c.caddy.enabled = True; c.caddy.ssl = True; save_config(c)"
+    echo [SUCCESS] Caddy Reverse Proxy and local SSL configured!
+) else (
+    echo [INFO] Caddy Reverse Proxy skipped. You can enable it anytime in the Dashboard.
+)
+echo.
+
 :setup_done
 for /f "tokens=*" %%i in ('call "%VENV_PY%" -c "from obs_captioner.hardware import get_local_ip; print(get_local_ip())" 2^>nul') do set "LAN_IP=%%i"
+for /f "tokens=*" %%i in ('call "%VENV_PY%" -c "from obs_captioner.config import load_config; print(load_config().caddy.enabled)" 2^>nul') do set "CADDY_ON=%%i"
 echo =======================================================
 echo   [SUCCESS] 100%% Turnkey Setup Complete!
 echo.
 echo   1. A shortcut 'VoxStream Live Captioner' was created
 echo      on your Desktop. Double-click it anytime to run!
-echo   2. Local Dashboard:   http://127.0.0.1:8765/dashboard
-if defined LAN_IP if not "!LAN_IP!"=="127.0.0.1" (
-    echo   3. Network Dashboard: http://!LAN_IP!:8765/dashboard
-    echo   4. Stage / Mobile:    http://!LAN_IP!:8765/display
+if /i "!CADDY_ON!"=="True" (
+    echo   2. Local Dashboard:   https://127.0.0.1/dashboard (or http://127.0.0.1:8765/dashboard)
+    if defined LAN_IP if not "!LAN_IP!"=="127.0.0.1" (
+        echo   3. Clean Stage HTTPS: https://!LAN_IP!/display
+        echo   4. Clean Stage HTTP:  http://!LAN_IP!/display
+    )
+) else (
+    echo   2. Local Dashboard:   http://127.0.0.1:8765/dashboard
+    if defined LAN_IP if not "!LAN_IP!"=="127.0.0.1" (
+        echo   3. Network Dashboard: http://!LAN_IP!:8765/dashboard
+        echo   4. Stage / Mobile:    http://!LAN_IP!:8765/display
+    )
 )
 echo =======================================================
 echo.

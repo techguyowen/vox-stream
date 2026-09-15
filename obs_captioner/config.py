@@ -281,6 +281,15 @@ class SummaryConfig:
 
 
 @dataclass
+class CaddyConfig:
+    enabled: bool = False
+    ssl: bool = True
+    port_http: int = 80
+    port_https: int = 443
+    bin_path: str = ""
+
+
+@dataclass
 class AppConfig:
     general: GeneralConfig = field(default_factory=GeneralConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
@@ -304,6 +313,7 @@ class AppConfig:
     api: APIConfig = field(default_factory=APIConfig)
     update: UpdateConfig = field(default_factory=UpdateConfig)
     summary: SummaryConfig = field(default_factory=SummaryConfig)
+    caddy: CaddyConfig = field(default_factory=CaddyConfig)
 
 
 _current_config_path: Optional[str] = None
@@ -377,6 +387,7 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         api=_safe_dataclass_load(APIConfig, data.get("api")),
         update=_safe_dataclass_load(UpdateConfig, data.get("update")),
         summary=_safe_dataclass_load(SummaryConfig, data.get("summary")),
+        caddy=_safe_dataclass_load(CaddyConfig, data.get("caddy")),
     )
 
     # Environment variable overrides

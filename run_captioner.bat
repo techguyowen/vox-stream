@@ -64,10 +64,20 @@ if exist "%VENV_DIR%\Lib\site-packages\torchaudio" (
 :: 5. Main application loop (supports exit code 42 instant reload)
 :app_loop
 for /f "tokens=*" %%i in ('call "%VENV_PY%" -c "from obs_captioner.hardware import get_local_ip; print(get_local_ip())" 2^>nul') do set "LAN_IP=%%i"
+for /f "tokens=*" %%i in ('call "%VENV_PY%" -c "from obs_captioner.config import load_config; print(load_config().caddy.enabled)" 2^>nul') do set "CADDY_ON=%%i"
 echo =======================================================
 echo   Starting VoxStream Live Captioner Backend...
-if defined LAN_IP if not "!LAN_IP!"=="127.0.0.1" (
-    echo   Network IP: http://!LAN_IP!:8765
+if "!CADDY_ON!"=="True" (
+    if defined LAN_IP if not "!LAN_IP!"=="127.0.0.1" (
+        echo   Clean Stage SSL: https://!LAN_IP!/display
+        echo   Clean Stage HTTP: http://!LAN_IP!/display
+    )
+    echo   Local Dashboard:  https://127.0.0.1/dashboard
+) else (
+    if defined LAN_IP if not "!LAN_IP!"=="127.0.0.1" (
+        echo   Network IP: http://!LAN_IP!:8765
+    )
+    echo   Local Dashboard: http://127.0.0.1:8765/dashboard
 )
 echo =======================================================
 call "%VENV_PY%" -m obs_captioner.main %*
@@ -87,6 +97,9 @@ if "!APP_EXIT_CODE!"=="42" (
     timeout /t 1 /nobreak >nul
     goto app_loop
 )
+
+:: Ensure Caddy reverse proxy daemon is stopped
+call "%VENV_PY%" -c "from obs_captioner.caddy_manager import stop_caddy; stop_caddy()" >nul 2>&1
 
 :: Any other exit code (including 0 or crash) - ALWAYS pause so the window does not close!
 echo.

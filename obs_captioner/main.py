@@ -56,6 +56,11 @@ async def main_async(args):
         config.obs.enabled = False
     if args.no_overlay:
         config.overlay.enabled = False
+    if getattr(args, "caddy", False):
+        if not getattr(config, "caddy", None):
+            from .config import CaddyConfig
+            config.caddy = CaddyConfig()
+        config.caddy.enabled = True
 
     setup_logging(config.general.log_level)
     logger = logging.getLogger("obs_captioner")
@@ -596,17 +601,42 @@ async def main_async(args):
     except Exception:
         pass
 
+    # 7b. Optional Caddy Reverse Proxy supervision
+    caddy_cfg = getattr(config, "caddy", None)
+    if caddy_cfg and caddy_cfg.enabled:
+        from .caddy_manager import start_caddy, is_caddy_running
+        if not is_caddy_running(getattr(caddy_cfg, "port_http", 80), getattr(caddy_cfg, "port_https", 443)):
+            logger.info("🛡️ [Caddy] Auto-starting reverse proxy with local SSL...")
+            c_ok, c_msg = start_caddy()
+            if not c_ok:
+                logger.warning(f"⚠️ [Caddy] Could not auto-start Caddy: {c_msg}")
+
     from .hardware import get_local_ip
+    from .caddy_manager import is_caddy_running
     lan_ip = get_local_ip()
     port = config.overlay.port or 8765
 
+    caddy_active = is_caddy_running(
+        getattr(caddy_cfg, "port_http", 80) if caddy_cfg else 80,
+        getattr(caddy_cfg, "port_https", 443) if caddy_cfg else 443,
+    )
+    caddy_ssl = getattr(caddy_cfg, "ssl", True) if caddy_cfg else True
+
     logger.info("═" * 60)
     logger.info("🎙️  VoxStream Live Captioner Ready!")
-    logger.info(f"👉 Local Dashboard:        http://127.0.0.1:{port}/dashboard")
-    logger.info(f"👉 OBS Browser Source:     http://127.0.0.1:{port}/")
-    if lan_ip and lan_ip != "127.0.0.1":
-        logger.info(f"🌐 Network Dashboard:      http://{lan_ip}:{port}/dashboard")
-        logger.info(f"📱 Mobile & Stage Display: http://{lan_ip}:{port}/display")
+    if caddy_active:
+        scheme = "https" if caddy_ssl else "http"
+        logger.info(f"👉 Local Dashboard:        {scheme}://127.0.0.1/dashboard")
+        logger.info(f"👉 OBS Browser Source:     http://127.0.0.1:{port}/")
+        if lan_ip and lan_ip != "127.0.0.1":
+            logger.info(f"🌐 Network Dashboard:      {scheme}://{lan_ip}/dashboard")
+            logger.info(f"🔒 Secure Stage Display:   {scheme}://{lan_ip}/display")
+    else:
+        logger.info(f"👉 Local Dashboard:        http://127.0.0.1:{port}/dashboard")
+        logger.info(f"👉 OBS Browser Source:     http://127.0.0.1:{port}/")
+        if lan_ip and lan_ip != "127.0.0.1":
+            logger.info(f"🌐 Network Dashboard:      http://{lan_ip}:{port}/dashboard")
+            logger.info(f"📱 Mobile & Stage Display: http://{lan_ip}:{port}/display")
     logger.info("═" * 60)
 
     async def run_pipeline():
@@ -682,6 +712,12 @@ async def main_async(args):
                 tray_app.stop()
             except Exception:
                 pass
+        if getattr(config, "caddy", None) and config.caddy.enabled:
+            try:
+                from .caddy_manager import stop_caddy
+                stop_caddy()
+            except Exception as e:
+                logger.debug(f"Error stopping Caddy: {e}")
         logger.info("OBS Live Captioner stopped gracefully.")
 
     # Wait until shutdown requested
@@ -709,6 +745,7 @@ def main():
     parser.add_argument("--list-devices", "-l", action="store_true", help="List all available audio input devices and exit")
     parser.add_argument("--no-obs", action="store_true", help="Disable OBS WebSocket client")
     parser.add_argument("--no-overlay", action="store_true", help="Disable Browser Source web overlay")
+    parser.add_argument("--caddy", action="store_true", help="Enable Caddy reverse proxy with SSL")
     parser.add_argument("--tray", dest="tray", action="store_true", default=None, help="Enable Windows taskbar system tray icon (default: auto-enabled on Windows)")
     parser.add_argument("--no-tray", dest="tray", action="store_false", help="Disable Windows taskbar system tray icon")
 
