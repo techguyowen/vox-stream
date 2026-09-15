@@ -23,7 +23,7 @@ cd "$SCRIPT_DIR"
 # ------------------------------------------------------------------------------
 # STEP 1: Python 3 & Homebrew Environment Check
 # ------------------------------------------------------------------------------
-echo -e "${CYAN}[1/7] Checking macOS environment & Python...${NC}"
+echo -e "${CYAN}[1/8] Checking macOS environment & Python...${NC}"
 
 if ! command -v python3 &>/dev/null; then
     echo -e "${RED}❌ Error: python3 is not installed or not in your PATH.${NC}"
@@ -47,7 +47,7 @@ fi
 # ------------------------------------------------------------------------------
 # STEP 2: Git Repository Link (for 1-click in-app updates)
 # ------------------------------------------------------------------------------
-echo -e "${CYAN}[2/7] Checking Git configuration for in-app updates...${NC}"
+echo -e "${CYAN}[2/8] Checking Git configuration for in-app updates...${NC}"
 if command -v git &>/dev/null; then
     if [ ! -d ".git" ]; then
         echo -e "${YELLOW}ℹ️ Linking directory to GitHub repository for 1-click in-app updates...${NC}"
@@ -64,7 +64,7 @@ fi
 # ------------------------------------------------------------------------------
 # STEP 3: Virtual Environment Setup
 # ------------------------------------------------------------------------------
-echo -e "${CYAN}[3/7] Setting up Python virtual environment (.venv)...${NC}"
+echo -e "${CYAN}[3/8] Setting up Python virtual environment (.venv)...${NC}"
 if [ ! -d ".venv" ] || [ ! -f ".venv/bin/activate" ]; then
     rm -rf .venv 2>/dev/null || true
     python3 -m venv .venv || {
@@ -79,7 +79,7 @@ fi
 # ------------------------------------------------------------------------------
 # STEP 4: Install Python Dependencies
 # ------------------------------------------------------------------------------
-echo -e "${CYAN}[4/7] Installing Python dependencies & speech engines...${NC}"
+echo -e "${CYAN}[4/8] Installing Python dependencies & speech engines...${NC}"
 if [ -f ".venv/bin/uv" ]; then
     echo -e "${GREEN}⚡ Using fast package manager [uv]...${NC}"
     .venv/bin/uv pip install -r requirements.txt
@@ -91,7 +91,7 @@ fi
 # ------------------------------------------------------------------------------
 # STEP 5: Hardware Acceleration (Apple Silicon MPS / Metal)
 # ------------------------------------------------------------------------------
-echo -e "${CYAN}[5/7] Checking Mac hardware acceleration...${NC}"
+echo -e "${CYAN}[5/8] Checking Mac hardware acceleration...${NC}"
 ARCH=$(uname -m)
 if [ "$ARCH" = "arm64" ]; then
     echo -e "${GREEN}🚀 Apple Silicon detected (${ARCH})!${NC}"
@@ -108,7 +108,7 @@ fi
 # ------------------------------------------------------------------------------
 # STEP 6: Configure & Pre-Cache AI Models
 # ------------------------------------------------------------------------------
-echo -e "${CYAN}[6/7] Initializing settings & pre-caching speech models...${NC}"
+echo -e "${CYAN}[6/8] Initializing settings & pre-caching speech models...${NC}"
 if [ ! -f "config.json" ]; then
     cp config.json.example config.json
     echo -e "${GREEN}✅ Created config.json from template.${NC}"
@@ -122,7 +122,7 @@ fi
 # ------------------------------------------------------------------------------
 # STEP 7: Permissions & Audio Check
 # ------------------------------------------------------------------------------
-echo -e "${CYAN}[7/7] Setting permissions & verifying audio devices...${NC}"
+echo -e "${CYAN}[7/8] Setting permissions & verifying audio devices...${NC}"
 chmod +x run_captioner.sh setup_mac.sh setup_linux.sh uninstall_mac.sh uninstall_linux.sh 2>/dev/null || true
 
 echo ""
@@ -135,13 +135,14 @@ echo -e "${CYAN}======================================================${NC}"
 # STEP 8: Optional Caddy Reverse Proxy & Local SSL (Port 80 & 443)
 # ------------------------------------------------------------------------------
 echo ""
-echo -e "${CYAN}======================================================${NC}"
-echo -e "${CYAN}   Caddy Reverse Proxy & Local SSL Configuration${NC}"
+echo -e "${CYAN}[8/8] Caddy Reverse Proxy & Local SSL Configuration...${NC}"
 echo -e "${CYAN}======================================================${NC}"
 echo "VoxStream can configure Caddy to provide clean URLs (no :8765)"
 echo "and local SSL/HTTPS for mobile PWA install and Screen Wake Lock."
 echo ""
-read -p "Would you like to install & enable Caddy with local SSL? [Y/n]: " INSTALL_CADDY
+if [ -z "${INSTALL_CADDY:-}" ]; then
+    read -p "Would you like to install & enable Caddy with local SSL? [Y/n]: " INSTALL_CADDY || true
+fi
 INSTALL_CADDY=${INSTALL_CADDY:-Y}
 if [[ "$INSTALL_CADDY" =~ ^[Yy]$ ]]; then
     echo -e "${CYAN}ℹ️  Downloading Caddy Reverse Proxy...${NC}"

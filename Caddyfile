@@ -1,6 +1,7 @@
 {
-    # Global options
-    admin off
+    # Enable admin API for process lifecycle management (caddy stop, caddy trust)
+    admin localhost:2019
+    auto_https disable_redirects
 }
 
 # HTTP Port 80 (Clean URLs without :8765)
@@ -14,8 +15,10 @@
 
 # HTTPS Port 443 (Local SSL / TLS with Caddy's internal CA)
 :443 {
-    # Automatically issue & manage local certificates for localhost, .local, and LAN IPs
-    tls internal
+    # Automatically issue & manage local certificates on demand for localhost and LAN IPs
+    tls internal {
+        on_demand
+    }
 
     # Reverse proxy all HTTP and WebSocket traffic to VoxStream
     reverse_proxy 127.0.0.1:8765
@@ -23,3 +26,4 @@
     # High-performance compression for dashboard and stage assets
     encode gzip zstd
 }
+

@@ -6,6 +6,7 @@ local Root CA certificate trust installation, and telemetry status.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import platform
@@ -107,6 +108,10 @@ def download_caddy() -> Tuple[bool, str]:
     exe_name = "caddy.exe" if sys.platform == "win32" else "caddy"
     target_path = bin_dir / exe_name
 
+    # Skip download if binary is already present and executable
+    if target_path.is_file() and os.access(target_path, os.X_OK):
+        return True, f"Caddy is already installed at {target_path}"
+
     system = platform.system().lower()
     machine = platform.machine().lower()
 
@@ -121,22 +126,49 @@ def download_caddy() -> Tuple[bool, str]:
         return False, f"Unsupported CPU architecture: {machine}"
 
     if system == "windows":
-        asset_name = f"caddy_windows_{arch}.zip"
+        os_str = "windows"
+        ext = "zip"
     elif system == "darwin":
-        asset_name = f"caddy_darwin_{arch}.tar.gz"
+        os_str = "mac"
+        ext = "tar.gz"
     elif system == "linux":
-        asset_name = f"caddy_linux_{arch}.tar.gz"
+        os_str = "linux"
+        ext = "tar.gz"
     else:
         return False, f"Unsupported operating system: {system}"
 
-    url = f"https://github.com/caddyserver/caddy/releases/latest/download/{asset_name}"
+    # Try GitHub Releases API first to discover the exact latest asset
+    download_url = None
+    asset_name = None
+    try:
+        api_url = "https://api.github.com/repos/caddyserver/caddy/releases/latest"
+        headers = {"User-Agent": "VoxStream-Caddy-Installer"}
+        req = urllib.request.Request(api_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            for asset in data.get("assets", []):
+                name = asset.get("name", "")
+                if f"_{os_str}_{arch}.{ext}" in name and not name.endswith(".sig") and not name.endswith(".pem"):
+                    download_url = asset.get("browser_download_url")
+                    asset_name = name
+                    break
+    except Exception as api_err:
+        logger.warning(f"GitHub API release lookup failed ({api_err}), falling back to pinned release")
+
+    # Fallback to pinned stable version if API lookup fails or rate limited
+    if not download_url:
+        pinned_tag = "v2.11.4"
+        pinned_ver = "2.11.4"
+        asset_name = f"caddy_{pinned_ver}_{os_str}_{arch}.{ext}"
+        download_url = f"https://github.com/caddyserver/caddy/releases/download/{pinned_tag}/{asset_name}"
+
     archive_path = bin_dir / asset_name
 
     try:
-        logger.info(f"Downloading Caddy from: {url}")
+        logger.info(f"Downloading Caddy from: {download_url}")
         headers = {"User-Agent": "VoxStream-Caddy-Installer"}
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req, timeout=30) as resp, open(archive_path, "wb") as out_file:
+        req = urllib.request.Request(download_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=45) as resp, open(archive_path, "wb") as out_file:
             shutil.copyfileobj(resp, out_file)
 
         # Extract binary
@@ -145,8 +177,10 @@ def download_caddy() -> Tuple[bool, str]:
                 zf.extract(exe_name, path=bin_dir)
         elif asset_name.endswith(".tar.gz"):
             with tarfile.open(archive_path, "r:gz") as tf:
-                member = tf.getmember(exe_name)
-                tf.extract(member, path=bin_dir)
+                try:
+                    tf.extract(exe_name, path=bin_dir, filter="data")
+                except TypeError:
+                    tf.extract(exe_name, path=bin_dir)
 
         # Ensure executable permissions
         target_path.chmod(0o755)
@@ -174,22 +208,33 @@ def trust_caddy_ca() -> Tuple[bool, str]:
     if not caddy_bin:
         return False, "Caddy binary not found"
 
+    # Caddy's trust command communicates with the admin API on localhost:2019
+    was_running = is_caddy_running()
+    if not was_running:
+        start_caddy()
+
     try:
         logger.info("Installing Caddy local Root CA into system trust store...")
         res = subprocess.run(
             [str(caddy_bin), "trust"],
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
-            timeout=15,
+            timeout=10,
         )
+        if not was_running:
+            stop_caddy()
+
         if res.returncode == 0:
             logger.info("Caddy local Root CA installed and trusted successfully.")
             return True, "Caddy Root CA trusted successfully"
         else:
             err = (res.stderr or res.stdout).strip()
             logger.warning(f"caddy trust returned code {res.returncode}: {err}")
-            return False, f"caddy trust failed: {err}"
+            return False, f"caddy trust note: {err}"
     except Exception as e:
+        if not was_running:
+            stop_caddy()
         logger.warning(f"Error running caddy trust: {e}")
         return False, str(e)
 
@@ -204,15 +249,22 @@ def start_caddy(config_file: Optional[str] = None) -> Tuple[bool, str]:
     if not caddyfile.is_file():
         return False, f"Caddyfile not found at {caddyfile}"
 
+    log_file = get_bin_dir() / "caddy.log"
     try:
         logger.info(f"Starting Caddy with configuration: {caddyfile}")
         cmd = [str(caddy_bin), "start", "--config", str(caddyfile)]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=12)
+        with open(log_file, "a") as out:
+            res = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=out, stderr=out, timeout=10)
         if res.returncode == 0:
             logger.info("Caddy reverse proxy started successfully.")
             return True, "Caddy started successfully"
         else:
-            err = (res.stderr or res.stdout).strip()
+            err = ""
+            if log_file.is_file():
+                try:
+                    err = log_file.read_text()[-500:].strip()
+                except Exception:
+                    pass
             logger.error(f"Caddy start failed (code {res.returncode}): {err}")
             return False, f"Failed to start Caddy: {err}"
     except Exception as e:
@@ -229,7 +281,7 @@ def stop_caddy() -> Tuple[bool, str]:
     try:
         logger.info("Stopping Caddy reverse proxy...")
         cmd = [str(caddy_bin), "stop"]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        res = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
         if res.returncode == 0:
             logger.info("Caddy stopped successfully.")
             return True, "Caddy stopped successfully"
