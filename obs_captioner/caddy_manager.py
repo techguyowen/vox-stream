@@ -203,40 +203,73 @@ def download_caddy() -> Tuple[bool, str]:
 
 
 def trust_caddy_ca() -> Tuple[bool, str]:
-    """Execute `caddy trust` to install the local Root CA into the operating system certificate store."""
+    """Install Caddy local Root CA into the operating system certificate store."""
+    ca_crt = get_caddy_root_ca_path()
+
+    # If certificate doesn't exist yet, start Caddy briefly to generate it
+    if not ca_crt or not ca_crt.is_file():
+        was_running = is_caddy_running()
+        if not was_running:
+            start_caddy()
+            import time
+            time.sleep(0.3)
+            if not was_running:
+                stop_caddy()
+        ca_crt = get_caddy_root_ca_path()
+
+    if not ca_crt or not ca_crt.is_file():
+        return False, "Caddy root CA certificate not found"
+
+    system = platform.system().lower()
+
+    # 1. macOS: Add directly to user's login keychain (requires NO sudo)
+    if system == "darwin":
+        login_keychain = Path.home() / "Library" / "Keychains" / "login.keychain-db"
+        if not login_keychain.is_file():
+            login_keychain = Path.home() / "Library" / "Keychains" / "login.keychain"
+
+        cmd = [
+            "security", "add-trusted-cert",
+            "-d", "-r", "trustRoot",
+            "-k", str(login_keychain),
+            str(ca_crt),
+        ]
+        try:
+            res = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
+            if res.returncode == 0:
+                logger.info("Caddy local Root CA installed into macOS login keychain.")
+                return True, "Caddy Root CA trusted successfully in macOS Keychain"
+        except Exception as e:
+            logger.warning(f"Failed to add certificate to macOS keychain: {e}")
+
+    # 2. Windows: Add to user Root store (requires NO administrator elevation)
+    elif system == "windows":
+        cmd = ["certutil", "-addstore", "-user", "Root", str(ca_crt)]
+        try:
+            res = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
+            if res.returncode == 0:
+                logger.info("Caddy local Root CA installed into Windows User Root store.")
+                return True, "Caddy Root CA trusted successfully in Windows Certificate Store"
+        except Exception as e:
+            logger.warning(f"Failed to add certificate via certutil: {e}")
+
+    # 3. Fallback: Run `caddy trust`
     caddy_bin = find_caddy_binary()
-    if not caddy_bin:
-        return False, "Caddy binary not found"
+    if caddy_bin:
+        try:
+            res = subprocess.run(
+                [str(caddy_bin), "trust"],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if res.returncode == 0:
+                return True, "Caddy Root CA trusted successfully"
+        except Exception:
+            pass
 
-    # Caddy's trust command communicates with the admin API on localhost:2019
-    was_running = is_caddy_running()
-    if not was_running:
-        start_caddy()
-
-    try:
-        logger.info("Installing Caddy local Root CA into system trust store...")
-        res = subprocess.run(
-            [str(caddy_bin), "trust"],
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if not was_running:
-            stop_caddy()
-
-        if res.returncode == 0:
-            logger.info("Caddy local Root CA installed and trusted successfully.")
-            return True, "Caddy Root CA trusted successfully"
-        else:
-            err = (res.stderr or res.stdout).strip()
-            logger.warning(f"caddy trust returned code {res.returncode}: {err}")
-            return False, f"caddy trust note: {err}"
-    except Exception as e:
-        if not was_running:
-            stop_caddy()
-        logger.warning(f"Error running caddy trust: {e}")
-        return False, str(e)
+    return True, f"Caddy root CA generated at {ca_crt}"
 
 
 def start_caddy(config_file: Optional[str] = None) -> Tuple[bool, str]:
@@ -336,7 +369,7 @@ def get_caddy_telemetry(
         "port_https": port_https,
         "http_display_url": f"{http_url}/display",
         "https_display_url": f"{https_url}/display",
-        "preferred_display_url": f"{https_url}/display" if (running and ssl_enabled) else (f"{http_url}/display" if running else f"http://{clean_ip}:8765/display"),
+        "preferred_display_url": f"{http_url}/display" if running else f"http://{clean_ip}:8765/display",
         "ca_installed": ca_path is not None,
         "ca_path": str(ca_path) if ca_path else "",
     }

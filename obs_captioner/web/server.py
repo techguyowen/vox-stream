@@ -361,14 +361,16 @@ class WebOverlayServer:
         caddy_active = is_caddy_running(port_http, port_https)
 
         if caddy_active:
-            scheme = "https" if caddy_ssl else "http"
-            p_str = "" if ((caddy_ssl and port_https == 443) or (not caddy_ssl and port_http == 80)) else f":{port_https if caddy_ssl else port_http}"
-            status_info["display_url"] = f"{scheme}://{lan_ip}{p_str}/display"
-            status_info["dashboard_url"] = f"{scheme}://{lan_ip}{p_str}/dashboard"
-            status_info["overlay_url"] = f"{scheme}://{lan_ip}{p_str}/"
-            status_info["bible_url"] = f"{scheme}://{lan_ip}{p_str}/bible"
+            p_http_str = "" if port_http == 80 else f":{port_http}"
+            p_https_str = "" if port_https == 443 else f":{port_https}"
+            status_info["display_url"] = f"http://{lan_ip}{p_http_str}/display"
+            status_info["display_https_url"] = f"https://{lan_ip}{p_https_str}/display"
+            status_info["dashboard_url"] = f"https://{lan_ip}{p_https_str}/dashboard" if caddy_ssl else f"http://{lan_ip}{p_http_str}/dashboard"
+            status_info["overlay_url"] = f"http://{lan_ip}{p_http_str}/"
+            status_info["bible_url"] = f"http://{lan_ip}{p_http_str}/bible"
         else:
             status_info["display_url"] = f"http://{lan_ip}:{port}/display"
+            status_info["display_https_url"] = ""
             status_info["dashboard_url"] = f"http://{lan_ip}:{port}/dashboard"
             status_info["overlay_url"] = f"http://{lan_ip}:{port}/"
             status_info["bible_url"] = f"http://{lan_ip}:{port}/bible"
@@ -406,12 +408,13 @@ class WebOverlayServer:
         caddy_active = is_caddy_running(port_http, port_https)
 
         if caddy_active:
-            scheme = "https" if caddy_ssl else "http"
-            p_str = "" if ((caddy_ssl and port_https == 443) or (not caddy_ssl and port_http == 80)) else f":{port_https if caddy_ssl else port_http}"
-            display_url = f"{scheme}://{lan_ip}{p_str}/display"
-            dashboard_url = f"{scheme}://{lan_ip}{p_str}/dashboard"
-            overlay_url = f"{scheme}://{lan_ip}{p_str}/"
-            bible_url = f"{scheme}://{lan_ip}{p_str}/bible"
+            p_http_str = "" if port_http == 80 else f":{port_http}"
+            p_https_str = "" if port_https == 443 else f":{port_https}"
+            # Stage / mobile display defaults to clean HTTP (port 80) so mobile phones never show certificate warnings
+            display_url = f"http://{lan_ip}{p_http_str}/display"
+            dashboard_url = f"https://{lan_ip}{p_https_str}/dashboard" if caddy_ssl else f"http://{lan_ip}{p_http_str}/dashboard"
+            overlay_url = f"http://{lan_ip}{p_http_str}/"
+            bible_url = f"http://{lan_ip}{p_http_str}/bible"
         else:
             display_url = f"http://{lan_ip}:{port}/display"
             dashboard_url = f"http://{lan_ip}:{port}/dashboard"
@@ -424,6 +427,7 @@ class WebOverlayServer:
             "caddy_active": caddy_active,
             "caddy_ssl": caddy_ssl,
             "display_url": display_url,
+            "display_https_url": f"https://{lan_ip}:{port_https}/display" if (caddy_active and port_https != 443) else f"https://{lan_ip}/display",
             "dashboard_url": dashboard_url,
             "overlay_url": overlay_url,
             "bible_url": bible_url,
@@ -448,10 +452,15 @@ class WebOverlayServer:
         caddy_ssl = getattr(caddy_cfg, "ssl", True) if caddy_cfg else True
         caddy_active = is_caddy_running(port_http, port_https)
 
+        want_ssl = request.query.get("ssl", "").strip().lower() in ("1", "true", "yes")
+
         if caddy_active:
-            scheme = "https" if caddy_ssl else "http"
-            p_str = "" if ((caddy_ssl and port_https == 443) or (not caddy_ssl and port_http == 80)) else f":{port_https if caddy_ssl else port_http}"
-            base_url = f"{scheme}://{lan_ip}{p_str}"
+            if want_ssl and caddy_ssl:
+                p_str = "" if port_https == 443 else f":{port_https}"
+                base_url = f"https://{lan_ip}{p_str}"
+            else:
+                p_str = "" if port_http == 80 else f":{port_http}"
+                base_url = f"http://{lan_ip}{p_str}"
         else:
             base_url = f"http://{lan_ip}:{port}"
 
