@@ -145,10 +145,10 @@ if [ -z "${INSTALL_CADDY:-}" ]; then
 fi
 INSTALL_CADDY=${INSTALL_CADDY:-Y}
 if [[ "$INSTALL_CADDY" =~ ^[Yy]$ ]]; then
-    echo -e "${CYAN}ℹ️  Downloading Caddy Reverse Proxy...${NC}"
-    .venv/bin/python -c "from obs_captioner.caddy_manager import download_caddy, trust_caddy_ca; s, m = download_caddy(); print(m); s2, m2 = trust_caddy_ca(); print(m2)"
+    echo -e "${CYAN}ℹ️  Configuring Caddy Reverse Proxy...${NC}"
+    .venv/bin/python -c "from obs_captioner.caddy_manager import download_caddy, trust_caddy_ca, start_caddy; download_caddy(); trust_caddy_ca(); start_caddy()"
     .venv/bin/python -c "from obs_captioner.config import load_config, save_config; c = load_config(); c.caddy.enabled = True; c.caddy.ssl = True; save_config(c)"
-    echo -e "${GREEN}✅ Caddy Reverse Proxy and local SSL configured!${NC}"
+    echo -e "${GREEN}✅ Caddy Reverse Proxy and local SSL configured & running!${NC}"
 else
     echo -e "${YELLOW}ℹ️  Caddy Reverse Proxy skipped. You can enable it anytime in the Dashboard.${NC}"
 fi

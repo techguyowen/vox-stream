@@ -330,10 +330,10 @@ echo.
 set "INSTALL_CADDY=Y"
 set /p "INSTALL_CADDY=Would you like to install & enable Caddy with local SSL? (Y/N, default: Y): "
 if /i "!INSTALL_CADDY!"=="Y" (
-    echo [INFO] Downloading Caddy Reverse Proxy into bin\caddy.exe...
-    call "%VENV_PY%" -c "from obs_captioner.caddy_manager import download_caddy, trust_caddy_ca; s, m = download_caddy(); print(m); s2, m2 = trust_caddy_ca(); print(m2)"
+    echo [INFO] Configuring Caddy Reverse Proxy in bin\caddy.exe...
+    call "%VENV_PY%" -c "from obs_captioner.caddy_manager import download_caddy, trust_caddy_ca, start_caddy; download_caddy(); trust_caddy_ca(); start_caddy()"
     call "%VENV_PY%" -c "from obs_captioner.config import load_config, save_config; c = load_config(); c.caddy.enabled = True; c.caddy.ssl = True; save_config(c)"
-    echo [SUCCESS] Caddy Reverse Proxy and local SSL configured!
+    echo [SUCCESS] Caddy Reverse Proxy and local SSL configured & running!
 ) else (
     echo [INFO] Caddy Reverse Proxy skipped. You can enable it anytime in the Dashboard.
 )
