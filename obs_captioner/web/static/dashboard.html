@@ -83,21 +83,12 @@
                 </div>
 
                 <button id="btn-toggle-engine" class="btn btn-danger">⏹ Stop Captions</button>
-                <!-- Auto-Stop Timer Button + Live Countdown Badge + Quick Extend Chips -->
-                <div style="display: inline-flex; align-items: center; gap: 4px;">
-                    <button id="btn-open-scheduler-modal" class="btn btn-secondary" title="Auto-Stop Timer & Weekly Schedule" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; background: rgba(251, 191, 36, 0.12); border: 1px solid rgba(251, 191, 36, 0.4); color: #FCD34D; padding: 6px 12px; border-radius: 6px; cursor: pointer;">
-                        <span id="scheduler-btn-icon">⏱️</span>
-                        <span id="scheduler-btn-label">Auto-Stop</span>
-                        <span id="scheduler-countdown-badge" style="display:none; background: rgba(251, 191, 36, 0.25); border: 1px solid rgba(251, 191, 36, 0.5); border-radius: 4px; padding: 1px 6px; font-size: 11px; font-weight: 800; color: #FDE68A; letter-spacing: 0.03em; font-variant-numeric: tabular-nums;"></span>
-                    </button>
-                    <!-- Quick Extend Buttons in Header -->
-                    <div id="header-extend-chips" style="display: inline-flex; gap: 3px;">
-                        <button class="btn btn-secondary btn-sm btn-quick-extend" data-minutes="1" title="Add 1 minute" style="padding: 4px 6px; font-size: 11px; font-weight: 700; color: #FCD34D; background: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 4px; cursor: pointer; line-height: 1;">+1m</button>
-                        <button class="btn btn-secondary btn-sm btn-quick-extend" data-minutes="5" title="Add 5 minutes" style="padding: 4px 6px; font-size: 11px; font-weight: 700; color: #FCD34D; background: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 4px; cursor: pointer; line-height: 1;">+5m</button>
-                        <button class="btn btn-secondary btn-sm btn-quick-extend" data-minutes="10" title="Add 10 minutes" style="padding: 4px 6px; font-size: 11px; font-weight: 700; color: #FCD34D; background: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 4px; cursor: pointer; line-height: 1;">+10m</button>
-                        <button class="btn btn-secondary btn-sm btn-quick-extend" data-minutes="30" title="Add 30 minutes" style="padding: 4px 6px; font-size: 11px; font-weight: 700; color: #FCD34D; background: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 4px; cursor: pointer; line-height: 1;">+30m</button>
-                    </div>
-                </div>
+                <!-- Auto-Stop Timer Button + Live Countdown Badge -->
+                <button id="btn-open-scheduler-modal" class="btn btn-secondary" title="Auto-Stop Timer & Weekly Schedule" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; background: rgba(251, 191, 36, 0.12); border: 1px solid rgba(251, 191, 36, 0.4); color: #FCD34D; padding: 6px 12px; border-radius: 6px; cursor: pointer;">
+                    <span id="scheduler-btn-icon">⏱️</span>
+                    <span id="scheduler-btn-label">Auto-Stop</span>
+                    <span id="scheduler-countdown-badge" style="display:none; background: rgba(251, 191, 36, 0.25); border: 1px solid rgba(251, 191, 36, 0.5); border-radius: 4px; padding: 1px 6px; font-size: 11px; font-weight: 800; color: #FDE68A; letter-spacing: 0.03em; font-variant-numeric: tabular-nums;"></span>
+                </button>
                 <button id="btn-header-rec" class="btn btn-secondary" title="Live Synchronized Subtitle Sidecar Recording (.srt / .vtt)" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; border: 1px solid rgba(239, 68, 68, 0.35); background: rgba(239, 68, 68, 0.08); color: #FCA5A5; padding: 6px 12px; border-radius: 6px; cursor: pointer;">
                     <span id="header-rec-dot" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#94A3B8;"></span>
                     <span id="header-rec-text">⏺ REC Sidecar</span>
@@ -2182,6 +2173,20 @@
                     <button class="btn btn-secondary btn-sm btn-quick-timer" data-minutes="75" style="font-size: 12px; padding: 5px 12px;">1h 15m</button>
                     <button class="btn btn-secondary btn-sm btn-quick-timer" data-minutes="90" style="font-size: 12px; padding: 5px 12px;">1h 30m</button>
                     <button class="btn btn-secondary btn-sm btn-quick-timer" data-minutes="120" style="font-size: 12px; padding: 5px 12px;">2 hours</button>
+                </div>
+            </div>
+
+            <!-- Quick Add / Extend Time (+1, +5, +10, +30 min) -->
+            <div style="background: rgba(251, 191, 36, 0.05); border: 1px solid rgba(251, 191, 36, 0.25); border-radius: 8px; padding: 14px; margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <h4 style="margin: 0; font-size: 13px; color: #FDE68A;">➕ Add Time to Timer</h4>
+                    <span style="font-size: 11px; color: var(--text-muted);">Extends active timer or starts a new one</span>
+                </div>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    <button class="btn btn-secondary btn-sm btn-quick-extend" data-minutes="1" style="font-size: 12px; padding: 6px 14px; font-weight: 700; color: #FDE68A; background: rgba(251, 191, 36, 0.12); border: 1px solid rgba(251, 191, 36, 0.35); border-radius: 6px;">+1 min</button>
+                    <button class="btn btn-secondary btn-sm btn-quick-extend" data-minutes="5" style="font-size: 12px; padding: 6px 14px; font-weight: 700; color: #FDE68A; background: rgba(251, 191, 36, 0.12); border: 1px solid rgba(251, 191, 36, 0.35); border-radius: 6px;">+5 min</button>
+                    <button class="btn btn-secondary btn-sm btn-quick-extend" data-minutes="10" style="font-size: 12px; padding: 6px 14px; font-weight: 700; color: #FDE68A; background: rgba(251, 191, 36, 0.12); border: 1px solid rgba(251, 191, 36, 0.35); border-radius: 6px;">+10 min</button>
+                    <button class="btn btn-secondary btn-sm btn-quick-extend" data-minutes="30" style="font-size: 12px; padding: 6px 14px; font-weight: 700; color: #FDE68A; background: rgba(251, 191, 36, 0.12); border: 1px solid rgba(251, 191, 36, 0.35); border-radius: 6px;">+30 min</button>
                 </div>
             </div>
 
