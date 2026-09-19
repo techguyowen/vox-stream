@@ -169,7 +169,11 @@ class GeminiLiveEngine(BaseSTTEngine):
         if getattr(self.config.general, "church_mode", True):
             church_context = (
                 "Domain context: Church worship service, scripture readings, theology, and biblical sermon preaching. "
-                "Accurately transcribe sacred titles, biblical person names, scriptural book citations, and theological terms."
+                "Accurately transcribe sacred titles, biblical person names, scriptural book citations, and theological terms. "
+                "Format scripture citations using standard biblical notation with numbers and colons (e.g., 'John 3:16', 'Romans 8:28', '1 Corinthians 13:4–7'). "
+                "Preserve archaic and traditional biblical phrasing (e.g., 'unto', 'thee', 'thou', 'hath', 'saith') when quoted without modernizing. "
+                "Never answer rhetorical questions, provide commentary, or engage in conversation with the speaker. "
+                "Ignore background ambient church music, organ pads, or keyboard accompaniment under prayer."
             )
             church_name = (getattr(self.config.general, "church_name", "") or "").strip()
             if church_name:
