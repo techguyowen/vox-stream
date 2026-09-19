@@ -27,6 +27,7 @@ from .twitch_bot import TwitchCaptionBot
 from .web import WebOverlayServer
 from .updater import UpdateManager
 from .subtitle_recorder import SubtitleRecorder
+from .scheduler import CaptionScheduler
 
 logger = logging.getLogger("obs_captioner")
 
@@ -99,6 +100,7 @@ async def main_async(args):
     is_switching_engine = False
     engine_lock = asyncio.Lock()
     shutdown_event = asyncio.Event()
+    scheduler = None  # CaptionScheduler – initialized after on_start/on_stop callbacks are defined
 
     def get_model_detail(cfg: AppConfig) -> str:
         eng = cfg.general.engine
@@ -349,12 +351,27 @@ async def main_async(args):
     def on_start_requested():
         nonlocal is_paused
         is_paused = False
+        # Drain any stale audio queued while stopped so the engine
+        # doesn't process stale audio on resume.
+        try:
+            while not audio_capture._queue.empty():
+                audio_capture._queue.get_nowait()
+        except Exception:
+            pass
         logger.info("Captioning started via API.")
 
     def on_stop_requested():
         nonlocal is_paused
         is_paused = True
-        logger.info("Captioning paused via API.")
+        # CRITICAL: Stop the active cloud engine streaming session immediately
+        # to prevent cloud token waste (Gemini Live, Bandwidth, Google STT).
+        # run_pipeline() will automatically restart the stream when is_paused becomes False.
+        if engine is not None:
+            try:
+                asyncio.run_coroutine_threadsafe(engine.stop(), loop)
+            except Exception as _e:
+                logger.debug(f"engine.stop() during pause: {_e}")
+        logger.info("Captioning stopped via API — cloud streaming session terminated.")
 
     def on_restart_requested():
         nonlocal is_restart
@@ -398,6 +415,27 @@ async def main_async(args):
             on_trim_memory=on_trim_memory,
         )
         await web_server.start()
+
+    # 3b. Initialize Caption Scheduler (auto-stop timers & recurring weekly schedules)
+    def _scheduler_broadcast(payload: dict):
+        if web_server:
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    web_server.broadcast_control(payload),
+                    loop,
+                )
+            except Exception:
+                pass
+
+    scheduler = CaptionScheduler(
+        scheduler_config=config.scheduler,
+        on_stop_callback=on_stop_requested,
+        on_start_callback=on_start_requested,
+        on_broadcast=_scheduler_broadcast,
+    )
+    if web_server:
+        web_server.scheduler = scheduler
+    scheduler.start(loop)
 
     # Hook VU level meter to broadcast over WebSockets
     if web_server:
@@ -527,20 +565,38 @@ async def main_async(args):
     # Hook OBS auto-start / auto-stop events & recording sync
     if obs_client:
         def on_stream_state(active: bool):
-            nonlocal is_paused
             if active and config.obs.auto_start_on_stream:
-                logger.info("OBS Streaming started -> Captioner active.")
-                is_paused = False
-            elif not active and config.obs.auto_start_on_stream:
-                logger.info("OBS Streaming stopped.")
+                logger.info("OBS Streaming started → Captioner active.")
+                on_start_requested()
+            elif not active and config.obs.auto_stop_on_stream:
+                logger.info("OBS Streaming stopped → Auto-stopping captioning (auto_stop_on_stream).")
+                on_stop_requested()
+                if web_server:
+                    asyncio.run_coroutine_threadsafe(
+                        web_server.broadcast_control({
+                            "type": "auto_stop_triggered",
+                            "reason": "obs_stream_stopped",
+                            "message": "📡 OBS Streaming stopped — captioning auto-stopped.",
+                        }),
+                        loop,
+                    )
 
         def on_record_state(active: bool, output_path: str = ""):
-            nonlocal is_paused
             if active and config.obs.auto_start_on_record:
-                logger.info(f"OBS Recording started (output: '{output_path}') -> Captioner active.")
-                is_paused = False
-            elif not active and config.obs.auto_start_on_record:
-                logger.info("OBS Recording stopped.")
+                logger.info(f"OBS Recording started (output: '{output_path}') → Captioner active.")
+                on_start_requested()
+            elif not active and config.obs.auto_stop_on_record:
+                logger.info("OBS Recording stopped → Auto-stopping captioning (auto_stop_on_record).")
+                on_stop_requested()
+                if web_server:
+                    asyncio.run_coroutine_threadsafe(
+                        web_server.broadcast_control({
+                            "type": "auto_stop_triggered",
+                            "reason": "obs_record_stopped",
+                            "message": "⏺ OBS Recording stopped — captioning auto-stopped.",
+                        }),
+                        loop,
+                    )
 
             # Auto synchronized subtitle sidecar (.srt / .vtt)
             if config.obs.auto_record_subtitles and subtitle_recorder:
@@ -677,6 +733,11 @@ async def main_async(args):
                 obs_reconnect_task.cancel()
             except Exception:
                 pass
+        if scheduler:
+            try:
+                scheduler.stop()
+            except Exception as e:
+                logger.debug(f"Error stopping scheduler: {e}")
         if twitch_bot:
             try:
                 await asyncio.wait_for(twitch_bot.stop(), timeout=0.8)

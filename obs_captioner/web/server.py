@@ -81,6 +81,7 @@ class WebOverlayServer:
         self.audio_capture = audio_capture
         self.updater = updater
         self.subtitle_recorder = subtitle_recorder
+        self.scheduler = None  # Set by main.py after scheduler is instantiated
         self._updater_task: Optional[asyncio.Task] = None
         self.translator = SubtitleTranslator(
             self.config.translation,
@@ -202,7 +203,17 @@ class WebOverlayServer:
         self.app.router.add_post("/api/control/shutdown", self._handle_control_shutdown)
         self.app.router.add_post("/api/control/reopen-screen", self._handle_control_reopen_screen)
         self.app.router.add_post("/api/control/restore-display", self._handle_control_reopen_screen)
-        
+
+        # Auto-Stop Scheduler API
+        self.app.router.add_get("/api/scheduler/status", self._handle_scheduler_status)
+        self.app.router.add_post("/api/scheduler/timer", self._handle_scheduler_set_timer)
+        self.app.router.add_post("/api/scheduler/timer/cancel", self._handle_scheduler_cancel_timer)
+        self.app.router.add_get("/api/scheduler/schedules", self._handle_scheduler_get_schedules)
+        self.app.router.add_post("/api/scheduler/schedules", self._handle_scheduler_post_schedule)
+        self.app.router.add_delete("/api/scheduler/schedules/{schedule_id}", self._handle_scheduler_delete_schedule)
+        self.app.router.add_post("/api/scheduler/config", self._handle_scheduler_update_config)
+
+
         # OBS Projector & Display Automation
         self.app.router.add_post("/api/obs/projector/open", self._handle_open_projector)
         self.app.router.add_get("/api/obs/monitors", self._handle_get_monitors)
@@ -1106,6 +1117,147 @@ class WebOverlayServer:
         if self.on_stop_requested:
             self.on_stop_requested()
         return web.json_response({"status": "success", "message": "Captioner stopped."})
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Scheduler API Handlers
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def _scheduler_status_payload(self) -> dict:
+        """Build a full scheduler status dict for API responses."""
+        from dataclasses import asdict
+        sched = self.scheduler
+        if sched is None:
+            return {
+                "scheduler_enabled": False,
+                "timer": {"active": False, "remaining_seconds": 0, "target_timestamp": None, "target_formatted": None},
+                "schedules": [],
+                "next_event": None,
+                "obs_auto_stop_on_stream": getattr(self.config.obs, "auto_stop_on_stream", False),
+                "obs_auto_stop_on_record": getattr(self.config.obs, "auto_stop_on_record", False),
+            }
+        return {
+            "scheduler_enabled": sched._config.enabled,
+            "timer": sched.get_timer_status(),
+            "schedules": [asdict(s) for s in sched.get_schedules()],
+            "next_event": sched.get_next_event(),
+            "obs_auto_stop_on_stream": getattr(self.config.obs, "auto_stop_on_stream", False),
+            "obs_auto_stop_on_record": getattr(self.config.obs, "auto_stop_on_record", False),
+        }
+
+    async def _handle_scheduler_status(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        return web.json_response(self._scheduler_status_payload())
+
+    async def _handle_scheduler_set_timer(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        if self.scheduler is None:
+            return web.json_response({"error": "Scheduler not initialized."}, status=503)
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+
+        target_ts = None
+        if "end_time" in data and data["end_time"]:
+            target_ts = self.scheduler.set_end_time(str(data["end_time"]))
+            if target_ts is None:
+                return web.json_response({"error": f"Could not parse end_time: '{data['end_time']}'"}, status=400)
+        elif "duration_seconds" in data:
+            target_ts = self.scheduler.set_duration(float(data["duration_seconds"]))
+        elif "duration_minutes" in data:
+            target_ts = self.scheduler.set_duration(float(data["duration_minutes"]) * 60.0)
+        else:
+            return web.json_response({"error": "Provide 'duration_minutes', 'duration_seconds', or 'end_time'."}, status=400)
+
+        from .config import save_config
+        save_config(self.config)
+        return web.json_response({
+            "status": "success",
+            "message": "Auto-stop timer set.",
+            "timer": self.scheduler.get_timer_status(),
+        })
+
+    async def _handle_scheduler_cancel_timer(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        if self.scheduler is None:
+            return web.json_response({"error": "Scheduler not initialized."}, status=503)
+        self.scheduler.cancel_timer()
+        return web.json_response({"status": "success", "message": "Timer cancelled.", "timer": self.scheduler.get_timer_status()})
+
+    async def _handle_scheduler_get_schedules(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        from dataclasses import asdict
+        schedules = [asdict(s) for s in (self.scheduler.get_schedules() if self.scheduler else [])]
+        return web.json_response({"status": "success", "schedules": schedules})
+
+    async def _handle_scheduler_post_schedule(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        if self.scheduler is None:
+            return web.json_response({"error": "Scheduler not initialized."}, status=503)
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "Invalid JSON body."}, status=400)
+
+        schedule_id = data.get("id", "")
+        if schedule_id:
+            # Update existing
+            updated = self.scheduler.update_schedule(schedule_id, data)
+            if not updated:
+                return web.json_response({"error": f"Schedule '{schedule_id}' not found."}, status=404)
+            msg = "Schedule updated."
+        else:
+            # Create new
+            updated = self.scheduler.add_schedule(data)
+            msg = "Schedule created."
+
+        from dataclasses import asdict
+        from obs_captioner.config import save_config
+        save_config(self.config)
+        return web.json_response({"status": "success", "message": msg, "schedule": asdict(updated)})
+
+    async def _handle_scheduler_delete_schedule(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        if self.scheduler is None:
+            return web.json_response({"error": "Scheduler not initialized."}, status=503)
+        schedule_id = request.match_info.get("schedule_id", "")
+        removed = self.scheduler.remove_schedule(schedule_id)
+        if not removed:
+            return web.json_response({"error": f"Schedule '{schedule_id}' not found."}, status=404)
+        from obs_captioner.config import save_config
+        save_config(self.config)
+        return web.json_response({"status": "success", "message": f"Schedule '{schedule_id}' deleted."})
+
+    async def _handle_scheduler_update_config(self, request: web.Request) -> web.Response:
+        """Update OBS auto-stop toggles and global scheduler enabled flag."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        try:
+            data = await request.json()
+        except Exception:
+            return web.json_response({"error": "Invalid JSON body."}, status=400)
+
+        if "auto_stop_on_stream" in data:
+            self.config.obs.auto_stop_on_stream = bool(data["auto_stop_on_stream"])
+        if "auto_stop_on_record" in data:
+            self.config.obs.auto_stop_on_record = bool(data["auto_stop_on_record"])
+        if "scheduler_enabled" in data and self.scheduler is not None:
+            self.scheduler._config.enabled = bool(data["scheduler_enabled"])
+            self.config.scheduler.enabled = self.scheduler._config.enabled
+
+        from obs_captioner.config import save_config
+        save_config(self.config)
+        return web.json_response({
+            "status": "success",
+            "message": "Scheduler config updated.",
+            **self._scheduler_status_payload(),
+        })
 
     async def _handle_control_restart(self, request: web.Request) -> web.Response:
         if not self._check_auth(request):

@@ -151,6 +151,8 @@ class OBSConfig:
     scene_auto_mute_enabled: bool = False  # Auto-pause captions on music/video scenes and auto-resume on speaking scenes
     scene_muted_names: List[str] = field(default_factory=list)  # OBS scenes where captions should be muted/paused
     scene_active_names: List[str] = field(default_factory=list)  # OBS scenes where captions should be active/resumed
+    auto_stop_on_stream: bool = False  # Auto-stop captioning when OBS stops streaming (prevents cloud token waste)
+    auto_stop_on_record: bool = False  # Auto-stop captioning when OBS stops recording (prevents cloud token waste)
 
 
 @dataclass
@@ -281,6 +283,24 @@ class SummaryConfig:
 
 
 @dataclass
+class WeeklySchedule:
+    """Defines a recurring weekly auto-stop/start captioning schedule."""
+    id: str = ""
+    name: str = "Weekly Schedule"
+    days: List[str] = field(default_factory=list)  # e.g. ["Sunday"] or ["Saturday", "Sunday"]
+    stop_time: str = ""   # 24hr "HH:MM" e.g. "12:30"
+    start_time: str = ""  # 24hr "HH:MM" e.g. "09:30", or "" to disable auto-start
+    enabled: bool = True
+
+
+@dataclass
+class SchedulerConfig:
+    """Auto-stop captioning scheduler configuration (persisted in config.json)."""
+    enabled: bool = True
+    schedules: List[WeeklySchedule] = field(default_factory=list)
+
+
+@dataclass
 class CaddyConfig:
     enabled: bool = False
     ssl: bool = True
@@ -314,6 +334,7 @@ class AppConfig:
     update: UpdateConfig = field(default_factory=UpdateConfig)
     summary: SummaryConfig = field(default_factory=SummaryConfig)
     caddy: CaddyConfig = field(default_factory=CaddyConfig)
+    scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
 
 
 _current_config_path: Optional[str] = None
@@ -364,6 +385,21 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         except Exception as e:
             logger.warning(f"Failed to read {config_path}: {e}. Using defaults.")
 
+    # Deserialize scheduler with nested WeeklySchedule list
+    raw_scheduler = data.get("scheduler")
+    if isinstance(raw_scheduler, dict):
+        raw_schedules = raw_scheduler.get("schedules", [])
+        loaded_schedules = [
+            _safe_dataclass_load(WeeklySchedule, s) if isinstance(s, dict) else WeeklySchedule()
+            for s in (raw_schedules or [])
+        ]
+        scheduler_cfg = SchedulerConfig(
+            enabled=raw_scheduler.get("enabled", True),
+            schedules=loaded_schedules,
+        )
+    else:
+        scheduler_cfg = SchedulerConfig()
+
     cfg = AppConfig(
         general=_safe_dataclass_load(GeneralConfig, data.get("general")),
         audio=_safe_dataclass_load(AudioConfig, data.get("audio")),
@@ -388,6 +424,7 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         update=_safe_dataclass_load(UpdateConfig, data.get("update")),
         summary=_safe_dataclass_load(SummaryConfig, data.get("summary")),
         caddy=_safe_dataclass_load(CaddyConfig, data.get("caddy")),
+        scheduler=scheduler_cfg,
     )
 
     # Environment variable overrides

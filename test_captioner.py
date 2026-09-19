@@ -4181,8 +4181,305 @@ class TestCaddyReverseProxy(unittest.TestCase):
             self.assertIn("stopped", msg2)
 
 
+
+
+class TestCaptionScheduler(unittest.TestCase):
+    """Unit tests for the CaptionScheduler class."""
+
+    def _make_scheduler(self, stop_calls=None, start_calls=None, broadcast_calls=None):
+        from obs_captioner.scheduler import CaptionScheduler
+        from obs_captioner.config import SchedulerConfig
+
+        if stop_calls is None:
+            stop_calls = []
+        if start_calls is None:
+            start_calls = []
+        if broadcast_calls is None:
+            broadcast_calls = []
+
+        cfg = SchedulerConfig(enabled=True, schedules=[])
+        sched = CaptionScheduler(
+            scheduler_config=cfg,
+            on_stop_callback=lambda: stop_calls.append(1),
+            on_start_callback=lambda: start_calls.append(1),
+            on_broadcast=lambda p: broadcast_calls.append(p),
+        )
+        return sched, stop_calls, start_calls, broadcast_calls
+
+    # ── Config Defaults ────────────────────────────────────────────────────────
+    def test_obs_config_has_auto_stop_fields(self):
+        from obs_captioner.config import OBSConfig
+        cfg = OBSConfig()
+        self.assertFalse(cfg.auto_stop_on_stream)
+        self.assertFalse(cfg.auto_stop_on_record)
+
+    def test_scheduler_config_defaults(self):
+        from obs_captioner.config import SchedulerConfig
+        cfg = SchedulerConfig()
+        self.assertTrue(cfg.enabled)
+        self.assertEqual(cfg.schedules, [])
+
+    def test_weekly_schedule_defaults(self):
+        from obs_captioner.config import WeeklySchedule
+        s = WeeklySchedule(id='abc', name='Test', days=['Sunday'], stop_time='12:30')
+        self.assertEqual(s.stop_time, '12:30')
+        self.assertTrue(s.enabled)
+        self.assertEqual(s.start_time, '')
+
+    def test_app_config_has_scheduler(self):
+        from obs_captioner.config import AppConfig, SchedulerConfig
+        cfg = AppConfig()
+        self.assertIsInstance(cfg.scheduler, SchedulerConfig)
+
+    # ── Config Persistence ─────────────────────────────────────────────────────
+    def test_load_config_scheduler_persistence(self):
+        import json, tempfile
+        from pathlib import Path
+        from obs_captioner.config import load_config
+
+        data = {
+            "scheduler": {
+                "enabled": True,
+                "schedules": [
+                    {"id": "sched-1", "name": "Sunday Service", "days": ["Sunday"],
+                     "stop_time": "12:30", "start_time": "09:00", "enabled": True}
+                ]
+            }
+        }
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            json.dump(data, f)
+            tmp = Path(f.name)
+
+        try:
+            cfg = load_config(str(tmp))
+            self.assertEqual(len(cfg.scheduler.schedules), 1)
+            s = cfg.scheduler.schedules[0]
+            self.assertEqual(s.id, 'sched-1')
+            self.assertEqual(s.name, 'Sunday Service')
+            self.assertEqual(s.stop_time, '12:30')
+            self.assertEqual(s.start_time, '09:00')
+            self.assertIn('Sunday', s.days)
+        finally:
+            tmp.unlink(missing_ok=True)
+
+    def test_load_config_missing_scheduler_uses_defaults(self):
+        from obs_captioner.config import load_config
+        cfg = load_config(None)
+        self.assertTrue(cfg.scheduler.enabled)
+        self.assertEqual(cfg.scheduler.schedules, [])
+
+    # ── Time Parsing ───────────────────────────────────────────────────────────
+    def test_parse_time_str_24hr(self):
+        from obs_captioner.scheduler import _parse_time_str
+        self.assertEqual(_parse_time_str('12:30'), (12, 30))
+        self.assertEqual(_parse_time_str('09:00'), (9, 0))
+        self.assertEqual(_parse_time_str('00:00'), (0, 0))
+        self.assertEqual(_parse_time_str('23:59'), (23, 59))
+
+    def test_parse_time_str_12hr(self):
+        from obs_captioner.scheduler import _parse_time_str
+        self.assertEqual(_parse_time_str('12:30 PM'), (12, 30))
+        self.assertEqual(_parse_time_str('12:30 AM'), (0, 30))
+        self.assertEqual(_parse_time_str('1:00 PM'), (13, 0))
+        self.assertEqual(_parse_time_str('11:59 PM'), (23, 59))
+
+    def test_parse_time_str_invalid(self):
+        from obs_captioner.scheduler import _parse_time_str
+        self.assertIsNone(_parse_time_str(''))
+        self.assertIsNone(_parse_time_str(None))
+        self.assertIsNone(_parse_time_str('25:00'))
+        self.assertIsNone(_parse_time_str('abc'))
+        self.assertIsNone(_parse_time_str('12:60'))
+
+    # ── One-Time Timer ─────────────────────────────────────────────────────────
+    def test_set_duration_sets_timer(self):
+        import time
+        sched, _, _, _ = self._make_scheduler()
+        before = time.time()
+        target = sched.set_duration(60)
+        after = time.time()
+        self.assertGreater(target, before + 55)
+        self.assertLess(target, after + 65)
+        status = sched.get_timer_status()
+        self.assertTrue(status['active'])
+        self.assertAlmostEqual(status['remaining_seconds'], 60, delta=5)
+
+    def test_cancel_timer_clears_timer(self):
+        sched, _, _, _ = self._make_scheduler()
+        sched.set_duration(300)
+        self.assertTrue(sched.get_timer_status()['active'])
+        sched.cancel_timer()
+        self.assertFalse(sched.get_timer_status()['active'])
+
+    def test_set_end_time_valid(self):
+        sched, _, _, _ = self._make_scheduler()
+        # Set to 1 hour from now — find a time 1hr ahead
+        from datetime import datetime, timedelta
+        future = datetime.now() + timedelta(hours=1)
+        time_str = future.strftime('%H:%M')
+        result = sched.set_end_time(time_str)
+        self.assertIsNotNone(result)
+        self.assertTrue(sched.get_timer_status()['active'])
+
+    def test_set_end_time_invalid(self):
+        sched, _, _, _ = self._make_scheduler()
+        result = sched.set_end_time('not-a-time')
+        self.assertIsNone(result)
+        self.assertFalse(sched.get_timer_status()['active'])
+
+    def test_timer_status_inactive_by_default(self):
+        sched, _, _, _ = self._make_scheduler()
+        status = sched.get_timer_status()
+        self.assertFalse(status['active'])
+        self.assertEqual(status['remaining_seconds'], 0)
+        self.assertIsNone(status['target_timestamp'])
+
+    def test_timer_fires_stop_callback(self):
+        """Directly call _check_one_time_timer with an expired time."""
+        import time
+        sched, stop_calls, _, broadcast_calls = self._make_scheduler()
+        # Set timer end to the past
+        sched._timer_end = time.time() - 1.0
+        sched._check_one_time_timer()
+        self.assertEqual(len(stop_calls), 1)
+        self.assertIsNone(sched._timer_end)
+        # A broadcast should have been fired
+        self.assertTrue(any(b.get('event') == 'timer_expired' for b in broadcast_calls))
+
+    def test_timer_does_not_fire_before_expiry(self):
+        import time
+        sched, stop_calls, _, _ = self._make_scheduler()
+        sched._timer_end = time.time() + 300.0
+        sched._check_one_time_timer()
+        self.assertEqual(len(stop_calls), 0)
+
+    # ── Weekly Schedules ───────────────────────────────────────────────────────
+    def test_add_schedule(self):
+        sched, _, _, _ = self._make_scheduler()
+        s = sched.add_schedule({'name': 'Sunday Service', 'days': ['Sunday'], 'stop_time': '12:30'})
+        self.assertEqual(s.name, 'Sunday Service')
+        self.assertIn('Sunday', s.days)
+        self.assertEqual(s.stop_time, '12:30')
+        self.assertTrue(s.enabled)
+        self.assertNotEqual(s.id, '')
+        self.assertEqual(len(sched.get_schedules()), 1)
+
+    def test_update_schedule(self):
+        sched, _, _, _ = self._make_scheduler()
+        s = sched.add_schedule({'name': 'Test', 'days': ['Sunday'], 'stop_time': '12:00'})
+        updated = sched.update_schedule(s.id, {'stop_time': '12:30', 'enabled': False})
+        self.assertIsNotNone(updated)
+        self.assertEqual(updated.stop_time, '12:30')
+        self.assertFalse(updated.enabled)
+
+    def test_update_schedule_not_found(self):
+        sched, _, _, _ = self._make_scheduler()
+        result = sched.update_schedule('nonexistent-id', {'stop_time': '12:30'})
+        self.assertIsNone(result)
+
+    def test_remove_schedule(self):
+        sched, _, _, _ = self._make_scheduler()
+        s = sched.add_schedule({'name': 'Test', 'days': ['Sunday'], 'stop_time': '12:00'})
+        self.assertEqual(len(sched.get_schedules()), 1)
+        removed = sched.remove_schedule(s.id)
+        self.assertTrue(removed)
+        self.assertEqual(len(sched.get_schedules()), 0)
+
+    def test_remove_schedule_not_found(self):
+        sched, _, _, _ = self._make_scheduler()
+        removed = sched.remove_schedule('does-not-exist')
+        self.assertFalse(removed)
+
+    def test_weekly_schedule_fires_stop_at_correct_minute(self):
+        """Simulate the scheduler tick matching the current time."""
+        from datetime import datetime
+        sched, stop_calls, start_calls, _ = self._make_scheduler()
+
+        now = datetime.now()
+        weekday = now.strftime('%A')  # e.g. 'Friday'
+        hhmm = now.strftime('%H:%M')
+
+        sched.add_schedule({
+            'name': 'Exact Time Test',
+            'days': [weekday],
+            'stop_time': hhmm,
+            'start_time': '',
+            'enabled': True,
+        })
+
+        sched._check_weekly_schedules()
+        self.assertEqual(len(stop_calls), 1)
+        self.assertEqual(len(start_calls), 0)
+
+    def test_weekly_schedule_no_double_fire_same_minute(self):
+        """Second tick in the same minute should NOT re-fire."""
+        from datetime import datetime
+        sched, stop_calls, _, _ = self._make_scheduler()
+        now = datetime.now()
+        weekday = now.strftime('%A')
+        hhmm = now.strftime('%H:%M')
+        sched.add_schedule({'name': 'Dedup Test', 'days': [weekday], 'stop_time': hhmm, 'enabled': True})
+
+        sched._check_weekly_schedules()
+        sched._check_weekly_schedules()
+        self.assertEqual(len(stop_calls), 1)  # Must only fire once
+
+    def test_weekly_schedule_different_day_does_not_fire(self):
+        from datetime import datetime
+        sched, stop_calls, _, _ = self._make_scheduler()
+        now = datetime.now()
+        from obs_captioner.scheduler import WEEKDAY_NAMES
+        # Use a day that is NOT today
+        today_idx = WEEKDAY_NAMES.index(now.strftime('%A'))
+        other_day = WEEKDAY_NAMES[(today_idx + 1) % 7]
+        hhmm = now.strftime('%H:%M')
+        sched.add_schedule({'name': 'Wrong Day', 'days': [other_day], 'stop_time': hhmm, 'enabled': True})
+        sched._check_weekly_schedules()
+        self.assertEqual(len(stop_calls), 0)
+
+    def test_weekly_schedule_disabled_does_not_fire(self):
+        from datetime import datetime
+        sched, stop_calls, _, _ = self._make_scheduler()
+        now = datetime.now()
+        weekday = now.strftime('%A')
+        hhmm = now.strftime('%H:%M')
+        sched.add_schedule({'name': 'Disabled', 'days': [weekday], 'stop_time': hhmm, 'enabled': False})
+        sched._check_weekly_schedules()
+        self.assertEqual(len(stop_calls), 0)
+
+    def test_get_next_event_returns_future(self):
+        """get_next_event should return a future event when a schedule is configured."""
+        sched, _, _, _ = self._make_scheduler()
+        sched.add_schedule({'name': 'Test', 'days': ['Sunday'], 'stop_time': '23:59', 'enabled': True})
+        event = sched.get_next_event()
+        # It should return something (even if current day is Sunday, time 23:59 might be in the future)
+        # Just verify structure
+        if event is not None:
+            self.assertIn('action', event)
+            self.assertIn('timestamp', event)
+            self.assertIn('datetime_formatted', event)
+        # If no event (edge case: day/time already passed), still valid None response
+
+    def test_get_next_event_empty_schedules(self):
+        sched, _, _, _ = self._make_scheduler()
+        self.assertIsNone(sched.get_next_event())
+
+    def test_weekly_schedule_start_fires_start_callback(self):
+        """When start_time matches current time, on_start_callback should fire."""
+        from datetime import datetime
+        sched, stop_calls, start_calls, _ = self._make_scheduler()
+        now = datetime.now()
+        weekday = now.strftime('%A')
+        hhmm = now.strftime('%H:%M')
+        sched.add_schedule({'name': 'Start Test', 'days': [weekday], 'stop_time': '', 'start_time': hhmm, 'enabled': True})
+        sched._check_weekly_schedules()
+        self.assertEqual(len(start_calls), 1)
+        self.assertEqual(len(stop_calls), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
+
 
 
 

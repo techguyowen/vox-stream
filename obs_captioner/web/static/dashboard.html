@@ -83,6 +83,12 @@
                 </div>
 
                 <button id="btn-toggle-engine" class="btn btn-danger">⏹ Stop Captions</button>
+                <!-- Auto-Stop Timer Button + Live Countdown Badge -->
+                <button id="btn-open-scheduler-modal" class="btn btn-secondary" title="Auto-Stop Timer & Weekly Schedule" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; background: rgba(251, 191, 36, 0.12); border: 1px solid rgba(251, 191, 36, 0.4); color: #FCD34D; padding: 6px 12px; border-radius: 6px; cursor: pointer;">
+                    <span id="scheduler-btn-icon">⏱️</span>
+                    <span id="scheduler-btn-label">Auto-Stop</span>
+                    <span id="scheduler-countdown-badge" style="display:none; background: rgba(251, 191, 36, 0.25); border: 1px solid rgba(251, 191, 36, 0.5); border-radius: 4px; padding: 1px 6px; font-size: 11px; font-weight: 800; color: #FDE68A; letter-spacing: 0.03em; font-variant-numeric: tabular-nums;"></span>
+                </button>
                 <button id="btn-header-rec" class="btn btn-secondary" title="Live Synchronized Subtitle Sidecar Recording (.srt / .vtt)" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; border: 1px solid rgba(239, 68, 68, 0.35); background: rgba(239, 68, 68, 0.08); color: #FCA5A5; padding: 6px 12px; border-radius: 6px; cursor: pointer;">
                     <span id="header-rec-dot" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#94A3B8;"></span>
                     <span id="header-rec-text">⏺ REC Sidecar</span>
@@ -2128,6 +2134,133 @@
     <!-- Floating Toast Notification System -->
     <div id="toast-container" class="toast-container"></div>
 
+    <!-- ⏱️ Auto-Stop & Weekly Schedule Modal -->
+    <div id="modal-scheduler" class="modal-backdrop" style="display: none;">
+        <div class="modal-content" style="max-width: 560px; width: 95%;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+                <h2 style="margin: 0; font-size: 18px; color: #FCD34D; display: flex; align-items: center; gap: 8px;">⏱️ Auto-Stop Captioning</h2>
+                <button id="btn-close-scheduler-modal" class="btn btn-secondary btn-sm" style="padding: 4px 12px;">✕ Close</button>
+            </div>
+
+            <!-- Active Timer Status Banner -->
+            <div id="scheduler-active-banner" style="display: none; background: rgba(251, 191, 36, 0.12); border: 1px solid rgba(251, 191, 36, 0.4); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 22px;">⏱️</span>
+                    <div>
+                        <div style="font-size: 13px; font-weight: 700; color: #FDE68A;">Auto-Stop Active</div>
+                        <div id="scheduler-banner-detail" style="font-size: 12px; color: #FCD34D;">Stopping at 12:30 PM · 42m 15s remaining</div>
+                    </div>
+                </div>
+                <button id="btn-cancel-timer" class="btn btn-sm" style="background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); color: #FCA5A5; padding: 4px 12px; font-size: 12px; font-weight: 600;">❌ Cancel</button>
+            </div>
+
+            <!-- Quick Duration Presets -->
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; margin-bottom: 14px;">
+                <h4 style="margin: 0 0 10px 0; font-size: 13px; color: #F8FAFC;">⚡ Quick Stop Presets</h4>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    <button class="btn btn-secondary btn-sm btn-quick-timer" data-minutes="30" style="font-size: 12px; padding: 5px 12px;">30 min</button>
+                    <button class="btn btn-secondary btn-sm btn-quick-timer" data-minutes="45" style="font-size: 12px; padding: 5px 12px;">45 min</button>
+                    <button class="btn btn-secondary btn-sm btn-quick-timer" data-minutes="60" style="font-size: 12px; padding: 5px 12px;">1 hour</button>
+                    <button class="btn btn-secondary btn-sm btn-quick-timer" data-minutes="75" style="font-size: 12px; padding: 5px 12px;">1h 15m</button>
+                    <button class="btn btn-secondary btn-sm btn-quick-timer" data-minutes="90" style="font-size: 12px; padding: 5px 12px;">1h 30m</button>
+                    <button class="btn btn-secondary btn-sm btn-quick-timer" data-minutes="120" style="font-size: 12px; padding: 5px 12px;">2 hours</button>
+                </div>
+            </div>
+
+            <!-- Custom Duration + End Time -->
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; margin-bottom: 14px;">
+                <h4 style="margin: 0 0 10px 0; font-size: 13px; color: #F8FAFC;">🎯 Custom Timer</h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div>
+                        <label style="font-size: 11.5px; color: var(--text-muted); display: block; margin-bottom: 4px;">Stop in (minutes)</label>
+                        <div style="display: flex; gap: 6px;">
+                            <input type="number" id="scheduler-custom-minutes" class="form-control" min="1" max="720" placeholder="e.g. 60" style="font-size: 13px; flex: 1;">
+                            <button id="btn-set-duration" class="btn btn-secondary btn-sm" style="font-size: 12px; padding: 5px 10px; white-space: nowrap;">▶ Set</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label style="font-size: 11.5px; color: var(--text-muted); display: block; margin-bottom: 4px;">Stop at clock time</label>
+                        <div style="display: flex; gap: 6px;">
+                            <input type="time" id="scheduler-end-time" class="form-control" style="font-size: 13px; flex: 1;">
+                            <button id="btn-set-end-time" class="btn btn-secondary btn-sm" style="font-size: 12px; padding: 5px 10px; white-space: nowrap;">▶ Set</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- OBS Auto-Stop Triggers -->
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; margin-bottom: 14px;">
+                <h4 style="margin: 0 0 10px 0; font-size: 13px; color: #F8FAFC;">📡 OBS Stop Triggers</h4>
+                <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 10px 0;">Independently auto-stop captioning when OBS stops streaming or recording.</p>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                    <label class="switch-label" style="cursor: pointer;">
+                        <input type="checkbox" id="sched-auto-stop-stream">
+                        <span class="switch-text" style="font-size: 13px; color: #E2E8F0;">📡 Auto-stop when OBS <strong>stops Streaming</strong></span>
+                    </label>
+                    <label class="switch-label" style="cursor: pointer;">
+                        <input type="checkbox" id="sched-auto-stop-record">
+                        <span class="switch-text" style="font-size: 13px; color: #E2E8F0;">⏺ Auto-stop when OBS <strong>stops Recording</strong></span>
+                    </label>
+                </div>
+                <div style="text-align: right; margin-top: 10px;">
+                    <button id="btn-save-obs-stops" class="btn btn-secondary btn-sm" style="font-size: 12px; padding: 5px 12px; font-weight: 600;">💾 Save OBS Triggers</button>
+                </div>
+            </div>
+
+            <!-- Recurring Weekly Schedule -->
+            <div style="background: rgba(99, 102, 241, 0.06); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 8px; padding: 14px; margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h4 style="margin: 0; font-size: 13px; color: #A5B4FC;">📅 Recurring Weekly Schedule</h4>
+                    <span id="scheduler-next-event-badge" style="font-size: 11px; color: #818CF8; background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.3); border-radius: 4px; padding: 2px 8px; display: none;"></span>
+                </div>
+                <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 12px 0;">Automatically stop captioning every week at a set time (e.g. every Sunday at 12:30 PM).</p>
+
+                <!-- Schedule Builder -->
+                <div style="display: grid; gap: 8px; margin-bottom: 12px;">
+                    <div>
+                        <label style="font-size: 11.5px; color: var(--text-muted); display: block; margin-bottom: 4px;">Schedule Name</label>
+                        <input type="text" id="sched-name" class="form-control" placeholder="e.g. Sunday Service" style="font-size: 13px;">
+                    </div>
+                    <div>
+                        <label style="font-size: 11.5px; color: var(--text-muted); display: block; margin-bottom: 6px;">Days of Week</label>
+                        <div style="display: flex; flex-wrap: wrap; gap: 6px;" id="sched-days-picker">
+                            <label style="cursor:pointer;"><input type="checkbox" name="sched-day" value="Sunday"> <span style="font-size:12px;">Sun</span></label>
+                            <label style="cursor:pointer;"><input type="checkbox" name="sched-day" value="Monday"> <span style="font-size:12px;">Mon</span></label>
+                            <label style="cursor:pointer;"><input type="checkbox" name="sched-day" value="Tuesday"> <span style="font-size:12px;">Tue</span></label>
+                            <label style="cursor:pointer;"><input type="checkbox" name="sched-day" value="Wednesday"> <span style="font-size:12px;">Wed</span></label>
+                            <label style="cursor:pointer;"><input type="checkbox" name="sched-day" value="Thursday"> <span style="font-size:12px;">Thu</span></label>
+                            <label style="cursor:pointer;"><input type="checkbox" name="sched-day" value="Friday"> <span style="font-size:12px;">Fri</span></label>
+                            <label style="cursor:pointer;"><input type="checkbox" name="sched-day" value="Saturday"> <span style="font-size:12px;">Sat</span></label>
+                        </div>
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <div>
+                            <label style="font-size: 11.5px; color: #FCA5A5; display: block; margin-bottom: 4px;">🛑 Stop Time (HH:MM)</label>
+                            <input type="time" id="sched-stop-time" class="form-control" style="font-size: 13px;">
+                        </div>
+                        <div>
+                            <label style="font-size: 11.5px; color: #6EE7B7; display: block; margin-bottom: 4px;">▶ Start Time (optional)</label>
+                            <input type="time" id="sched-start-time" class="form-control" style="font-size: 13px;" placeholder="Leave blank to skip">
+                        </div>
+                    </div>
+                    <div>
+                        <button id="btn-add-schedule" class="btn btn-primary btn-sm" style="font-size: 12px; padding: 6px 16px; font-weight: 700;">➕ Add / Update Schedule</button>
+                        <input type="hidden" id="sched-edit-id" value="">
+                    </div>
+                </div>
+
+                <!-- Schedule List -->
+                <div id="schedule-list" style="display: flex; flex-direction: column; gap: 8px;">
+                    <div style="font-size: 12px; color: var(--text-muted); text-align: center; padding: 8px 0;" id="schedule-list-empty">No recurring schedules configured.</div>
+                </div>
+            </div>
+
+            <div style="text-align: center;">
+                <button id="btn-close-scheduler-modal-2" class="btn btn-secondary" style="padding: 8px 24px;">Close</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Feature Manager / Module Settings Modal -->
     <div id="modal-feature-settings" class="modal-backdrop" style="display: none;">
         <div class="modal-content">
@@ -2387,8 +2520,378 @@
         </div>
     </div>
 
+    <!-- ⏱️ Auto-Stop Scheduler JavaScript -->
+    <script>
+    (function() {
+        'use strict';
+
+        // ── State ──────────────────────────────────────────────────────────────
+        let schedulerState = { timer: { active: false }, schedules: [], next_event: null };
+        let countdownInterval = null;
+
+        // ── Helpers ────────────────────────────────────────────────────────────
+        function formatSeconds(secs) {
+            const s = Math.max(0, Math.round(secs));
+            const h = Math.floor(s / 3600);
+            const m = Math.floor((s % 3600) / 60);
+            const sec = s % 60;
+            if (h > 0) return `${h}h ${m.toString().padStart(2,'0')}m ${sec.toString().padStart(2,'0')}s`;
+            return `${m}:${sec.toString().padStart(2,'0')}`;
+        }
+
+        function showToast(msg, type='info') {
+            if (typeof window.showToastNotification === 'function') {
+                window.showToastNotification(msg, type);
+            } else {
+                console.log('[Scheduler]', msg);
+            }
+        }
+
+        // ── Header Badge Updates ───────────────────────────────────────────────
+        function updateHeaderBadge() {
+            const badge = document.getElementById('scheduler-countdown-badge');
+            const btnLabel = document.getElementById('scheduler-btn-label');
+            if (!badge) return;
+
+            if (schedulerState.timer && schedulerState.timer.active) {
+                const remaining = schedulerState.timer.remaining_seconds || 0;
+                badge.textContent = formatSeconds(remaining);
+                badge.style.display = 'inline-block';
+                if (btnLabel) btnLabel.textContent = 'Auto-Stop';
+            } else {
+                badge.style.display = 'none';
+                if (btnLabel) btnLabel.textContent = 'Auto-Stop';
+            }
+        }
+
+        function startCountdownTick() {
+            stopCountdownTick();
+            if (!schedulerState.timer || !schedulerState.timer.active) return;
+            countdownInterval = setInterval(() => {
+                if (!schedulerState.timer || !schedulerState.timer.active) {
+                    stopCountdownTick();
+                    return;
+                }
+                if (schedulerState.timer.remaining_seconds > 0) {
+                    schedulerState.timer.remaining_seconds -= 1;
+                }
+                updateHeaderBadge();
+                updateModalBanner();
+            }, 1000);
+        }
+
+        function stopCountdownTick() {
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
+        }
+
+        // ── Modal Banner ───────────────────────────────────────────────────────
+        function updateModalBanner() {
+            const banner = document.getElementById('scheduler-active-banner');
+            const bannerDetail = document.getElementById('scheduler-banner-detail');
+            if (!banner) return;
+
+            if (schedulerState.timer && schedulerState.timer.active) {
+                banner.style.display = 'flex';
+                const remaining = schedulerState.timer.remaining_seconds || 0;
+                const targetFmt = schedulerState.timer.target_formatted || '';
+                if (bannerDetail) {
+                    bannerDetail.textContent = `Stopping at ${targetFmt} · ${formatSeconds(remaining)} remaining`;
+                }
+            } else {
+                banner.style.display = 'none';
+            }
+        }
+
+        function updateNextEventBadge() {
+            const badge = document.getElementById('scheduler-next-event-badge');
+            if (!badge) return;
+            const e = schedulerState.next_event;
+            if (e) {
+                badge.textContent = `Next: ${e.action === 'stop' ? '🛑' : '▶'} ${e.datetime_formatted}`;
+                badge.style.display = 'inline-block';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
+        // ── Render Schedule List ───────────────────────────────────────────────
+        function renderScheduleList() {
+            const list = document.getElementById('schedule-list');
+            const emptyEl = document.getElementById('schedule-list-empty');
+            if (!list) return;
+
+            const schedules = schedulerState.schedules || [];
+            // Remove existing rows (except empty indicator)
+            list.querySelectorAll('.sched-row').forEach(el => el.remove());
+
+            if (schedules.length === 0) {
+                if (emptyEl) emptyEl.style.display = '';
+                return;
+            }
+            if (emptyEl) emptyEl.style.display = 'none';
+
+            schedules.forEach(s => {
+                const row = document.createElement('div');
+                row.className = 'sched-row';
+                row.style.cssText = 'display: flex; align-items: center; justify-content: space-between; gap: 8px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 8px 12px;';
+
+                const daysStr = (s.days && s.days.length > 0) ? s.days.map(d => d.slice(0,3)).join(', ') : 'All days';
+                const stopStr = s.stop_time ? `🛑 ${s.stop_time}` : '';
+                const startStr = s.start_time ? ` · ▶ ${s.start_time}` : '';
+
+                row.innerHTML = `
+                    <div style="flex:1; min-width:0;">
+                        <div style="font-size:13px; font-weight:600; color: #E2E8F0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(s.name)}</div>
+                        <div style="font-size:11px; color: var(--text-muted);">${daysStr} · ${stopStr}${startStr}</div>
+                    </div>
+                    <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
+                        <label title="${s.enabled ? 'Enabled' : 'Disabled'}">
+                            <input type="checkbox" class="sched-toggle" data-id="${s.id}" ${s.enabled ? 'checked' : ''} style="margin:0;">
+                        </label>
+                        <button class="btn btn-sm sched-edit" data-id="${s.id}" title="Edit" style="padding:2px 8px; font-size:11px; background:rgba(99,102,241,0.15); border:1px solid rgba(99,102,241,0.3); color:#A5B4FC;">✏️ Edit</button>
+                        <button class="btn btn-sm sched-delete" data-id="${s.id}" title="Delete" style="padding:2px 8px; font-size:11px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); color:#FCA5A5;">🗑️</button>
+                    </div>
+                `;
+                list.appendChild(row);
+            });
+
+            // Bind events
+            list.querySelectorAll('.sched-toggle').forEach(el => {
+                el.addEventListener('change', async (ev) => {
+                    const id = ev.target.dataset.id;
+                    const enabled = ev.target.checked;
+                    const s = schedulerState.schedules.find(x => x.id === id);
+                    if (s) await postSchedule({ ...s, enabled });
+                });
+            });
+            list.querySelectorAll('.sched-edit').forEach(el => {
+                el.addEventListener('click', () => {
+                    const id = el.dataset.id;
+                    const s = schedulerState.schedules.find(x => x.id === id);
+                    if (s) populateBuilderForm(s);
+                });
+            });
+            list.querySelectorAll('.sched-delete').forEach(el => {
+                el.addEventListener('click', async () => {
+                    const id = el.dataset.id;
+                    if (!confirm('Delete this schedule?')) return;
+                    await deleteSchedule(id);
+                });
+            });
+        }
+
+        function escapeHtml(str) {
+            return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+
+        function populateBuilderForm(s) {
+            document.getElementById('sched-edit-id').value = s.id || '';
+            document.getElementById('sched-name').value = s.name || '';
+            document.getElementById('sched-stop-time').value = s.stop_time || '';
+            document.getElementById('sched-start-time').value = s.start_time || '';
+            document.querySelectorAll('[name="sched-day"]').forEach(cb => {
+                cb.checked = (s.days || []).includes(cb.value);
+            });
+        }
+
+        // ── API Calls ──────────────────────────────────────────────────────────
+        async function fetchSchedulerStatus() {
+            try {
+                const r = await fetch('/api/scheduler/status');
+                if (!r.ok) return;
+                const data = await r.json();
+                schedulerState = data;
+
+                // Sync OBS toggle checkboxes
+                const streamCb = document.getElementById('sched-auto-stop-stream');
+                const recCb = document.getElementById('sched-auto-stop-record');
+                if (streamCb) streamCb.checked = !!data.obs_auto_stop_on_stream;
+                if (recCb) recCb.checked = !!data.obs_auto_stop_on_record;
+
+                updateHeaderBadge();
+                updateModalBanner();
+                updateNextEventBadge();
+                renderScheduleList();
+
+                if (data.timer && data.timer.active) {
+                    startCountdownTick();
+                } else {
+                    stopCountdownTick();
+                }
+            } catch(e) { /* silently skip */ }
+        }
+
+        async function setTimer(params) {
+            try {
+                const r = await fetch('/api/scheduler/timer', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(params),
+                });
+                const data = await r.json();
+                if (!r.ok) { showToast('❌ ' + (data.error || 'Could not set timer.'), 'error'); return; }
+                schedulerState.timer = data.timer;
+                updateHeaderBadge();
+                updateModalBanner();
+                startCountdownTick();
+                showToast(`⏱️ Auto-stop timer set — ${data.timer.target_formatted}`, 'success');
+            } catch(e) { showToast('❌ Network error setting timer.', 'error'); }
+        }
+
+        async function cancelTimer() {
+            try {
+                const r = await fetch('/api/scheduler/timer/cancel', { method: 'POST' });
+                const data = await r.json();
+                schedulerState.timer = data.timer || { active: false };
+                stopCountdownTick();
+                updateHeaderBadge();
+                updateModalBanner();
+                showToast('⏱️ Auto-stop timer cancelled.', 'info');
+            } catch(e) { showToast('❌ Could not cancel timer.', 'error'); }
+        }
+
+        async function postSchedule(sData) {
+            try {
+                const r = await fetch('/api/scheduler/schedules', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(sData),
+                });
+                const data = await r.json();
+                if (!r.ok) { showToast('❌ ' + (data.error || 'Could not save schedule.'), 'error'); return; }
+                showToast(`📅 ${data.message}`, 'success');
+                await fetchSchedulerStatus();
+            } catch(e) { showToast('❌ Network error saving schedule.', 'error'); }
+        }
+
+        async function deleteSchedule(id) {
+            try {
+                const r = await fetch(`/api/scheduler/schedules/${encodeURIComponent(id)}`, { method: 'DELETE' });
+                const data = await r.json();
+                if (!r.ok) { showToast('❌ ' + (data.error || 'Could not delete.'), 'error'); return; }
+                showToast('🗑️ Schedule deleted.', 'info');
+                await fetchSchedulerStatus();
+            } catch(e) { showToast('❌ Network error deleting schedule.', 'error'); }
+        }
+
+        async function saveObsStops() {
+            const streamCb = document.getElementById('sched-auto-stop-stream');
+            const recCb = document.getElementById('sched-auto-stop-record');
+            try {
+                const r = await fetch('/api/scheduler/config', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        auto_stop_on_stream: streamCb ? streamCb.checked : false,
+                        auto_stop_on_record: recCb ? recCb.checked : false,
+                    }),
+                });
+                const data = await r.json();
+                if (!r.ok) { showToast('❌ ' + (data.error || 'Could not save.'), 'error'); return; }
+                showToast('📡 OBS auto-stop triggers saved.', 'success');
+            } catch(e) { showToast('❌ Network error.', 'error'); }
+        }
+
+        // ── WebSocket Integration ──────────────────────────────────────────────
+        // Listen for scheduler_status messages from the control WebSocket
+        window.addEventListener('voxstream:control_message', (ev) => {
+            const msg = ev.detail;
+            if (!msg || msg.type !== 'scheduler_status') return;
+            if (msg.timer) {
+                schedulerState.timer = msg.timer;
+                updateHeaderBadge();
+                updateModalBanner();
+                if (msg.timer.active) startCountdownTick(); else stopCountdownTick();
+            }
+            if (msg.next_event !== undefined) schedulerState.next_event = msg.next_event;
+            updateNextEventBadge();
+
+            // Show toast on events
+            if (msg.event === 'timer_expired' || msg.event === 'recurring_stop') {
+                showToast(msg.message || '⏱️ Auto-stop triggered.', 'warning');
+            } else if (msg.event === 'recurring_start') {
+                showToast(msg.message || '▶ Scheduled auto-start.', 'info');
+            }
+        });
+
+        // ── UI Event Bindings ──────────────────────────────────────────────────
+        document.addEventListener('DOMContentLoaded', () => {
+            // Open / Close modal
+            function openModal() { document.getElementById('modal-scheduler').style.display = 'flex'; fetchSchedulerStatus(); }
+            function closeModal() { document.getElementById('modal-scheduler').style.display = 'none'; }
+
+            const openBtn = document.getElementById('btn-open-scheduler-modal');
+            if (openBtn) openBtn.addEventListener('click', openModal);
+            document.getElementById('btn-close-scheduler-modal')?.addEventListener('click', closeModal);
+            document.getElementById('btn-close-scheduler-modal-2')?.addEventListener('click', closeModal);
+            document.getElementById('modal-scheduler')?.addEventListener('click', (e) => {
+                if (e.target === e.currentTarget) closeModal();
+            });
+
+            // Cancel timer
+            document.getElementById('btn-cancel-timer')?.addEventListener('click', () => cancelTimer());
+
+            // Quick presets
+            document.querySelectorAll('.btn-quick-timer').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const mins = parseInt(btn.dataset.minutes, 10);
+                    if (mins > 0) setTimer({ duration_minutes: mins });
+                });
+            });
+
+            // Custom duration
+            document.getElementById('btn-set-duration')?.addEventListener('click', () => {
+                const mins = parseFloat(document.getElementById('scheduler-custom-minutes')?.value || '0');
+                if (mins > 0) setTimer({ duration_minutes: mins });
+                else showToast('Enter a duration in minutes.', 'warning');
+            });
+
+            // Clock end-time
+            document.getElementById('btn-set-end-time')?.addEventListener('click', () => {
+                const t = document.getElementById('scheduler-end-time')?.value || '';
+                if (t) setTimer({ end_time: t });
+                else showToast('Select a stop time first.', 'warning');
+            });
+
+            // Save OBS triggers
+            document.getElementById('btn-save-obs-stops')?.addEventListener('click', () => saveObsStops());
+
+            // Add/update recurring schedule
+            document.getElementById('btn-add-schedule')?.addEventListener('click', () => {
+                const name = document.getElementById('sched-name')?.value?.trim() || 'Weekly Schedule';
+                const stopTime = document.getElementById('sched-stop-time')?.value || '';
+                const startTime = document.getElementById('sched-start-time')?.value || '';
+                const days = [...document.querySelectorAll('[name="sched-day"]:checked')].map(cb => cb.value);
+                const editId = document.getElementById('sched-edit-id')?.value || '';
+
+                if (!stopTime && !startTime) {
+                    showToast('Set at least a Stop Time or Start Time.', 'warning');
+                    return;
+                }
+
+                const payload = { name, days, stop_time: stopTime, start_time: startTime, enabled: true };
+                if (editId) payload.id = editId;
+                postSchedule(payload).then(() => {
+                    // Clear form
+                    if (document.getElementById('sched-name')) document.getElementById('sched-name').value = '';
+                    if (document.getElementById('sched-stop-time')) document.getElementById('sched-stop-time').value = '';
+                    if (document.getElementById('sched-start-time')) document.getElementById('sched-start-time').value = '';
+                    if (document.getElementById('sched-edit-id')) document.getElementById('sched-edit-id').value = '';
+                    document.querySelectorAll('[name="sched-day"]').forEach(cb => cb.checked = false);
+                });
+            });
+
+            // Fetch initial status
+            fetchSchedulerStatus();
+            // Refresh every 30 seconds (timer ticks happen client-side each second)
+            setInterval(fetchSchedulerStatus, 30000);
+        });
+    })();
+    </script>
+
     <!-- Main Application Script -->
     <script src="/static/dashboard.js"></script>
+
 
     <script>
         if ('serviceWorker' in navigator) {
