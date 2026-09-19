@@ -4304,6 +4304,27 @@ class TestCaptionScheduler(unittest.TestCase):
         self.assertTrue(status['active'])
         self.assertAlmostEqual(status['remaining_seconds'], 60, delta=5)
 
+    def test_add_duration_extends_active_timer(self):
+        import time
+        sched, _, _, _ = self._make_scheduler()
+        sched.set_duration(60)
+        target1 = sched.get_timer_status()['target_timestamp']
+        # Add 300 seconds (5 minutes)
+        target2 = sched.add_duration(300)
+        self.assertAlmostEqual(target2, target1 + 300, delta=2)
+        status = sched.get_timer_status()
+        self.assertTrue(status['active'])
+        self.assertAlmostEqual(status['remaining_seconds'], 360, delta=5)
+
+    def test_add_duration_starts_new_timer_when_none_active(self):
+        import time
+        sched, _, _, _ = self._make_scheduler()
+        self.assertFalse(sched.get_timer_status()['active'])
+        target = sched.add_duration(60)
+        status = sched.get_timer_status()
+        self.assertTrue(status['active'])
+        self.assertAlmostEqual(status['remaining_seconds'], 60, delta=5)
+
     def test_cancel_timer_clears_timer(self):
         sched, _, _, _ = self._make_scheduler()
         sched.set_duration(300)

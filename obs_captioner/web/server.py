@@ -1160,7 +1160,14 @@ class WebOverlayServer:
             data = {}
 
         target_ts = None
-        if "end_time" in data and data["end_time"]:
+        action_msg = "Auto-stop timer set."
+        if "add_minutes" in data:
+            target_ts = self.scheduler.add_duration(float(data["add_minutes"]) * 60.0)
+            action_msg = f"Added {data['add_minutes']}m to timer."
+        elif "add_seconds" in data:
+            target_ts = self.scheduler.add_duration(float(data["add_seconds"]))
+            action_msg = f"Added {data['add_seconds']}s to timer."
+        elif "end_time" in data and data["end_time"]:
             target_ts = self.scheduler.set_end_time(str(data["end_time"]))
             if target_ts is None:
                 return web.json_response({"error": f"Could not parse end_time: '{data['end_time']}'"}, status=400)
@@ -1169,13 +1176,13 @@ class WebOverlayServer:
         elif "duration_minutes" in data:
             target_ts = self.scheduler.set_duration(float(data["duration_minutes"]) * 60.0)
         else:
-            return web.json_response({"error": "Provide 'duration_minutes', 'duration_seconds', or 'end_time'."}, status=400)
+            return web.json_response({"error": "Provide 'add_minutes', 'duration_minutes', 'duration_seconds', or 'end_time'."}, status=400)
 
         from .config import save_config
         save_config(self.config)
         return web.json_response({
             "status": "success",
-            "message": "Auto-stop timer set.",
+            "message": action_msg,
             "timer": self.scheduler.get_timer_status(),
         })
 

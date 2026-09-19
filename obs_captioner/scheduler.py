@@ -106,6 +106,19 @@ class CaptionScheduler:
         self._broadcast_status()
         return target
 
+    def add_duration(self, seconds: float) -> float:
+        """Extend active timer by `seconds`, or start a new timer if none is active."""
+        now = time.time()
+        if self._timer_end is not None and self._timer_end > now:
+            self._timer_end += max(1.0, float(seconds))
+        else:
+            self._timer_end = now + max(1.0, float(seconds))
+        self._timer_cancelled = False
+        remaining = self._timer_end - now
+        logger.info(f"⏱️ Added {seconds:.0f}s to auto-stop timer ({remaining:.0f}s remaining, fires at {datetime.fromtimestamp(self._timer_end).strftime('%H:%M:%S')})")
+        self._broadcast_status()
+        return self._timer_end
+
     def set_end_time(self, time_str: str) -> Optional[float]:
         """Start a timer that fires at the next occurrence of a given clock time (HH:MM or HH:MM AM/PM).
         Returns target timestamp, or None if parsing fails.

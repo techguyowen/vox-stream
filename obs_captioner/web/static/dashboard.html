@@ -83,12 +83,21 @@
                 </div>
 
                 <button id="btn-toggle-engine" class="btn btn-danger">⏹ Stop Captions</button>
-                <!-- Auto-Stop Timer Button + Live Countdown Badge -->
-                <button id="btn-open-scheduler-modal" class="btn btn-secondary" title="Auto-Stop Timer & Weekly Schedule" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; background: rgba(251, 191, 36, 0.12); border: 1px solid rgba(251, 191, 36, 0.4); color: #FCD34D; padding: 6px 12px; border-radius: 6px; cursor: pointer;">
-                    <span id="scheduler-btn-icon">⏱️</span>
-                    <span id="scheduler-btn-label">Auto-Stop</span>
-                    <span id="scheduler-countdown-badge" style="display:none; background: rgba(251, 191, 36, 0.25); border: 1px solid rgba(251, 191, 36, 0.5); border-radius: 4px; padding: 1px 6px; font-size: 11px; font-weight: 800; color: #FDE68A; letter-spacing: 0.03em; font-variant-numeric: tabular-nums;"></span>
-                </button>
+                <!-- Auto-Stop Timer Button + Live Countdown Badge + Quick Extend Chips -->
+                <div style="display: inline-flex; align-items: center; gap: 4px;">
+                    <button id="btn-open-scheduler-modal" class="btn btn-secondary" title="Auto-Stop Timer & Weekly Schedule" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; background: rgba(251, 191, 36, 0.12); border: 1px solid rgba(251, 191, 36, 0.4); color: #FCD34D; padding: 6px 12px; border-radius: 6px; cursor: pointer;">
+                        <span id="scheduler-btn-icon">⏱️</span>
+                        <span id="scheduler-btn-label">Auto-Stop</span>
+                        <span id="scheduler-countdown-badge" style="display:none; background: rgba(251, 191, 36, 0.25); border: 1px solid rgba(251, 191, 36, 0.5); border-radius: 4px; padding: 1px 6px; font-size: 11px; font-weight: 800; color: #FDE68A; letter-spacing: 0.03em; font-variant-numeric: tabular-nums;"></span>
+                    </button>
+                    <!-- Quick Extend Buttons in Header -->
+                    <div id="header-extend-chips" style="display: inline-flex; gap: 3px;">
+                        <button class="btn btn-secondary btn-sm btn-quick-extend" data-minutes="1" title="Add 1 minute" style="padding: 4px 6px; font-size: 11px; font-weight: 700; color: #FCD34D; background: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 4px; cursor: pointer; line-height: 1;">+1m</button>
+                        <button class="btn btn-secondary btn-sm btn-quick-extend" data-minutes="5" title="Add 5 minutes" style="padding: 4px 6px; font-size: 11px; font-weight: 700; color: #FCD34D; background: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 4px; cursor: pointer; line-height: 1;">+5m</button>
+                        <button class="btn btn-secondary btn-sm btn-quick-extend" data-minutes="10" title="Add 10 minutes" style="padding: 4px 6px; font-size: 11px; font-weight: 700; color: #FCD34D; background: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 4px; cursor: pointer; line-height: 1;">+10m</button>
+                        <button class="btn btn-secondary btn-sm btn-quick-extend" data-minutes="30" title="Add 30 minutes" style="padding: 4px 6px; font-size: 11px; font-weight: 700; color: #FCD34D; background: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 4px; cursor: pointer; line-height: 1;">+30m</button>
+                    </div>
+                </div>
                 <button id="btn-header-rec" class="btn btn-secondary" title="Live Synchronized Subtitle Sidecar Recording (.srt / .vtt)" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; border: 1px solid rgba(239, 68, 68, 0.35); background: rgba(239, 68, 68, 0.08); color: #FCA5A5; padding: 6px 12px; border-radius: 6px; cursor: pointer;">
                     <span id="header-rec-dot" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#94A3B8;"></span>
                     <span id="header-rec-text">⏺ REC Sidecar</span>
@@ -2142,16 +2151,25 @@
                 <button id="btn-close-scheduler-modal" class="btn btn-secondary btn-sm" style="padding: 4px 12px;">✕ Close</button>
             </div>
 
-            <!-- Active Timer Status Banner -->
-            <div id="scheduler-active-banner" style="display: none; background: rgba(251, 191, 36, 0.12); border: 1px solid rgba(251, 191, 36, 0.4); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <span style="font-size: 22px;">⏱️</span>
-                    <div>
-                        <div style="font-size: 13px; font-weight: 700; color: #FDE68A;">Auto-Stop Active</div>
-                        <div id="scheduler-banner-detail" style="font-size: 12px; color: #FCD34D;">Stopping at 12:30 PM · 42m 15s remaining</div>
+            <!-- Active Timer Status Banner with Quick Add Time Buttons -->
+            <div id="scheduler-active-banner" style="display: none; background: rgba(251, 191, 36, 0.12); border: 1px solid rgba(251, 191, 36, 0.4); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; flex-direction: column; gap: 10px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 22px;">⏱️</span>
+                        <div>
+                            <div style="font-size: 13px; font-weight: 700; color: #FDE68A;">Auto-Stop Active</div>
+                            <div id="scheduler-banner-detail" style="font-size: 12px; color: #FCD34D;">Stopping at 12:30 PM · 42m 15s remaining</div>
+                        </div>
                     </div>
+                    <button id="btn-cancel-timer" class="btn btn-sm" style="background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); color: #FCA5A5; padding: 4px 12px; font-size: 12px; font-weight: 600;">❌ Cancel</button>
                 </div>
-                <button id="btn-cancel-timer" class="btn btn-sm" style="background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); color: #FCA5A5; padding: 4px 12px; font-size: 12px; font-weight: 600;">❌ Cancel</button>
+                <div style="display: flex; align-items: center; gap: 6px; padding-top: 4px; border-top: 1px dashed rgba(251, 191, 36, 0.25);">
+                    <span style="font-size: 11px; font-weight: 700; color: #FDE68A; margin-right: 4px;">Extend:</span>
+                    <button class="btn btn-secondary btn-sm btn-quick-extend" data-minutes="1" style="font-size: 11px; padding: 3px 10px; font-weight: 700; color: #FDE68A; background: rgba(251, 191, 36, 0.15); border: 1px solid rgba(251, 191, 36, 0.4); border-radius: 4px;">+1 min</button>
+                    <button class="btn btn-secondary btn-sm btn-quick-extend" data-minutes="5" style="font-size: 11px; padding: 3px 10px; font-weight: 700; color: #FDE68A; background: rgba(251, 191, 36, 0.15); border: 1px solid rgba(251, 191, 36, 0.4); border-radius: 4px;">+5 min</button>
+                    <button class="btn btn-secondary btn-sm btn-quick-extend" data-minutes="10" style="font-size: 11px; padding: 3px 10px; font-weight: 700; color: #FDE68A; background: rgba(251, 191, 36, 0.15); border: 1px solid rgba(251, 191, 36, 0.4); border-radius: 4px;">+10 min</button>
+                    <button class="btn btn-secondary btn-sm btn-quick-extend" data-minutes="30" style="font-size: 11px; padding: 3px 10px; font-weight: 700; color: #FDE68A; background: rgba(251, 191, 36, 0.15); border: 1px solid rgba(251, 191, 36, 0.4); border-radius: 4px;">+30 min</button>
+                </div>
             </div>
 
             <!-- Quick Duration Presets -->
@@ -2831,11 +2849,20 @@
             // Cancel timer
             document.getElementById('btn-cancel-timer')?.addEventListener('click', () => cancelTimer());
 
-            // Quick presets
+            // Quick presets (set timer duration)
             document.querySelectorAll('.btn-quick-timer').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const mins = parseInt(btn.dataset.minutes, 10);
                     if (mins > 0) setTimer({ duration_minutes: mins });
+                });
+            });
+
+            // Quick add-time / extend buttons (+1m, +5m, +10m, +30m)
+            document.querySelectorAll('.btn-quick-extend').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const mins = parseFloat(btn.dataset.minutes || '0');
+                    if (mins > 0) setTimer({ add_minutes: mins });
                 });
             });
 
