@@ -165,7 +165,7 @@
             gap: 8px;
             background: rgba(15, 23, 42, 0.95);
             border-bottom: 1px solid var(--border);
-            padding: 8px 16px;
+            padding: max(8px, env(safe-area-inset-top, 8px)) max(16px, env(safe-area-inset-right, 16px)) 8px max(16px, env(safe-area-inset-left, 16px));
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
             position: sticky;
@@ -224,6 +224,10 @@
             overflow: hidden;
             text-overflow: ellipsis;
             flex-shrink: 0;
+        }
+
+        .status-engine-detail {
+            display: inline;
         }
 
         .status-pill.offline {
@@ -334,20 +338,74 @@
             }
         }
 
-        @media (max-width: 600px) {
+        /* Tablet & Mobile Optimization (<= 768px) */
+        @media (max-width: 768px) {
+            .header-bar {
+                padding: max(6px, env(safe-area-inset-top, 6px)) 12px 6px 12px;
+                gap: 6px;
+            }
+            .header-main-row {
+                gap: 8px;
+            }
             .brand-sub {
                 display: none;
             }
             .clock-display {
                 display: none;
             }
+            .status-pill {
+                max-width: 76px;
+                padding: 3px 6px;
+            }
+            .status-engine-detail {
+                display: none !important;
+            }
+            .stage-container {
+                padding: 16px 14px calc(32px + env(safe-area-inset-bottom, 0px)) 14px;
+            }
+            .caption-sentence {
+                margin-bottom: 12px;
+                line-height: 1.45;
+            }
+            .empty-indicator {
+                font-size: 15px;
+                padding: 36px 14px;
+                line-height: 1.45;
+            }
+            #scripturePrompterCard {
+                margin: 8px 12px !important;
+                padding: 12px 14px !important;
+            }
+            #stageScriptureText {
+                font-size: 18px !important;
+            }
+        }
+
+        /* Mobile Phones (<= 640px) */
+        @media (max-width: 640px) {
+            .settings-label {
+                display: none !important;
+            }
+            .desktop-only {
+                display: none !important;
+            }
+            .ctrl-btn {
+                padding: 6px 9px;
+                font-size: 13px;
+                min-width: 34px;
+                min-height: 32px;
+            }
+            .header-quick-actions {
+                gap: 6px;
+            }
             .header-controls-row {
                 grid-template-columns: 1fr 1fr;
                 gap: 6px;
             }
             .theme-select {
-                font-size: 11.5px;
-                padding: 5px 6px;
+                font-size: 12px;
+                padding: 6px 8px;
+                border-radius: 6px;
             }
         }
 
@@ -580,9 +638,9 @@
                     <span class="brand-sub" style="opacity: 0.4;">|</span>
                     <span class="brand-sub" style="font-weight: 600; color: var(--text-muted);">Live Read-Along</span>
                 </div>
-                <div class="status-pill" id="statusPill">
+                <div class="status-pill" id="statusPill" title="Live Speech Recognition Connection">
                     <span class="status-dot"></span>
-                    <span id="statusText">LIVE</span>
+                    <span id="statusText"><span class="status-live-label">LIVE</span></span>
                 </div>
             </div>
 
@@ -595,10 +653,10 @@
                 <button class="ctrl-btn" id="btnOpenSettings" title="Display &amp; Reading Settings (S)" aria-label="Settings" style="background: rgba(56, 189, 248, 0.18); border-color: rgba(56, 189, 248, 0.45); color: #38BDF8;">
                     ⚙️ <span class="settings-label" style="font-size: 11.5px; margin-left: 2px;">Settings</span>
                 </button>
-                <button class="ctrl-btn" id="btnFontDec" title="Decrease font size (-)" aria-label="Decrease Font Size">A-</button>
-                <button class="ctrl-btn" id="btnFontInc" title="Increase font size (+)" aria-label="Increase Font Size">A+</button>
-                <button class="ctrl-btn" id="btnFullscreen" title="Toggle Fullscreen (F11)" aria-label="Toggle Fullscreen">⛶</button>
-                <button class="ctrl-btn" id="btnClear" title="Clear History (C)" aria-label="Clear History">🗑️</button>
+                <button class="ctrl-btn desktop-only" id="btnFontDec" title="Decrease font size (-)" aria-label="Decrease Font Size">A-</button>
+                <button class="ctrl-btn desktop-only" id="btnFontInc" title="Increase font size (+)" aria-label="Increase Font Size">A+</button>
+                <button class="ctrl-btn desktop-only" id="btnFullscreen" title="Toggle Fullscreen (F11)" aria-label="Toggle Fullscreen">⛶</button>
+                <button class="ctrl-btn desktop-only" id="btnClear" title="Clear History (C)" aria-label="Clear History">🗑️</button>
                 <button class="ctrl-btn" id="btnCollapseHeader" title="Hide Header Bar (H)" aria-label="Hide Header Bar">↑</button>
             </div>
         </div>
@@ -726,6 +784,29 @@
                     </select>
                 </div>
 
+                <!-- SECTION 4: Caption Font Size (Essential for Mobile & Customization) -->
+                <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px;">
+                    <div style="font-size: 11.5px; font-weight: 800; color: #93C5FD; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 10px;">
+                        🔤 Caption Text Size
+                    </div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                        <button type="button" id="btnModalFontDec" class="ctrl-btn" style="flex: 1; padding: 10px 12px; font-size: 14px; font-weight: 700; background: rgba(255,255,255,0.08); border: 1px solid var(--border);">
+                            A− Smaller
+                        </button>
+                        <span id="modalFontSizeVal" style="font-size: 16px; font-weight: 800; font-family: monospace; color: #38BDF8; min-width: 52px; text-align: center;">
+                            24px
+                        </span>
+                        <button type="button" id="btnModalFontInc" class="ctrl-btn" style="flex: 1; padding: 10px 12px; font-size: 14px; font-weight: 700; background: rgba(255,255,255,0.08); border: 1px solid var(--border);">
+                            A+ Larger
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Clear History Button -->
+                <button type="button" id="btnModalClearHistory" class="ctrl-btn" style="padding: 10px; font-weight: 700; width: 100%; justify-content: center; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); color: #FCA5A5; font-size: 13px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                    🗑️ Clear Caption History
+                </button>
+
                 <!-- Share QR button inside Settings -->
                 <button id="btnSettingsShareQr" class="ctrl-btn" style="padding: 10px; font-weight: 700; width: 100%; justify-content: center; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #7DD3FC; font-size: 13.5px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
                     📱 Share Live Screen / QR Code
@@ -795,7 +876,7 @@
     <script>
         // Screen & State
         const isMobile = window.innerWidth <= 768;
-        const defaultFontSize = isMobile ? 28 : 48;
+        const defaultFontSize = isMobile ? 24 : 48;
         let currentFontSize = defaultFontSize;
 
         // URL & Preference State
@@ -926,9 +1007,13 @@
         // Font Size & Family Controls
         function setFontSize(size) {
             if (!Number.isFinite(size)) size = defaultFontSize;
-            currentFontSize = Math.max(18, Math.min(96, size));
+            const minSize = isMobile ? 16 : 18;
+            const maxSize = isMobile ? 56 : 96;
+            currentFontSize = Math.max(minSize, Math.min(maxSize, size));
             document.documentElement.style.setProperty('--font-size', `${currentFontSize}px`);
             localStorage.setItem('voxstream_display_fontsize', currentFontSize);
+            const modalVal = document.getElementById('modalFontSizeVal');
+            if (modalVal) modalVal.textContent = `${currentFontSize}px`;
         }
 
         function setFontFamily(font) {
@@ -939,7 +1024,10 @@
 
         const savedSize = localStorage.getItem('voxstream_display_fontsize');
         if (savedSize) {
-            setFontSize(parseInt(savedSize));
+            let parsed = parseInt(savedSize);
+            // If on mobile and a giant desktop size (e.g. 48px) was previously saved, normalize to mobile default
+            if (isMobile && parsed > 36) parsed = defaultFontSize;
+            setFontSize(parsed);
         } else {
             setFontSize(defaultFontSize);
         }
@@ -1141,11 +1229,25 @@
 
         const btnFontDec = document.getElementById('btnFontDec');
         if (btnFontDec) btnFontDec.addEventListener('click', () => setFontSize(currentFontSize - 4));
-        
+
+        const btnModalFontInc = document.getElementById('btnModalFontInc');
+        if (btnModalFontInc) btnModalFontInc.addEventListener('click', () => setFontSize(currentFontSize + (isMobile ? 2 : 4)));
+
+        const btnModalFontDec = document.getElementById('btnModalFontDec');
+        if (btnModalFontDec) btnModalFontDec.addEventListener('click', () => setFontSize(currentFontSize - (isMobile ? 2 : 4)));
+
         const btnClear = document.getElementById('btnClear');
         if (btnClear) {
             btnClear.addEventListener('click', () => {
                 clearAllCaptions();
+            });
+        }
+
+        const btnModalClearHistory = document.getElementById('btnModalClearHistory');
+        if (btnModalClearHistory) {
+            btnModalClearHistory.addEventListener('click', () => {
+                clearAllCaptions();
+                if (settingsModal) settingsModal.style.display = 'none';
             });
         }
 
@@ -1465,7 +1567,7 @@
             ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
-                if (statusText) statusText.textContent = "LIVE";
+                if (statusText) statusText.innerHTML = '<span class="status-live-label">LIVE</span>';
                 if (statusPill) {
                     statusPill.classList.remove('offline');
                     statusPill.title = "Connected to Live Caption Stream";
@@ -1534,7 +1636,7 @@
             };
 
             ws.onclose = () => {
-                if (statusText) statusText.textContent = "DISCONNECTED";
+                if (statusText) statusText.innerHTML = '<span class="status-live-label">DISCONNECTED</span>';
                 if (statusPill) {
                     statusPill.classList.add('offline');
                     statusPill.title = "Connection Lost. Reconnecting in 2s...";
@@ -1587,7 +1689,7 @@
                     const data = await res.json();
                     if (statusText && ws && ws.readyState === WebSocket.OPEN) {
                         if (data.is_switching_engine) {
-                            statusText.textContent = `⏳ DOWNLOADING...`;
+                            statusText.innerHTML = `<span class="status-live-label">⏳ DOWNLOADING...</span>`;
                             if (statusPill) {
                                 statusPill.style.background = "rgba(245, 158, 11, 0.15)";
                                 statusPill.style.color = "#F59E0B";
@@ -1595,8 +1697,8 @@
                                 statusPill.title = data.engine_switch_status || "Downloading speech recognition model...";
                             }
                         } else {
-                            const modelLabel = data.model_detail || formatEngineBadge(data.engine, data.engine_name);
-                            statusText.textContent = `LIVE • ${modelLabel}`;
+                            const modelLabel = formatEngineBadge(data.engine, data.engine_name);
+                            statusText.innerHTML = `<span class="status-live-label">LIVE</span><span class="status-engine-detail"> • ${modelLabel}</span>`;
                             if (statusPill) {
                                 statusPill.style.background = "rgba(16, 185, 129, 0.12)";
                                 statusPill.style.color = "var(--success)";
