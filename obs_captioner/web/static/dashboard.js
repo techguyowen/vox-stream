@@ -4809,7 +4809,14 @@ async function loadUpdateStatus(force = false) {
 
 function handleUpdaterProgress(message) {
     const updateModal = document.getElementById("update-modal");
-    if (updateModal) updateModal.style.display = "flex";
+    if (updateModal) {
+        updateModal.style.display = "flex";
+        // Close any underlying settings or scheduler dialogs so the progress screen is unobstructed
+        const featuresModal = document.getElementById("modal-feature-settings");
+        if (featuresModal) featuresModal.style.display = "none";
+        const schedulerModal = document.getElementById("modal-scheduler");
+        if (schedulerModal) schedulerModal.style.display = "none";
+    }
 
     const updateStepStatus = document.getElementById("update-step-status");
     const updateProgressBar = document.getElementById("update-progress-bar");
@@ -4844,6 +4851,17 @@ async function applyVoxStreamUpdate() {
     if (!confirm(confirmMsg)) {
         return;
     }
+
+    // Automatically close settings modal and any open sub-modals so the update progress page is front and center
+    const featuresModal = document.getElementById("modal-feature-settings");
+    if (featuresModal) featuresModal.style.display = "none";
+    const schedulerModal = document.getElementById("modal-scheduler");
+    if (schedulerModal) schedulerModal.style.display = "none";
+    document.querySelectorAll(".modal-backdrop").forEach(m => {
+        if (m.id !== "update-modal" && m.id !== "restart-modal") {
+            m.style.display = "none";
+        }
+    });
 
     const btnApply = document.getElementById("btn-apply-update");
     if (btnApply) btnApply.disabled = true;
