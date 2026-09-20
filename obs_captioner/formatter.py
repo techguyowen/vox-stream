@@ -504,3 +504,28 @@ class TextFormatter:
         else:
             return text + "."
 
+
+def is_hallucinated_or_leaked_text(text: str) -> bool:
+    """Detect raw prompt leaks, bracketed token arrays, or LLM degenerative repetition loops.
+
+    Prevents raw Python/JSON list representations (e.g., "['1 Corinthians', 'Gospel']"),
+    checkbox/markdown bullet artifacts ("□'Jesus'"), comma-separated quotes,
+    or stutter loops ("'G', 'G', 'G', 'G'") from leaking into live display overlays.
+    """
+    if not text:
+        return False
+    s = text.strip()
+    # 1. Box / checkbox / unprintable bullet prefix with quotes or brackets: e.g. □'...' or \u25a1'...' or [ ] '...'
+    if re.match(r"^[\u25a0-\u25ff\ufffd\u2022\[\]\s]*['\"]", s):
+        return True
+    # 2. Raw Python / JSON list syntax: e.g. ["a", "b"] or ['a', 'b'] or starts with [
+    if s.startswith("[") and ("," in s or s.endswith("]")):
+        return True
+    # 3. Comma-separated quoted strings (repr list leakage): e.g. '1 Corinthians', 'Gospel'
+    if re.search(r"['\"][^'\"]{1,50}['\"]\s*,\s*['\"][^'\"]{1,50}['\"]", s):
+        return True
+    # 4. Token repetition loop (degenerative decoding artifact: e.g. 'G', 'G', 'G' or G, G, G, G)
+    if re.search(r"\b(\w+)\b(?:\s*[, '\"]+\s*\1\b){3,}", s, re.IGNORECASE):
+        return True
+    return False
+

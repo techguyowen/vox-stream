@@ -9,7 +9,7 @@ from typing import Optional, Tuple
 from ..config import AppConfig
 from ..engines.base import TranscriptEvent
 from ..censor import ContentFilter
-from ..formatter import TextFormatter
+from ..formatter import TextFormatter, is_hallucinated_or_leaked_text
 from ..history import TranscriptHistory
 from ..music import is_music_text
 from ..translator import SubtitleTranslator
@@ -194,6 +194,20 @@ class CaptionSink:
                     await self.web_server.broadcast_caption(
                         {"text": "", "is_final": False, "is_censored": False, "timestamp": event.timestamp}
                     )
+            return
+
+        # Hallucination / Token Leak Suppression Check
+        if is_hallucinated_or_leaked_text(raw_text):
+            if event.is_final:
+                logger.warning(f"✓ [FINAL]   🛡️ [HALLUCINATION SUPPRESSED] {raw_text}")
+                self._utterance_active = False
+                self._last_partial_text = None
+                if self.web_server:
+                    await self.web_server.broadcast_caption(
+                        {"text": "", "is_final": False, "is_censored": False, "timestamp": event.timestamp}
+                    )
+            else:
+                logger.debug(f"Interim hallucination suppressed in caption sink: {raw_text}")
             return
 
         if event.is_final:

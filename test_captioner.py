@@ -864,6 +864,68 @@ class TestConfigAndEngines(unittest.TestCase):
         self.assertEqual(engine.parse_server_message({}), [])
         self.assertEqual(engine.parse_server_message({"serverContent": {}}), [])
 
+    def test_gemini_live_suppress_hallucinated_interim_token_leak(self):
+        """Verify Gemini Live suppresses hallucinated prompt arrays, checkbox tokens, and loops."""
+        from obs_captioner.formatter import is_hallucinated_or_leaked_text
+
+        cfg = AppConfig()
+        engine = GeminiLiveEngine(cfg)
+
+        # 1. Exact raw hallucinated token array from user screenshot
+        raw_leak = "□'1 Corinthians', 'Gospel', 'Goshua', '1 Corinthians', 'Jesus', 'G', 'G', 'G', 'G"
+        self.assertTrue(is_hallucinated_or_leaked_text(raw_leak))
+
+        interim_data = {
+            "serverContent": {
+                "interimInputTranscription": {
+                    "text": raw_leak
+                }
+            }
+        }
+        # Must be suppressed and return no events
+        events = engine.parse_server_message(interim_data)
+        self.assertEqual(events, [])
+
+        # 2. Conversational modelTurn containing hallucinated token list
+        turn_data = {
+            "serverContent": {
+                "modelTurn": {
+                    "parts": [{"text": "['Genesis', 'Exodus', 'Leviticus']"}]
+                }
+            }
+        }
+        self.assertEqual(engine.parse_server_message(turn_data), [])
+
+        # 3. Valid speech is preserved
+        valid_data = {
+            "serverContent": {
+                "interimInputTranscription": {
+                    "text": "Do you see what Jesus did there"
+                }
+            }
+        }
+        valid_events = engine.parse_server_message(valid_data)
+        self.assertEqual(valid_events, [("Do you see what Jesus did there", False)])
+
+    def test_is_hallucinated_or_leaked_text_detection(self):
+        """Test detection of prompt leaks, repr lists, and degenerate repetition loops."""
+        from obs_captioner.formatter import is_hallucinated_or_leaked_text
+
+        # Hallucinations / Leaks (should return True)
+        self.assertTrue(is_hallucinated_or_leaked_text("□'1 Corinthians', 'Gospel', 'Jesus'"))
+        self.assertTrue(is_hallucinated_or_leaked_text("['1 Corinthians', 'Gospel']"))
+        self.assertTrue(is_hallucinated_or_leaked_text("'OBS Studio', 'YouTube'"))
+        self.assertTrue(is_hallucinated_or_leaked_text("G, G, G, G"))
+        self.assertTrue(is_hallucinated_or_leaked_text("G G G G"))
+        self.assertTrue(is_hallucinated_or_leaked_text("'G', 'G', 'G', 'G'"))
+
+        # Valid spoken phrases (should return False)
+        self.assertFalse(is_hallucinated_or_leaked_text("Do you see what Jesus did there?"))
+        self.assertFalse(is_hallucinated_or_leaked_text("Turn in your bibles to 1 Corinthians 13:4."))
+        self.assertFalse(is_hallucinated_or_leaked_text("He said, \"Peace be with you.\""))
+        self.assertFalse(is_hallucinated_or_leaked_text("Faith, hope, and love abide."))
+        self.assertFalse(is_hallucinated_or_leaked_text("Jesus wept."))
+
     def test_gemini_live_translate_model_setup(self):
         cfg = AppConfig()
         cfg.gemini_live.api_key = "test-key"

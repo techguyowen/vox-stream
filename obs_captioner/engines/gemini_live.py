@@ -25,6 +25,7 @@ import aiohttp
 
 from .base import BaseSTTEngine, CaptionCallback, TranscriptEvent
 from ..config import AppConfig
+from ..formatter import is_hallucinated_or_leaked_text
 from ..music import is_music_text
 from ..vad import VoiceActivityDetector
 
@@ -180,12 +181,17 @@ class GeminiLiveEngine(BaseSTTEngine):
                 church_context += f" Local ministry organization: {church_name}."
             extras.append(church_context)
 
-        # User-specified custom vocabulary hints (keep compact in system instruction)
+        # User-specified custom vocabulary hints (avoid bracketed arrays/code syntax that models regurgitate)
         user_vocab = getattr(self.config.gemini_live, "custom_vocabulary", []) or []
         clean_user_vocab = [v.strip() for v in user_vocab if isinstance(v, str) and v.strip()]
         if clean_user_vocab:
-            sample_list = ", ".join(f'"{v}"' for v in clean_user_vocab[:20])
-            extras.append(f"Adapt accurately to this custom specialized vocabulary: [{sample_list}].")
+            sample_terms = ", ".join(clean_user_vocab[:20])
+            extras.append(f"Adapt accurately to custom specialized vocabulary: {sample_terms}.")
+
+        extras.append(
+            "Output strictly the spoken transcription as continuous natural text. "
+            "Never output raw code, array structures, brackets, bullet lists, or repetitive token loops."
+        )
 
         if extras:
             return f"{base} {' '.join(extras)}"
@@ -287,21 +293,30 @@ class GeminiLiveEngine(BaseSTTEngine):
         if isinstance(output_obj, dict) and output_obj.get("text"):
             out_text = str(output_obj["text"]).strip()
             if out_text:
-                events.append((out_text, True))
+                if not is_hallucinated_or_leaked_text(out_text):
+                    events.append((out_text, True))
+                else:
+                    logger.warning(f"Suppressed hallucinated translated text from Gemini Live: {out_text}")
 
         # 1. Authoritative finalized transcription (emitted on speech completion)
         final_obj = server_content.get("inputTranscription")
         if isinstance(final_obj, dict) and final_obj.get("text"):
             text = str(final_obj["text"]).strip()
             if text and not output_obj:
-                events.append((text, True))
+                if not is_hallucinated_or_leaked_text(text):
+                    events.append((text, True))
+                else:
+                    logger.warning(f"Suppressed hallucinated final transcript from Gemini Live: {text}")
 
         # 2. Speculative interim hypothesis (updates rapidly while user speaks)
         interim_obj = server_content.get("interimInputTranscription")
         if isinstance(interim_obj, dict) and interim_obj.get("text"):
             text = str(interim_obj["text"]).strip()
             if text:
-                events.append((text, False))
+                if not is_hallucinated_or_leaked_text(text):
+                    events.append((text, False))
+                else:
+                    logger.debug(f"Suppressed hallucinated interim transcript from Gemini Live: {text}")
 
         # 3. Conversational fallback (modelTurn parts)
         model_turn = server_content.get("modelTurn")
@@ -311,7 +326,10 @@ class GeminiLiveEngine(BaseSTTEngine):
             full_part_text = "".join(part_texts).strip()
             if full_part_text:
                 is_done = bool(server_content.get("turnComplete") or server_content.get("generationComplete"))
-                events.append((full_part_text, is_done))
+                if not is_hallucinated_or_leaked_text(full_part_text):
+                    events.append((full_part_text, is_done))
+                else:
+                    logger.debug(f"Suppressed hallucinated modelTurn from Gemini Live: {full_part_text}")
 
         return events
 
