@@ -321,6 +321,9 @@ class TextFormatter:
         if is_final:
             text = self._normalize_spoken_numbers(text)
 
+        # 1c. Normalize punctuation spacing (fixes ASR concatenation artifacts like "like.Guys" -> "like. Guys")
+        text = self.normalize_punctuation_spacing(text)
+
         # 2. Single-pass unified dictionary substitution
         if self._master_pattern:
             text = self._master_pattern.sub(lambda m: self._lookup.get(m.group(0).lower(), m.group(0)), text)
@@ -430,6 +433,69 @@ class TextFormatter:
             text,
             flags=re.IGNORECASE,
         )
+
+        return text
+
+    KNOWN_TLDS: str = r"(?:com|org|net|edu|gov|io|co|tv|app|dev|church|ai|info|xyz|us|uk|ca)"
+
+    @classmethod
+    def normalize_punctuation_spacing(cls, text: str) -> str:
+        """Ensure standard whitespace after punctuation marks.
+
+        Fixes ASR token concatenation artifacts like 'looks like.Guys' -> 'looks like. Guys',
+        'faith,hope' -> 'faith, hope', and 'amen!Let' -> 'amen! Let', while strictly preserving:
+          - Scripture citations and times (e.g. 'John 3:16', '10:30 AM')
+          - Numeric decimals and currency (e.g. '$4.50', '3.14', '1,000')
+          - Web domains and URLs (e.g. 'waypoint.church', 'google.com', 'https://github.com')
+          - Common initialisms and abbreviations (e.g. 'U.S.A.', 'U.S.', 'e.g.', 'i.e.')
+        """
+        if not text:
+            return ""
+
+        # 1. Strip accidental whitespace before punctuation (e.g. "word ." -> "word.")
+        text = re.sub(r"\s+([,.:;?!])", r"\1", text)
+
+        # 2. Add space after commas, semicolons, exclamation marks, and question marks
+        # when immediately followed by a letter (e.g. "said,yes" -> "said, yes", "amen!Let" -> "amen! Let")
+        text = re.sub(r"([,;?!])([a-zA-Z])", r"\1 \2", text)
+
+        # 3. Add space after colons when immediately followed by a letter (protecting 3:16 and https://)
+        text = re.sub(r"(:)([a-zA-Z])", r"\1 \2", text)
+
+        # 4. Add space after periods when followed by a letter:
+        # Case 4a: Period followed by a capital letter (e.g. "looks like.Guys" -> "looks like. Guys")
+        def replace_period_cap(m):
+            prefix = m.group(1)
+            dot = m.group(2)
+            next_char = m.group(3)
+            # Check if prefix is a single letter initialism like U.S.
+            if len(prefix) == 1 and prefix.isupper():
+                return m.group(0)
+            return f"{prefix}{dot} {next_char}"
+
+        text = re.sub(r"\b([a-zA-Z]+)(\.)([A-Z])", replace_period_cap, text)
+
+        # Case 4b: Period followed by a lowercase letter, excluding known web domains and initialisms
+        def replace_period_lower(m):
+            prefix = m.group(1)
+            next_word = m.group(2)
+            # Protect web domains (e.g. "church.org", "google.com")
+            if re.match(rf"^{cls.KNOWN_TLDS}\b", next_word, re.IGNORECASE):
+                return m.group(0)
+            # Protect e.g. or i.e.
+            if prefix.lower() in ("e", "i") and next_word.lower() in ("g", "e"):
+                return m.group(0)
+            if len(prefix) == 1 and prefix.isupper():
+                return m.group(0)
+            return f"{prefix}. {next_word}"
+
+        text = re.sub(r"\b([a-zA-Z]+)\.([a-z]+)\b", replace_period_lower, text)
+
+        # 5. Punctuation followed by closing quote or paren then letter: e.g. 'end."Next' -> 'end." Next'
+        text = re.sub(r"([.?!,;:][\"'\)\]])([a-zA-Z])", r"\1 \2", text)
+
+        # 6. Normalize multiple consecutive spaces
+        text = re.sub(r"[ \t]+", " ", text).strip()
 
         return text
 

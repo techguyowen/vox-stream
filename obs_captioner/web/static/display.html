@@ -1093,9 +1093,23 @@
             chkDisplayA11y.addEventListener("change", (e) => applyDisplayA11yMode(e.target.checked));
         }
 
-                // ⚡ Bionic Reading (Saccadic Word Fixation)
+                // 🔤 Normalize Punctuation Spacing (fixes e.g. "like.Guys" -> "like. Guys")
+        function normalizePunctuationSpacing(text) {
+            if (!text) return '';
+            return text
+                .replace(/\s+([,.:;?!])/g, '$1')
+                .replace(/([,;?!])([a-zA-Z])/g, '$1 $2')
+                .replace(/(:)([a-zA-Z])/g, '$1 $2')
+                .replace(/\b([a-zA-Z]{2,})\.([A-Z])/g, '$1. $2')
+                .replace(/([.?!,;:]["'\)\]])([a-zA-Z])/g, '$1 $2')
+                .replace(/[ \t]+/g, ' ')
+                .trim();
+        }
+
+        // ⚡ Bionic Reading (Saccadic Word Fixation)
         function formatBionicReading(text) {
             if (!text) return '';
+            text = normalizePunctuationSpacing(text);
             if (!isBionicReadingEnabled) {
                 return escapeHtml(text);
             }

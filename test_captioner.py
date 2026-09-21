@@ -1020,6 +1020,48 @@ class TestTextFormatter(unittest.TestCase):
         res_interim = fmt.format_text("i am testing this", is_final=False)
         self.assertEqual(res_interim, "I am testing this")
 
+    def test_normalize_punctuation_spacing(self):
+        """Verify automatic space restoration after punctuation marks without false positives."""
+        from obs_captioner.formatter import TextFormatter
+        fmt = TextFormatter(auto_capitalization=True, auto_punctuation=True)
+
+        # 1. Exact user screenshot case: period followed by capitalized word
+        res1 = fmt.format_text("n looks like.Guys,", is_final=True)
+        self.assertEqual(res1, "N looks like. Guys,")
+
+        # 2. Period followed by lowercase word (should space and capitalize)
+        res2 = fmt.format_text("looks like.guys,", is_final=True)
+        self.assertEqual(res2, "Looks like. Guys,")
+
+        # 3. Commas, colons, exclamation, and question marks
+        res3 = fmt.format_text("faith,hope,and love", is_final=True)
+        self.assertEqual(res3, "Faith, hope, and love.")
+
+        res4 = fmt.format_text("amen!let us pray", is_final=True)
+        self.assertEqual(res4, "Amen! Let us pray.")
+
+        res5 = fmt.format_text("are you ready?yes", is_final=True)
+        self.assertEqual(res5, "Are you ready? Yes?")
+
+        res6 = fmt.format_text("note:this is crucial", is_final=True)
+        self.assertEqual(res6, "Note: this is crucial.")
+
+        # 4. Strict preservation of Bible citations, decimals, times, URLs, and abbreviations
+        res_bible = fmt.format_text("John 3:16", is_final=True)
+        self.assertEqual(res_bible, "John 3:16.")
+
+        res_time = fmt.format_text("service starts at 10:30 in the morning", is_final=True)
+        self.assertEqual(res_time, "Service starts at 10:30 in the morning.")
+
+        res_dec = fmt.format_text("value is 3.14159 or $4.50 for 1,000 items", is_final=True)
+        self.assertEqual(res_dec, "Value is 3.14159 or $4.50 for 1,000 items.")
+
+        res_url = fmt.format_text("visit waypoint.church or google.com today", is_final=True)
+        self.assertEqual(res_url, "Visit Waypoint.church or Google.com today.")
+
+        res_abbr = fmt.format_text("located in the U.S.A. and U.S. territory", is_final=True)
+        self.assertEqual(res_abbr, "Located in the U.S.A. And U.S. Territory.")
+
     def test_church_words_and_scripture(self):
         from obs_captioner.formatter import TextFormatter
         fmt = TextFormatter(auto_capitalization=True, auto_punctuation=True, church_mode=True)
