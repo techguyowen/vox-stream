@@ -738,7 +738,7 @@ class TestConfigAndEngines(unittest.TestCase):
         transcription = setup["inputAudioTranscription"]
         self.assertEqual(transcription["mode"], "SMART")
         # With default church_mode=True, both user terms and canonical church terms are present
-        for term in ["OBS Studio", "Twitch", "YouTube", "Jesus Christ", "Ben Uthe", "Doxology", "Genesis"]:
+        for term in ["OBS Studio", "Twitch", "YouTube", "Jesus Christ", "Ben Luthi", "Doxology", "Genesis"]:
             self.assertIn(term, transcription["customVocabulary"])
         self.assertEqual(transcription["languageCodes"], ["en-US"])
 
@@ -789,14 +789,14 @@ class TestConfigAndEngines(unittest.TestCase):
         self.assertIn("Grace Fellowship", vocab)
 
         # 4. Verify canonical church terms and books of the Bible
-        self.assertIn("Ben Uthe", vocab)
+        self.assertIn("Ben Luthi", vocab)
         self.assertIn("Doxology", vocab)
         self.assertIn("1 Thessalonians", vocab)
         self.assertIn("Genesis", vocab)
 
         # 5. Verify acoustic mishearings from church lexicon are strictly EXCLUDED
         acoustic_mishearings = [
-            "ben luthi", "ben lut", "ben luther",
+            "ben uthe", "ben lut", "ben luther", "ben loothi",
             "dog solid g", "solid g",
             "said corinthians", "cried the ends",
             "top 24", "he took a cop",
@@ -1085,6 +1085,21 @@ class TestTextFormatter(unittest.TestCase):
         # Sacred titles & phrases
         res_phrases = fmt.format_text("jesus christ is king of kings and lord of lords amen", is_final=True)
         self.assertEqual(res_phrases, "Jesus Christ is King of Kings and Lord of Lords Amen.")
+
+        # Pastoral and leadership names
+        res_ben = fmt.format_text("pastor ben luthi and ben uthe are speaking", is_final=True)
+        self.assertEqual(res_ben, "Pastor Ben Luthi and Ben Luthi are speaking.")
+
+        # Hymns and liturgical terms
+        res_hymn = fmt.format_text("they sang agnes day and waymaker together", is_final=True)
+        self.assertEqual(res_hymn, "They sang Agnus Dei and Way Maker together.")
+
+        # Sensory room tools vs biblical birds
+        res_sensory = fmt.format_text("noise-canceling headphones and pigeons are in the sensory room", is_final=True)
+        self.assertEqual(res_sensory, "Noise-canceling headphones and fidgets are in the sensory room.")
+
+        res_birds = fmt.format_text("bring two young pigeons as an offering", is_final=True)
+        self.assertEqual(res_birds, "Bring two young pigeons as an Offering.")
 
     def test_no_false_capitalization(self):
         """Regression: common words must not be capitalized as books/months/possessives."""
@@ -2456,9 +2471,9 @@ class TestSermonPipelineEnhancements(unittest.IsolatedAsyncioTestCase):
         fmt = TextFormatter(auto_capitalization=True, auto_punctuation=True, church_mode=True)
 
         # Pastoral & Leadership
-        self.assertIn("Ben Uthe", fmt.format_text("ben lut is our pastor"))
-        self.assertIn("Ben Uthe", fmt.format_text("ben luthi preached today"))
-        self.assertIn("Ben Uthe", fmt.format_text("ben uthe is speaking"))
+        self.assertIn("Ben Luthi", fmt.format_text("ben lut is our pastor"))
+        self.assertIn("Ben Luthi", fmt.format_text("ben luthi preached today"))
+        self.assertIn("Ben Luthi", fmt.format_text("ben uthe is speaking"))
 
         # Church & Campuses & Events
         self.assertIn("Waypoint Church", fmt.format_text("welcome to way point church"))
