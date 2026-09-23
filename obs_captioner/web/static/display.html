@@ -90,6 +90,14 @@
             --card-bg: rgba(255, 255, 255, 0.95);
             --border: #E2E8F0;
         }
+        body.theme-black-on-white {
+            --bg-color: #FFFFFF;
+            --text-color: #000000;
+            --interim-color: #374151;
+            --text-muted: #6B7280;
+            --card-bg: rgba(255, 255, 255, 0.98);
+            --border: #D1D5DB;
+        }
         body.theme-high-vis {
             --bg-color: #000000;
             --text-color: #FFFF00;
@@ -484,6 +492,10 @@
         body.theme-amber .bionic-fixation {
             color: #F59E0B;
         }
+        body.theme-black-on-white .bionic-fixation { color: #000000; font-weight: 800; }
+        body.theme-black-on-white .caption-sentence { text-shadow: none; color: var(--text-color); }
+        body.theme-black-on-white .header-bar { background: rgba(255, 255, 255, 0.95); border-bottom-color: #E5E7EB; }
+        body.theme-black-on-white .brand-badge { color: #000000; }
 
         /* Smooth Word Flow Animation for Reading Ease */
         .caption-sentence {
@@ -779,6 +791,7 @@
                         <option value="theme-amber">🟡 Stage Amber</option>
                         <option value="theme-slate">🌌 Dark Slate</option>
                         <option value="theme-light">☀️ Clean Light</option>
+                        <option value="theme-black-on-white">📄 Black on White (Pure White)</option>
                         <option value="theme-pro-green">🟢 Pro Green</option>
                         <option value="theme-hacker">💻 Hacker Terminal</option>
                     </select>
