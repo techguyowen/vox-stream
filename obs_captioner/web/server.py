@@ -310,7 +310,7 @@ class WebOverlayServer:
 
     async def _handle_display(self, request: web.Request) -> web.FileResponse:
         display_file = Path(__file__).parent / "static" / "display.html"
-        return web.FileResponse(display_file)
+        return web.FileResponse(display_file, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
     async def _handle_manifest(self, request: web.Request) -> web.FileResponse:
         manifest_file = Path(__file__).parent / "static" / "manifest-display.json"

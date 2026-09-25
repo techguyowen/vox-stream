@@ -62,6 +62,7 @@
             --font-family: 'Inter', system-ui, -apple-system, sans-serif;
             --font-size: 48px;
             --line-height: 1.45;
+            --caption-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
         }
 
         /* High Contrast Themes */
@@ -89,6 +90,7 @@
             --text-muted: #94A3B8;
             --card-bg: rgba(255, 255, 255, 0.95);
             --border: #E2E8F0;
+            --caption-shadow: none;
         }
         body.theme-black-on-white {
             --bg-color: #FFFFFF;
@@ -97,7 +99,10 @@
             --text-muted: #6B7280;
             --card-bg: rgba(255, 255, 255, 0.98);
             --border: #D1D5DB;
+            --caption-shadow: none;
         }
+        body.theme-light .caption-sentence { text-shadow: none; }
+        body.theme-black-on-white .caption-sentence { text-shadow: none; }
         body.theme-high-vis {
             --bg-color: #000000;
             --text-color: #FFFF00;
@@ -128,6 +133,106 @@
             --text-muted: #8B949E;
             --card-bg: #161B22;
             --border: #30363D;
+        }
+        /* Custom Theme: colors are supplied live via CSS variables
+           (--bg-color, --text-color, --interim-color, --text-muted,
+           --card-bg, --border) persisted in localStorage under
+           'voxstream_display_custom_theme'. Defaults below match
+           DEFAULT_CUSTOM_THEME in the script. */
+        body.theme-custom {
+            --bg-color: #0B0F19;
+            --text-color: #FFFFFF;
+            --interim-color: #38BDF8;
+            --text-muted: #94A3B8;
+            --card-bg: #141C2B;
+            --border: #334155;
+        }
+        body.theme-custom .bionic-fixation {
+            color: var(--text-color) !important;
+            font-weight: 900 !important;
+        }
+        body.theme-custom .caption-sentence {
+            text-shadow: var(--caption-shadow, 0 2px 8px rgba(0, 0, 0, 0.6));
+        }
+        /* Custom Theme editor panel */
+        .custom-theme-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .custom-color-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 7px 8px;
+            min-width: 0;
+        }
+        .custom-color-row input[type="color"] {
+            width: 34px;
+            height: 30px;
+            min-width: 34px;
+            padding: 0;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            border-radius: 6px;
+            background: transparent;
+            cursor: pointer;
+        }
+        .custom-color-row input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 2px;
+        }
+        .custom-color-row input[type="color"]::-webkit-color-swatch {
+            border: none;
+            border-radius: 4px;
+        }
+        .custom-color-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+            flex: 1;
+        }
+        .custom-color-meta label {
+            font-size: 10.5px;
+            font-weight: 700;
+            color: #CBD5E1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .custom-color-meta input[type="text"] {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 5px;
+            color: #F1F5F9;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11.5px;
+            font-weight: 700;
+            letter-spacing: 0.4px;
+            padding: 3px 6px;
+            text-transform: uppercase;
+            outline: none;
+            box-sizing: border-box;
+        }
+        .custom-color-meta input[type="text"]:focus {
+            border-color: #38BDF8;
+        }
+        .custom-preview {
+            margin-top: 10px;
+            border-radius: 10px;
+            padding: 12px 14px;
+            border: 1px solid var(--border);
+            background: var(--card-bg);
+            transition: background-color 0.15s ease, border-color 0.15s ease;
+        }
+        @media (max-width: 480px) {
+            .custom-theme-grid {
+                grid-template-columns: 1fr;
+            }
         }
         /* Base Reset & Fullscreen Layout */
         * {
@@ -167,12 +272,15 @@
         /* -------------------------------------------------------------
            Header Navigation Bar (Rock-Solid Multi-Resolution Layout)
            ------------------------------------------------------------- */
+        /* Option B: the top VoxStream header bar stays a fixed, unobtrusive
+           dark slate console in every caption theme. Only the caption
+           stage below (.stage-container / body background) follows themes. */
         .header-bar {
             display: flex;
             flex-direction: column;
             gap: 8px;
-            background: rgba(15, 23, 42, 0.95);
-            border-bottom: 1px solid var(--border);
+            background: rgba(15, 23, 42, 0.96) !important;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
             padding: max(8px, env(safe-area-inset-top, 8px)) max(16px, env(safe-area-inset-right, 16px)) 8px max(16px, env(safe-area-inset-left, 16px));
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
@@ -207,11 +315,16 @@
             font-size: 13.5px;
             font-weight: 700;
             letter-spacing: -0.1px;
-            color: var(--text-color);
+            color: #F8FAFC !important;
             display: flex;
             align-items: center;
             gap: 6px;
             white-space: nowrap;
+        }
+
+        .brand-badge .brand-sub {
+            opacity: 0.6;
+            color: #94A3B8 !important;
         }
 
         .status-pill {
@@ -261,7 +374,7 @@
             font-size: 13.5px;
             font-weight: 800;
             font-family: 'JetBrains Mono', monospace;
-            color: var(--text-muted);
+            color: #94A3B8 !important;
             letter-spacing: 1px;
             white-space: nowrap;
         }
@@ -295,6 +408,111 @@
             transform: translateY(-1px);
         }
 
+        /* Option B: header action buttons stay consistent on the dark
+           slate toolbar in every theme. */
+        .header-quick-actions .ctrl-btn {
+            background: rgba(255, 255, 255, 0.08);
+            color: #F8FAFC;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+
+        .header-quick-actions .ctrl-btn:hover {
+            background: rgba(255, 255, 255, 0.16);
+            border-color: rgba(255, 255, 255, 0.35);
+            color: #FFFFFF;
+        }
+
+        /* High-visibility font-size quick actions (header bar).
+           Solid amber fill + near-black bold text reads clearly on the
+           fixed dark slate header (Option B: identical in every theme). */
+        #btnFontDec,
+        #btnFontInc {
+            background: #F59E0B;
+            color: #111827;
+            border: 2px solid #FCD34D;
+            font-weight: 800;
+            font-size: 13px;
+            padding: 5px 11px;
+            text-shadow: none;
+        }
+        #btnFontDec:hover,
+        #btnFontInc:hover {
+            background: #FBBF24;
+            border-color: #FFFFFF;
+            color: #000000;
+            box-shadow: 0 0 10px rgba(251, 191, 36, 0.65);
+        }
+        #btnFontDec:active,
+        #btnFontInc:active {
+            background: #D97706;
+            border-color: #FDE68A;
+            color: #000000;
+            transform: translateY(0) scale(0.96);
+            box-shadow: none;
+        }
+        #btnFontDec:focus-visible,
+        #btnFontInc:focus-visible {
+            outline: 2px solid #FFFFFF;
+            outline-offset: 2px;
+        }
+        /* High-visibility Caption Text Size controls (Settings modal).
+           Solid bright-amber fill + near-black extra-bold text + white
+           border reads unmistakably on the modal's dark #111827 surface
+           (the modal keeps its dark fill in every caption theme, so this
+           one scheme holds everywhere). ID selectors outrank .ctrl-btn
+           (including its :hover and mobile rules), and the inline base
+           styles below mirror these values so there is no specificity
+           fight — no !important needed. */
+        #btnModalFontDec,
+        #btnModalFontInc {
+            background: #FBBF24;
+            color: #111827;
+            border: 3px solid #FFFFFF;
+            font-size: 16px;
+            font-weight: 900;
+            letter-spacing: 0.2px;
+            padding: 12px 16px;
+            min-height: 52px;
+            border-radius: 10px;
+            text-shadow: none;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+        }
+        #btnModalFontDec:hover,
+        #btnModalFontInc:hover {
+            background: #FCD34D;
+            border-color: #FFFFFF;
+            color: #000000;
+            box-shadow: 0 0 14px rgba(251, 191, 36, 0.8);
+        }
+        #btnModalFontDec:active,
+        #btnModalFontInc:active {
+            background: #D97706;
+            border-color: #FEF3C7;
+            color: #000000;
+            transform: translateY(0) scale(0.97);
+            box-shadow: none;
+        }
+        #btnModalFontDec:focus-visible,
+        #btnModalFontInc:focus-visible {
+            outline: 3px solid #FFFFFF;
+            outline-offset: 3px;
+        }
+        /* Crisp, prominent live size readout between the modal buttons:
+           pure-white extra-bold tabular numerals on the dark modal. */
+        #modalFontSizeVal {
+            font-size: 20px;
+            font-weight: 900;
+            font-variant-numeric: tabular-nums;
+            color: #FFFFFF;
+            background: rgba(0, 0, 0, 0.45);
+            border: 2px solid #38BDF8;
+            border-radius: 8px;
+            padding: 10px 12px;
+            min-width: 84px;
+            letter-spacing: 0.5px;
+            text-shadow: none;
+        }
+
         .header-controls-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -318,6 +536,13 @@
 
         .theme-select:focus {
             border-color: #38BDF8;
+        }
+
+        /* Option B: header dropdowns stay fixed dark in every theme. */
+        .header-controls-row .theme-select {
+            background: #161B22 !important;
+            color: #F0F3F6 !important;
+            border: 1px solid rgba(255, 255, 255, 0.18) !important;
         }
 
         /* Wide screens (>= 1150px): Place dropdowns cleanly inline */
@@ -359,7 +584,10 @@
                 display: none;
             }
             .clock-display {
-                display: none;
+                display: block;
+                font-size: 13px;
+                font-weight: 800;
+                color: #94A3B8;
             }
             .status-pill {
                 max-width: 76px;
@@ -386,6 +614,23 @@
             }
             #stageScriptureText {
                 font-size: 18px !important;
+            }
+        }
+
+        /* Tablets (481px-1024px, incl. landscape): keep the header clock visible. */
+        @media (min-width: 481px) and (max-width: 1024px) {
+            .clock-display {
+                display: block;
+                font-size: 13px;
+                font-weight: 800;
+                color: #94A3B8;
+            }
+        }
+
+        /* Very narrow phones only: hide the clock to save header space. */
+        @media (max-width: 480px), (max-width: 640px) and (orientation: portrait) {
+            .clock-display {
+                display: none;
             }
         }
 
@@ -434,7 +679,7 @@
             display: flex;
             flex-direction: column;
             justify-content: flex-start;
-            padding: 32px 40px calc(48px + env(safe-area-inset-bottom, 0px)) 40px;
+            padding: max(16px, env(safe-area-inset-top, 16px)) max(20px, env(safe-area-inset-right, 20px)) calc(48px + env(safe-area-inset-bottom, 20px)) max(20px, env(safe-area-inset-left, 20px));
             box-sizing: border-box;
             width: 100%;
             position: relative;
@@ -477,14 +722,36 @@
             opacity: 0;
         }
 
-        /* ⚡ Bionic Reading / Saccadic Word Fixation */
+        /* ⚡ Bionic Reading / Saccadic Word Fixation
+           When Bionic is ON, applyDisplayBionicMode() adds .bionic-active
+           to <body>. Trailing letters drop to normal weight (and a softer
+           tone) while fixation heads go ultra-bold, so the saccadic focus
+           points pop instantly on every theme. */
         .bionic-fixation {
-            font-weight: 900;
-            color: #FFFFFF;
+            font-weight: 900 !important;
             letter-spacing: -0.01em;
+            color: #FFFFFF;
+        }
+        .bionic-active .caption-sentence {
+            font-weight: 400 !important;
+        }
+        .bionic-active .caption-sentence.previous {
+            font-weight: 400 !important;
+        }
+        /* Dark themes (OLED, Dark Slate, etc.): soft trailing text,
+           bright-white fixation for instant saccadic reading flow. */
+        body.bionic-active .caption-sentence {
+            color: #CBD5E1;
+        }
+        body.bionic-active .caption-sentence.interim {
+            color: var(--interim-color);
+        }
+        body.theme-light.bionic-active .caption-sentence {
+            color: #475569 !important;
         }
         body.theme-light .bionic-fixation {
-            color: #000000;
+            color: #0F172A !important;
+            font-weight: 900 !important;
         }
         body.theme-high-vis .bionic-fixation {
             color: #FFFF00;
@@ -492,10 +759,32 @@
         body.theme-amber .bionic-fixation {
             color: #F59E0B;
         }
-        body.theme-black-on-white .bionic-fixation { color: #000000; font-weight: 800; }
         body.theme-black-on-white .caption-sentence { text-shadow: none; color: var(--text-color); }
-        body.theme-black-on-white .header-bar { background: rgba(255, 255, 255, 0.95); border-bottom-color: #E5E7EB; }
-        body.theme-black-on-white .brand-badge { color: #000000; }
+        body.theme-black-on-white.bionic-active .caption-sentence {
+            color: #374151 !important;
+        }
+        body.theme-black-on-white .bionic-fixation {
+            color: #000000 !important;
+            font-weight: 900 !important;
+        }
+        /* Custom Themes (body.theme-custom) — Bionic Reading must stay
+           distinctive on ANY user-picked colors, light or dark. The
+           fixation head of each word is 100% solid & ultra-bold (900)
+           in the chosen text color; trailing text drops to regular
+           weight (400) at slightly softer contrast (opacity 0.85) so
+           the bold fixation pops whether the user picks bright yellow
+           on dark blue, black on cream, or green on black. */
+        body.theme-custom.bionic-active .caption-sentence {
+            font-weight: 400 !important;
+            color: var(--text-color) !important;
+            /* Give non-fixation trailing text a subtle 80% opacity in custom bionic so the bold fixation pops regardless of custom colors chosen */
+            opacity: 0.85;
+        }
+        body.theme-custom.bionic-active .caption-sentence .bionic-fixation {
+            font-weight: 900 !important;
+            opacity: 1 !important;
+            filter: contrast(1.2);
+        }
 
         /* Smooth Word Flow Animation for Reading Ease */
         .caption-sentence {
@@ -503,7 +792,7 @@
             line-height: var(--line-height);
             font-weight: 700;
             color: var(--text-color);
-            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+            text-shadow: var(--caption-shadow, 0 2px 8px rgba(0, 0, 0, 0.6));
             opacity: 0.95;
             word-wrap: break-word;
             overflow-wrap: break-word;
@@ -533,6 +822,7 @@
             margin-left: 6px;
             animation: blink 0.9s infinite;
             color: var(--interim-color);
+            text-shadow: none !important;
         }
 
         /* Slow Flow Mode: Smooth word entry */
@@ -588,7 +878,7 @@
 
         .jump-live-btn {
             position: fixed;
-            bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+            bottom: calc(24px + env(safe-area-inset-bottom, 16px));
             right: 20px;
             z-index: 250;
             background: #2563EB;
@@ -637,6 +927,38 @@
             outline: 2.5px solid #38BDF8 !important;
             outline-offset: 2px !important;
         }
+
+        /* iPad & tablet safe-area: keep modal content clear of the notch and home-bar. */
+        .modal-content {
+            padding: max(22px, env(safe-area-inset-top, 22px)) max(24px, env(safe-area-inset-right, 24px)) max(22px, calc(env(safe-area-inset-bottom, 0px) + 16px)) max(24px, env(safe-area-inset-left, 24px));
+            max-height: calc(90vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+        }
+
+        /* -------------------------------------------------------------
+           Flat caption words / no text-shadow mode (applies to ALL
+           themes: OLED, Dark Slate, High Vis, Stage Amber, Clean Light,
+           Black on White, Pro Green, Hacker Terminal, Custom).
+           Toggled via #chkDisableTextShadow; persisted as
+           'voxstream_display_no_text_shadow'. Removes the drop shadow /
+           outline ("border") users perceive around captioned words for
+           flat, clean, borderless typography. !important outranks the
+           base .caption-sentence shadow, the theme overrides, and the
+           JS-driven --caption-shadow / inline preview styles.
+           ------------------------------------------------------------- */
+        body.no-text-shadow {
+            --caption-shadow: none !important;
+        }
+        body.no-text-shadow .caption-sentence,
+        body.no-text-shadow .caption-sentence *,
+        body.no-text-shadow .caption-sentence.previous,
+        body.no-text-shadow .caption-sentence.interim,
+        body.no-text-shadow .bionic-fixation,
+        body.no-text-shadow .custom-preview-final,
+        body.no-text-shadow #customPreviewFinal,
+        body.no-text-shadow #customPreviewInterim {
+            text-shadow: none !important;
+            -webkit-text-stroke: 0 !important;
+        }
     </style>
 </head>
 <body class="theme-oled">
@@ -647,8 +969,8 @@
             <div class="header-left">
                 <div class="brand-badge">
                     <span>🎙️ VoxStream</span>
-                    <span class="brand-sub" style="opacity: 0.4;">|</span>
-                    <span class="brand-sub" style="font-weight: 600; color: var(--text-muted);">Live Read-Along</span>
+                    <span class="brand-sub">|</span>
+                    <span class="brand-sub" style="font-weight: 600;">Live Read-Along</span>
                 </div>
                 <div class="status-pill" id="statusPill" title="Live Speech Recognition Connection">
                     <span class="status-dot"></span>
@@ -707,7 +1029,7 @@
 
     <!-- Settings Modal (Full Reading Comfort, Typography & Theme Control) -->
     <div id="settingsModal" class="modal-backdrop" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);">
-        <div class="modal-content" style="background: #111827; border: 1px solid rgba(255,255,255,0.18); border-radius: 16px; padding: 22px 24px; width: 92%; max-width: 460px; box-shadow: 0 24px 48px rgba(0,0,0,0.9); color: #F9FAFB; max-height: 90vh; overflow-y: auto;">
+        <div class="modal-content" style="background: #111827; border: 1px solid rgba(255,255,255,0.18); border-radius: 16px; padding: max(22px, env(safe-area-inset-top, 22px)) 24px calc(22px + env(safe-area-inset-bottom, 0px)) 24px; width: 92%; max-width: 460px; box-shadow: 0 24px 48px rgba(0,0,0,0.9); color: #F9FAFB; max-height: calc(90vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); overflow-y: auto;">
             
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.12); padding-bottom: 14px; margin-bottom: 16px;">
                 <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
@@ -760,6 +1082,15 @@
                             </div>
                             <input type="checkbox" id="chkDisplayFinalOnly" style="width: 20px; height: 20px; cursor: pointer; accent-color: #10B981;">
                         </label>
+
+                        <!-- Disable Text Shadow / Border on Words -->
+                        <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(148, 163, 184, 0.1); border: 1px solid rgba(148, 163, 184, 0.35); padding: 10px 12px; border-radius: 8px;">
+                            <div>
+                                <span style="font-size: 13.5px; font-weight: 700; color: #CBD5E1; display: block;">🔤 Flat Text (No Word Shadow / Outline)</span>
+                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Removes the drop shadow and halo effect around caption words for completely flat, crisp, borderless typography.</span>
+                            </div>
+                            <input type="checkbox" id="chkDisableTextShadow" style="width: 20px; height: 20px; cursor: pointer; accent-color: #94A3B8;">
+                        </label>
                     </div>
                 </div>
 
@@ -785,16 +1116,85 @@
                 <div>
                     <label for="themeSelect" style="display: block; font-size: 12px; margin-bottom: 5px; color: #94A3B8; font-weight: 700;">🎨 Color Theme</label>
                     <select class="theme-select" id="themeSelect" style="width: 100%; padding: 9px 12px; font-size: 13.5px;">
-                        <option value="theme-oled" selected>🌙 OLED Black (High Contrast)</option>
-                        <option value="theme-dark">🌑 Classic Dark Slate</option>
-                        <option value="theme-high-vis">🟨 High Vis (Yellow on Black)</option>
-                        <option value="theme-amber">🟡 Stage Amber</option>
-                        <option value="theme-slate">🌌 Dark Slate</option>
-                        <option value="theme-light">☀️ Clean Light</option>
-                        <option value="theme-black-on-white">📄 Black on White (Pure White)</option>
-                        <option value="theme-pro-green">🟢 Pro Green</option>
-                        <option value="theme-hacker">💻 Hacker Terminal</option>
+                        <optgroup label="── DARK THEMES ──">
+                            <option value="theme-oled" selected>🌑 Pure Black (OLED)</option>
+                            <option value="theme-dark">🌑 Dark Slate</option>
+                        </optgroup>
+                        <optgroup label="── LIGHT THEMES ──">
+                            <option value="theme-black-on-white">📄 Pure White (Black Text)</option>
+                            <option value="theme-light">☀️ Soft Light (Off-White)</option>
+                        </optgroup>
+                        <optgroup label="── HIGH CONTRAST & STAGE ──">
+                            <option value="theme-high-vis">🟨 High Vis (Yellow on Black)</option>
+                            <option value="theme-amber">🟧 Stage Amber (Warm Gold)</option>
+                            <option value="theme-pro-green">🟩 Broadcast Green</option>
+                            <option value="theme-hacker">💻 Matrix Green (Terminal)</option>
+                        </optgroup>
+                        <optgroup label="── CUSTOM ──">
+                            <option value="theme-custom">🎨 Custom Theme (Pick Your Colors)</option>
+                        </optgroup>
                     </select>
+                    <!-- Custom Theme Colors: visible when 'Custom Theme' is selected -->
+                    <div id="customThemePanel" style="display: none; margin-top: 10px; background: rgba(56, 189, 248, 0.06); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 10px; padding: 12px;">
+                        <div style="font-size: 11.5px; font-weight: 800; color: #7DD3FC; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px;">
+                            🎨 Custom Theme Colors
+                        </div>
+                        <div style="font-size: 11px; color: #94A3B8; line-height: 1.4; margin-bottom: 2px;">
+                            Pick any color or type a hex code — the display updates live.
+                        </div>
+                        <div class="custom-theme-grid">
+                            <div class="custom-color-row">
+                                <input type="color" id="customBg" value="#0B0F19" aria-label="Background color picker">
+                                <div class="custom-color-meta">
+                                    <label for="customBgHex">Background</label>
+                                    <input type="text" id="customBgHex" value="#0B0F19" maxlength="7" spellcheck="false" aria-label="Background hex color">
+                                </div>
+                            </div>
+                            <div class="custom-color-row">
+                                <input type="color" id="customText" value="#FFFFFF" aria-label="Final text color picker">
+                                <div class="custom-color-meta">
+                                    <label for="customTextHex">Final Text</label>
+                                    <input type="text" id="customTextHex" value="#FFFFFF" maxlength="7" spellcheck="false" aria-label="Final text hex color">
+                                </div>
+                            </div>
+                            <div class="custom-color-row">
+                                <input type="color" id="customInterim" value="#38BDF8" aria-label="Live speech color picker">
+                                <div class="custom-color-meta">
+                                    <label for="customInterimHex">Live Speech</label>
+                                    <input type="text" id="customInterimHex" value="#38BDF8" maxlength="7" spellcheck="false" aria-label="Live speech hex color">
+                                </div>
+                            </div>
+                            <div class="custom-color-row">
+                                <input type="color" id="customMuted" value="#94A3B8" aria-label="Muted text color picker">
+                                <div class="custom-color-meta">
+                                    <label for="customMutedHex">Muted Text</label>
+                                    <input type="text" id="customMutedHex" value="#94A3B8" maxlength="7" spellcheck="false" aria-label="Muted text hex color">
+                                </div>
+                            </div>
+                            <div class="custom-color-row">
+                                <input type="color" id="customCard" value="#141C2B" aria-label="Card background color picker">
+                                <div class="custom-color-meta">
+                                    <label for="customCardHex">Card / Panel</label>
+                                    <input type="text" id="customCardHex" value="#141C2B" maxlength="7" spellcheck="false" aria-label="Card background hex color">
+                                </div>
+                            </div>
+                            <div class="custom-color-row">
+                                <input type="color" id="customBorder" value="#334155" aria-label="Border color picker">
+                                <div class="custom-color-meta">
+                                    <label for="customBorderHex">Border</label>
+                                    <input type="text" id="customBorderHex" value="#334155" maxlength="7" spellcheck="false" aria-label="Border hex color">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="custom-preview" id="customPreview" aria-live="off">
+                            <div id="customPreviewFinal" style="font-size: 17px; font-weight: 800; line-height: 1.4;">This is how final captions look</div>
+                            <div id="customPreviewInterim" style="font-size: 17px; font-weight: 800; line-height: 1.4; margin-top: 2px;">Live speech appears like this ▍</div>
+                            <div id="customPreviewMuted" style="font-size: 12px; font-weight: 600; margin-top: 4px;">Muted / secondary text sample</div>
+                        </div>
+                        <button type="button" id="btnResetCustomTheme" class="ctrl-btn" style="margin-top: 10px; padding: 9px; font-weight: 700; width: 100%; justify-content: center; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.2); color: #F1F5F9; font-size: 12.5px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                            ↺ Reset Custom Colors
+                        </button>
+                    </div>
                 </div>
 
                 <!-- SECTION 4: Caption Font Size (Essential for Mobile & Customization) -->
@@ -803,14 +1203,14 @@
                         🔤 Caption Text Size
                     </div>
                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
-                        <button type="button" id="btnModalFontDec" class="ctrl-btn" style="flex: 1; padding: 10px 12px; font-size: 14px; font-weight: 700; background: rgba(255,255,255,0.08); border: 1px solid var(--border);">
-                            A− Smaller
+                        <button type="button" id="btnModalFontDec" class="ctrl-btn" title="Decrease caption font size (−)" aria-label="Decrease caption font size" style="flex: 1; padding: 12px 16px; min-height: 52px; font-size: 16px; font-weight: 900; letter-spacing: 0.2px; background: #FBBF24; border: 3px solid #FFFFFF; color: #111827; border-radius: 10px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.5);">
+                            <span aria-hidden="true" style="font-size: 22px; font-weight: 900; line-height: 1;">−</span>&nbsp;Smaller
                         </button>
-                        <span id="modalFontSizeVal" style="font-size: 16px; font-weight: 800; font-family: monospace; color: #38BDF8; min-width: 52px; text-align: center;">
+                        <span id="modalFontSizeVal" role="status" aria-live="polite" aria-label="Current caption font size" style="font-size: 20px; font-weight: 900; font-variant-numeric: tabular-nums; font-family: monospace; color: #FFFFFF; min-width: 84px; text-align: center; background: rgba(0,0,0,0.45); border: 2px solid #38BDF8; border-radius: 8px; padding: 10px 12px; letter-spacing: 0.5px;">
                             24px
                         </span>
-                        <button type="button" id="btnModalFontInc" class="ctrl-btn" style="flex: 1; padding: 10px 12px; font-size: 14px; font-weight: 700; background: rgba(255,255,255,0.08); border: 1px solid var(--border);">
-                            A+ Larger
+                        <button type="button" id="btnModalFontInc" class="ctrl-btn" title="Increase caption font size (+)" aria-label="Increase caption font size" style="flex: 1; padding: 12px 16px; min-height: 52px; font-size: 16px; font-weight: 900; letter-spacing: 0.2px; background: #FBBF24; border: 3px solid #FFFFFF; color: #111827; border-radius: 10px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.5);">
+                            <span aria-hidden="true" style="font-size: 22px; font-weight: 900; line-height: 1;">+</span>&nbsp;Larger
                         </button>
                     </div>
                 </div>
@@ -841,7 +1241,7 @@
 
     <!-- Share & QR Modal -->
     <div id="shareModal" class="modal-backdrop" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);">
-        <div class="modal-content" style="background: #111827; border: 1.5px solid rgba(56, 189, 248, 0.4); border-radius: 16px; padding: 24px; width: 92%; max-width: 400px; box-shadow: 0 24px 48px rgba(0,0,0,0.9); color: #F9FAFB; text-align: center;">
+        <div class="modal-content" style="background: #111827; border: 1.5px solid rgba(56, 189, 248, 0.4); border-radius: 16px; padding: max(24px, env(safe-area-inset-top, 24px)) 24px calc(24px + env(safe-area-inset-bottom, 0px)); width: 92%; max-width: 400px; box-shadow: 0 24px 48px rgba(0,0,0,0.9); color: #F9FAFB; text-align: center; max-height: calc(90vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); overflow-y: auto;">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.12); padding-bottom: 12px; margin-bottom: 16px;">
                 <h3 style="margin: 0; font-size: 17px; font-weight: 700; color: #38BDF8; display: flex; align-items: center; gap: 8px;">
                     <span>📱 Scan to Read Along</span>
@@ -889,7 +1289,9 @@
     <script>
         // Screen & State
         const isMobile = window.innerWidth <= 768;
-        const defaultFontSize = isMobile ? 24 : 48;
+        const isTablet = (window.innerWidth >= 600 && window.innerWidth <= 1100) || (navigator.maxTouchPoints > 1 && window.innerWidth <= 1366);
+        const isSmallPhone = window.innerWidth < 600;
+        const defaultFontSize = isSmallPhone ? 24 : (isTablet ? 36 : 48);
         let currentFontSize = defaultFontSize;
 
         // URL & Preference State
@@ -925,6 +1327,7 @@
         const chkDisplayPacing = document.getElementById('chkDisplayPacing');
         const chkDisplayBionic = document.getElementById('chkDisplayBionic');
         const chkDisplayFinalOnly = document.getElementById('chkDisplayFinalOnly');
+        const chkDisableTextShadow = document.getElementById('chkDisableTextShadow');
 
         const btnOpenSettings = document.getElementById('btnOpenSettings');
         const btnCloseSettings = document.getElementById('btnCloseSettings');
@@ -1020,8 +1423,8 @@
         // Font Size & Family Controls
         function setFontSize(size) {
             if (!Number.isFinite(size)) size = defaultFontSize;
-            const minSize = isMobile ? 16 : 18;
-            const maxSize = isMobile ? 56 : 96;
+            const minSize = isSmallPhone ? 16 : 18;
+            const maxSize = isSmallPhone ? 56 : 96;
             currentFontSize = Math.max(minSize, Math.min(maxSize, size));
             document.documentElement.style.setProperty('--font-size', `${currentFontSize}px`);
             localStorage.setItem('voxstream_display_fontsize', currentFontSize);
@@ -1039,7 +1442,8 @@
         if (savedSize) {
             let parsed = parseInt(savedSize);
             // If on mobile and a giant desktop size (e.g. 48px) was previously saved, normalize to mobile default
-            if (isMobile && parsed > 36) parsed = defaultFontSize;
+            if (isSmallPhone && parsed > 36) parsed = defaultFontSize;
+            else if (isTablet && parsed > 56) parsed = defaultFontSize;
             setFontSize(parsed);
         } else {
             setFontSize(defaultFontSize);
@@ -1057,6 +1461,216 @@
         // Color Theme
         // FIX: Collect theme classes into array first, then remove — avoids
         // classList iterator mutation bug where classes can be skipped.
+        // NOTE: /^theme-[a-z0-9\-]+$/ already matches 'theme-custom'.
+        const CUSTOM_THEME_KEY = 'voxstream_display_custom_theme';
+        const DEFAULT_CUSTOM_THEME = {
+            bg: '#0B0F19',
+            text: '#FFFFFF',
+            interim: '#38BDF8',
+            muted: '#94A3B8',
+            card: '#141C2B',
+            border: '#334155'
+        };
+        const CUSTOM_VAR_MAP = {
+            bg: '--bg-color',
+            text: '--text-color',
+            interim: '--interim-color',
+            muted: '--text-muted',
+            card: '--card-bg',
+            border: '--border'
+        };
+
+        function normalizeHex(value, fallback) {
+            if (typeof value !== 'string') return fallback;
+            let v = value.trim();
+            if (/^#[0-9a-fA-F]{6}$/.test(v)) return '#' + v.slice(1).toUpperCase();
+            const short = /^#([0-9a-fA-F]{3})$/.exec(v);
+            if (short) {
+                const s = short[1];
+                return ('#' + s[0] + s[0] + s[1] + s[1] + s[2] + s[2]).toUpperCase();
+            }
+            return fallback;
+        }
+
+        function loadCustomTheme() {
+            const theme = { ...DEFAULT_CUSTOM_THEME };
+            try {
+                const raw = localStorage.getItem(CUSTOM_THEME_KEY);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    for (const key of Object.keys(DEFAULT_CUSTOM_THEME)) {
+                        if (typeof parsed[key] === 'string') {
+                            theme[key] = normalizeHex(parsed[key], DEFAULT_CUSTOM_THEME[key]);
+                        }
+                    }
+                }
+            } catch (err) {}
+            return theme;
+        }
+
+        let customTheme = loadCustomTheme();
+
+        // Relative luminance (0..1) used to pick a readable caption text-shadow.
+        function bgLuminance(hex) {
+            const c = normalizeHex(hex, '#000000');
+            const r = parseInt(c.slice(1, 3), 16) / 255;
+            const g = parseInt(c.slice(3, 5), 16) / 255;
+            const b = parseInt(c.slice(5, 7), 16) / 255;
+            const lin = (u) => (u <= 0.03928 ? u / 12.92 : Math.pow((u + 0.055) / 1.055, 2.4));
+            return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+        }
+
+        function updateCustomPreview() {
+            const preview = document.getElementById('customPreview');
+            if (!preview) return;
+            preview.style.background = customTheme.bg;
+            preview.style.borderColor = customTheme.border;
+            const finalEl = document.getElementById('customPreviewFinal');
+            const interimEl = document.getElementById('customPreviewInterim');
+            const mutedEl = document.getElementById('customPreviewMuted');
+            const noTextShadow = document.body.classList.contains('no-text-shadow');
+            const bionicOn = document.body.classList.contains('bionic-active')
+                && typeof formatBionicReading === 'function';
+            // Paint a preview line, rendering a Bionic sample when Bionic
+            // Reading is toggled on so the chip mirrors the live captions.
+            function paintPreviewLine(el, sampleText, baseColor, suffix) {
+                if (!el) return;
+                el.style.color = baseColor;
+                el.style.fontWeight = bionicOn ? '400' : '';
+                if (bionicOn) {
+                    el.innerHTML = formatBionicReading(sampleText);
+                    if (suffix) el.append(document.createTextNode(suffix));
+                    const fixations = el.querySelectorAll('.bionic-fixation');
+                    for (const fx of fixations) {
+                        fx.style.color = baseColor;
+                        fx.style.fontWeight = '900';
+                    }
+                } else {
+                    el.textContent = sampleText + (suffix || '');
+                }
+            }
+            if (finalEl) {
+                paintPreviewLine(finalEl, 'This is how final captions look', customTheme.text, '');
+                finalEl.style.textShadow = (noTextShadow || bgLuminance(customTheme.bg) > 0.6)
+                    ? 'none'
+                    : '0 2px 8px rgba(0, 0, 0, 0.6)';
+            }
+            if (interimEl) {
+                paintPreviewLine(interimEl, 'Live speech appears like this', customTheme.interim, ' ▍');
+                interimEl.style.textShadow = noTextShadow ? 'none' : '';
+            }
+            if (mutedEl) mutedEl.style.color = customTheme.muted;
+        }
+
+        function applyCustomThemeVars() {
+            // NOTE: vars live on document.body (inline), because the
+            // body.theme-custom stylesheet rule would otherwise win over
+            // inherited values from :root for body and all descendants.
+            const target = document.body;
+            for (const [key, cssVar] of Object.entries(CUSTOM_VAR_MAP)) {
+                target.style.setProperty(cssVar, customTheme[key]);
+            }
+            // Light backgrounds need no dark text-shadow; dark ones keep it.
+            // The no-text-shadow toggle always wins for borderless words.
+            target.style.setProperty('--caption-shadow',
+                (document.body.classList.contains('no-text-shadow') || bgLuminance(customTheme.bg) > 0.6)
+                    ? 'none'
+                    : '0 2px 8px rgba(0, 0, 0, 0.6)');
+            updateCustomPreview();
+        }
+
+        function clearCustomThemeVars() {
+            const target = document.body;
+            for (const cssVar of Object.values(CUSTOM_VAR_MAP)) {
+                target.style.removeProperty(cssVar);
+            }
+            target.style.removeProperty('--caption-shadow');
+        }
+
+        function persistCustomTheme() {
+            try {
+                localStorage.setItem(CUSTOM_THEME_KEY, JSON.stringify(customTheme));
+            } catch (err) {}
+        }
+
+        function syncCustomInputs() {
+            const pairs = [
+                ['customBg', 'customBgHex', 'bg'],
+                ['customText', 'customTextHex', 'text'],
+                ['customInterim', 'customInterimHex', 'interim'],
+                ['customMuted', 'customMutedHex', 'muted'],
+                ['customCard', 'customCardHex', 'card'],
+                ['customBorder', 'customBorderHex', 'border']
+            ];
+            for (const [pickerId, hexId, key] of pairs) {
+                const picker = document.getElementById(pickerId);
+                const hex = document.getElementById(hexId);
+                if (picker) picker.value = normalizeHex(customTheme[key], DEFAULT_CUSTOM_THEME[key]);
+                if (hex) hex.value = normalizeHex(customTheme[key], DEFAULT_CUSTOM_THEME[key]);
+            }
+            updateCustomPreview();
+        }
+
+        function setCustomColor(key, value, source) {
+            const hex = normalizeHex(value, null);
+            if (!hex) {
+                if (source === 'hex') syncCustomInputs();
+                return;
+            }
+            customTheme[key] = hex;
+            persistCustomTheme();
+            if (document.body.classList.contains('theme-custom')) applyCustomThemeVars();
+            else updateCustomPreview();
+            // Keep the paired control in sync without clobbering the one being typed in.
+            const pairIds = {
+                bg: ['customBg', 'customBgHex'],
+                text: ['customText', 'customTextHex'],
+                interim: ['customInterim', 'customInterimHex'],
+                muted: ['customMuted', 'customMutedHex'],
+                card: ['customCard', 'customCardHex'],
+                border: ['customBorder', 'customBorderHex']
+            }[key];
+            if (pairIds) {
+                const otherId = source === 'picker' ? pairIds[1] : pairIds[0];
+                const other = document.getElementById(otherId);
+                if (other && other.value !== hex) other.value = hex;
+            }
+        }
+
+        function wireCustomColorControls() {
+            const pairs = [
+                ['customBg', 'customBgHex', 'bg'],
+                ['customText', 'customTextHex', 'text'],
+                ['customInterim', 'customInterimHex', 'interim'],
+                ['customMuted', 'customMutedHex', 'muted'],
+                ['customCard', 'customCardHex', 'card'],
+                ['customBorder', 'customBorderHex', 'border']
+            ];
+            for (const [pickerId, hexId, key] of pairs) {
+                const picker = document.getElementById(pickerId);
+                const hex = document.getElementById(hexId);
+                if (picker) {
+                    picker.addEventListener('input', (e) => setCustomColor(key, e.target.value, 'picker'));
+                }
+                if (hex) {
+                    hex.addEventListener('input', (e) => setCustomColor(key, e.target.value, 'hex'));
+                    hex.addEventListener('change', (e) => {
+                        setCustomColor(key, e.target.value, 'hex');
+                        syncCustomInputs();
+                    });
+                }
+            }
+            const resetBtn = document.getElementById('btnResetCustomTheme');
+            if (resetBtn) {
+                resetBtn.addEventListener('click', () => {
+                    customTheme = { ...DEFAULT_CUSTOM_THEME };
+                    persistCustomTheme();
+                    syncCustomInputs();
+                    if (document.body.classList.contains('theme-custom')) applyCustomThemeVars();
+                });
+            }
+        }
+
         function setTheme(theme) {
             if (!theme || !/^theme-[a-z0-9\-]+$/.test(theme)) return;
             const toRemove = [];
@@ -1066,10 +1680,21 @@
             toRemove.forEach(c => document.body.classList.remove(c));
             document.body.classList.add(theme);
             if (themeSelect) themeSelect.value = theme;
+            const panel = document.getElementById('customThemePanel');
+            if (panel) panel.style.display = (theme === 'theme-custom') ? 'block' : 'none';
+            if (theme === 'theme-custom') {
+                applyCustomThemeVars();
+            } else {
+                clearCustomThemeVars();
+            }
         }
+
+        wireCustomColorControls();
+        syncCustomInputs();
 
         const savedTheme = localStorage.getItem('voxstream_display_theme');
         if (savedTheme) setTheme(savedTheme);
+        else if (themeSelect && themeSelect.value === 'theme-custom') setTheme('theme-custom');
 
         if (themeSelect) {
             themeSelect.addEventListener('change', (e) => {
@@ -1154,11 +1779,13 @@
 
         function applyDisplayBionicMode(enabled) {
             isBionicReadingEnabled = enabled;
+            document.body.classList.toggle("bionic-active", enabled);
             if (chkDisplayBionic) chkDisplayBionic.checked = enabled;
             try {
                 localStorage.setItem("voxstream_display_bionic", enabled ? "true" : "false");
             } catch(e) {}
             renderCaptions();
+            if (typeof updateCustomPreview === "function") updateCustomPreview();
         }
 
         try {
@@ -1224,6 +1851,29 @@
 
         if (chkDisplayFinalOnly) {
             chkDisplayFinalOnly.addEventListener("change", (e) => applyDisplayFinalOnlyMode(e.target.checked));
+        }
+
+        // 🔤 Disable Text Shadow / Border on Words (all themes)
+        function applyDisplayNoTextShadowMode(enabled) {
+            document.body.classList.toggle("no-text-shadow", enabled);
+            if (chkDisableTextShadow) chkDisableTextShadow.checked = enabled;
+            try {
+                localStorage.setItem("voxstream_display_no_text_shadow", enabled ? "true" : "false");
+            } catch(e) {}
+            // Keep the Custom Theme live vars + preview chip in sync.
+            if (document.body.classList.contains('theme-custom')) applyCustomThemeVars();
+            else updateCustomPreview();
+        }
+
+        try {
+            const savedNoTextShadow = localStorage.getItem("voxstream_display_no_text_shadow");
+            if (savedNoTextShadow !== null) {
+                applyDisplayNoTextShadowMode(savedNoTextShadow === "true");
+            }
+        } catch(e) {}
+
+        if (chkDisableTextShadow) {
+            chkDisableTextShadow.addEventListener("change", (e) => applyDisplayNoTextShadowMode(e.target.checked));
         }
 
         // Settings Modal Open/Close Logic

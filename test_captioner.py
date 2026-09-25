@@ -152,6 +152,53 @@ class TestThemes(unittest.TestCase):
         self.assertTrue(ov.final_only)
 
 
+class TestDisplayBionicReading(unittest.TestCase):
+    """Bionic Reading must stay visibly distinct on every display theme.
+
+    Regression guard: the fixation heads need ultra-bold weight plus a
+    contrasting tone against dimmed trailing letters, otherwise Bionic
+    looks inactive (e.g. weight 700 vs 800 in pure black-on-white).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.html = (
+            Path(__file__).parent
+            / "obs_captioner" / "web" / "static" / "display.html"
+        ).read_text(encoding="utf-8")
+
+    def test_bionic_active_class_toggled_on_body(self):
+        self.assertIn(
+            'document.body.classList.toggle("bionic-active", enabled)',
+            self.html,
+        )
+
+    def test_bionic_active_dims_trailing_letters(self):
+        self.assertIn(".bionic-active .caption-sentence", self.html)
+        self.assertIn("font-weight: 400 !important", self.html)
+
+    def test_fixation_heads_are_ultra_bold(self):
+        self.assertIn(".bionic-fixation", self.html)
+        self.assertIn("font-weight: 900 !important", self.html)
+
+    def test_black_on_white_fixation_contrast(self):
+        self.assertIn(
+            "body.theme-black-on-white.bionic-active .caption-sentence",
+            self.html,
+        )
+        self.assertIn(
+            "body.theme-black-on-white .bionic-fixation",
+            self.html,
+        )
+
+    def test_light_theme_fixation_contrast(self):
+        self.assertIn("body.theme-light .bionic-fixation", self.html)
+
+    def test_custom_preview_renders_bionic_sample(self):
+        self.assertIn("paintPreviewLine", self.html)
+        self.assertIn("formatBionicReading(sampleText)", self.html)
+
+
 class TestContentFilterCRUD(unittest.TestCase):
 
     def test_filter_crud_operations(self):
