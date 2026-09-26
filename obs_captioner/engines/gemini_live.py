@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import re
+import ssl
 import time
 from typing import AsyncGenerator, Callable, Dict, List, Optional, Tuple, Any
 
@@ -32,6 +33,19 @@ from ..vad import VoiceActivityDetector
 logger = logging.getLogger("obs_captioner.engine.gemini")
 
 GEMINI_LIVE_WS_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent"
+
+# Resilient startup tuning. Right after a reboot, network restart, cold start,
+# or software update, DNS resolution, TLS handshake, or routing frequently takes
+# 4-8s to settle, so a single fast handshake attempt is not enough.
+INIT_MAX_ATTEMPTS = 4
+INIT_RETRY_DELAYS = (0.0, 2.0, 4.0, 6.0)
+INIT_CONNECT_TIMEOUT = 10.0
+INIT_TOTAL_TIMEOUT = 10.0
+INIT_RECEIVE_TIMEOUT = 10.0
+
+# Streaming reconnection uses exponential backoff capped at this maximum.
+STREAM_RECONNECT_INITIAL_DELAY = 2.0
+STREAM_RECONNECT_MAX_DELAY = 15.0
 
 
 class GeminiLiveEngine(BaseSTTEngine):
@@ -333,8 +347,60 @@ class GeminiLiveEngine(BaseSTTEngine):
 
         return events
 
+    @staticmethod
+    def _build_ssl_context() -> "ssl.SSLContext":
+        """Standard SSL context for aiohttp (LibreSSL / proxy compatible)."""
+        return ssl.create_default_context()
+
+    @staticmethod
+    def _is_invalid_key_failure(reason: str, code: Any = None) -> bool:
+        """Detect credential rejections that must fail fast without retrying."""
+        if code == 1007:
+            return True
+        text = str(reason or "")
+        return "API key not valid" in text or "API_KEY_INVALID" in text
+
+    async def _attempt_handshake(self, ws_url: str, model: str) -> str:
+        """Perform one handshake attempt. Returns 'ok', 'invalid_key', or raises transient errors."""
+        timeout = aiohttp.ClientTimeout(total=INIT_TOTAL_TIMEOUT, connect=INIT_CONNECT_TIMEOUT)
+        ssl_context = self._build_ssl_context()
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.ws_connect(ws_url, ssl=ssl_context) as ws:
+                setup_payload = self.build_setup_payload()
+                await ws.send_str(json.dumps(setup_payload))
+                msg = await ws.receive(timeout=INIT_RECEIVE_TIMEOUT)
+
+                if msg.type in (aiohttp.WSMsgType.TEXT, aiohttp.WSMsgType.BINARY):
+                    raw_data = msg.data if isinstance(msg.data, str) else msg.data.decode("utf-8")
+                    res_json = json.loads(raw_data)
+                    if "setupComplete" in res_json:
+                        logger.info(f"✅ Gemini 3.5 Transcribe Live verified successfully with model '{model}'.")
+                        return "ok"
+                    raise aiohttp.ClientConnectionError(
+                        f"Gemini handshake failed: unexpected response {raw_data[:200]}"
+                    )
+
+                if msg.type in (
+                    aiohttp.WSMsgType.CLOSED,
+                    aiohttp.WSMsgType.CLOSE,
+                    aiohttp.WSMsgType.CLOSING,
+                    aiohttp.WSMsgType.ERROR,
+                ):
+                    reason = getattr(msg, "extra", "") or f"Close code {msg.data}"
+                    if self._is_invalid_key_failure(reason, getattr(msg, "data", None)):
+                        return "invalid_key"
+                    raise aiohttp.ClientConnectionError(f"Gemini handshake failed: {reason}")
+
+                raise aiohttp.ClientConnectionError(
+                    f"Gemini handshake failed: unexpected message type {msg.type}"
+                )
+
     async def initialize(self, status_callback: Optional[Callable[[str], None]] = None) -> bool:
-        """Validate API key and verify Gemini Live WebSockets connectivity."""
+        """Validate API key and verify Gemini Live WebSockets connectivity.
+
+        Resilient to cold-start networks: retries transient handshake failures
+        with progressive backoff, but fails fast on an invalid API key.
+        """
         self.api_key = self._get_api_key()
         if not self.api_key:
             msg = "Missing GEMINI_API_KEY. Please enter your Google AI Studio key in Audio & Engine settings."
@@ -347,57 +413,45 @@ class GeminiLiveEngine(BaseSTTEngine):
         if status_callback:
             status_callback(f"Connecting to Gemini Live ({model})...")
 
-        # Fast connection handshake verification
-        try:
-            ws_url = self._get_ws_url()
-            timeout = aiohttp.ClientTimeout(total=6.0, connect=3.0)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.ws_connect(ws_url) as ws:
-                    setup_payload = self.build_setup_payload()
-                    await ws.send_str(json.dumps(setup_payload))
-                    msg = await ws.receive(timeout=4.0)
-
-                    if msg.type in (aiohttp.WSMsgType.TEXT, aiohttp.WSMsgType.BINARY):
-                        raw_data = msg.data if isinstance(msg.data, str) else msg.data.decode("utf-8")
-                        res_json = json.loads(raw_data)
-                        if "setupComplete" in res_json:
-                            logger.info(f"✅ Gemini 3.5 Transcribe Live verified successfully with model '{model}'.")
-                            if status_callback:
-                                status_callback(f"✅ Gemini Live ({model}) ready!")
-                            return True
-                    elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.CLOSE):
-                        reason = getattr(msg, "extra", "") or f"Close code {msg.data}"
-                        logger.error(f"Gemini WebSocket closed during handshake: {reason}")
-                        if "API key not valid" in reason or msg.data == 1007:
-                            err = "Invalid Gemini API key. Please check your key at aistudio.google.com."
-                        else:
-                            err = f"Gemini handshake failed: {reason}"
-                        if status_callback:
-                            status_callback(f"❌ {err}")
-                        return False
-
-            logger.info("Gemini 3.5 Transcribe client verified successfully.")
-            if status_callback:
-                status_callback(f"✅ Gemini Live ({model}) ready!")
-            return True
-        except aiohttp.ClientError as ce:
-            err = f"Gemini network error: {ce}"
-            logger.error(err)
-            if status_callback:
-                status_callback(f"❌ {err}")
-            return False
-        except asyncio.TimeoutError:
-            err = "Connection to Gemini Live timed out (check internet connection)."
-            logger.error(err)
-            if status_callback:
-                status_callback(f"❌ {err}")
-            return False
-        except Exception as e:
-            err = f"Failed to connect to Gemini Live: {e}"
-            logger.error(err, exc_info=True)
-            if status_callback:
-                status_callback(f"❌ {err}")
-            return False
+        ws_url = self._get_ws_url()
+        for attempt in range(1, INIT_MAX_ATTEMPTS + 1):
+            if attempt > 1:
+                delay = INIT_RETRY_DELAYS[min(attempt - 1, len(INIT_RETRY_DELAYS) - 1)]
+                if delay > 0:
+                    await asyncio.sleep(delay)
+            try:
+                outcome = await self._attempt_handshake(ws_url, model)
+                if outcome == "ok":
+                    logger.info("Gemini 3.5 Transcribe client verified successfully.")
+                    if status_callback:
+                        status_callback(f"✅ Gemini Live ({model}) ready!")
+                    return True
+                err = "Invalid Gemini API key. Please check your key at aistudio.google.com."
+                logger.error(err)
+                if status_callback:
+                    status_callback(f"❌ {err}")
+                return False
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                if self._is_invalid_key_failure(str(e)):
+                    err = "Invalid Gemini API key. Please check your key at aistudio.google.com."
+                    logger.error(err)
+                    if status_callback:
+                        status_callback(f"❌ {err}")
+                    return False
+                if attempt >= INIT_MAX_ATTEMPTS:
+                    err = f"Failed to connect to Gemini Live after {INIT_MAX_ATTEMPTS} attempts: {e}"
+                    logger.error(err)
+                    if status_callback:
+                        status_callback(f"❌ {err}")
+                    return False
+                logger.warning(f"Gemini Live handshake attempt {attempt}/{INIT_MAX_ATTEMPTS} failed ({e}); retrying...")
+                if status_callback:
+                    status_callback(
+                        f"🔄 Network initializing, retrying connection (attempt {attempt + 1}/{INIT_MAX_ATTEMPTS})..."
+                    )
+        return False
 
     async def start_streaming(
         self,
@@ -410,6 +464,13 @@ class GeminiLiveEngine(BaseSTTEngine):
         sample_rate = self.config.audio.sample_rate or 16000
         enable_hybrid_vad = getattr(self.config.gemini_live, "enable_hybrid_vad", True)
         pause_threshold = (getattr(self.config.audio, "sentence_break_ms", 600) or 600) / 1000.0
+        reconnect_delay = STREAM_RECONNECT_INITIAL_DELAY
+
+        def _next_backoff() -> float:
+            nonlocal reconnect_delay
+            delay = reconnect_delay
+            reconnect_delay = min(reconnect_delay * 2.0, STREAM_RECONNECT_MAX_DELAY)
+            return delay
 
         while self.is_running:
             self.api_key = self._get_api_key()
@@ -421,10 +482,11 @@ class GeminiLiveEngine(BaseSTTEngine):
             ws_url = self._get_ws_url()
 
             try:
-                timeout = aiohttp.ClientTimeout(total=None, connect=5.0)
+                timeout = aiohttp.ClientTimeout(total=None, connect=INIT_CONNECT_TIMEOUT)
+                ssl_context = self._build_ssl_context()
                 async with aiohttp.ClientSession(timeout=timeout) as session:
                     self._active_session = session
-                    async with session.ws_connect(ws_url, heartbeat=20.0) as ws:
+                    async with session.ws_connect(ws_url, heartbeat=20.0, ssl=ssl_context) as ws:
                         self._active_ws = ws
 
                         # 1. Send official setup payload
@@ -432,18 +494,24 @@ class GeminiLiveEngine(BaseSTTEngine):
                         await ws.send_str(json.dumps(setup_payload))
 
                         # Await setupComplete confirmation
-                        init_msg = await ws.receive(timeout=5.0)
+                        init_msg = await ws.receive(timeout=INIT_RECEIVE_TIMEOUT)
                         if init_msg.type in (aiohttp.WSMsgType.TEXT, aiohttp.WSMsgType.BINARY):
                             raw = init_msg.data if isinstance(init_msg.data, str) else init_msg.data.decode("utf-8")
                             try:
                                 init_data = json.loads(raw)
                                 if "setupComplete" in init_data:
                                     logger.info("Gemini 3.5 Transcribe Live session established and ready.")
+                                    reconnect_delay = STREAM_RECONNECT_INITIAL_DELAY
                             except Exception:
                                 pass
                         elif init_msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.CLOSE):
-                            logger.error(f"Gemini rejected connection during setup: {getattr(init_msg, 'extra', '')}")
-                            await asyncio.sleep(3.0)
+                            reason = getattr(init_msg, "extra", "") or f"Close code {init_msg.data}"
+                            if self._is_invalid_key_failure(reason, getattr(init_msg, "data", None)):
+                                logger.error("Invalid Gemini API key. Please check your key at aistudio.google.com.")
+                                return
+                            delay = _next_backoff()
+                            logger.warning(f"Gemini rejected connection during setup ({reason}); retrying in {delay:.0f}s...")
+                            await asyncio.sleep(delay)
                             continue
 
                         # 2. Worker: stream audio chunks & signal Hybrid VAD end-of-speech
@@ -575,13 +643,20 @@ class GeminiLiveEngine(BaseSTTEngine):
                                     t.cancel()
                             if not self.is_running:
                                 break
+                            delay = _next_backoff()
+                            logger.warning(f"Gemini Live connection dropped; reconnecting in {delay:.0f}s...")
+                            await asyncio.sleep(delay)
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 if self.is_running:
-                    logger.error(f"Gemini Live error: {e}. Reconnecting in 3s...")
-                    await asyncio.sleep(3.0)
+                    if self._is_invalid_key_failure(str(e)):
+                        logger.error("Invalid Gemini API key. Please check your key at aistudio.google.com.")
+                        return
+                    delay = _next_backoff()
+                    logger.error(f"Gemini Live error: {e}. Reconnecting in {delay:.0f}s...")
+                    await asyncio.sleep(delay)
 
     async def stop(self) -> None:
         """Stop Gemini Live streaming session cleanly."""

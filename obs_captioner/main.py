@@ -695,10 +695,48 @@ async def main_async(args):
             logger.info(f"📱 Mobile & Stage Display: http://{lan_ip}:{port}/display")
     logger.info("═" * 60)
 
+    # Background recovery: if the engine failed its initial startup handshake
+    # (e.g. transient network/DNS after reboot or update), keep retrying
+    # initialization so the pipeline connects automatically once the network
+    # is up instead of stalling forever on `initialized == False`.
+    ENGINE_INIT_RETRY_INTERVAL = 5.0
+
     async def run_pipeline():
+        nonlocal initialized, engine_switch_status
+        last_engine_retry = 0.0
         while not shutdown_event.is_set():
-            if is_paused or engine is None or not initialized or is_switching_engine:
+            if is_paused or engine is None or is_switching_engine:
                 await asyncio.sleep(0.1)
+                continue
+            if not initialized:
+                now = time.monotonic()
+                if now - last_engine_retry >= ENGINE_INIT_RETRY_INTERVAL:
+                    last_engine_retry = now
+                    logger.info("Engine not initialized — retrying background initialization...")
+                    try:
+                        retry_ok = await engine.initialize(status_callback=initial_status_cb)
+                        if retry_ok:
+                            initialized = True
+                            engine_switch_status = f"✅ {engine.name} ready!"
+                            logger.info(f"✅ Engine background re-initialization succeeded: {engine.name}")
+                            if web_server:
+                                asyncio.run_coroutine_threadsafe(
+                                    web_server.broadcast_control({
+                                        "type": "engine_switching_status",
+                                        "is_switching": False,
+                                        "status_text": engine_switch_status,
+                                        "target_engine": config.general.engine,
+                                        "target_name": engine.name,
+                                    }),
+                                    loop,
+                                )
+                        else:
+                            logger.warning("Engine background re-initialization failed; will retry.")
+                    except asyncio.CancelledError:
+                        break
+                    except Exception as e:
+                        logger.warning(f"Engine background re-initialization error: {e}; will retry.")
+                await asyncio.sleep(0.5)
                 continue
             try:
                 await engine.start_streaming(

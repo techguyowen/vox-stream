@@ -4664,6 +4664,122 @@ class TestCaptionScheduler(unittest.TestCase):
         self.assertEqual(len(stop_calls), 0)
 
 
+class TestGeminiLiveResilientStartup(unittest.IsolatedAsyncioTestCase):
+    """Cold-boot hardening: initialize() must survive transient network/DNS
+    delays after reboot or update, but fail fast on an invalid API key."""
+
+    def _make_engine(self):
+        cfg = AppConfig()
+        cfg.gemini_live.api_key = "test-key"
+        return GeminiLiveEngine(cfg)
+
+    async def test_initialize_retries_transient_then_succeeds(self):
+        import aiohttp
+        from unittest.mock import AsyncMock, patch
+        from obs_captioner.engines import gemini_live as gl_mod
+        engine = self._make_engine()
+        statuses = []
+        sleeps = []
+
+        async def fake_sleep(delay):
+            sleeps.append(delay)
+
+        side_effects = [
+            aiohttp.ClientConnectionError("dns resolution failed"),
+            asyncio.TimeoutError(),
+            "ok",
+        ]
+        mock_hs = AsyncMock(side_effect=side_effects)
+        with patch.object(engine, "_attempt_handshake", new=mock_hs), \
+             patch.object(gl_mod.asyncio, "sleep", new=fake_sleep):
+            ok = await engine.initialize(status_callback=statuses.append)
+        self.assertTrue(ok)
+        self.assertEqual(mock_hs.await_count, 3)
+        self.assertEqual(sleeps, [2.0, 4.0])
+        retry_msgs = [m for m in statuses if "retrying connection" in m]
+        self.assertEqual(len(retry_msgs), 2)
+        self.assertIn("attempt 2/4", retry_msgs[0])
+        self.assertIn("attempt 3/4", retry_msgs[1])
+        self.assertTrue(statuses[-1].startswith("✅"))
+
+    async def test_initialize_fails_fast_on_invalid_key_close(self):
+        from unittest.mock import AsyncMock, patch
+        from obs_captioner.engines import gemini_live as gl_mod
+        engine = self._make_engine()
+        statuses = []
+        mock_hs = AsyncMock(return_value="invalid_key")
+        mock_sleep = AsyncMock()
+        with patch.object(engine, "_attempt_handshake", new=mock_hs), \
+             patch.object(gl_mod.asyncio, "sleep", new=mock_sleep):
+            ok = await engine.initialize(status_callback=statuses.append)
+        self.assertFalse(ok)
+        self.assertEqual(mock_hs.await_count, 1)
+        mock_sleep.assert_not_called()
+        self.assertTrue(any("Invalid Gemini API key" in m for m in statuses))
+
+    async def test_initialize_fails_fast_on_invalid_key_exception(self):
+        from unittest.mock import AsyncMock, patch
+        from obs_captioner.engines import gemini_live as gl_mod
+        engine = self._make_engine()
+        mock_hs = AsyncMock(side_effect=Exception("API key not valid. Pass a valid key."))
+        mock_sleep = AsyncMock()
+        with patch.object(
+            engine, "_attempt_handshake", new=mock_hs
+        ), patch.object(gl_mod.asyncio, "sleep", new=mock_sleep):
+            ok = await engine.initialize()
+        self.assertFalse(ok)
+        self.assertEqual(mock_hs.await_count, 1)
+        mock_sleep.assert_not_called()
+
+    async def test_initialize_exhausts_attempts_with_backoff(self):
+        import aiohttp
+        from unittest.mock import AsyncMock, patch
+        from obs_captioner.engines import gemini_live as gl_mod
+        engine = self._make_engine()
+        statuses = []
+        sleeps = []
+
+        async def fake_sleep(delay):
+            sleeps.append(delay)
+
+        mock_hs = AsyncMock(side_effect=aiohttp.ClientConnectionError("503 down"))
+        with patch.object(
+            engine, "_attempt_handshake", new=mock_hs
+        ), patch.object(gl_mod.asyncio, "sleep", new=fake_sleep):
+            ok = await engine.initialize(status_callback=statuses.append)
+        self.assertFalse(ok)
+        self.assertEqual(mock_hs.await_count, 4)
+        self.assertEqual(sleeps, [2.0, 4.0, 6.0])
+        self.assertIn("attempt 4/4", statuses[-2])
+        self.assertTrue(statuses[-1].startswith("❌"))
+
+    async def test_initialize_missing_key_returns_false_immediately(self):
+        import os
+        from unittest.mock import AsyncMock, patch
+        cfg = AppConfig()
+        cfg.gemini_live.api_key = ""
+        old_env = os.environ.pop("GEMINI_API_KEY", None)
+        try:
+            engine = GeminiLiveEngine(cfg)
+            with patch.object(engine, "_attempt_handshake", AsyncMock()) as mock_hs:
+                ok = await engine.initialize()
+            self.assertFalse(ok)
+            mock_hs.assert_not_called()
+        finally:
+            if old_env is not None:
+                os.environ["GEMINI_API_KEY"] = old_env
+
+    def test_resilient_startup_tuning_constants(self):
+        from obs_captioner.engines import gemini_live as gl_mod
+        self.assertEqual(gl_mod.INIT_MAX_ATTEMPTS, 4)
+        self.assertEqual(tuple(gl_mod.INIT_RETRY_DELAYS), (0.0, 2.0, 4.0, 6.0))
+        self.assertEqual(gl_mod.INIT_CONNECT_TIMEOUT, 10.0)
+        self.assertEqual(gl_mod.INIT_TOTAL_TIMEOUT, 10.0)
+        self.assertEqual(gl_mod.INIT_RECEIVE_TIMEOUT, 10.0)
+        self.assertEqual(gl_mod.STREAM_RECONNECT_INITIAL_DELAY, 2.0)
+        self.assertEqual(gl_mod.STREAM_RECONNECT_MAX_DELAY, 15.0)
+
+
 if __name__ == "__main__":
     unittest.main()
 
