@@ -29,6 +29,12 @@ cp API_GUIDE.md "$RELEASE_NAME/" 2>/dev/null || true
 cp LICENSE "$RELEASE_NAME/" 2>/dev/null || true
 cp run_captioner.sh "$RELEASE_NAME/"
 cp run_captioner.bat "$RELEASE_NAME/"
+cp run_launcher.sh "$RELEASE_NAME/" 2>/dev/null || true
+cp run_launcher.bat "$RELEASE_NAME/" 2>/dev/null || true
+cp run_launcher.py "$RELEASE_NAME/" 2>/dev/null || true
+cp VoxStream.vbs "$RELEASE_NAME/" 2>/dev/null || true
+cp create_desktop_shortcut.bat "$RELEASE_NAME/" 2>/dev/null || true
+cp build_launcher_windows.bat "$RELEASE_NAME/" 2>/dev/null || true
 cp setup_mac.sh "$RELEASE_NAME/"
 cp setup_windows.bat "$RELEASE_NAME/"
 cp launch_obs_clean.bat "$RELEASE_NAME/" 2>/dev/null || true

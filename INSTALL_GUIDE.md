@@ -78,10 +78,28 @@ This step-by-step guide walks you through setting up the **VoxStream Real-Time L
    *(If Python is missing, the script will automatically install Python 3.11 for you via `winget`, set up `.venv`, and install dependencies).*
 
 3. Start VoxStream:
-   ```cmd
-   run_captioner.bat
-   ```
-   *(Leave this window open in the background while broadcasting).*
+   - **Option A (Desktop App & Control Center - Recommended)**:
+     Double-click:
+     ```cmd
+     run_launcher.bat
+     ```
+     *(Opens the sleek dark-mode desktop window with real-time status, VU meter, controls, and 1-click links to the dashboard and stage monitors).*
+
+   - **Option B (Pin to Windows Taskbar & Desktop Shortcut)**:
+     Double-click:
+     ```cmd
+     create_desktop_shortcut.bat
+     ```
+     This automatically creates shortcuts with the official VoxStream icon on your **Desktop** and in your **Start Menu**.
+     *To Pin to Taskbar*: Open the Windows Start Menu, search for **VoxStream**, right-click the icon and choose **"Pin to taskbar"**! Launches silently with zero black CMD console windows.
+
+   - **Option C (Compile Native VoxStream.exe)**:
+     Double-click `build_launcher_windows.bat` to compile a standalone single-file `VoxStream.exe` that can be dragged directly onto your Windows Taskbar!
+
+   - **Option D (Classic Console Mode)**:
+     ```cmd
+     run_captioner.bat
+     ```
 
 ---
 

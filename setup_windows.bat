@@ -306,10 +306,10 @@ echo.
 :: ---------------------------------------------------------------------------
 :: STEP 8: Pre-cache Offline AI Models & Create Desktop Shortcut
 :: ---------------------------------------------------------------------------
-echo [8/8] Pre-caching default offline AI models and creating Desktop shortcut...
+echo [8/8] Pre-caching default offline AI models and creating Desktop & Taskbar shortcuts...
 call "%VENV_PY%" -m obs_captioner.model_downloader --preload-defaults
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $d = [Environment]::GetFolderPath('Desktop'); $lnk = Join-Path $d 'VoxStream Live Captioner.lnk'; $s = $ws.CreateShortcut($lnk); $s.TargetPath = '%ROOT_DIR%\run_captioner.bat'; $s.WorkingDirectory = '%ROOT_DIR%'; $s.Description = 'Launch VoxStream Real-Time Live Captioner'; $s.Save()" >nul 2>&1
+call "%VENV_PY%" -m obs_captioner.launcher --create-shortcuts
 
 echo.
 echo =======================================================
@@ -345,8 +345,8 @@ for /f "tokens=*" %%i in ('call "%VENV_PY%" -c "from obs_captioner.config import
 echo =======================================================
 echo   [SUCCESS] 100%% Turnkey Setup Complete!
 echo.
-echo   1. A shortcut 'VoxStream Live Captioner' was created
-echo      on your Desktop. Double-click it anytime to run!
+echo   1. Shortcuts created on Desktop and in Start Menu!
+echo      To Pin to Taskbar: Click Start -> search 'VoxStream' -> right-click -> 'Pin to taskbar'!
 if /i "!CADDY_ON!"=="True" (
     echo   2. Local Dashboard:   https://127.0.0.1/dashboard (or http://127.0.0.1:8765/dashboard)
     if defined LAN_IP if not "!LAN_IP!"=="127.0.0.1" (

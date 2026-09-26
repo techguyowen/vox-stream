@@ -4882,6 +4882,49 @@ class TestEmergencyOfflineFallback(unittest.TestCase):
         self.assertIsInstance(eng, VoskEngine)
 
 
+class TestStandaloneLauncher(unittest.TestCase):
+    def test_get_project_root(self):
+        from obs_captioner.launcher import get_project_root
+        root = get_project_root()
+        self.assertTrue((root / "obs_captioner").is_dir())
+        self.assertTrue((root / "obs_captioner" / "launcher.py").is_file())
+
+    def test_find_python_executable(self):
+        import os
+        from obs_captioner.launcher import find_python_executable
+        exe = find_python_executable()
+        self.assertTrue(os.path.exists(exe))
+
+    def test_create_windows_shortcuts_behavior(self):
+        import sys
+        from obs_captioner.launcher import create_windows_shortcuts
+        res = create_windows_shortcuts()
+        if sys.platform != "win32":
+            self.assertFalse(res["success"])
+            self.assertIn("Windows", res["error"])
+
+    def test_backend_process_manager_init(self):
+        from obs_captioner.launcher import BackendProcessManager, get_project_root
+        mgr = BackendProcessManager(get_project_root())
+        self.assertFalse(mgr.is_running)
+        self.assertFalse(mgr.is_starting)
+
+    def test_launcher_gui_init(self):
+        import tkinter as tk
+        from obs_captioner.launcher import VoxStreamLauncherGUI, HAS_TKINTER
+        if not HAS_TKINTER:
+            self.skipTest("Tkinter not available")
+        try:
+            root = tk.Tk()
+            root.withdraw()
+            app = VoxStreamLauncherGUI(root=root, autostart=False, start_minimized=False)
+            self.assertEqual(app.status_state, "STOPPED")
+            self.assertFalse(app.backend.is_running)
+            root.destroy()
+        except tk.TclError:
+            self.skipTest("No display available for Tkinter GUI test")
+
+
 if __name__ == "__main__":
     unittest.main()
 
