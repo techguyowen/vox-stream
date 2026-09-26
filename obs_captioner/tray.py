@@ -1,19 +1,95 @@
-"""Windows Taskbar System Tray Applet for VoxStream.
+"""Cross-platform System Tray Applet for VoxStream.
 
-Provides a persistent notification icon in the Windows taskbar tray with quick-access
-controls for opening the Web Dashboard, Stage Confidence Display, OBS Caption Overlay,
-and Scripture Projector, as well as toggling live speech recognition and exiting cleanly.
+Provides a persistent notification icon in the Windows taskbar tray (and the
+macOS menu bar via the same pystray code path) with quick-access controls for
+opening the Web Dashboard, Stage Confidence Display, OBS Caption Overlay, and
+Scripture Projector, as well as toggling live speech recognition and exiting
+cleanly.
+
+macOS note: on darwin, pystray drives an NSStatusItem (menu-bar extra, not a
+Windows-style tray). Menu-bar icons must be small (~22px); larger PNGs are
+downscaled automatically by :func:`get_tray_icon_image`. Retina Dock / Finder
+branding uses a ``.icns`` bundle resource when present — see
+:func:`get_macos_icns_path`. Dock badge updates go through
+:func:`set_dock_badge` (PyObjC ``AppKit`` when installed, otherwise a no-op).
 """
 
 from __future__ import annotations
 
 import logging
+import sys
 import threading
 import webbrowser
 from pathlib import Path
 from typing import Callable, Optional
 
 logger = logging.getLogger("obs_captioner.tray")
+
+#: Pixel size for macOS menu-bar (NSStatusItem) icons. Apple's Human Interface
+#: Guidelines recommend ~18-22pt template images; 22px keeps the icon crisp on
+#: both 1x and 2x menu bars when downscaled from the 48px PNG assets.
+MACOS_MENU_BAR_ICON_SIZE = 22
+
+#: User-facing note shown (logged) on macOS explaining menu-bar behavior.
+MACOS_TRAY_NOTE = (
+    "macOS: VoxStream runs as a menu-bar extra (right side of the menu bar, "
+    "near the clock), not a Windows-style system tray. If the icon is hidden, "
+    "check Control Center > Menu Bar Only settings. Dock badge updates require "
+    "optional PyObjC (AppKit); without it the menu-bar icon still works."
+)
+
+
+def is_macos() -> bool:
+    """Return True when running on macOS (darwin)."""
+    return sys.platform == "darwin"
+
+
+def get_macos_tray_note() -> str:
+    """Return the user-facing note describing macOS menu-bar tray behavior."""
+    return MACOS_TRAY_NOTE
+
+
+def get_macos_icns_path() -> Optional[Path]:
+    """Return the bundled macOS ``.icns`` icon path when one is packaged.
+
+    Looks next to this module and in the web static assets for
+    ``VoxStream.icns`` / ``AppIcon.icns`` (the names used by ``.app`` bundles
+    and ``.dmg`` installers). Returns ``None`` when no ``.icns`` is shipped —
+    callers then fall back to the generic PNG/pystray path.
+    """
+    candidates = [
+        Path(__file__).parent / "VoxStream.icns",
+        Path(__file__).parent / "AppIcon.icns",
+        Path(__file__).parent / "web" / "static" / "VoxStream.icns",
+        Path(__file__).parent / "web" / "static" / "AppIcon.icns",
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def set_dock_badge(text: str) -> bool:
+    """Set the macOS Dock tile badge label (e.g. caption status/count).
+
+    Uses ``AppKit.NSApplication`` via PyObjC when available. Returns True when
+    the badge was applied, False otherwise (non-macOS platform, PyObjC missing,
+    or AppKit error). Never raises — safe to call on any platform.
+    """
+    if not is_macos():
+        return False
+    try:
+        from AppKit import NSApplication  # type: ignore
+
+        app = NSApplication.sharedApplication()
+        app.setApplicationIconImage_(app.applicationIconImage())
+        dock_tile = app.dockTile()
+        dock_tile.setBadgeLabel_(str(text or ""))
+        dock_tile.display()
+        return True
+    except Exception as e:
+        logger.debug(f"Could not set macOS Dock badge: {e}")
+        return False
 
 try:
     import pystray
@@ -61,8 +137,13 @@ def _create_fallback_icon(size: int = 64) -> "Image.Image":
     return img
 
 
-def get_tray_icon_image() -> Optional["Image.Image"]:
-    """Load VoxStream branding icon from static web assets or generate fallback."""
+def get_tray_icon_image(size: Optional[int] = None) -> Optional["Image.Image"]:
+    """Load VoxStream branding icon from static web assets or generate fallback.
+
+    On macOS (darwin) the returned image is downscaled to menu-bar size
+    (:data:`MACOS_MENU_BAR_ICON_SIZE`) unless an explicit ``size`` is given,
+    since NSStatusItem icons must be small template images.
+    """
     if not HAS_PYSTRAY:
         return None
 
@@ -74,19 +155,27 @@ def get_tray_icon_image() -> Optional["Image.Image"]:
         static_dir / "favicon.ico",
     ]
 
+    img: Optional["Image.Image"] = None
     for candidate in candidates:
         if candidate.is_file():
             try:
-                img = Image.open(candidate)
-                return img.convert("RGBA")
+                img = Image.open(candidate).convert("RGBA")
+                break
             except Exception as e:
                 logger.debug(f"Could not load icon {candidate}: {e}")
 
-    return _create_fallback_icon(64)
+    if img is None:
+        img = _create_fallback_icon(64)
+
+    target = size if size is not None else (MACOS_MENU_BAR_ICON_SIZE if is_macos() else None)
+    if target is not None and max(img.size) > target:
+        img = img.copy()
+        img.thumbnail((target, target), Image.LANCZOS)
+    return img
 
 
 class VoxStreamTray:
-    """Windows System Tray Manager for VoxStream."""
+    """System Tray Manager for VoxStream (Windows taskbar tray / macOS menu bar)."""
 
     def __init__(
         self,
@@ -205,9 +294,12 @@ class VoxStreamTray:
             )
             self._running = True
 
+            if is_macos():
+                logger.info(get_macos_tray_note())
+
             def _run():
                 try:
-                    logger.info("🟢 Windows System Tray Applet running.")
+                    logger.info("🟢 System Tray Applet running.")
                     self._icon.run()
                 except Exception as e:
                     logger.debug(f"Tray applet stopped: {e}")

@@ -342,6 +342,8 @@ class VoxStreamLauncherGUI:
         )
 
         self.log_queue = queue.Queue()
+        self._status_queue: queue.Queue = queue.Queue()
+        self._status_fetch_inflight = False
         self.last_status_data: Dict[str, Any] = {}
         self.is_paused = False
         self._tray_icon: Optional[Any] = None
@@ -839,7 +841,13 @@ class VoxStreamLauncherGUI:
             self.vu_bar["value"] = 0
 
     def _poll_backend_status(self):
-        """Poll backend /api/status endpoint to update telemetry cards."""
+        """Poll backend /api/status endpoint to update telemetry cards.
+
+        The blocking HTTP fetch runs on a daemon worker thread and hands its
+        result back through a queue. All Tk widget updates happen here on the
+        UI thread, so the GUI never blocks on network I/O and no Tk calls are
+        made from background threads (Tkinter is not thread-safe).
+        """
         def _fetch():
             if not self.backend.is_running:
                 return None
@@ -850,9 +858,31 @@ class VoxStreamLauncherGUI:
                         return json.loads(resp.read().decode("utf-8"))
             except Exception:
                 return None
+            return None
 
-        def _on_result(data: Optional[Dict[str, Any]]):
-            if data:
+        def _worker():
+            try:
+                self._status_queue.put(_fetch())
+            finally:
+                self._status_fetch_inflight = False
+
+        # Dispatch one fetch per tick; skip while a previous fetch is in flight.
+        if self.backend.is_running and not self._status_fetch_inflight:
+            self._status_fetch_inflight = True
+            threading.Thread(target=_worker, daemon=True, name="BackendStatusPoller").start()
+
+        # Drain completed fetch results (latest wins) on the UI thread.
+        data: Optional[Dict[str, Any]] = None
+        has_data = False
+        try:
+            while True:
+                data = self._status_queue.get_nowait()
+                has_data = True
+        except queue.Empty:
+            pass
+
+        try:
+            if has_data and data:
                 self.last_status_data = data
                 is_running = data.get("is_running", True)
                 self.is_paused = not is_running
@@ -885,10 +915,10 @@ class VoxStreamLauncherGUI:
 
                 if self.status_state not in ("STARTING", "ERROR"):
                     self._update_ui_state("PAUSED" if self.is_paused else "RUNNING")
-
+        except Exception as e:
+            logger.debug(f"Backend status UI update error: {e}")
+        finally:
             self.root.after(1500, self._poll_backend_status)
-
-        threading.Thread(target=lambda: self.root.after(0, lambda: _on_result(_fetch())), daemon=True).start()
 
     def minimize_to_tray(self):
         """Hide window into system tray."""

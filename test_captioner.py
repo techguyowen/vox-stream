@@ -4911,18 +4911,99 @@ class TestStandaloneLauncher(unittest.TestCase):
 
     def test_launcher_gui_init(self):
         import tkinter as tk
+        from unittest import mock
+        from obs_captioner import launcher as launcher_mod
         from obs_captioner.launcher import VoxStreamLauncherGUI, HAS_TKINTER
         if not HAS_TKINTER:
             self.skipTest("Tkinter not available")
         try:
             root = tk.Tk()
             root.withdraw()
-            app = VoxStreamLauncherGUI(root=root, autostart=False, start_minimized=False)
+            # Do not start the pystray backend thread here: a lingering tray
+            # thread crashes Tk event loops created later in the same process
+            # (observed SIGTRAP on macOS). Tray shutdown is covered by
+            # _exit_application in production code.
+            with mock.patch.object(launcher_mod, "HAS_PYSTRAY", False):
+                app = VoxStreamLauncherGUI(root=root, autostart=False, start_minimized=False)
             self.assertEqual(app.status_state, "STOPPED")
             self.assertFalse(app.backend.is_running)
             root.destroy()
         except tk.TclError:
             self.skipTest("No display available for Tkinter GUI test")
+
+    def test_poll_backend_status_fetches_off_ui_thread(self):
+        """Regression test: _poll_backend_status must run HTTP fetch on a
+        worker thread so the Tk main loop never blocks on network I/O."""
+        import json
+        import threading
+        import time
+        import tkinter as tk
+        import urllib.request
+        from unittest import mock
+        from obs_captioner import launcher as launcher_mod
+        from obs_captioner.launcher import VoxStreamLauncherGUI
+
+        try:
+            root = tk.Tk()
+        except tk.TclError:
+            self.skipTest("No display available for Tkinter GUI test")
+        root.withdraw()
+        # Isolate from the pystray background thread: on some platforms
+        # (e.g. macOS Tk) it cannot safely coexist with a pumped event loop.
+        try:
+            with mock.patch.object(launcher_mod, "HAS_PYSTRAY", False):
+                app = VoxStreamLauncherGUI(root=root, autostart=False, start_minimized=False)
+                main_thread = threading.current_thread()
+                fetch_threads = []
+                payload = {
+                    "is_running": True,
+                    "engine_name": "TestEngine",
+                    "audio_level_db": -100.0,
+                    "caption_clients": 0,
+                }
+
+                class _FakeResp:
+                    status = 200
+
+                    def __enter__(self):
+                        return self
+
+                    def __exit__(self, *exc):
+                        return False
+
+                    def read(self):
+                        return json.dumps(payload).encode("utf-8")
+
+                def _fake_urlopen(req, timeout=None):
+                    fetch_threads.append(threading.current_thread())
+                    time.sleep(0.2)  # simulate network latency
+                    return _FakeResp()
+
+                with mock.patch.object(type(app.backend), "is_running",
+                                       new_callable=mock.PropertyMock,
+                                       return_value=True), \
+                     mock.patch.object(urllib.request, "urlopen", _fake_urlopen):
+                    app._poll_backend_status()
+                    deadline = time.time() + 10.0
+                    while not fetch_threads and time.time() < deadline:
+                        root.update()
+                        time.sleep(0.05)
+                    # The Tk event loop must stay responsive while fetch runs.
+                    root.update()
+                    while time.time() < deadline and not app.last_status_data:
+                        root.update()
+                        time.sleep(0.05)
+
+                self.assertTrue(fetch_threads, "expected the status fetch to run")
+                for t in fetch_threads:
+                    self.assertIsNot(t, main_thread,
+                                     "status HTTP fetch must not run on the Tk UI thread")
+                self.assertEqual(app.last_status_data.get("engine_name"), "TestEngine")
+        finally:
+            try:
+                root.destroy()
+            except tk.TclError:
+                pass
 
 
 if __name__ == "__main__":

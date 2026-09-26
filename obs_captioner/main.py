@@ -475,11 +475,11 @@ async def main_async(args):
                 except Exception:
                     pass
 
-    # 4. Initialize Windows System Tray Applet (automatic by default on Windows)
+    # 4. Initialize System Tray Applet (automatic by default on Windows and macOS menu bar)
     tray_app = None
     should_enable_tray = getattr(args, "tray", None)
     if should_enable_tray is None:
-        should_enable_tray = getattr(config.general, "tray_icon", True) and sys.platform == "win32"
+        should_enable_tray = getattr(config.general, "tray_icon", True) and sys.platform in ("win32", "darwin")
 
     if should_enable_tray:
         try:
@@ -962,8 +962,8 @@ def main():
     parser.add_argument("--no-obs", action="store_true", help="Disable OBS WebSocket client")
     parser.add_argument("--no-overlay", action="store_true", help="Disable Browser Source web overlay")
     parser.add_argument("--caddy", action="store_true", help="Enable Caddy reverse proxy with SSL")
-    parser.add_argument("--tray", dest="tray", action="store_true", default=None, help="Enable Windows taskbar system tray icon (default: auto-enabled on Windows)")
-    parser.add_argument("--no-tray", dest="tray", action="store_false", help="Disable Windows taskbar system tray icon")
+    parser.add_argument("--tray", dest="tray", action="store_true", default=None, help="Enable system tray icon (Windows taskbar / macOS menu bar; default: auto-enabled on Windows and macOS)")
+    parser.add_argument("--no-tray", dest="tray", action="store_false", help="Disable system tray icon")
 
     args = parser.parse_args()
 
