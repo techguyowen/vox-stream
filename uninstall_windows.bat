@@ -60,17 +60,17 @@ echo [SUCCESS] Running processes stopped.
 echo.
 
 :: ---------------------------------------------------------------------------
-:: STEP 2: Remove Desktop Shortcut
+:: STEP 2: Remove Desktop and Start Menu Shortcuts
 :: ---------------------------------------------------------------------------
-echo [2/5] Removing Desktop shortcut...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$d = [Environment]::GetFolderPath('Desktop'); $lnk = Join-Path $d 'VoxStream Live Captioner.lnk'; if (Test-Path $lnk) { Remove-Item -Force $lnk }" >nul 2>&1
-if exist "%USERPROFILE%\Desktop\VoxStream Live Captioner.lnk" (
-    del /f /q "%USERPROFILE%\Desktop\VoxStream Live Captioner.lnk" >nul 2>&1
-)
-if exist "%PUBLIC%\Desktop\VoxStream Live Captioner.lnk" (
-    del /f /q "%PUBLIC%\Desktop\VoxStream Live Captioner.lnk" >nul 2>&1
-)
-echo [SUCCESS] Desktop shortcut removed.
+echo [2/5] Removing Desktop and Start Menu shortcuts...
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$d = [Environment]::GetFolderPath('Desktop'); $lnk1 = Join-Path $d 'VoxStream Live Captioner.lnk'; if (Test-Path $lnk1) { Remove-Item -Force $lnk1 }; $lnk2 = Join-Path $d 'VoxStream.lnk'; if (Test-Path $lnk2) { Remove-Item -Force $lnk2 }; $p = [Environment]::GetFolderPath('Programs'); $startDir = Join-Path $p 'VoxStream'; if (Test-Path $startDir) { Remove-Item -Recurse -Force $startDir }" >nul 2>&1
+if exist "%USERPROFILE%\Desktop\VoxStream Live Captioner.lnk" del /f /q "%USERPROFILE%\Desktop\VoxStream Live Captioner.lnk" >nul 2>&1
+if exist "%USERPROFILE%\Desktop\VoxStream.lnk" del /f /q "%USERPROFILE%\Desktop\VoxStream.lnk" >nul 2>&1
+if exist "%PUBLIC%\Desktop\VoxStream Live Captioner.lnk" del /f /q "%PUBLIC%\Desktop\VoxStream Live Captioner.lnk" >nul 2>&1
+if exist "%PUBLIC%\Desktop\VoxStream.lnk" del /f /q "%PUBLIC%\Desktop\VoxStream.lnk" >nul 2>&1
+if exist "%APPDATA%\Microsoft\Windows\Start Menu\Programs\VoxStream" rmdir /s /q "%APPDATA%\Microsoft\Windows\Start Menu\Programs\VoxStream" >nul 2>&1
+if exist "%ROOT_DIR%\VoxStream.exe" del /f /q "%ROOT_DIR%\VoxStream.exe" >nul 2>&1
+echo [SUCCESS] Desktop and Start Menu shortcuts removed.
 echo.
 
 :: ---------------------------------------------------------------------------

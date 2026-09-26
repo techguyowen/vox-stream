@@ -54,6 +54,8 @@ except ImportError:
 
 def get_project_root() -> Path:
     """Resolve the absolute root directory of the VoxStream project."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
     # This file is located at <ROOT>/obs_captioner/launcher.py
     return Path(__file__).resolve().parent.parent
 
@@ -71,6 +73,15 @@ def find_python_executable(root_dir: Optional[Path] = None) -> str:
         venv_py = root_dir / ".venv" / "bin" / "python"
         if venv_py.is_file():
             return str(venv_py)
+
+    # When running as a frozen PyInstaller exe, sys.executable is the launcher exe.
+    # Look for system Python rather than re-executing our own binary.
+    if getattr(sys, "frozen", False):
+        import shutil
+        for cand in ("python", "python3", "py"):
+            found = shutil.which(cand)
+            if found:
+                return found
 
     # Fallback to current running interpreter
     return sys.executable
@@ -147,9 +158,12 @@ class BackendProcessManager:
         self._monitor_thread: Optional[threading.Thread] = None
         self._stop_requested = False
         self.is_starting = False
+        self.attached_to_existing = False
 
     @property
     def is_running(self) -> bool:
+        if self.attached_to_existing:
+            return True
         return self.process is not None and self.process.poll() is None
 
     def start(self, extra_args: Optional[list] = None) -> bool:
@@ -159,6 +173,22 @@ class BackendProcessManager:
 
         self.is_starting = True
         self._stop_requested = False
+
+        # First check if backend is already running on port 8765
+        try:
+            req = urllib.request.Request("http://127.0.0.1:8765/api/status")
+            with urllib.request.urlopen(req, timeout=0.8) as resp:
+                if resp.status == 200:
+                    self.attached_to_existing = True
+                    self.is_starting = False
+                    if self.on_log_line:
+                        self.on_log_line("[VoxStream] Attached to existing active backend instance on port 8765.")
+                    if self.on_status_change:
+                        self.on_status_change("RUNNING")
+                    return True
+        except Exception:
+            pass
+
         py_exe = find_python_executable(self.root_dir)
 
         # Prepare environment variables (same as run_captioner.bat)
@@ -237,7 +267,10 @@ class BackendProcessManager:
     def stop(self, timeout_sec: float = 3.5):
         """Stop the backend process cleanly."""
         self._stop_requested = True
-        if not self.is_running:
+        was_attached = self.attached_to_existing
+        self.attached_to_existing = False
+
+        if not self.is_running and not was_attached:
             if self.on_status_change:
                 self.on_status_change("STOPPED")
             return
