@@ -29,6 +29,13 @@ from ..config import AppConfig
 from ..formatter import is_hallucinated_or_leaked_text
 from ..music import is_music_text
 from ..vad import VoiceActivityDetector
+from ..gemini_models import (
+    sanitize_gemini_api_key,
+    validate_gemini_api_key,
+    check_gemini_dns_liveness,
+    get_fallback_model_id,
+    check_model_deprecation,
+)
 
 logger = logging.getLogger("obs_captioner.engine.gemini")
 
@@ -212,8 +219,9 @@ class GeminiLiveEngine(BaseSTTEngine):
         return base
 
     def _get_api_key(self) -> str:
-        """Return the current active API key from config or environment."""
-        return (self.config.gemini_live.api_key or os.environ.get("GEMINI_API_KEY", "")).strip()
+        """Return the sanitized active API key from config or environment."""
+        raw = self.config.gemini_live.api_key or os.environ.get("GEMINI_API_KEY", "")
+        return sanitize_gemini_api_key(raw)
 
     def _get_ws_url(self) -> str:
         """Return WebSocket endpoint URL formatted with API key parameter."""
@@ -360,8 +368,21 @@ class GeminiLiveEngine(BaseSTTEngine):
         text = str(reason or "")
         return "API key not valid" in text or "API_KEY_INVALID" in text
 
+    @staticmethod
+    def _is_invalid_model_failure(reason: str, code: Any = None) -> bool:
+        """Detect model deprecation, sunsetting, or not-found errors."""
+        text = str(reason or "").lower()
+        return (
+            "not found" in text
+            or "404" in text
+            or "invalid model" in text
+            or "not supported" in text
+            or "is not found" in text
+            or "unknown model" in text
+        )
+
     async def _attempt_handshake(self, ws_url: str, model: str) -> str:
-        """Perform one handshake attempt. Returns 'ok', 'invalid_key', or raises transient errors."""
+        """Perform one handshake attempt. Returns 'ok', 'invalid_key', 'invalid_model', or raises transient errors."""
         timeout = aiohttp.ClientTimeout(total=INIT_TOTAL_TIMEOUT, connect=INIT_CONNECT_TIMEOUT)
         ssl_context = self._build_ssl_context()
         async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -389,6 +410,8 @@ class GeminiLiveEngine(BaseSTTEngine):
                     reason = getattr(msg, "extra", "") or f"Close code {msg.data}"
                     if self._is_invalid_key_failure(reason, getattr(msg, "data", None)):
                         return "invalid_key"
+                    if self._is_invalid_model_failure(reason, getattr(msg, "data", None)):
+                        return "invalid_model"
                     raise aiohttp.ClientConnectionError(f"Gemini handshake failed: {reason}")
 
                 raise aiohttp.ClientConnectionError(
@@ -409,6 +432,13 @@ class GeminiLiveEngine(BaseSTTEngine):
                 status_callback(f"❌ {msg}")
             return False
 
+        # Pre-flight DNS check (fast non-blocking probe)
+        dns_ok = await check_gemini_dns_liveness()
+        if not dns_ok:
+            logger.warning("Gemini Live: DNS check failed for generativelanguage.googleapis.com (offline or network delay).")
+            if status_callback:
+                status_callback("🔄 Network/DNS initializing, checking connection...")
+
         model = self.config.gemini_live.model or "gemini-3.5-transcribe-live"
         if status_callback:
             status_callback(f"Connecting to Gemini Live ({model})...")
@@ -426,6 +456,22 @@ class GeminiLiveEngine(BaseSTTEngine):
                     if status_callback:
                         status_callback(f"✅ Gemini Live ({model}) ready!")
                     return True
+                if outcome == "invalid_model":
+                    fallback = getattr(self.config.gemini_live, "fallback_model", "") or get_fallback_model_id(model)
+                    if fallback and fallback != model:
+                        logger.warning(
+                            f"⚠️ Gemini model '{model}' was rejected by Google (deprecated or invalid). Auto-falling back to '{fallback}'..."
+                        )
+                        if status_callback:
+                            status_callback(f"⚠️ Model '{model}' deprecated/invalid. Auto-falling back to {fallback}...")
+                        self.config.gemini_live.model = fallback
+                        model = fallback
+                        continue
+                    err = f"Configured Gemini model '{model}' is invalid or deprecated."
+                    logger.error(err)
+                    if status_callback:
+                        status_callback(f"❌ {err}")
+                    return False
                 err = "Invalid Gemini API key. Please check your key at aistudio.google.com."
                 logger.error(err)
                 if status_callback:
@@ -440,6 +486,17 @@ class GeminiLiveEngine(BaseSTTEngine):
                     if status_callback:
                         status_callback(f"❌ {err}")
                     return False
+                if self._is_invalid_model_failure(str(e)):
+                    fallback = getattr(self.config.gemini_live, "fallback_model", "") or get_fallback_model_id(model)
+                    if fallback and fallback != model:
+                        logger.warning(
+                            f"⚠️ Model '{model}' rejected ({e}). Auto-falling back to '{fallback}'..."
+                        )
+                        if status_callback:
+                            status_callback(f"⚠️ Model '{model}' invalid. Auto-falling back to {fallback}...")
+                        self.config.gemini_live.model = fallback
+                        model = fallback
+                        continue
                 if attempt >= INIT_MAX_ATTEMPTS:
                     err = f"Failed to connect to Gemini Live after {INIT_MAX_ATTEMPTS} attempts: {e}"
                     logger.error(err)
@@ -509,6 +566,13 @@ class GeminiLiveEngine(BaseSTTEngine):
                             if self._is_invalid_key_failure(reason, getattr(init_msg, "data", None)):
                                 logger.error("Invalid Gemini API key. Please check your key at aistudio.google.com.")
                                 return
+                            if self._is_invalid_model_failure(reason, getattr(init_msg, "data", None)):
+                                fallback = getattr(self.config.gemini_live, "fallback_model", "") or get_fallback_model_id(model)
+                                if fallback and fallback != model:
+                                    logger.warning(f"⚠️ Model '{model}' rejected during setup ({reason}). Auto-falling back to '{fallback}'...")
+                                    self.config.gemini_live.model = fallback
+                                    model = fallback
+                                    continue
                             delay = _next_backoff()
                             logger.warning(f"Gemini rejected connection during setup ({reason}); retrying in {delay:.0f}s...")
                             await asyncio.sleep(delay)

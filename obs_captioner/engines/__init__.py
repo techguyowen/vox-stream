@@ -15,9 +15,9 @@ from .sensevoice_engine import SenseVoiceEngine
 from ..config import AppConfig
 
 
-def create_engine(config: AppConfig) -> BaseSTTEngine:
+def create_engine(config: AppConfig, override_engine: Optional[str] = None) -> BaseSTTEngine:
     """Instantiate the configured Speech-to-Text engine."""
-    engine_type = (config.general.engine or "").strip().lower()
+    engine_type = (override_engine or config.general.engine or "").strip().lower()
 
     if engine_type in ("google_web", "free", "zero_setup", "web"):
         return GoogleWebEngine(config)

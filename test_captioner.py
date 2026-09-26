@@ -4779,6 +4779,108 @@ class TestGeminiLiveResilientStartup(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(gl_mod.STREAM_RECONNECT_INITIAL_DELAY, 2.0)
         self.assertEqual(gl_mod.STREAM_RECONNECT_MAX_DELAY, 15.0)
 
+    async def test_initialize_auto_falls_back_on_invalid_model(self):
+        from unittest.mock import AsyncMock, patch
+        from obs_captioner.engines import gemini_live as gl_mod
+        engine = self._make_engine()
+        engine.config.gemini_live.model = "gemini-nonexistent-old-model"
+        engine.config.gemini_live.fallback_model = "gemini-3.5-transcribe-live"
+
+        statuses = []
+        mock_hs = AsyncMock(side_effect=["invalid_model", "ok"])
+        with patch.object(engine, "_attempt_handshake", new=mock_hs):
+            ok = await engine.initialize(status_callback=statuses.append)
+        self.assertTrue(ok)
+        self.assertEqual(engine.config.gemini_live.model, "gemini-3.5-transcribe-live")
+        self.assertTrue(any("invalid" in m.lower() or "falling back" in m.lower() for m in statuses))
+
+
+class TestGeminiModelsAndSanitization(unittest.TestCase):
+    def test_sanitize_api_key(self):
+        from obs_captioner.gemini_models import sanitize_gemini_api_key, validate_gemini_api_key
+        # Quotes and spaces
+        self.assertEqual(sanitize_gemini_api_key(' "AIzaSyTest12345" '), "AIzaSyTest12345")
+        self.assertEqual(sanitize_gemini_api_key(" 'AIzaSyTest67890' "), "AIzaSyTest67890")
+        self.assertEqual(sanitize_gemini_api_key("`AIzaSyBackticks`"), "AIzaSyBackticks")
+        # Prefix cleanup
+        self.assertEqual(sanitize_gemini_api_key("GEMINI_API_KEY=AIzaSyWithPrefix"), "AIzaSyWithPrefix")
+        self.assertEqual(sanitize_gemini_api_key("key=AIzaSyKeyPrefix"), "AIzaSyKeyPrefix")
+        # Unicode zero-width characters
+        self.assertEqual(sanitize_gemini_api_key("\u200bAIzaSyClean\ufeff"), "AIzaSyClean")
+        # Validation
+        ok, _ = validate_gemini_api_key("AIzaSy1234567890abcdef")
+        self.assertTrue(ok)
+        ok_short, _ = validate_gemini_api_key("short")
+        self.assertFalse(ok_short)
+        ok_mask, _ = validate_gemini_api_key("•••")
+        self.assertFalse(ok_mask)
+
+    def test_model_deprecation_and_fallback(self):
+        from obs_captioner.gemini_models import check_model_deprecation, get_fallback_model_id
+        dep = check_model_deprecation("gemini-2.0-flash")
+        self.assertIsNotNone(dep)
+        self.assertEqual(dep["recommended_replacement"], "gemini-3.6-flash")
+
+        dep_live = check_model_deprecation("gemini-2.0-flash-live-001")
+        self.assertIsNotNone(dep_live)
+        self.assertEqual(dep_live["recommended_replacement"], "gemini-3.5-transcribe-live")
+
+        fb_stt = get_fallback_model_id("gemini-custom-old")
+        self.assertEqual(fb_stt, "gemini-3.5-transcribe-live")
+
+        fb_trans = get_fallback_model_id("gemini-custom-translate-old")
+        self.assertEqual(fb_trans, "gemini-3.5-live-translate-preview")
+
+
+class TestAudioColdBootSettleDelay(unittest.TestCase):
+    def test_find_audio_device_settles_and_finds_device(self):
+        from unittest.mock import patch
+        from obs_captioner.audio_capture import find_audio_device
+        from obs_captioner.config import AudioConfig
+        cfg = AudioConfig(device_name_filter="Focusrite Scarlett", device_settle_seconds=1.0)
+
+        call_count = 0
+        def fake_list():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 2:
+                # First check: USB interface hasn't finished booting WASAPI driver yet
+                return [{"index": 0, "name": "Realtek Speakers", "hostapi": "WASAPI", "channels": 2}]
+            # Second check: USB interface appears
+            return [
+                {"index": 0, "name": "Realtek Speakers", "hostapi": "WASAPI", "channels": 2},
+                {"index": 1, "name": "Focusrite Scarlett 2i2 USB", "hostapi": "WASAPI", "channels": 2},
+            ]
+
+        with patch("obs_captioner.audio_capture.list_audio_devices", side_effect=fake_list):
+            idx, dev = find_audio_device(cfg, wait_settle=True)
+            self.assertEqual(idx, 1)
+            self.assertIn("Focusrite", dev["name"])
+            self.assertGreaterEqual(call_count, 2)
+
+
+class TestEmergencyOfflineFallback(unittest.TestCase):
+    def test_config_fallback_defaults(self):
+        from obs_captioner.config import GeneralConfig, GeminiLiveConfig, AudioConfig
+        gen = GeneralConfig()
+        self.assertEqual(gen.fallback_engine, "vosk")
+        self.assertTrue(gen.enable_auto_fallback)
+
+        gl = GeminiLiveConfig()
+        self.assertEqual(gl.fallback_model, "gemini-3.5-transcribe-live")
+
+        aud = AudioConfig()
+        self.assertEqual(aud.device_settle_seconds, 4.0)
+
+    def test_create_engine_override(self):
+        from obs_captioner.config import AppConfig
+        from obs_captioner.engines import create_engine
+        from obs_captioner.engines.vosk import VoskEngine
+        cfg = AppConfig()
+        cfg.general.engine = "gemini_live"
+        eng = create_engine(cfg, override_engine="vosk")
+        self.assertIsInstance(eng, VoskEngine)
+
 
 if __name__ == "__main__":
     unittest.main()

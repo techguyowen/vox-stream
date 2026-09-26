@@ -152,6 +152,7 @@ async def main_async(args):
     engine_switch_status = ""
     engine_switch_target = ""
     engine_switch_error = None
+    fallback_active = False
 
     def get_app_status():
         from .hardware import get_ram_usage_mb, get_gpu_info
@@ -164,6 +165,9 @@ async def main_async(args):
             "engine": config.general.engine,
             "engine_name": engine.name if engine else config.general.engine,
             "model_detail": get_model_detail(config),
+            "fallback_active": fallback_active,
+            "fallback_engine": getattr(config.general, "fallback_engine", "vosk"),
+            "enable_auto_fallback": getattr(config.general, "enable_auto_fallback", True),
             "engine_initialized": bool(initialized and (engine is not None)),
             "is_streaming": bool(engine and getattr(engine, "is_running", False) and not is_paused),
             "is_switching_engine": is_switching_engine,
@@ -544,6 +548,37 @@ async def main_async(args):
     initialized = await engine.initialize(status_callback=initial_status_cb)
     if not initialized:
         logger.error(f"Failed to initialize engine '{engine.name}'. Please check API keys / credentials in Dashboard or config.json.")
+        fallback_target = getattr(config.general, "fallback_engine", "vosk")
+        if (
+            getattr(config.general, "enable_auto_fallback", True)
+            and fallback_target
+            and fallback_target != "none"
+            and fallback_target.lower() != (config.general.engine or "").lower()
+        ):
+            logger.warning(
+                f"⚠️ Primary engine '{engine.name}' failed on startup. Activating emergency offline fallback ({fallback_target})..."
+            )
+            try:
+                fallback_eng = create_engine(config, override_engine=fallback_target)
+                if await fallback_eng.initialize():
+                    engine = fallback_eng
+                    initialized = True
+                    fallback_active = True
+                    engine_switch_status = f"⚠️ Emergency offline engine active: {engine.name} (Primary offline)"
+                    logger.info(f"✅ Emergency offline fallback activated: {engine.name}")
+                    if web_server:
+                        asyncio.run_coroutine_threadsafe(
+                            web_server.broadcast_control({
+                                "type": "emergency_fallback_activated",
+                                "primary_engine": config.general.engine,
+                                "fallback_engine": fallback_target,
+                                "fallback_name": engine.name,
+                                "status_text": engine_switch_status,
+                            }),
+                            loop,
+                        )
+            except Exception as fe:
+                logger.error(f"Failed to activate emergency fallback engine '{fallback_target}': {fe}")
     else:
         engine_switch_status = f"✅ {engine.name} ready!"
         if web_server:
@@ -702,12 +737,40 @@ async def main_async(args):
     ENGINE_INIT_RETRY_INTERVAL = 5.0
 
     async def run_pipeline():
-        nonlocal initialized, engine_switch_status
+        nonlocal initialized, engine_switch_status, engine, fallback_active
         last_engine_retry = 0.0
+        last_primary_probe = 0.0
         while not shutdown_event.is_set():
             if is_paused or engine is None or is_switching_engine:
                 await asyncio.sleep(0.1)
                 continue
+
+            # If emergency fallback is active, periodically probe primary engine to restore it
+            if fallback_active:
+                now = time.monotonic()
+                if now - last_primary_probe >= 15.0:
+                    last_primary_probe = now
+                    try:
+                        probe_eng = create_engine(config, override_engine=config.general.engine)
+                        if await probe_eng.initialize():
+                            logger.info(f"✅ Primary cloud engine ({config.general.engine}) is back online! Restoring from emergency fallback...")
+                            async with engine_lock:
+                                if engine:
+                                    await engine.stop()
+                                engine = probe_eng
+                                fallback_active = False
+                                engine_switch_status = f"✅ {engine.name} restored and ready!"
+                                logger.info(f"STT primary restored: {engine.name}")
+                                if web_server:
+                                    await web_server.broadcast_control({
+                                        "type": "emergency_fallback_restored",
+                                        "primary_engine": config.general.engine,
+                                        "primary_name": engine.name,
+                                        "status_text": engine_switch_status,
+                                    })
+                    except Exception as pe:
+                        logger.debug(f"Primary engine probe check: {pe}")
+
             if not initialized:
                 now = time.monotonic()
                 if now - last_engine_retry >= ENGINE_INIT_RETRY_INTERVAL:
@@ -731,7 +794,34 @@ async def main_async(args):
                                     loop,
                                 )
                         else:
-                            logger.warning("Engine background re-initialization failed; will retry.")
+                            fallback_target = getattr(config.general, "fallback_engine", "vosk")
+                            if (
+                                getattr(config.general, "enable_auto_fallback", True)
+                                and fallback_target
+                                and fallback_target != "none"
+                                and not fallback_active
+                            ):
+                                logger.warning(f"Primary engine retry failed. Activating emergency fallback ({fallback_target})...")
+                                try:
+                                    fallback_eng = create_engine(config, override_engine=fallback_target)
+                                    if await fallback_eng.initialize():
+                                        engine = fallback_eng
+                                        initialized = True
+                                        fallback_active = True
+                                        engine_switch_status = f"⚠️ Emergency offline engine active: {engine.name}"
+                                        if web_server:
+                                            asyncio.run_coroutine_threadsafe(
+                                                web_server.broadcast_control({
+                                                    "type": "emergency_fallback_activated",
+                                                    "primary_engine": config.general.engine,
+                                                    "fallback_engine": fallback_target,
+                                                    "fallback_name": engine.name,
+                                                    "status_text": engine_switch_status,
+                                                }),
+                                                loop,
+                                            )
+                                except Exception as fe:
+                                    logger.error(f"Failed to activate emergency fallback: {fe}")
                     except asyncio.CancelledError:
                         break
                     except Exception as e:
@@ -754,6 +844,33 @@ async def main_async(args):
                         logger.error("Failed to recover audio capture stream. Will retry.")
                 elif not is_switching_engine:
                     logger.error(f"Pipeline error: {e}", exc_info=True)
+                    # If primary cloud engine fails during streaming, check auto-fallback
+                    fallback_target = getattr(config.general, "fallback_engine", "vosk")
+                    if (
+                        getattr(config.general, "enable_auto_fallback", True)
+                        and fallback_target
+                        and fallback_target != "none"
+                        and not fallback_active
+                    ):
+                        logger.warning(f"⚠️ Primary engine failed during streaming. Failing over to {fallback_target}...")
+                        try:
+                            fallback_eng = create_engine(config, override_engine=fallback_target)
+                            if await fallback_eng.initialize():
+                                engine = fallback_eng
+                                fallback_active = True
+                                engine_switch_status = f"⚠️ Emergency offline engine active: {engine.name}"
+                                if web_server:
+                                    asyncio.run_coroutine_threadsafe(
+                                        web_server.broadcast_control({
+                                            "type": "emergency_fallback_activated",
+                                            "primary_engine": config.general.engine,
+                                            "fallback_engine": fallback_target,
+                                            "status_text": engine_switch_status,
+                                        }),
+                                        loop,
+                                    )
+                        except Exception as fe:
+                            logger.error(f"Emergency failover error: {fe}")
                 await asyncio.sleep(1.0)
 
     pipeline_task = asyncio.create_task(run_pipeline())

@@ -260,6 +260,10 @@ class WebOverlayServer:
         self.app.router.add_post("/api/models/delete", self._handle_delete_model)
         self.app.router.add_delete("/api/models", self._handle_delete_model)
 
+        # Gemini Dynamic Model Scanner & Sunsetting Awareness
+        self.app.router.add_get("/api/gemini/models", self._handle_gemini_models)
+        self.app.router.add_post("/api/gemini/scan", self._handle_gemini_models_scan)
+
         # Offline Bible & Scripture Engine
         self.app.router.add_get("/api/bible/versions", self._handle_bible_versions)
         self.app.router.add_get("/api/bible/lookup", self._handle_bible_lookup)
@@ -675,6 +679,9 @@ class WebOverlayServer:
                                 if not clear_flag:
                                     continue
                                 sec_v = ""
+                            elif isinstance(sec_v, str) and ("api_key" in sec_k or "key" in sec_k):
+                                from ..gemini_models import sanitize_gemini_api_key
+                                sec_v = sanitize_gemini_api_key(sec_v)
 
                         setattr(section, sec_k, sec_v)
 
@@ -1935,6 +1942,44 @@ class WebOverlayServer:
 
         self.model_downloader.cancel_download()
         return web.json_response({"status": "canceled", "message": "Model download cancellation requested."})
+
+    async def _handle_gemini_models(self, request: web.Request) -> web.Response:
+        """Return available Gemini models categorized by task and check deprecation status."""
+        from ..gemini_models import scan_gemini_models, check_model_deprecation
+        api_key = self.config.gemini_live.api_key or os.environ.get("GEMINI_API_KEY", "")
+        data = await scan_gemini_models(api_key=api_key, force_refresh=False)
+
+        current_live_model = self.config.gemini_live.model or "gemini-3.5-transcribe-live"
+        current_dep = check_model_deprecation(current_live_model)
+
+        response_data = dict(data)
+        response_data["current_configured_model"] = current_live_model
+        response_data["current_is_deprecated"] = current_dep is not None
+        response_data["current_deprecation_notice"] = current_dep["notice"] if current_dep else ""
+        response_data["current_recommended_replacement"] = current_dep["recommended_replacement"] if current_dep else ""
+        return web.json_response(response_data)
+
+    async def _handle_gemini_models_scan(self, request: web.Request) -> web.Response:
+        """Force a live scan of Gemini models from Google AI Studio."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        from ..gemini_models import scan_gemini_models, check_model_deprecation
+        try:
+            req_data = await request.json()
+        except Exception:
+            req_data = {}
+        api_key = req_data.get("api_key") or self.config.gemini_live.api_key or os.environ.get("GEMINI_API_KEY", "")
+        data = await scan_gemini_models(api_key=api_key, force_refresh=True)
+
+        current_live_model = self.config.gemini_live.model or "gemini-3.5-transcribe-live"
+        current_dep = check_model_deprecation(current_live_model)
+
+        response_data = dict(data)
+        response_data["current_configured_model"] = current_live_model
+        response_data["current_is_deprecated"] = current_dep is not None
+        response_data["current_deprecation_notice"] = current_dep["notice"] if current_dep else ""
+        response_data["current_recommended_replacement"] = current_dep["recommended_replacement"] if current_dep else ""
+        return web.json_response(response_data)
 
 
     async def _handle_favicon(self, request: web.Request) -> web.FileResponse:

@@ -1922,9 +1922,18 @@ function populateFormFields(cfg) {
         if (vBadgeEl) {
             vBadgeEl.textContent = churchName;
         }
+        if (cfg.general.fallback_engine && document.getElementById("fallback_engine_select")) {
+            document.getElementById("fallback_engine_select").value = cfg.general.fallback_engine;
+        }
+        if (cfg.general.enable_auto_fallback !== undefined && document.getElementById("enable_auto_fallback")) {
+            document.getElementById("enable_auto_fallback").checked = !!cfg.general.enable_auto_fallback;
+        }
         toggleEngineFields(cfg.general.engine || "vosk");
     }
     if (cfg.audio) {
+        if (cfg.audio.device_settle_seconds !== undefined && document.getElementById("device_settle_seconds")) {
+            document.getElementById("device_settle_seconds").value = cfg.audio.device_settle_seconds;
+        }
         const ngVal = cfg.audio.noise_gate_db ?? -52.0;
         document.getElementById("noise_gate_slider").value = ngVal;
         document.getElementById("val-noise-gate").textContent = `${ngVal} dB`;
@@ -1977,6 +1986,9 @@ function populateFormFields(cfg) {
             geminiStatus.style.display = (cfg.gemini_live.api_key && cfg.gemini_live.api_key.length > 0) ? "inline" : "none";
         }
         if (cfg.gemini_live.model) document.getElementById("gemini_model").value = cfg.gemini_live.model;
+        if (cfg.gemini_live.fallback_model && document.getElementById("gemini_fallback_model")) {
+            document.getElementById("gemini_fallback_model").value = cfg.gemini_live.fallback_model;
+        }
         if (cfg.gemini_live.custom_vocabulary) {
             document.getElementById("gemini_custom_vocab").value = cfg.gemini_live.custom_vocabulary.join(", ");
         }
@@ -2986,6 +2998,8 @@ document.getElementById("btn-save-audio").addEventListener("click", async () => 
         general: {
             preferred_gpu: document.getElementById("preferred_gpu_select") ? document.getElementById("preferred_gpu_select").value : "auto",
             engine: selectedEngine,
+            fallback_engine: document.getElementById("fallback_engine_select") ? document.getElementById("fallback_engine_select").value : "vosk",
+            enable_auto_fallback: document.getElementById("enable_auto_fallback") ? document.getElementById("enable_auto_fallback").checked : true,
             language: document.getElementById("language_select").value,
             auto_capitalization: document.getElementById("auto_capitalization").checked,
             auto_punctuation: document.getElementById("auto_punctuation").checked,
@@ -3001,6 +3015,7 @@ document.getElementById("btn-save-audio").addEventListener("click", async () => 
                 const parsed = parseInt(opt.dataset.deviceIndex, 10);
                 return isNaN(parsed) ? null : parsed;
             })(),
+            device_settle_seconds: document.getElementById("device_settle_seconds") ? parseFloat(document.getElementById("device_settle_seconds").value) : 4.0,
             noise_gate_db: parseFloat(document.getElementById("noise_gate_slider").value),
             vad_threshold: parseFloat(document.getElementById("vad_slider").value),
             sentence_break_ms: parseInt(document.getElementById("sentence_break_slider").value, 10),
@@ -3033,6 +3048,7 @@ document.getElementById("btn-save-audio").addEventListener("click", async () => 
                 return val;
             })(),
             model: document.getElementById("gemini_model").value,
+            fallback_model: (document.getElementById("gemini_fallback_model") ? document.getElementById("gemini_fallback_model").value : "") || "gemini-3.5-transcribe-live",
             mode: document.getElementById("gemini_mode") ? document.getElementById("gemini_mode").value : (document.getElementById("gemini_smart_transcription")?.checked ? "SMART" : "VERBATIM"),
             custom_vocabulary: document.getElementById("gemini_custom_vocab").value.split(",").map(s => s.trim()).filter(Boolean),
             language_codes: document.getElementById("gemini_languages") ? document.getElementById("gemini_languages").value.split(",").map(s => s.trim()).filter(Boolean) : [],
@@ -3951,6 +3967,22 @@ function connectControlWs() {
                     showToast(`⚠️ Audio interface '${msg.device}' disconnected. Auto-watchdog recovering...`, "warning", 4000);
                 } else if (msg.status === "recovered") {
                     showToast(`✅ Audio interface '${msg.device}' restored!`, "success", 4000);
+                }
+            } else if (msg.type === "emergency_fallback_activated") {
+                showToast(`⚠️ Primary engine (${msg.primary_engine}) offline: Emergency fallback active (${msg.fallback_engine || 'Vosk'})`, "warning", 6000);
+                const badge = document.getElementById("status-badge");
+                if (badge) {
+                    badge.textContent = `Backup (${msg.fallback_engine || 'Vosk'})`;
+                    badge.style.background = "rgba(245, 158, 11, 0.2)";
+                    badge.style.color = "#FCD34D";
+                }
+            } else if (msg.type === "emergency_fallback_restored") {
+                showToast(`✅ Primary engine connection restored! Reconnected to ${msg.primary_name || msg.primary_engine}.`, "success", 5000);
+                const badge = document.getElementById("status-badge");
+                if (badge) {
+                    badge.textContent = "Live Captions Active";
+                    badge.style.background = "rgba(16, 185, 129, 0.2)";
+                    badge.style.color = "#34D399";
                 }
             }
         } catch (e) {}
@@ -5074,6 +5106,173 @@ function initSecretClearHandlers() {
     }
 }
 
+// Dynamic Gemini Model Scanner & Sunsetting Awareness
+let latestGeminiModelData = null;
+
+async function fetchGeminiModels(forceScan = false) {
+    const spinner = document.getElementById("gemini-scan-spinner");
+    const scanBtn = document.getElementById("btn-scan-gemini-models");
+    if (forceScan && spinner) spinner.textContent = "⏳";
+    if (forceScan && scanBtn) scanBtn.disabled = true;
+
+    try {
+        const endpoint = forceScan ? "/api/gemini/scan" : "/api/gemini/models";
+        const keyInput = document.getElementById("gemini_api_key");
+        const customKey = keyInput ? keyInput.value.trim() : "";
+        const body = (forceScan && customKey && customKey !== "•••") ? JSON.stringify({ api_key: customKey }) : undefined;
+
+        const res = await fetch(endpoint, {
+            method: forceScan ? "POST" : "GET",
+            headers: forceScan ? { "Content-Type": "application/json" } : {},
+            body: body
+        });
+        if (!res.ok) return;
+
+        const data = await res.json();
+        latestGeminiModelData = data;
+
+        const modelSelect = document.getElementById("gemini_model");
+        const fallbackSelect = document.getElementById("gemini_fallback_model");
+        const currentSelected = (modelSelect ? modelSelect.value : "") || (currentConfig?.gemini_live?.model) || "gemini-3.5-transcribe-live";
+
+        if (modelSelect) {
+            modelSelect.innerHTML = "";
+
+            // 1. Transcribe models group
+            const grpTranscribe = document.createElement("optgroup");
+            grpTranscribe.label = "🎙️ Real-Time Transcription Models (Live WebSockets)";
+            (data.transcribe_models || []).forEach(m => {
+                const opt = document.createElement("option");
+                opt.value = m.id;
+                let label = m.name || m.id;
+                if (m.is_deprecated) label += " (⚠️ Deprecated)";
+                opt.textContent = label;
+                grpTranscribe.appendChild(opt);
+            });
+            modelSelect.appendChild(grpTranscribe);
+
+            // 2. Translate models group
+            const grpTranslate = document.createElement("optgroup");
+            grpTranslate.label = "🌐 Real-Time Translation Models";
+            (data.translate_models || []).forEach(m => {
+                const opt = document.createElement("option");
+                opt.value = m.id;
+                let label = m.name || m.id;
+                if (m.is_deprecated) label += " (⚠️ Deprecated)";
+                opt.textContent = label;
+                grpTranslate.appendChild(opt);
+            });
+            modelSelect.appendChild(grpTranslate);
+
+            // 3. General generation models group
+            const grpGen = document.createElement("optgroup");
+            grpGen.label = "✨ General Generation Models (Legacy/Hybrid)";
+            (data.general_models || []).forEach(m => {
+                const opt = document.createElement("option");
+                opt.value = m.id;
+                let label = m.name || m.id;
+                if (m.is_deprecated) label += " (⚠️ Deprecated)";
+                opt.textContent = label;
+                grpGen.appendChild(opt);
+            });
+            modelSelect.appendChild(grpGen);
+
+            // Restore selection or default
+            modelSelect.value = currentSelected;
+            if (!modelSelect.value && modelSelect.options.length > 0) {
+                modelSelect.selectedIndex = 0;
+            }
+        }
+
+        // Also populate fallback dropdown
+        if (fallbackSelect) {
+            const currentFb = fallbackSelect.value || currentConfig?.gemini_live?.fallback_model || "gemini-3.5-transcribe-live";
+            fallbackSelect.innerHTML = "";
+            (data.transcribe_models || []).concat(data.translate_models || []).forEach(m => {
+                if (!m.is_deprecated) {
+                    const opt = document.createElement("option");
+                    opt.value = m.id;
+                    opt.textContent = `${m.id} (${m.name || m.id})`;
+                    fallbackSelect.appendChild(opt);
+                }
+            });
+            fallbackSelect.value = currentFb;
+        }
+
+        updateGeminiDeprecationStatus(modelSelect ? modelSelect.value : currentSelected);
+
+        if (forceScan) {
+            const countTrans = (data.transcribe_models || []).length;
+            const countTranslat = (data.translate_models || []).length;
+            showToast(`✅ Scanned Google AI Studio: ${countTrans} transcribe & ${countTranslat} translation models ready!`, "success", 5000);
+        }
+    } catch (e) {
+        console.warn("Failed to load Gemini models: ", e);
+        if (forceScan) showToast(`Scan error: ${e.message}`, "error");
+    } finally {
+        if (spinner) spinner.textContent = "🔍";
+        if (scanBtn) scanBtn.disabled = false;
+    }
+}
+
+function updateGeminiDeprecationStatus(selectedModelId) {
+    if (!latestGeminiModelData) return;
+    const banner = document.getElementById("gemini_model_deprecation_banner");
+    const msgEl = document.getElementById("gemini_deprecation_message");
+    const btnUpgrade = document.getElementById("btn-upgrade-gemini-model");
+    const badge = document.getElementById("gemini_model_badge");
+
+    const cleanId = (selectedModelId || "").replace("models/", "").trim();
+    const depInfo = latestGeminiModelData.deprecations ? latestGeminiModelData.deprecations[cleanId] : null;
+
+    if (depInfo) {
+        if (banner) banner.style.display = "block";
+        if (msgEl) msgEl.textContent = `Model '${cleanId}' is ${depInfo.status} (Shutdown: ${depInfo.shutdown_date}). ${depInfo.notice}`;
+        if (btnUpgrade) {
+            btnUpgrade.textContent = `🚀 Upgrade to ${depInfo.recommended_replacement}`;
+            btnUpgrade.onclick = () => {
+                const modelSel = document.getElementById("gemini_model");
+                if (modelSel) {
+                    modelSel.value = depInfo.recommended_replacement;
+                    updateGeminiDeprecationStatus(modelSel.value);
+                    showToast(`Updated model selection to ${depInfo.recommended_replacement}. Click 'Save Settings' to apply.`, "info", 5000);
+                }
+            };
+        }
+        if (badge) {
+            badge.style.display = "inline-block";
+            badge.textContent = "⚠️ Deprecated";
+            badge.style.background = "rgba(239, 68, 68, 0.2)";
+            badge.style.color = "#FCA5A5";
+        }
+    } else {
+        if (banner) banner.style.display = "none";
+        if (badge) {
+            badge.style.display = "inline-block";
+            badge.textContent = "✓ Active";
+            badge.style.background = "rgba(34, 197, 94, 0.15)";
+            badge.style.color = "#4ADE80";
+        }
+    }
+}
+
+function initGeminiModelScanner() {
+    const btnScan = document.getElementById("btn-scan-gemini-models");
+    if (btnScan) {
+        btnScan.addEventListener("click", () => fetchGeminiModels(true));
+    }
+
+    const modelSelect = document.getElementById("gemini_model");
+    if (modelSelect) {
+        modelSelect.addEventListener("change", (e) => {
+            updateGeminiDeprecationStatus(e.target.value);
+        });
+    }
+
+    // Initial silent load of models catalog
+    fetchGeminiModels(false);
+}
+
 function initChurchNameHandlers() {
     const btnSaveChurch = document.getElementById("btn-save-church-name");
     const churchInput = document.getElementById("church_name");
@@ -5301,6 +5500,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
 
     await checkCaddyStatus();
+    initGeminiModelScanner();
 
     // Periodic status poll (every 4s)
     setInterval(refreshEngineStatus, 4000);

@@ -19,6 +19,8 @@ logger = logging.getLogger("obs_captioner.config")
 @dataclass
 class GeneralConfig:
     engine: str = "vosk"  # "vosk", "moonshine", "google_web", "gemini_live", "google_stt", "local_whisper"
+    fallback_engine: str = "vosk"  # "vosk", "moonshine", "sherpa", "local_whisper", "parakeet", "sensevoice", "none"
+    enable_auto_fallback: bool = True  # Automatically switch to fallback engine if cloud engine fails
     language: str = "en-US"
     log_level: str = "INFO"
     auto_capitalization: bool = True
@@ -46,6 +48,7 @@ class AudioConfig:
     enable_agc: bool = True  # Broadcast Speech AGC: normalizes soft prayers & loud shouting into speech recognition window
     agc_target_db: float = -18.0  # Target RMS speech level in dBFS (-24 to -14 optimal for STT)
     agc_max_gain_db: float = 18.0  # Max gain boost in dB for quiet speech/whispers
+    device_settle_seconds: float = 4.0  # Max seconds to wait/poll on startup for external audio devices to enumerate
 
 
 @dataclass
@@ -62,6 +65,7 @@ class GoogleSTTConfig:
 class GeminiLiveConfig:
     api_key: str = ""
     model: str = "gemini-3.5-transcribe-live"
+    fallback_model: str = "gemini-3.5-transcribe-live"
     mode: str = "SMART"  # "SMART" (disfluency removal, formatting, grammar) or "VERBATIM"
     custom_vocabulary: List[str] = field(default_factory=lambda: ["OBS Studio", "Twitch", "Discord", "YouTube", "Jesus Christ"])
     language_codes: List[str] = field(default_factory=list)  # [] for auto-detect, or e.g. ["en-US"]

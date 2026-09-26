@@ -5,6 +5,7 @@ import logging
 import math
 import queue
 import threading
+import time
 from typing import AsyncGenerator, Callable, Dict, List, Optional, Tuple
 
 try:
@@ -61,27 +62,61 @@ def list_audio_devices() -> List[Dict]:
     return devices
 
 
-def find_audio_device(config: AudioConfig) -> Tuple[Optional[int], Optional[Dict]]:
-    """Resolve the appropriate input device based on index or name filter."""
-    devices = list_audio_devices()
+def find_audio_device(config: AudioConfig, wait_settle: bool = True) -> Tuple[Optional[int], Optional[Dict]]:
+    """Resolve the appropriate input device based on index or name filter.
+
+    Includes a boot settle delay for USB audio interfaces (Focusrite, Behringer, etc.)
+    that may take a few seconds to enumerate on system startup.
+    """
+    settle_sec = getattr(config, "device_settle_seconds", 4.0) or 0.0
+    is_specific = (config.device_index is not None) or (
+        bool(config.device_name_filter) and config.device_name_filter.strip().lower() != "default"
+    )
+
+    start_time = time.monotonic()
+    attempts = 0
+    devices: List[Dict] = []
+
+    while True:
+        attempts += 1
+        devices = list_audio_devices()
+        if devices:
+            # 1. Match by explicit index
+            if config.device_index is not None:
+                for d in devices:
+                    if d["index"] == config.device_index:
+                        if attempts > 1:
+                            logger.info(
+                                f"✅ Audio device index {config.device_index} ready after {time.monotonic() - start_time:.1f}s settle delay."
+                            )
+                        return d["index"], d
+
+            # 2. Match by name filter
+            query = (config.device_name_filter or "").strip().lower()
+            if query and query != "default":
+                matches = [d for d in devices if query in d["name"].lower()]
+                if matches:
+                    wasapi_matches = [d for d in matches if "wasapi" in d["hostapi"].lower()]
+                    selected = wasapi_matches[0] if wasapi_matches else matches[0]
+                    if attempts > 1:
+                        logger.info(
+                            f"✅ Audio device '{selected['name']}' ready after {time.monotonic() - start_time:.1f}s settle delay."
+                        )
+                    return selected["index"], selected
+
+        elapsed = time.monotonic() - start_time
+        if not wait_settle or not is_specific or elapsed >= settle_sec:
+            break
+        time.sleep(0.4)
+
     if not devices:
         return None, None
 
-    # 1. Match by explicit index
-    if config.device_index is not None:
-        for d in devices:
-            if d["index"] == config.device_index:
-                return d["index"], d
-        logger.warning(f"Device index {config.device_index} not found. Falling back to search.")
-
-    # 2. Match by name filter
-    query = (config.device_name_filter or "").strip().lower()
-    if query and query != "default":
-        matches = [d for d in devices if query in d["name"].lower()]
-        if matches:
-            wasapi_matches = [d for d in matches if "wasapi" in d["hostapi"].lower()]
-            selected = wasapi_matches[0] if wasapi_matches else matches[0]
-            return selected["index"], selected
+    if is_specific and settle_sec > 0:
+        logger.warning(
+            f"Configured audio device (filter='{config.device_name_filter}', index={config.device_index}) "
+            f"not found after {settle_sec:.1f}s boot settle window. Falling back to system default input."
+        )
 
     # 3. Default input device
     try:
