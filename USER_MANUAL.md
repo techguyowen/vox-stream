@@ -28,16 +28,24 @@ Welcome to the **VoxStream Live Captioner & Broadcast Suite** user manual. This 
 Get live captions running on your stream and stage in 3 simple steps:
 
 ### Step 1: Launch VoxStream
-* **macOS / Linux**: Open Terminal in the project directory and run:
-  ```bash
-  ./run_captioner.sh
-  ```
-* **Windows**: Double-click:
-  ```cmd
-  run_captioner.bat
-  ```
-> [!NOTE]
-> Leave the terminal or command window open in the background while broadcasting. It runs the local server and AI models.
+
+Choose your preferred way to launch:
+
+* **Desktop Control Center & Launcher (Recommended)**:
+  * **Windows**: Double-click [**`run_launcher.bat`**](file:///Users/techguyowen/Documents/antigravity/delightful-bohr/run_launcher.bat) or [**`VoxStream.vbs`**](file:///Users/techguyowen/Documents/antigravity/delightful-bohr/VoxStream.vbs) (silent mode, zero black console window!).
+  * **macOS / Linux**: Run [`./run_launcher.sh`](file:///Users/techguyowen/Documents/antigravity/delightful-bohr/run_launcher.sh).
+  * *Features*: Real-time audio VU meter, active engine & fallback status, Start/Stop/Pause/Restart buttons, 1-click web launchers, and live activity logs.
+
+* **Pin to Windows Taskbar & Desktop Shortcut**:
+  * Double-click [**`create_desktop_shortcut.bat`**](file:///Users/techguyowen/Documents/antigravity/delightful-bohr/create_desktop_shortcut.bat) (or click **📌 Add to Desktop & Taskbar** inside the launcher).
+  * Open the Windows Start Menu, search for **VoxStream**, right-click the icon and choose **"Pin to taskbar"**!
+
+* **Compile Standalone Windows `.exe`**:
+  * Double-click [**`build_launcher_windows.bat`**](file:///Users/techguyowen/Documents/antigravity/delightful-bohr/build_launcher_windows.bat) to build a standalone single-file `VoxStream.exe` that can be pinned directly to the taskbar.
+
+* **Classic Console Mode**:
+  * **Windows**: Double-click `run_captioner.bat`.
+  * **macOS / Linux**: Run `./run_captioner.sh`.
 
 ### Step 2: Open the Control Dashboard
 Open your web browser (Chrome, Edge, Safari, or Firefox) and navigate to:

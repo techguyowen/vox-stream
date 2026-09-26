@@ -239,8 +239,12 @@ cd vox-stream
    cd vox-stream
    ```
 2. Double-click **`setup_windows.bat`**  
-   *Installs Python 3.11 (if missing), Git (if missing), Visual C++ Redistributable, creates `.venv`, installs speech models & GPU acceleration, enables mic permissions, and creates a desktop shortcut!*
-3. Double-click the newly created **`VoxStream Live Captioner`** shortcut on your Desktop (or `run_captioner.bat`) to launch!
+   *Installs Python 3.11 (if missing), Git (if missing), Visual C++ Redistributable, creates `.venv`, installs speech models & GPU acceleration, enables mic permissions, and creates Desktop and Start Menu shortcuts!*
+3. Launch VoxStream:
+   * **Desktop App & Control Center**: Double-click **`run_launcher.bat`** or **`VoxStream.vbs`** (silent launch without command prompt window).
+   * **Pin to Taskbar**: Press the Windows Start key, search for **VoxStream**, right-click the icon and choose **"Pin to taskbar"**!
+   * **Compile Standalone `.exe`**: Run **`build_launcher_windows.bat`** to compile a native **`VoxStream.exe`**.
+   * **Classic Console Mode**: Run **`run_captioner.bat`**.
 
 ---
 

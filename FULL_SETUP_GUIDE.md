@@ -36,12 +36,17 @@ Welcome! This suite offers **two different ways** to run live captions in OBS St
 * **On Windows**: Double-click **`setup_windows.bat`** (automatically installs Python 3.11 if needed and installs all AI dependencies).
 
 ### 2. Launching the App
-* **On macOS / Linux**:
-  ```bash
-  ./run_captioner.sh
-  ```
-* **On Windows**: Double-click **`run_captioner.bat`**. 
-*(Leave this running in the background while broadcasting!)*
+* **Desktop App & Control Center (Recommended)**:
+  * **Windows**: Double-click **`run_launcher.bat`** or **`VoxStream.vbs`** (silent launch without command prompt).
+  * **macOS / Linux**: Run `./run_launcher.sh`.
+* **Pin to Windows Taskbar**:
+  * Double-click **`create_desktop_shortcut.bat`**.
+  * Open Windows Start Menu -> search **VoxStream** -> right-click -> **"Pin to taskbar"**.
+* **Compile Standalone Windows `.exe`**:
+  * Double-click **`build_launcher_windows.bat`** to build `VoxStream.exe`.
+* **Classic Console Mode**:
+  * **Windows**: Double-click `run_captioner.bat`.
+  * **macOS / Linux**: Run `./run_captioner.sh`.
 
 ### 3. Setting Up OBS Studio
 **A. Add the Control Panel Dock:**
