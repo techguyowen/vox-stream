@@ -370,10 +370,11 @@ class WebOverlayServer:
         # Caddy reverse proxy detection
         from ..caddy_manager import is_caddy_running
         caddy_cfg = getattr(self.config, "caddy", None)
+        caddy_enabled = getattr(caddy_cfg, "enabled", False) if caddy_cfg else False
         port_http = getattr(caddy_cfg, "port_http", 80) if caddy_cfg else 80
         port_https = getattr(caddy_cfg, "port_https", 443) if caddy_cfg else 443
         caddy_ssl = getattr(caddy_cfg, "ssl", True) if caddy_cfg else True
-        caddy_active = is_caddy_running(port_http, port_https)
+        caddy_active = is_caddy_running(port_http, port_https) if caddy_enabled else False
 
         if caddy_active:
             p_http_str = "" if port_http == 80 else f":{port_http}"

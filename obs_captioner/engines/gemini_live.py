@@ -559,6 +559,7 @@ class GeminiLiveEngine(BaseSTTEngine):
         sample_rate = self.config.audio.sample_rate or 16000
         enable_hybrid_vad = getattr(self.config.gemini_live, "enable_hybrid_vad", True)
         pause_threshold = (getattr(self.config.audio, "sentence_break_ms", 600) or 600) / 1000.0
+        max_sentence_duration = float(getattr(self.config.audio, "max_sentence_duration_seconds", 7.0) or 7.0)
         reconnect_delay = STREAM_RECONNECT_INITIAL_DELAY
 
         def _next_backoff() -> float:
@@ -627,6 +628,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                         # 2. Worker: stream audio chunks & signal Hybrid VAD end-of-speech
                         async def send_audio():
                             speech_active = False
+                            speech_start_time = 0.0
                             last_speech_time = 0.0
 
                             async for chunk in audio_stream:
@@ -650,6 +652,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                                 if suppress_music and strict_music and is_music_active:
                                     if speech_active:
                                         speech_active = False
+                                        speech_start_time = 0.0
                                         try:
                                             await ws.send_str(json.dumps({"realtimeInput": {"audioStreamEnd": True}}))
                                         except Exception:
@@ -668,16 +671,30 @@ class GeminiLiveEngine(BaseSTTEngine):
                                 }
                                 await ws.send_str(json.dumps(audio_payload))
 
-                                # Hybrid VAD detection
+                                # Hybrid VAD detection & continuous speech segmentation
                                 if enable_hybrid_vad:
                                     now = time.time()
                                     is_voice = self.vad.is_speech(pcm_chunk)
                                     if is_voice:
-                                        speech_active = True
+                                        if not speech_active:
+                                            speech_active = True
+                                            speech_start_time = now
                                         last_speech_time = now
+
+                                        # Enforce max sentence duration to prevent endless run-on captions during continuous speech
+                                        if max_sentence_duration > 0 and (now - speech_start_time) >= max_sentence_duration:
+                                            speech_active = False
+                                            speech_start_time = now
+                                            end_signal = {
+                                                "realtimeInput": {
+                                                    "audioStreamEnd": True
+                                                }
+                                            }
+                                            await ws.send_str(json.dumps(end_signal))
                                     elif speech_active:
                                         if now - last_speech_time >= pause_threshold:
                                             speech_active = False
+                                            speech_start_time = 0.0
                                             # Send audioStreamEnd to trigger zero-latency turn finalization
                                             end_signal = {
                                                 "realtimeInput": {

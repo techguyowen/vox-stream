@@ -16,13 +16,15 @@ import logging
 import os
 import subprocess
 import sys
-from typing import Any, Dict, Optional, Tuple
+import time
+from typing import Any, Dict, Optional, Tuple, List
 
 logger = logging.getLogger("obs_captioner.hardware")
 
-# Cached GPU detection results
+# Cached GPU detection and RAM measurement results
 _CACHED_AVAILABLE_GPUS: Optional[List[Dict[str, Any]]] = None
 _CACHED_GPU_INFO: Optional[Dict[str, Any]] = None
+_CACHED_RAM_USAGE: Tuple[float, float] = (0.0, 0.0)
 
 
 def _parse_vram_bytes(raw_val: Any) -> int:
@@ -325,14 +327,24 @@ def get_gpu_info(preferred_gpu: Optional[str] = "auto", force_refresh: bool = Fa
     return res
 
 
-def get_ram_usage_mb() -> float:
+def get_ram_usage_mb(force_refresh: bool = False, cache_ttl: float = 2.0) -> float:
     """Return current process physical RAM footprint (Working Set / RSS) in megabytes."""
+    global _CACHED_RAM_USAGE
+    now = time.monotonic()
+    if not force_refresh and (now - _CACHED_RAM_USAGE[0]) < cache_ttl and _CACHED_RAM_USAGE[1] > 0.0:
+        return _CACHED_RAM_USAGE[1]
+
+    def _rec(v: float) -> float:
+        global _CACHED_RAM_USAGE
+        _CACHED_RAM_USAGE = (time.monotonic(), v)
+        return v
+
     # 0. Fast psutil check if available (cross-platform, sub-millisecond)
     try:
         import psutil
         rss = psutil.Process().memory_info().rss
         if rss and rss > 0:
-            return round(rss / (1024.0 * 1024.0), 1)
+            return _rec(round(rss / (1024.0 * 1024.0), 1))
     except Exception:
         pass
 
@@ -372,7 +384,7 @@ def get_ram_usage_mb() -> float:
                 if get_mem_info(handle, ctypes.byref(counters), counters.cb):
                     val = round(counters.WorkingSetSize / (1024.0 * 1024.0), 1)
                     if val > 0:
-                        return val
+                        return _rec(val)
         except Exception as e:
             logger.debug(f"Windows ctypes memory query error: {e}")
 
@@ -394,7 +406,7 @@ def get_ram_usage_mb() -> float:
                         mem_str = mem_str[:-1]
                     val = round(float(mem_str) / 1024.0, 1)
                     if val > 0:
-                        return val
+                        return _rec(val)
         except Exception:
             pass
     elif sys.platform == "darwin":
@@ -419,13 +431,13 @@ def get_ram_usage_mb() -> float:
             info = mach_task_basic_info()
             count = ctypes.c_uint32(ctypes.sizeof(info) // 4)
             if task_info(mach_task_self(), 20, ctypes.byref(info), ctypes.byref(count)) == 0:
-                return round(info.resident_size / (1024.0 * 1024.0), 1)
+                return _rec(round(info.resident_size / (1024.0 * 1024.0), 1))
         except Exception:
             pass
         try:
             import os, subprocess
             out = subprocess.check_output(["ps", "-o", "rss=", "-p", str(os.getpid())], timeout=0.5)
-            return round(float(out.strip()) / 1024.0, 1)
+            return _rec(round(float(out.strip()) / 1024.0, 1))
         except Exception:
             pass
     elif sys.platform.startswith("linux"):
@@ -435,14 +447,14 @@ def get_ram_usage_mb() -> float:
                 for line in f:
                     if line.startswith("VmRSS:"):
                         parts = line.split()
-                        return round(float(parts[1]) / 1024.0, 1)
+                        return _rec(round(float(parts[1]) / 1024.0, 1))
         except Exception:
             pass
         try:
             import os
             with open("/proc/self/statm", "r", encoding="utf-8") as f:
                 pages = int(f.read().split()[1])
-                return round((pages * os.sysconf("SC_PAGE_SIZE")) / (1024.0 * 1024.0), 1)
+                return _rec(round((pages * os.sysconf("SC_PAGE_SIZE")) / (1024.0 * 1024.0), 1))
         except Exception:
             pass
 
@@ -451,10 +463,10 @@ def get_ram_usage_mb() -> float:
         import resource
         raw = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         scale = (1024.0 * 1024.0) if sys.platform == "darwin" else 1024.0
-        return round(raw / scale, 1)
+        return _rec(round(raw / scale, 1))
     except Exception:
         pass
-    return 0.0
+    return _rec(0.0)
 
 
 def release_stt_memory(old_engine=None, log_details: bool = True) -> float:
@@ -462,7 +474,7 @@ def release_stt_memory(old_engine=None, log_details: bool = True) -> float:
 
     Returns the number of MB freed.
     """
-    initial_ram = get_ram_usage_mb()
+    initial_ram = get_ram_usage_mb(force_refresh=True)
 
     # 1. Release references on the old engine if provided
     if old_engine is not None:
@@ -544,7 +556,7 @@ def release_stt_memory(old_engine=None, log_details: bool = True) -> float:
         except Exception:
             pass
 
-    final_ram = get_ram_usage_mb()
+    final_ram = get_ram_usage_mb(force_refresh=True)
     freed = max(0.0, round(initial_ram - final_ram, 1))
     if log_details:
         logger.info(f"🧹 [RAM PURGE] STT memory reclaimed: {initial_ram}MB -> {final_ram}MB ({freed}MB returned to OS).")

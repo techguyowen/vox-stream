@@ -174,6 +174,7 @@ async def main_async(args):
         from .hardware import get_ram_usage_mb, get_gpu_info
         sink_obj = sink if 'sink' in locals() else None
         hist_obj = history if 'history' in locals() else None
+        gpu_data = get_gpu_info(getattr(config.general, "preferred_gpu", "auto"))
         return {
             "is_running": not is_paused,
             "obs_connected": obs_client.is_connected if obs_client else False,
@@ -194,8 +195,8 @@ async def main_async(args):
             "last_caption_time": getattr(sink_obj, "_last_caption_time", 0.0) if sink_obj else 0.0,
             "total_captions": len(hist_obj.entries) if hist_obj else 0,
             "ram_usage_mb": get_ram_usage_mb(),
-            "gpu": get_gpu_info(getattr(config.general, "preferred_gpu", "auto")),
-            "gpu_info": get_gpu_info(getattr(config.general, "preferred_gpu", "auto")),
+            "gpu": gpu_data,
+            "gpu_info": gpu_data,
             "preferred_gpu": getattr(config.general, "preferred_gpu", "auto"),
         }
 

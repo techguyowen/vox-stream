@@ -88,7 +88,13 @@ def get_caddy_root_ca_path() -> Optional[Path]:
     return None
 
 
-def is_port_open(port: int, host: str = "127.0.0.1", timeout: float = 0.4) -> bool:
+import time
+
+# Cache for is_caddy_running to prevent event loop blocking during rapid status polls
+_CACHED_CADDY_STATE: Tuple[float, int, int, bool] = (0.0, 0, 0, False)
+
+
+def is_port_open(port: int, host: str = "127.0.0.1", timeout: float = 0.15) -> bool:
     """Test if a TCP port is currently open and listening."""
     try:
         with socket.create_connection((host, port), timeout=timeout):
@@ -97,9 +103,17 @@ def is_port_open(port: int, host: str = "127.0.0.1", timeout: float = 0.4) -> bo
         return False
 
 
-def is_caddy_running(port_http: int = 80, port_https: int = 443) -> bool:
-    """Check if Caddy reverse proxy is actively listening."""
-    return is_port_open(port_http) or is_port_open(port_https)
+def is_caddy_running(port_http: int = 80, port_https: int = 443, cache_ttl: float = 5.0) -> bool:
+    """Check if Caddy reverse proxy is actively listening (cached with TTL to avoid blocking event loop)."""
+    global _CACHED_CADDY_STATE
+    now = time.monotonic()
+    last_time, last_p_http, last_p_https, last_state = _CACHED_CADDY_STATE
+    if last_p_http == port_http and last_p_https == port_https and (now - last_time) < cache_ttl:
+        return last_state
+
+    active = is_port_open(port_http, timeout=0.15) or is_port_open(port_https, timeout=0.15)
+    _CACHED_CADDY_STATE = (now, port_http, port_https, active)
+    return active
 
 
 def download_caddy() -> Tuple[bool, str]:
