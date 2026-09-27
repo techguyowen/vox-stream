@@ -154,6 +154,22 @@ async def main_async(args):
     engine_switch_error = None
     fallback_active = False
 
+    def wire_engine_callbacks(eng):
+        if eng and hasattr(eng, "on_ping"):
+            def _on_gemini_ping(ping_ms: float):
+                if web_server:
+                    try:
+                        asyncio.run_coroutine_threadsafe(
+                            web_server.broadcast_control({
+                                "type": "gemini_ping",
+                                "ping_ms": ping_ms,
+                            }),
+                            loop,
+                        )
+                    except Exception:
+                        pass
+            eng.on_ping = _on_gemini_ping
+
     def get_app_status():
         from .hardware import get_ram_usage_mb, get_gpu_info
         sink_obj = sink if 'sink' in locals() else None
@@ -164,6 +180,7 @@ async def main_async(args):
             "audio_level_db": audio_capture.current_rms_db if audio_capture else -100.0,
             "engine": config.general.engine,
             "engine_name": engine.name if engine else config.general.engine,
+            "gemini_ping_ms": getattr(engine, "current_ping_ms", None) if engine else None,
             "model_detail": get_model_detail(config),
             "fallback_active": fallback_active,
             "fallback_engine": getattr(config.general, "fallback_engine", "vosk"),
@@ -227,6 +244,7 @@ async def main_async(args):
                 await broadcast_status(f"Initializing {target_name} (checking cache / downloading weights)...")
                 logger.info(f"Instantiating new STT engine for: {new_cfg.general.engine}...")
                 new_eng = create_engine(new_cfg)
+                wire_engine_callbacks(new_eng)
                 init_ok = await new_eng.initialize(status_callback=status_callback)
                 if init_ok:
                     engine = new_eng
@@ -524,6 +542,7 @@ async def main_async(args):
     # 6. Initialize STT Engine
     try:
         engine = create_engine(config)
+        wire_engine_callbacks(engine)
     except Exception as e:
         logger.error(f"Failed to create STT engine: {e}")
         return

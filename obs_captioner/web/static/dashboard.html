@@ -63,6 +63,13 @@
                     <span id="active-engine-status-tag" style="font-size: 10px; font-weight: 800; text-transform: uppercase; background: rgba(16, 185, 129, 0.2); color: #34D399; padding: 2px 6px; border-radius: 4px; letter-spacing: 0.05em;">LISTENING</span>
                 </div>
 
+                <!-- Gemini Live API Ping Badge -->
+                <div class="gemini-ping-pill" id="gemini-ping-pill" title="Network round-trip latency to Google Gemini API servers" style="display: none; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 10px; font-size: 12px; align-items: center; gap: 6px; font-weight: 600; color: var(--text-main); white-space: nowrap;">
+                    <span id="gemini-ping-dot" style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #10B981;"></span>
+                    <span style="color: var(--text-muted); font-size: 11px;">Gemini Ping:</span>
+                    <span id="gemini-ping-text" style="color: #34D399; font-family: monospace; font-weight: 700;">-- ms</span>
+                </div>
+
                 <!-- Live Speaking Pace (WPM) Badge -->
                 <div class="wpm-pill" id="live-wpm-pill" title="Current Speaking Pace (Words Per Minute)" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 6px; padding: 5px 10px; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--text-main); white-space: nowrap;">
                     <span style="display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #94A3B8;" id="wpm-dot"></span>
@@ -463,6 +470,7 @@
                             <div style="display: flex; align-items: center; gap: 8px;">
                                 <span id="preview-model-dot" class="status-dot pulse-active"></span>
                                 <span id="preview-model-name" style="color: var(--text-main);">Model: Loading...</span>
+                                <span id="preview-gemini-ping" style="display: none; background: rgba(56, 189, 248, 0.12); color: #38BDF8; border: 1px solid rgba(56, 189, 248, 0.25); padding: 1px 7px; border-radius: 4px; font-size: 10.5px; font-family: monospace; font-weight: 600;" title="Live network ping to Google Gemini servers">📡 Ping: -- ms</span>
                             </div>
                             <div style="display: flex; align-items: center; gap: 8px;">
                                 <span id="preview-mic-indicator" style="color: #94A3B8; font-size: 11px;">🎙️ Mic: Idle</span>
@@ -1374,7 +1382,12 @@
 
                     <div id="gemini-live-fields" class="engine-fields">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
-                            <h3 style="margin: 0;">✨ Gemini 3.5 Transcribe Live Settings</h3>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <h3 style="margin: 0;">✨ Gemini 3.5 Transcribe Live Settings</h3>
+                                <span id="gemini-settings-ping-pill" style="display: none; font-size: 11px; padding: 3px 9px; border-radius: 12px; background: rgba(16, 185, 129, 0.15); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.3); font-family: monospace; font-weight: 600;" title="Active network round-trip ping to Google Gemini WebSockets">
+                                    📡 Ping: <strong id="gemini-settings-ping-val">-- ms</strong>
+                                </span>
+                            </div>
                             <button type="button" id="btn-scan-gemini-models" class="btn btn-secondary btn-sm" style="font-size: 11.5px; padding: 5px 11px; display: inline-flex; align-items: center; gap: 6px; background: rgba(99, 102, 241, 0.12); border-color: rgba(99, 102, 241, 0.35); color: #A5B4FC;" title="Query Google AI Studio for new models and check deprecations">
                                 <span id="gemini-scan-spinner">🔍</span>
                                 <span>Scan for New Gemini Models</span>

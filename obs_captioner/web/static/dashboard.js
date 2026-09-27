@@ -3582,6 +3582,73 @@ if (btnShutdownApp) {
     });
 }
 
+function updateGeminiPingUI(pingMs, isGeminiActive) {
+    const pill = document.getElementById("gemini-ping-pill");
+    const text = document.getElementById("gemini-ping-text");
+    const dot = document.getElementById("gemini-ping-dot");
+    const prevBadge = document.getElementById("preview-gemini-ping");
+    const settPill = document.getElementById("gemini-settings-ping-pill");
+    const settVal = document.getElementById("gemini-settings-ping-val");
+
+    if (!isGeminiActive || pingMs === null || pingMs === undefined || typeof pingMs !== "number" || !isRunning) {
+        if (pill) pill.style.display = "none";
+        if (prevBadge) prevBadge.style.display = "none";
+        if (settPill) settPill.style.display = "none";
+        return;
+    }
+
+    const ms = Math.round(pingMs);
+    let color = "#34D399";      // < 120ms (Optimal/Green)
+    let dotColor = "#10B981";
+    let bgBadge = "rgba(16, 185, 129, 0.15)";
+    let borderBadge = "rgba(16, 185, 129, 0.3)";
+    let statusDesc = "Optimal";
+
+    if (ms > 250) {
+        color = "#F87171";      // > 250ms (High latency/Red)
+        dotColor = "#EF4444";
+        bgBadge = "rgba(239, 68, 68, 0.15)";
+        borderBadge = "rgba(239, 68, 68, 0.35)";
+        statusDesc = "High Latency (May fall behind)";
+    } else if (ms > 120) {
+        color = "#FBBF24";      // 120-250ms (Moderate/Amber)
+        dotColor = "#F59E0B";
+        bgBadge = "rgba(245, 158, 11, 0.15)";
+        borderBadge = "rgba(245, 158, 11, 0.35)";
+        statusDesc = "Moderate";
+    }
+
+    if (pill) {
+        pill.style.display = "inline-flex";
+        pill.title = `Google Gemini Live API round-trip network ping: ${ms} ms (${statusDesc}). Normal is < 150 ms.`;
+    }
+    if (text) {
+        text.textContent = `${ms} ms`;
+        text.style.color = color;
+    }
+    if (dot) {
+        dot.style.background = dotColor;
+    }
+    if (prevBadge) {
+        prevBadge.style.display = "inline-block";
+        prevBadge.textContent = `📡 Ping: ${ms} ms`;
+        prevBadge.style.color = color;
+        prevBadge.style.background = bgBadge;
+        prevBadge.style.borderColor = borderBadge;
+        prevBadge.title = `Network round-trip latency to Gemini API: ${ms} ms (${statusDesc})`;
+    }
+    if (settPill) {
+        settPill.style.display = "inline-flex";
+        settPill.style.color = color;
+        settPill.style.background = bgBadge;
+        settPill.style.borderColor = borderBadge;
+        settPill.title = `Active network round-trip ping to Gemini API: ${ms} ms (${statusDesc})`;
+    }
+    if (settVal) {
+        settVal.textContent = `${ms} ms`;
+    }
+}
+
 async function refreshEngineStatus() {
     try {
         const res = await fetch("/api/status", { cache: "no-store" });
@@ -3694,7 +3761,14 @@ async function refreshEngineStatus() {
             }
             if (heroDesc) {
                 const deviceLabel = (data.gpu && data.gpu.has_gpu) ? `${data.gpu.name} (${data.gpu.backend})` : 'CPU';
-                heroDesc.textContent = `${currentModelDetail} • Device: ${deviceLabel} • Latency: Real-Time`;
+                const isGemini = data.engine === "gemini_live" ||
+                    (typeof data.engine_name === "string" && data.engine_name.toLowerCase().includes("gemini")) ||
+                    (typeof currentEngineName === "string" && currentEngineName.toLowerCase().includes("gemini"));
+                let latencyText = 'Real-Time';
+                if (isGemini && typeof data.gemini_ping_ms === 'number') {
+                    latencyText = `${Math.round(data.gemini_ping_ms)} ms (Cloud Ping)`;
+                }
+                heroDesc.textContent = `${currentModelDetail} • Device: ${deviceLabel} • Latency: ${latencyText}`;
             }
             if (heroInput) {
                 heroInput.textContent = data.audio_device || 'Default Mic';
@@ -3753,6 +3827,12 @@ async function refreshEngineStatus() {
             if (data.current_wpm !== undefined || data.session_wpm !== undefined) {
                 updateWpmUI(data);
             }
+
+            // Update Gemini Live API ping latency
+            const isGeminiEngine = data.engine === "gemini_live" ||
+                (typeof data.engine_name === "string" && data.engine_name.toLowerCase().includes("gemini")) ||
+                (typeof currentEngineName === "string" && currentEngineName.toLowerCase().includes("gemini"));
+            updateGeminiPingUI(data.gemini_ping_ms, isGeminiEngine);
         }
     } catch (e) {
         console.debug("Status poll error:", e);
@@ -3934,6 +4014,10 @@ function connectControlWs() {
                 if (heroRamText && msg.current_ram_mb !== undefined) {
                     heroRamText.textContent = `${msg.current_ram_mb} MB`;
                 }
+            } else if (msg.type === "gemini_ping") {
+                const isGeminiEngine = (typeof currentEngineName === "string" && currentEngineName.toLowerCase().includes("gemini")) ||
+                    (typeof currentModelDetail === "string" && currentModelDetail.toLowerCase().includes("gemini"));
+                updateGeminiPingUI(msg.ping_ms, isGeminiEngine);
             } else if (msg.type === "server_restarting") {
                 // Restart triggered elsewhere (another tab, API, Stream Deck)
                 beginRestartMonitor(msg.instance_id || currentInstanceId);

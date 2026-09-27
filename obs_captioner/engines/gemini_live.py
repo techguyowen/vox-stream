@@ -65,6 +65,9 @@ class GeminiLiveEngine(BaseSTTEngine):
         self.is_running = False
         self._active_ws: Optional[aiohttp.ClientWebSocketResponse] = None
         self._active_session: Optional[aiohttp.ClientSession] = None
+        self.current_ping_ms: Optional[float] = None
+        self.on_ping: Optional[Callable[[float], None]] = None
+        self._ping_task: Optional[asyncio.Task] = None
 
         # Client-side VAD for zero-latency Hybrid VAD turn finalization
         self.vad = VoiceActivityDetector(
@@ -75,6 +78,31 @@ class GeminiLiveEngine(BaseSTTEngine):
             suppress_music=getattr(config.audio, "suppress_music", True),
             suppress_music_strict=getattr(config.audio, "suppress_music_strict", False),
         )
+
+    async def measure_ping(self) -> Optional[float]:
+        """Probe network round-trip ping time to Google Gemini API servers.
+
+        Uses an HTTP HEAD request to generativelanguage.googleapis.com to gauge
+        network round-trip latency in milliseconds.
+        """
+        try:
+            t0 = time.perf_counter()
+            timeout = aiohttp.ClientTimeout(total=4.0, connect=3.0)
+            ssl_ctx = self._build_ssl_context()
+            async with aiohttp.ClientSession(timeout=timeout) as probe_session:
+                async with probe_session.head("https://generativelanguage.googleapis.com", ssl=ssl_ctx):
+                    pass
+            rtt_ms = round((time.perf_counter() - t0) * 1000.0, 1)
+            self.current_ping_ms = rtt_ms
+            if self.on_ping:
+                try:
+                    self.on_ping(rtt_ms)
+                except Exception:
+                    pass
+            return rtt_ms
+        except Exception as e:
+            logger.debug(f"Gemini API ping probe failed: {e}")
+            return None
 
     @staticmethod
     def _clean_vocab_term(term: str) -> str:
@@ -385,6 +413,7 @@ class GeminiLiveEngine(BaseSTTEngine):
         """Perform one handshake attempt. Returns 'ok', 'invalid_key', 'invalid_model', or raises transient errors."""
         timeout = aiohttp.ClientTimeout(total=INIT_TOTAL_TIMEOUT, connect=INIT_CONNECT_TIMEOUT)
         ssl_context = self._build_ssl_context()
+        t_start = time.perf_counter()
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.ws_connect(ws_url, ssl=ssl_context) as ws:
                 setup_payload = self.build_setup_payload()
@@ -395,7 +424,16 @@ class GeminiLiveEngine(BaseSTTEngine):
                     raw_data = msg.data if isinstance(msg.data, str) else msg.data.decode("utf-8")
                     res_json = json.loads(raw_data)
                     if "setupComplete" in res_json:
-                        logger.info(f"✅ Gemini 3.5 Transcribe Live verified successfully with model '{model}'.")
+                        self.current_ping_ms = round((time.perf_counter() - t_start) * 1000.0, 1)
+                        if self.on_ping:
+                            try:
+                                self.on_ping(self.current_ping_ms)
+                            except Exception:
+                                pass
+                        logger.info(
+                            f"✅ Gemini 3.5 Transcribe Live verified successfully with model '{model}' "
+                            f"(handshake: {self.current_ping_ms}ms)."
+                        )
                         return "ok"
                     raise aiohttp.ClientConnectionError(
                         f"Gemini handshake failed: unexpected response {raw_data[:200]}"
@@ -548,6 +586,7 @@ class GeminiLiveEngine(BaseSTTEngine):
 
                         # 1. Send official setup payload
                         setup_payload = self.build_setup_payload()
+                        setup_t0 = time.perf_counter()
                         await ws.send_str(json.dumps(setup_payload))
 
                         # Await setupComplete confirmation
@@ -557,7 +596,14 @@ class GeminiLiveEngine(BaseSTTEngine):
                             try:
                                 init_data = json.loads(raw)
                                 if "setupComplete" in init_data:
-                                    logger.info("Gemini 3.5 Transcribe Live session established and ready.")
+                                    handshake_ms = round((time.perf_counter() - setup_t0) * 1000.0, 1)
+                                    self.current_ping_ms = handshake_ms
+                                    if self.on_ping:
+                                        try:
+                                            self.on_ping(handshake_ms)
+                                        except Exception:
+                                            pass
+                                    logger.info(f"Gemini 3.5 Transcribe Live session established and ready ({handshake_ms}ms).")
                                     reconnect_delay = STREAM_RECONNECT_INITIAL_DELAY
                             except Exception:
                                 pass
@@ -681,13 +727,29 @@ class GeminiLiveEngine(BaseSTTEngine):
                                     logger.warning("Gemini Live WebSocket closed by remote server.")
                                     break
 
+                        # 4. Worker: periodic network latency probe
+                        async def ping_probe_loop():
+                            await asyncio.sleep(0.5)
+                            while self.is_running and not ws.closed:
+                                try:
+                                    await self.measure_ping()
+                                except Exception as pe:
+                                    logger.debug(f"Gemini Live ping probe error: {pe}")
+                                await asyncio.sleep(4.0)
+
                         send_task = asyncio.create_task(send_audio())
                         recv_task = asyncio.create_task(receive_transcripts())
+                        ping_task = asyncio.create_task(ping_probe_loop())
+                        self._ping_task = ping_task
 
                         done, pending = await asyncio.wait(
                             [send_task, recv_task],
                             return_when=asyncio.FIRST_COMPLETED,
                         )
+
+                        if not ping_task.done():
+                            ping_task.cancel()
+                        self._ping_task = None
 
                         if send_task in done:
                             # Audio capture stream completed
@@ -725,6 +787,10 @@ class GeminiLiveEngine(BaseSTTEngine):
     async def stop(self) -> None:
         """Stop Gemini Live streaming session cleanly."""
         self.is_running = False
+        if self._ping_task and not self._ping_task.done():
+            self._ping_task.cancel()
+        self._ping_task = None
+        self.current_ping_ms = None
         if self._active_ws and not self._active_ws.closed:
             try:
                 await self._active_ws.close()

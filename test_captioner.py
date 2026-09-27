@@ -4794,6 +4794,55 @@ class TestGeminiLiveResilientStartup(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(engine.config.gemini_live.model, "gemini-3.5-transcribe-live")
         self.assertTrue(any("invalid" in m.lower() or "falling back" in m.lower() for m in statuses))
 
+    async def test_measure_ping_success_and_callback(self):
+        from unittest.mock import AsyncMock, patch, MagicMock
+        import aiohttp
+        engine = self._make_engine()
+        ping_events = []
+        engine.on_ping = ping_events.append
+
+        mock_resp = AsyncMock()
+        mock_cm = AsyncMock()
+        mock_cm.__aenter__.return_value = mock_resp
+        mock_cm.__aexit__.return_value = None
+
+        mock_session = MagicMock()
+        mock_session.head.return_value = mock_cm
+        mock_session_cm = AsyncMock()
+        mock_session_cm.__aenter__.return_value = mock_session
+        mock_session_cm.__aexit__.return_value = None
+
+        with patch("aiohttp.ClientSession", return_value=mock_session_cm):
+            rtt = await engine.measure_ping()
+
+        self.assertIsNotNone(rtt)
+        self.assertIsInstance(rtt, float)
+        self.assertEqual(engine.current_ping_ms, rtt)
+        self.assertEqual(len(ping_events), 1)
+        self.assertEqual(ping_events[0], rtt)
+
+    async def test_measure_ping_failure_returns_none(self):
+        from unittest.mock import patch
+        engine = self._make_engine()
+        with patch("aiohttp.ClientSession", side_effect=Exception("Network probe timeout")):
+            rtt = await engine.measure_ping()
+        self.assertIsNone(rtt)
+
+    async def test_stop_clears_ping_and_cancels_task(self):
+        import asyncio
+        engine = self._make_engine()
+        engine.current_ping_ms = 42.5
+        task = asyncio.create_task(asyncio.sleep(10.0))
+        engine._ping_task = task
+        try:
+            await engine.stop()
+            await asyncio.sleep(0)
+            self.assertIsNone(engine.current_ping_ms)
+            self.assertTrue(task.cancelled() or task.done())
+        finally:
+            if not task.done():
+                task.cancel()
+
 
 class TestGeminiModelsAndSanitization(unittest.TestCase):
     def test_sanitize_api_key(self):
