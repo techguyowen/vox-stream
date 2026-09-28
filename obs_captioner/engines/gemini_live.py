@@ -671,7 +671,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                                 }
                                 await ws.send_str(json.dumps(audio_payload))
 
-                                # Hybrid VAD detection & continuous speech segmentation
+                                # Hybrid VAD detection & breath-boundary turn finalization
                                 if enable_hybrid_vad:
                                     now = time.time()
                                     is_voice = self.vad.is_speech(pcm_chunk)
@@ -680,22 +680,20 @@ class GeminiLiveEngine(BaseSTTEngine):
                                             speech_active = True
                                             speech_start_time = now
                                         last_speech_time = now
-
-                                        # Enforce max sentence duration to prevent endless run-on captions during continuous speech
-                                        if max_sentence_duration > 0 and (now - speech_start_time) >= max_sentence_duration:
-                                            speech_active = False
-                                            speech_start_time = now
-                                            end_signal = {
-                                                "realtimeInput": {
-                                                    "audioStreamEnd": True
-                                                }
-                                            }
-                                            await ws.send_str(json.dumps(end_signal))
                                     elif speech_active:
-                                        if now - last_speech_time >= pause_threshold:
+                                        silence_duration = now - last_speech_time
+                                        speech_duration = now - speech_start_time
+                                        # Never interrupt active vocalization with audioStreamEnd.
+                                        # Only finalize turns during actual non-voice pauses/breaths:
+                                        # - During prolonged speech (>= max_sentence_duration), a natural breath (>= 200ms of non-voice)
+                                        #   cleanly closes the turn at a clause boundary without clipping speech.
+                                        # - Otherwise, wait for the full conversational pause_threshold (default 600ms).
+                                        effective_pause = min(0.20, pause_threshold) if (max_sentence_duration > 0 and speech_duration >= max_sentence_duration) else pause_threshold
+
+                                        if silence_duration >= effective_pause:
                                             speech_active = False
                                             speech_start_time = 0.0
-                                            # Send audioStreamEnd to trigger zero-latency turn finalization
+                                            # Send audioStreamEnd to trigger zero-latency turn finalization during the pause
                                             end_signal = {
                                                 "realtimeInput": {
                                                     "audioStreamEnd": True
