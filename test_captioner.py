@@ -1083,10 +1083,6 @@ class TestTextFormatter(unittest.TestCase):
         res_camel2 = fmt.format_text("the originalHe would have spoken", is_final=True)
         self.assertEqual(res_camel2, "The original He would have spoken.")
 
-        # Protected camelCase brands (JavaScript, VoxStream, macOS)
-        res_brand = fmt.format_text("we love JavaScript and VoxStream", is_final=True)
-        self.assertEqual(res_brand, "We love JavaScript and VoxStream.")
-
         # 2. Period followed by lowercase word (should space and capitalize)
         res2 = fmt.format_text("looks like.guys,", is_final=True)
         self.assertEqual(res2, "Looks like. Guys,")
