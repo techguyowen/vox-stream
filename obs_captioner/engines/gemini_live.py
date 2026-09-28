@@ -87,11 +87,15 @@ class GeminiLiveEngine(BaseSTTEngine):
         """
         try:
             t0 = time.perf_counter()
-            timeout = aiohttp.ClientTimeout(total=4.0, connect=3.0)
             ssl_ctx = self._build_ssl_context()
-            async with aiohttp.ClientSession(timeout=timeout) as probe_session:
-                async with probe_session.head("https://generativelanguage.googleapis.com", ssl=ssl_ctx):
+            if self._active_session and not self._active_session.closed:
+                async with self._active_session.head("https://generativelanguage.googleapis.com", ssl=ssl_ctx):
                     pass
+            else:
+                timeout = aiohttp.ClientTimeout(total=4.0, connect=3.0)
+                async with aiohttp.ClientSession(timeout=timeout) as probe_session:
+                    async with probe_session.head("https://generativelanguage.googleapis.com", ssl=ssl_ctx):
+                        pass
             rtt_ms = round((time.perf_counter() - t0) * 1000.0, 1)
             self.current_ping_ms = rtt_ms
             if self.on_ping:

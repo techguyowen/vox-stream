@@ -1787,27 +1787,44 @@ class WebOverlayServer:
 
         lang_payloads = {}
         stale = []
+        non_english_finals = []
+
         for ws, lang in list(self.caption_sockets.items()):
             try:
                 if lang in ("en", "original", "none", "") or not raw_text:
                     if "en" not in lang_payloads:
                         lang_payloads["en"] = json.dumps(payload)
                     await ws.send_str(lang_payloads["en"])
-                else:
+                elif not is_final:
+                    # Deliver interim text instantly with zero blocking network delay
                     if lang not in lang_payloads:
-                        if is_final:
-                            # Only execute network translation on finalized sentences
-                            t_text = await self.translator.translate_to_language(raw_text, target_lang=lang)
-                        else:
-                            # Deliver interim text with zero blocking network delay
-                            t_text = raw_text
-                        custom_payload = {**payload, "text": t_text, "original_text": raw_text}
+                        custom_payload = {**payload, "text": raw_text, "original_text": raw_text}
                         lang_payloads[lang] = json.dumps(custom_payload)
                     await ws.send_str(lang_payloads[lang])
+                else:
+                    # Finalized text for non-English subscriber: collect for non-blocking async translation
+                    non_english_finals.append((ws, lang))
             except Exception:
                 stale.append(ws)
+
         for ws in stale:
             self.caption_sockets.pop(ws, None)
+
+        if non_english_finals and raw_text:
+            async def _translate_and_send():
+                lang_cache = {}
+                for ws, lang in non_english_finals:
+                    if ws not in self.caption_sockets:
+                        continue
+                    try:
+                        if lang not in lang_cache:
+                            t_text = await self.translator.translate_to_language(raw_text, target_lang=lang)
+                            lang_cache[lang] = json.dumps({**payload, "text": t_text, "original_text": raw_text})
+                        await ws.send_str(lang_cache[lang])
+                    except Exception:
+                        self.caption_sockets.pop(ws, None)
+
+            asyncio.create_task(_translate_and_send())
 
         if is_final and self.control_sockets and self.history:
             try:

@@ -2156,22 +2156,34 @@
             triggerSilenceTimer(isPacedReadingEnabled ? 12000 : 4000);
         }
 
+        let pendingInterimText = null;
+        let interimRafPending = false;
+
         function updateInterimSpeech(text) {
             if (isFinalOnlyMode) return;
             if (!transcriptContent) return;
-            removeEmptyIndicator();
-            wakeLiveDisplay();
+            pendingInterimText = text;
+            if (interimRafPending) return;
+            interimRafPending = true;
 
-            const interimNode = getInterimNode();
-            if (text) {
-                interimNode.innerHTML = formatBionicReading(text);
-                interimNode.style.display = 'block';
-            } else {
-                interimNode.textContent = '';
-                interimNode.style.display = 'none';
-            }
+            requestAnimationFrame(() => {
+                interimRafPending = false;
+                const curText = pendingInterimText;
+                if (!curText && curText !== '') return;
+                removeEmptyIndicator();
+                wakeLiveDisplay();
 
-            if (autoScroll) scrollToBottom(false);
+                const interimNode = getInterimNode();
+                if (curText) {
+                    interimNode.innerHTML = formatBionicReading(curText);
+                    interimNode.style.display = 'block';
+                } else {
+                    interimNode.textContent = '';
+                    interimNode.style.display = 'none';
+                }
+
+                if (autoScroll) scrollToBottom(false);
+            });
         }
 
         function clearAllCaptions() {
