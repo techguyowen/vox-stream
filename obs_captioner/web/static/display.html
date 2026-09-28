@@ -1533,11 +1533,11 @@
                 && typeof formatBionicReading === 'function';
             // Paint a preview line, rendering a Bionic sample when Bionic
             // Reading is toggled on so the chip mirrors the live captions.
-            function paintPreviewLine(el, sampleText, baseColor, suffix) {
+            function paintPreviewLine(el, sampleText, baseColor, suffix, isBionicAllowed = true) {
                 if (!el) return;
                 el.style.color = baseColor;
-                el.style.fontWeight = bionicOn ? '400' : '';
-                if (bionicOn) {
+                el.style.fontWeight = (bionicOn && isBionicAllowed) ? '400' : '';
+                if (bionicOn && isBionicAllowed) {
                     el.innerHTML = formatBionicReading(sampleText);
                     if (suffix) el.append(document.createTextNode(suffix));
                     const fixations = el.querySelectorAll('.bionic-fixation');
@@ -1550,13 +1550,13 @@
                 }
             }
             if (finalEl) {
-                paintPreviewLine(finalEl, 'This is how final captions look', customTheme.text, '');
+                paintPreviewLine(finalEl, 'This is how final captions look', customTheme.text, '', true);
                 finalEl.style.textShadow = (noTextShadow || bgLuminance(customTheme.bg) > 0.6)
                     ? 'none'
                     : '0 2px 8px rgba(0, 0, 0, 0.6)';
             }
             if (interimEl) {
-                paintPreviewLine(interimEl, 'Live speech appears like this', customTheme.interim, ' ▍');
+                paintPreviewLine(interimEl, 'Live speech appears like this', customTheme.interim, ' ▍', false);
                 interimEl.style.textShadow = noTextShadow ? 'none' : '';
             }
             if (mutedEl) mutedEl.style.color = customTheme.muted;
@@ -2175,7 +2175,7 @@
 
                 const interimNode = getInterimNode();
                 if (curText) {
-                    interimNode.innerHTML = formatBionicReading(curText);
+                    interimNode.textContent = normalizePunctuationSpacing(curText);
                     interimNode.style.display = 'block';
                 } else {
                     interimNode.textContent = '';
@@ -2214,7 +2214,7 @@
 
             const interimNode = getInterimNode();
             if (!isFinalOnlyMode && interimText) {
-                interimNode.innerHTML = formatBionicReading(interimText);
+                interimNode.textContent = normalizePunctuationSpacing(interimText);
                 interimNode.style.display = 'block';
             } else {
                 interimNode.textContent = '';
