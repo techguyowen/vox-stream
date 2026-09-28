@@ -324,6 +324,9 @@ class TextFormatter:
         # 1c. Normalize punctuation spacing (fixes ASR concatenation artifacts like "like.Guys" -> "like. Guys")
         text = self.normalize_punctuation_spacing(text)
 
+        # 1d. Fix camelCase missing spaces (e.g. "areOther" -> "are Other", "peopleTo" -> "people To")
+        text = self.fix_camelcase_missing_spaces(text)
+
         # 2. Single-pass unified dictionary substitution
         if self._master_pattern:
             text = self._master_pattern.sub(lambda m: self._lookup.get(m.group(0).lower(), m.group(0)), text)
@@ -437,6 +440,29 @@ class TextFormatter:
         return text
 
     KNOWN_TLDS: str = r"(?:com|org|net|edu|gov|io|co|tv|app|dev|church|ai|info|xyz|us|uk|ca)"
+
+    CAMELCASE_EXCEPTIONS: Set[str] = {
+        "javascript", "macos", "iphone", "ipad", "ipod", "itunes", "icloud",
+        "youtube", "chatgpt", "openai", "github", "linkedin", "tiktok", "paypal",
+        "powerpoint", "wordpress", "quicktime", "voxstream", "ios", "devops",
+        "gitlab", "bitbucket", "soundcloud", "bandcamp", "voicemail", "playstation",
+    }
+
+    @classmethod
+    def fix_camelcase_missing_spaces(cls, text: str) -> str:
+        """Fix missing spaces between concatenated words (e.g. 'areOther' -> 'are Other')."""
+        if not text:
+            return ""
+
+        def _split_camel(m):
+            w1 = m.group(1)
+            w2 = m.group(2)
+            full_word = w1 + w2
+            if full_word.lower() in cls.CAMELCASE_EXCEPTIONS:
+                return m.group(0)
+            return f"{w1} {w2}"
+
+        return re.sub(r"\b([a-z]+)([A-Z][a-z]+)\b", _split_camel, text)
 
     @classmethod
     def normalize_punctuation_spacing(cls, text: str) -> str:

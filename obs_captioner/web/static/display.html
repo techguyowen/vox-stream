@@ -1732,16 +1732,28 @@
         }
 
                 // 🔤 Normalize Punctuation Spacing (fixes e.g. "like.Guys" -> "like. Guys")
+        const CAMELCASE_BRANDS = new Set([
+            "javascript", "macos", "iphone", "ipad", "ipod", "itunes", "icloud",
+            "youtube", "chatgpt", "openai", "github", "linkedin", "tiktok", "paypal",
+            "powerpoint", "wordpress", "quicktime", "voxstream", "ios", "devops"
+        ]);
+
         function normalizePunctuationSpacing(text) {
             if (!text) return '';
-            return text
+            let cleaned = text
                 .replace(/\s+([,.:;?!])/g, '$1')
                 .replace(/([,;?!])([a-zA-Z])/g, '$1 $2')
                 .replace(/(:)([a-zA-Z])/g, '$1 $2')
                 .replace(/\b([a-zA-Z]{2,})\.([A-Z])/g, '$1. $2')
-                .replace(/([.?!,;:]["'\)\]])([a-zA-Z])/g, '$1 $2')
-                .replace(/[ \t]+/g, ' ')
-                .trim();
+                .replace(/([.?!,;:]["'\)\]])([a-zA-Z])/g, '$1 $2');
+
+            // Fix camelCase missing spaces (e.g. "areOther" -> "are Other")
+            cleaned = cleaned.replace(/\b([a-z]+)([A-Z][a-z]+)\b/g, (match, p1, p2) => {
+                if (CAMELCASE_BRANDS.has(match.toLowerCase())) return match;
+                return p1 + ' ' + p2;
+            });
+
+            return cleaned.replace(/[ \t]+/g, ' ').trim();
         }
 
         // ⚡ Bionic Reading (Saccadic Word Fixation)
