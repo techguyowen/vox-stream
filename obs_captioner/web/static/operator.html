@@ -455,24 +455,6 @@
                 </button>
             </div>
         </div>
-
-        <!-- Stage Display Confidence Monitor Controls -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title"><span>📺</span> Stage Confidence Monitor</div>
-            </div>
-            <div class="btn-grid">
-                <button id="btn-stage-font-inc" class="btn btn-secondary" style="min-height: 44px; font-size: 13px;">
-                    <span>🔍</span> Font +4px
-                </button>
-                <button id="btn-stage-font-dec" class="btn btn-secondary" style="min-height: 44px; font-size: 13px;">
-                    <span>🔉</span> Font -4px
-                </button>
-            </div>
-            <a href="/display" target="_blank" class="btn btn-secondary" style="text-decoration: none; min-height: 44px; font-size: 13px;">
-                <span>↗️</span> Open Stage Display
-            </a>
-        </div>
     </div>
 
     <!-- Toast Notifications Container -->
@@ -498,8 +480,6 @@
             const btnDismissScripture = document.getElementById('btn-dismiss-scripture');
             const ctxPrimaryVal = document.getElementById('ctx-primary-val');
             const toastContainer = document.getElementById('toast-container');
-            const btnStageFontInc = document.getElementById('btn-stage-font-inc');
-            const btnStageFontDec = document.getElementById('btn-stage-font-dec');
 
             let isRunning = false;
             let controlWs = null;
