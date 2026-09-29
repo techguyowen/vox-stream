@@ -160,6 +160,9 @@ class WebOverlayServer:
         for path in ("/display", "/display/", "/display.html", "/monitor", "/monitor/", "/stage", "/confidence"):
             self.app.router.add_get(path, self._handle_display)
 
+        for path in ("/operator", "/operator/", "/operator.html", "/mobile", "/mobile/", "/remote", "/remote/"):
+            self.app.router.add_get(path, self._handle_operator_page)
+
         # Favicons & Icons
         self.app.router.add_get("/favicon.ico", self._handle_favicon)
         self.app.router.add_get("/apple-touch-icon.png", self._handle_apple_touch_icon)
@@ -318,6 +321,10 @@ class WebOverlayServer:
         display_file = Path(__file__).parent / "static" / "display.html"
         return web.FileResponse(display_file, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
 
+    async def _handle_operator_page(self, request: web.Request) -> web.FileResponse:
+        op_file = Path(__file__).parent / "static" / "operator.html"
+        return web.FileResponse(op_file, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+
     async def _handle_manifest(self, request: web.Request) -> web.FileResponse:
         manifest_file = Path(__file__).parent / "static" / "manifest-display.json"
         return web.FileResponse(manifest_file, headers={"Content-Type": "application/manifest+json"})
@@ -386,12 +393,14 @@ class WebOverlayServer:
             status_info["dashboard_url"] = f"https://{lan_ip}{p_https_str}/dashboard" if caddy_ssl else f"http://{lan_ip}{p_http_str}/dashboard"
             status_info["overlay_url"] = f"http://{lan_ip}{p_http_str}/"
             status_info["bible_url"] = f"http://{lan_ip}{p_http_str}/bible"
+            status_info["operator_url"] = f"http://{lan_ip}{p_http_str}/operator"
         else:
             status_info["display_url"] = f"http://{lan_ip}:{port}/display"
             status_info["display_https_url"] = ""
             status_info["dashboard_url"] = f"http://{lan_ip}:{port}/dashboard"
             status_info["overlay_url"] = f"http://{lan_ip}:{port}/"
             status_info["bible_url"] = f"http://{lan_ip}:{port}/bible"
+            status_info["operator_url"] = f"http://{lan_ip}:{port}/operator"
 
         status_info["caddy_active"] = caddy_active
         status_info["caddy_ssl"] = caddy_ssl
@@ -433,11 +442,13 @@ class WebOverlayServer:
             dashboard_url = f"https://{lan_ip}{p_https_str}/dashboard" if caddy_ssl else f"http://{lan_ip}{p_http_str}/dashboard"
             overlay_url = f"http://{lan_ip}{p_http_str}/"
             bible_url = f"http://{lan_ip}{p_http_str}/bible"
+            operator_url = f"http://{lan_ip}{p_http_str}/operator"
         else:
             display_url = f"http://{lan_ip}:{port}/display"
             dashboard_url = f"http://{lan_ip}:{port}/dashboard"
             overlay_url = f"http://{lan_ip}:{port}/"
             bible_url = f"http://{lan_ip}:{port}/bible"
+            operator_url = f"http://{lan_ip}:{port}/operator"
 
         return web.json_response({
             "lan_ip": lan_ip,
@@ -449,6 +460,7 @@ class WebOverlayServer:
             "dashboard_url": dashboard_url,
             "overlay_url": overlay_url,
             "bible_url": bible_url,
+            "operator_url": operator_url,
         })
 
     async def _handle_get_display_qr(self, request: web.Request) -> web.Response:
@@ -492,6 +504,8 @@ class WebOverlayServer:
             target_url = f"{base_url}/"
         elif qr_type == "bible":
             target_url = f"{base_url}/bible"
+        elif qr_type in ("operator", "mobile", "remote"):
+            target_url = f"{base_url}/operator"
         else:
             lang = sanitize_text(request.query.get("lang", "")).lower().strip()
             if lang and lang not in ("en", "original", "none"):

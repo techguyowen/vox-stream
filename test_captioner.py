@@ -1868,6 +1868,29 @@ class TestServerEndpoints(AioHTTPTestCase):
         # 6. Dedicated /bible HTML page
         page_resp = await self.client.request('GET', '/bible')
         self.assertEqual(page_resp.status, 200)
+
+    async def test_operator_mobile_route_variants(self):
+        """Verify /operator, /operator.html, /mobile, /remote and operator QR code endpoints."""
+        for path in ['/operator', '/operator/', '/operator.html', '/mobile', '/remote']:
+            resp = await self.client.request('GET', path)
+            self.assertEqual(resp.status, 200)
+            self.assertEqual(resp.content_type, 'text/html')
+            text = await resp.text()
+            self.assertIn('VoxStream Mobile Operator', text)
+
+        # Verify QR code endpoint returns SVG for operator
+        qr_resp = await self.client.request('GET', '/api/display/qr?type=operator')
+        self.assertEqual(qr_resp.status, 200)
+        self.assertEqual(qr_resp.content_type, 'image/svg+xml')
+        qr_svg = await qr_resp.text()
+        self.assertIn('<svg', qr_svg)
+
+        # Verify network info contains operator_url
+        net_resp = await self.client.request('GET', '/api/network/info')
+        self.assertEqual(net_resp.status, 200)
+        net_data = await net_resp.json()
+        self.assertIn('operator_url', net_data)
+        self.assertIn('/operator', net_data['operator_url'])
     async def test_wpm_calculation_and_endpoint(self):
         # 1. Test TranscriptHistory.get_stats()
         import time
