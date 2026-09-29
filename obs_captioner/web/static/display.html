@@ -665,6 +665,42 @@
         /* FIX: Scripture prompter card must not grow/squash the main caption area */
         #scripturePrompterCard {
             flex-shrink: 0;
+            transition: opacity 0.25s ease, transform 0.25s ease;
+        }
+        #scripturePrompterCard.visible {
+            display: block !important;
+            opacity: 1 !important;
+            transform: translateY(0) !important;
+        }
+        #scripturePrompterCard.hidden-card {
+            opacity: 0 !important;
+            transform: translateY(-8px) !important;
+        }
+
+        /* Floating Font Size Toast Badge */
+        .font-size-toast {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(20px);
+            background: rgba(15, 23, 42, 0.94);
+            color: #38BDF8;
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            border-radius: 20px;
+            padding: 8px 18px;
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(8px);
+            z-index: 1000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+        .font-size-toast.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
         }
 
         /* -------------------------------------------------------------
@@ -1421,7 +1457,24 @@
         updateClock();
 
         // Font Size & Family Controls
-        function setFontSize(size) {
+        let fontSizeToastTimer = null;
+        function showFontSizeToast(size) {
+            let toast = document.getElementById('fontSizeToast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'fontSizeToast';
+                toast.className = 'font-size-toast';
+                document.body.appendChild(toast);
+            }
+            toast.textContent = `Font Size: ${size}px`;
+            toast.classList.add('show');
+            if (fontSizeToastTimer) clearTimeout(fontSizeToastTimer);
+            fontSizeToastTimer = setTimeout(() => {
+                toast.classList.remove('show');
+            }, 1200);
+        }
+
+        function setFontSize(size, showToastFlag = false) {
             if (!Number.isFinite(size)) size = defaultFontSize;
             const minSize = isSmallPhone ? 16 : 18;
             const maxSize = isSmallPhone ? 56 : 96;
@@ -1430,6 +1483,7 @@
             localStorage.setItem('voxstream_display_fontsize', currentFontSize);
             const modalVal = document.getElementById('modalFontSizeVal');
             if (modalVal) modalVal.textContent = `${currentFontSize}px`;
+            if (showToastFlag) showFontSizeToast(currentFontSize);
         }
 
         function setFontFamily(font) {
@@ -1903,16 +1957,16 @@
 
         // Action Buttons
         const btnFontInc = document.getElementById('btnFontInc');
-        if (btnFontInc) btnFontInc.addEventListener('click', () => setFontSize(currentFontSize + 4));
+        if (btnFontInc) btnFontInc.addEventListener('click', () => setFontSize(currentFontSize + 4, true));
 
         const btnFontDec = document.getElementById('btnFontDec');
-        if (btnFontDec) btnFontDec.addEventListener('click', () => setFontSize(currentFontSize - 4));
+        if (btnFontDec) btnFontDec.addEventListener('click', () => setFontSize(currentFontSize - 4, true));
 
         const btnModalFontInc = document.getElementById('btnModalFontInc');
-        if (btnModalFontInc) btnModalFontInc.addEventListener('click', () => setFontSize(currentFontSize + (isMobile ? 2 : 4)));
+        if (btnModalFontInc) btnModalFontInc.addEventListener('click', () => setFontSize(currentFontSize + (isMobile ? 2 : 4), true));
 
         const btnModalFontDec = document.getElementById('btnModalFontDec');
-        if (btnModalFontDec) btnModalFontDec.addEventListener('click', () => setFontSize(currentFontSize - (isMobile ? 2 : 4)));
+        if (btnModalFontDec) btnModalFontDec.addEventListener('click', () => setFontSize(currentFontSize - (isMobile ? 2 : 4), true));
 
         const btnClear = document.getElementById('btnClear');
         if (btnClear) {
@@ -2002,8 +2056,8 @@
         window.addEventListener('keydown', (e) => {
             const tag = (e.target && e.target.tagName) || '';
             if (['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(tag)) return;
-            if (e.key === '+' || e.key === '=') setFontSize(currentFontSize + 4);
-            if (e.key === '-' || e.key === '_') setFontSize(currentFontSize - 4);
+            if (e.key === '+' || e.key === '=') setFontSize(currentFontSize + 4, true);
+            if (e.key === '-' || e.key === '_') setFontSize(currentFontSize - 4, true);
             if (e.key === 's' || e.key === 'S') {
                 if (settingsModal) {
                     settingsModal.style.display = settingsModal.style.display === 'flex' ? 'none' : 'flex';

@@ -688,7 +688,7 @@ function initBibleHandlers() {
                         previewBadge.textContent = `📖 ${data.scripture.citation} • ${data.scripture.version}`;
                         previewText.textContent = `"${data.scripture.text}"`;
                     }
-                    showToast(`📺 Pushed ${data.scripture.citation} [${data.scripture.version}] to stream & stage screens!`, "success", 4000);
+                    showToast(`✓ Pushed to Stage Display! (${data.scripture.citation} [${data.scripture.version.toUpperCase()}])`, "success", 4000);
                 } else {
                     showToast(`❌ ${data.error || 'Failed to display scripture'}`, "error", 4000);
                 }
@@ -1250,12 +1250,27 @@ function closeGeminiKeyModal() {
     if (modal) modal.style.display = "none";
 }
 
-// Delegated click handler for Gemini modal triggers, close buttons, and backdrop
+function openShortcutsModal() {
+    const modal = document.getElementById("modal-shortcuts");
+    if (modal) modal.style.display = "flex";
+}
+
+function closeShortcutsModal() {
+    const modal = document.getElementById("modal-shortcuts");
+    if (modal) modal.style.display = "none";
+}
+
+// Delegated click handler for Gemini & Shortcuts modal triggers, close buttons, and backdrop
 document.addEventListener("click", (e) => {
     // Open trigger buttons
     if (e.target.closest(".btn-open-gemini-key-modal")) {
         e.preventDefault();
         openGeminiKeyModal();
+        return;
+    }
+    if (e.target.closest("#btn-open-shortcuts-modal")) {
+        e.preventDefault();
+        openShortcutsModal();
         return;
     }
     // Close trigger buttons
@@ -1264,10 +1279,20 @@ document.addEventListener("click", (e) => {
         closeGeminiKeyModal();
         return;
     }
-    // Backdrop click
-    const modal = document.getElementById("modal-gemini-key");
-    if (modal && e.target === modal) {
+    if (e.target.closest("#btn-close-shortcuts-modal") || e.target.closest("#btn-done-shortcuts-modal")) {
+        e.preventDefault();
+        closeShortcutsModal();
+        return;
+    }
+    // Backdrop clicks
+    const gModal = document.getElementById("modal-gemini-key");
+    if (gModal && e.target === gModal) {
         closeGeminiKeyModal();
+        return;
+    }
+    const sModal = document.getElementById("modal-shortcuts");
+    if (sModal && e.target === sModal) {
+        closeShortcutsModal();
         return;
     }
     // Save key button inside modal
@@ -1277,14 +1302,58 @@ document.addEventListener("click", (e) => {
     }
 });
 
-// Keyboard accessibility: Escape to close, Enter to submit
+// Global Keyboard Accessibility & Shortcuts
 window.addEventListener("keydown", (e) => {
+    const target = e.target;
+    const isInput = target && (
+        ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName) ||
+        target.isContentEditable
+    );
+
     if (e.key === "Escape") {
         if (typeof closeDisplayQrModal === "function") closeDisplayQrModal();
         closeGeminiKeyModal();
-    } else if (e.key === "Enter" && e.target && e.target.id === "modal-gemini-key-input") {
+        closeShortcutsModal();
+        const featModal = document.getElementById("modal-feature-settings");
+        if (featModal) featModal.style.display = "none";
+        const schedModal = document.getElementById("modal-scheduler");
+        if (schedModal) schedModal.style.display = "none";
+        return;
+    }
+
+    if (isInput) {
+        if (e.key === "Enter" && target && target.id === "modal-gemini-key-input") {
+            e.preventDefault();
+            saveGeminiKeyFromModal();
+        }
+        return;
+    }
+
+    // Single-key Hotkeys (active when focus is outside form inputs)
+    if (e.key === "?" || (e.key === "/" && e.shiftKey)) {
         e.preventDefault();
-        saveGeminiKeyFromModal();
+        const sModal = document.getElementById("modal-shortcuts");
+        if (sModal) {
+            sModal.style.display = (sModal.style.display === "flex") ? "none" : "flex";
+        }
+    } else if (e.code === "Space" || e.key === " ") {
+        e.preventDefault();
+        const btnToggle = document.getElementById("btn-toggle-engine");
+        if (btnToggle) btnToggle.click();
+    } else if (e.key === "c" || e.key === "C") {
+        e.preventDefault();
+        fetch("/api/control/panic", { method: "POST" }).catch(() => {});
+        showToast("🧹 Panic: Live captions wiped across all screens!", "info", 2000);
+    } else if (e.key === "e" || e.key === "E") {
+        e.preventDefault();
+        const engSelect = document.getElementById("engine_select");
+        if (engSelect) engSelect.focus();
+    } else if (e.key === "s" || e.key === "S") {
+        e.preventDefault();
+        const featModal = document.getElementById("modal-feature-settings");
+        if (featModal) {
+            featModal.style.display = (featModal.style.display === "flex") ? "none" : "flex";
+        }
     }
 });
 
@@ -3942,7 +4011,21 @@ function updateWpmUI(stats) {
 }
 
 // WebSockets
-let pendingEngineSwitchToast = false;
+let micSilenceStartTime = null;
+function updateMicSilenceWarning(db) {
+    const warnBadge = document.getElementById("mic-silence-warning");
+    if (!warnBadge) return;
+    const running = (typeof isRunning !== "undefined") ? isRunning : false;
+    if (running && (db <= -55.0 || db === -100)) {
+        if (!micSilenceStartTime) micSilenceStartTime = Date.now();
+        if (Date.now() - micSilenceStartTime >= 5000) {
+            warnBadge.style.display = "inline-flex";
+        }
+    } else {
+        micSilenceStartTime = null;
+        warnBadge.style.display = "none";
+    }
+}
 
 let controlReconnectAttempts = 0;
 function connectControlWs() {
@@ -3989,6 +4072,7 @@ function connectControlWs() {
                         previewMic.style.color = "#64748B";
                     }
                 }
+                updateMicSilenceWarning(db);
             } else if (msg.type === "stats_update") {
                 updateWpmUI(msg);
             } else if (msg.type === "model_cache_updated") {
