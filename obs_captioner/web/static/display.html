@@ -2074,6 +2074,11 @@
                     updateFloatingButtons();
                 }, 400);
             } else {
+                if (smoothScrollTimer) {
+                    clearTimeout(smoothScrollTimer);
+                    smoothScrollTimer = null;
+                }
+                isSmoothScrollingToBottom = false;
                 stageContainer.scrollTop = stageContainer.scrollHeight;
             }
         }
@@ -2250,6 +2255,9 @@
         // -------------------------------------------------------------
         // 🌐 WebSocket Connection Pipeline
         // -------------------------------------------------------------
+        let reconnectDelayMs = 2000;
+        const maxReconnectDelayMs = 10000;
+
         function connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/ws?lang=${encodeURIComponent(currentLang)}&role=display`;
@@ -2257,6 +2265,7 @@
             ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
+                reconnectDelayMs = 2000; // Reset backoff delay on successful connection
                 if (statusText) statusText.innerHTML = '<span class="status-live-label">LIVE</span>';
                 if (statusPill) {
                     statusPill.classList.remove('offline');
@@ -2326,12 +2335,15 @@
             };
 
             ws.onclose = () => {
+                const retrySec = Math.round(reconnectDelayMs / 1000);
                 if (statusText) statusText.innerHTML = '<span class="status-live-label">DISCONNECTED</span>';
                 if (statusPill) {
                     statusPill.classList.add('offline');
-                    statusPill.title = "Connection Lost. Reconnecting in 2s...";
+                    statusPill.title = `Connection Lost. Reconnecting in ${retrySec}s...`;
                 }
-                setTimeout(connectWebSocket, 2000);
+                const currentDelay = reconnectDelayMs;
+                reconnectDelayMs = Math.min(Math.round(reconnectDelayMs * 1.5), maxReconnectDelayMs);
+                setTimeout(connectWebSocket, currentDelay);
             };
 
             ws.onerror = () => {

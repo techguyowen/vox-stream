@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 setlocal EnableDelayedExpansion
 
 set "PYTHONIOENCODING=utf-8"

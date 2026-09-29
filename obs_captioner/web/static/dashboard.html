@@ -1200,11 +1200,23 @@
                             <select id="language_select" class="form-control">
                                 <option value="en-US">English (US)</option>
                                 <option value="en-GB">English (UK)</option>
-                                <option value="es-ES">Spanish</option>
-                                <option value="fr-FR">French</option>
-                                <option value="de-DE">German</option>
-                                <option value="pt-BR">Portuguese</option>
-                                <option value="ja-JP">Japanese</option>
+                                <option value="es-ES">Spanish (Español)</option>
+                                <option value="fr-FR">French (Français)</option>
+                                <option value="de-DE">German (Deutsch)</option>
+                                <option value="pt-BR">Portuguese (Português)</option>
+                                <option value="it-IT">Italian (Italiano)</option>
+                                <option value="ja-JP">Japanese (日本語)</option>
+                                <option value="zh-CN">Chinese Simplified (中文)</option>
+                                <option value="ko-KR">Korean (한국어)</option>
+                                <option value="ru-RU">Russian (Русский)</option>
+                                <option value="ar-SA">Arabic (العربية)</option>
+                                <option value="hi-IN">Hindi (हिन्दी)</option>
+                                <option value="nl-NL">Dutch (Nederlands)</option>
+                                <option value="pl-PL">Polish (Polski)</option>
+                                <option value="sv-SE">Swedish (Svenska)</option>
+                                <option value="tr-TR">Turkish (Türkçe)</option>
+                                <option value="uk-UA">Ukrainian (Українська)</option>
+                                <option value="vi-VN">Vietnamese (Tiếng Việt)</option>
                             </select>
                             <span id="language-note" class="subtext" style="font-size: 11px; color: #9CA3AF; margin-top: 4px; display: block;"></span>
                         </div>
@@ -2952,6 +2964,28 @@
 
         // ── UI Event Bindings ──────────────────────────────────────────────────
         document.addEventListener('DOMContentLoaded', () => {
+            // Instant Inline Validation for Gemini API Key
+            const geminiKeyInput = document.getElementById('gemini_api_key');
+            const geminiKeyStatus = document.getElementById('gemini_key_status');
+            if (geminiKeyInput && geminiKeyStatus) {
+                geminiKeyInput.addEventListener('input', () => {
+                    const val = geminiKeyInput.value.trim();
+                    if (!val || val === '••••••••' || val.includes('•••')) {
+                        geminiKeyStatus.style.display = 'none';
+                    } else if (val.startsWith('AIzaSy') && val.length >= 35) {
+                        geminiKeyStatus.textContent = '✓ Valid Key Format';
+                        geminiKeyStatus.style.color = '#22c55e';
+                        geminiKeyStatus.style.display = 'inline';
+                    } else if (val.length > 5) {
+                        geminiKeyStatus.textContent = '⚠️ Key should start with AIzaSy...';
+                        geminiKeyStatus.style.color = '#ef4444';
+                        geminiKeyStatus.style.display = 'inline';
+                    } else {
+                        geminiKeyStatus.style.display = 'none';
+                    }
+                });
+            }
+
             // Open / Close modal
             function openModal() { document.getElementById('modal-scheduler').style.display = 'flex'; fetchSchedulerStatus(); }
             function closeModal() { document.getElementById('modal-scheduler').style.display = 'none'; }

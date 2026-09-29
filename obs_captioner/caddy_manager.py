@@ -15,6 +15,7 @@ import socket
 import subprocess
 import sys
 import tarfile
+import time
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -87,8 +88,6 @@ def get_caddy_root_ca_path() -> Optional[Path]:
             return c
     return None
 
-
-import time
 
 # Cache for is_caddy_running to prevent event loop blocking during rapid status polls
 _CACHED_CADDY_STATE: Tuple[float, int, int, bool] = (0.0, 0, 0, False)
