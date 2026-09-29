@@ -710,6 +710,72 @@ function initBibleHandlers() {
         });
     }
 
+    // 6b. Active Sermon Context Management
+    async function fetchSermonContext() {
+        try {
+            const r = await fetch("/api/bible/context");
+            if (r.ok) {
+                const data = await r.json();
+                const ctx = data.context || {};
+                const primaryEl = document.getElementById("sermon-context-primary");
+                const recentEl = document.getElementById("sermon-context-recent");
+                if (primaryEl) primaryEl.textContent = ctx.primary_citation || "None set (Listening...)";
+                if (recentEl) recentEl.textContent = ctx.recent_citation || "None set";
+            }
+        } catch(e) {
+            console.warn("Could not fetch sermon context:", e);
+        }
+    }
+    fetchSermonContext();
+
+    const btnSetPrimaryCtx = document.getElementById("btn-set-primary-context");
+    const inputSetPrimaryCtx = document.getElementById("input-set-primary-context");
+    if (btnSetPrimaryCtx && inputSetPrimaryCtx) {
+        btnSetPrimaryCtx.addEventListener("click", async () => {
+            const val = inputSetPrimaryCtx.value.trim();
+            if (!val) {
+                showToast("Please enter a passage citation (e.g. Romans 8)", "warning", 2500);
+                return;
+            }
+            try {
+                const r = await fetch("/api/bible/context", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ citation: val })
+                });
+                const data = await r.json();
+                if (r.ok) {
+                    showToast(`📌 ${data.message}`, "success", 3000);
+                    inputSetPrimaryCtx.value = "";
+                    fetchSermonContext();
+                } else {
+                    showToast(`❌ ${data.error}`, "error", 3000);
+                }
+            } catch(e) {
+                showToast(`❌ ${e.message}`, "error", 3000);
+            }
+        });
+    }
+
+    const btnClearCtx = document.getElementById("btn-clear-sermon-context");
+    if (btnClearCtx) {
+        btnClearCtx.addEventListener("click", async () => {
+            try {
+                const r = await fetch("/api/bible/context", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: "clear" })
+                });
+                if (r.ok) {
+                    showToast("🧹 Sermon context reset!", "info", 2500);
+                    fetchSermonContext();
+                }
+            } catch(e) {
+                console.error(e);
+            }
+        });
+    }
+
     // 7. Save Settings Button
     const btnSaveBible = document.getElementById("btn-save-bible-tab-settings");
     if (btnSaveBible) {

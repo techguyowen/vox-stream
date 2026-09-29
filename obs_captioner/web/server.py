@@ -269,6 +269,8 @@ class WebOverlayServer:
         self.app.router.add_get("/api/bible/lookup", self._handle_bible_lookup)
         self.app.router.add_post("/api/bible/display", self._handle_bible_display)
         self.app.router.add_post("/api/bible/dismiss", self._handle_bible_dismiss)
+        self.app.router.add_get("/api/bible/context", self._handle_get_bible_context)
+        self.app.router.add_post("/api/bible/context", self._handle_post_bible_context)
 
         # Software Updater
         self.app.router.add_get("/api/updater/status", self._handle_updater_status)
@@ -2096,6 +2098,39 @@ class WebOverlayServer:
         await self.dismiss_scripture()
         return web.json_response({"status": "success", "message": "Scripture card dismissed."})
 
+    async def _handle_get_bible_context(self, request: web.Request) -> web.Response:
+        """Return active sermon scripture context."""
+        return web.json_response({
+            "status": "success",
+            "context": self.bible_engine.get_context_status()
+        })
+
+    async def _handle_post_bible_context(self, request: web.Request) -> web.Response:
+        """Set or clear active sermon scripture context."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        data = await request.json()
+        action = data.get("action", "")
+        if action == "clear":
+            self.bible_engine.clear_context()
+            return web.json_response({
+                "status": "success",
+                "message": "Sermon scripture context reset.",
+                "context": self.bible_engine.get_context_status()
+            })
+        citation = data.get("citation", "").strip()
+        if citation:
+            match = re.search(r"([A-Za-z0-9\s]+?)\s+(\d+)", citation)
+            if match:
+                book, ch = match.group(1), int(match.group(2))
+                self.bible_engine.set_context(book, ch, is_primary=True)
+                return web.json_response({
+                    "status": "success",
+                    "message": f"Primary sermon context set to {self.bible_engine.primary_book} {self.bible_engine.primary_chapter}.",
+                    "context": self.bible_engine.get_context_status()
+                })
+        return web.json_response({"error": "Invalid citation format. Specify e.g. 'Romans 8'"}, status=400)
+
     async def trigger_scripture_lookup(self, text: str):
         """Auto-lookup scripture citation from finalized transcript and broadcast if found."""
         if not getattr(self.config, "bible", None) or not self.config.bible.enabled:
@@ -2122,6 +2157,7 @@ class WebOverlayServer:
             "text": res.text,
             "version": res.version,
             "version_name": res.version_name,
+            "inferred_context": getattr(res, "inferred_context", None),
             "duration_seconds": duration_seconds,
             "timestamp": time.time(),
             "show_on_stream_overlay": show_on_stream,

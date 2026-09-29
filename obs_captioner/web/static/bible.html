@@ -373,7 +373,11 @@
             if (scriptureTimer) clearTimeout(scriptureTimer);
             if (progressAnim) progressAnim.cancel();
 
-            scriptureCitationEl.textContent = `📖 ${data.citation || 'Scripture Passage'}`;
+            let citationText = `📖 ${data.citation || 'Scripture Passage'}`;
+            if (data.inferred_context) {
+                citationText += ` • Context: ${data.inferred_context}`;
+            }
+            scriptureCitationEl.textContent = citationText;
             if (scriptureVersionEl) scriptureVersionEl.textContent = data.version || 'BSB';
             scriptureTextEl.textContent = `"${data.text || ''}"`;
             scriptureCard.classList.remove("hidden");

@@ -1616,6 +1616,51 @@ class TestServerEndpoints(AioHTTPTestCase):
         dm_data = await dm_resp.json()
         self.assertEqual(dm_data['status'], 'success')
 
+    async def test_bible_context_awareness(self):
+        """Verify stateful sermon context tracking and spoken verse resolution."""
+        engine = self.overlay_server.bible_engine
+        engine.clear_context()
+        
+        # 1. Initially context is empty
+        self.assertIsNone(engine.primary_book)
+        self.assertIsNone(engine.recent_book)
+
+        # 2. Speaker says "John 3:16" -> Locks John 3 as primary and recent context
+        res1 = engine.parse_and_lookup_first("For God so loved the world in John 3:16.")
+        self.assertIsNotNone(res1)
+        self.assertEqual(res1.citation, "John 3:16")
+        self.assertIsNone(res1.inferred_context)
+        self.assertEqual(engine.primary_book, "John")
+        self.assertEqual(engine.primary_chapter, 3)
+
+        # 3. Speaker later says "verse 18" -> Resolves to John 3:18 using context
+        res2 = engine.parse_and_lookup_first("Now look at verse 18.")
+        self.assertIsNotNone(res2)
+        self.assertEqual(res2.citation, "John 3:18")
+        self.assertEqual(res2.inferred_context, "John 3")
+
+        # 4. Spoken number words: "verses eighteen through twenty"
+        res3 = engine.parse_and_lookup_first("Now look at verses eighteen through twenty.")
+        self.assertIsNotNone(res3)
+        self.assertEqual(res3.citation, "John 3:18-20")
+        self.assertEqual(res3.inferred_context, "John 3")
+
+        # 5. API endpoint context GET and POST
+        c_get = await self.client.request('GET', '/api/bible/context')
+        self.assertEqual(c_get.status, 200)
+        c_data = await c_get.json()
+        self.assertEqual(c_data['context']['primary_book'], 'John')
+
+        # Set primary context manually via API to Romans 8
+        c_post = await self.client.request('POST', '/api/bible/context', json={'citation': 'Romans 8'})
+        self.assertEqual(c_post.status, 200)
+        
+        # Clear context
+        c_clear = await self.client.request('POST', '/api/bible/context', json={'action': 'clear'})
+        self.assertEqual(c_clear.status, 200)
+        c_clear_data = await c_clear.json()
+        self.assertIsNone(c_clear_data['context']['primary_book'])
+
     async def test_bible_overlay_isolation(self):
         """Verify scripture overlay isolation config and broadcast routing."""
         # 1. Check BibleConfig default

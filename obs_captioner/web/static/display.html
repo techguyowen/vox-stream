@@ -2543,7 +2543,11 @@
             if (!scripturePrompterCard) return;
             if (stageScriptureTimer) clearTimeout(stageScriptureTimer);
             
-            stageScriptureCitation.textContent = `📖 ${data.citation || ''} • ${data.version || 'BSB'}`;
+            let citeStr = `📖 ${data.citation || ''} • ${data.version || 'BSB'}`;
+            if (data.inferred_context) {
+                citeStr += ` (Context: ${data.inferred_context})`;
+            }
+            stageScriptureCitation.textContent = citeStr;
             stageScriptureText.textContent = `"${data.text || ''}"`;
             scripturePrompterCard.style.display = "block";
             

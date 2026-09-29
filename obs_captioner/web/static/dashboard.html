@@ -571,6 +571,34 @@
                             </div>
                         </div>
 
+                        <!-- Active Sermon Context Memory Card -->
+                        <div class="panel" style="background: rgba(15, 23, 42, 0.6); border: 1.5px solid rgba(56, 189, 248, 0.4); border-radius: 8px; padding: 14px 16px; margin: 12px 0 16px 0;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
+                                <h3 style="margin: 0; font-size: 14px; color: #38BDF8; display: flex; align-items: center; gap: 6px;">
+                                    <span>📌</span> Active Sermon Context Memory
+                                </h3>
+                                <button type="button" id="btn-clear-sermon-context" class="btn btn-secondary btn-sm" style="font-size: 11.5px; padding: 4px 10px; color: #FCA5A5; border-color: rgba(239,68,68,0.4);">
+                                    🧹 Reset Context
+                                </button>
+                            </div>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; align-items: center; margin-bottom: 10px;">
+                                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 8px 12px;">
+                                    <span style="font-size: 10.5px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; display: block;">Primary Sermon Passage</span>
+                                    <span id="sermon-context-primary" style="font-size: 13px; font-weight: 700; color: #7DD3FC;">None set (Listening...)</span>
+                                </div>
+                                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 8px 12px;">
+                                    <span style="font-size: 10.5px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; display: block;">Most Recent Passage</span>
+                                    <span id="sermon-context-recent" style="font-size: 13px; font-weight: 700; color: #FCD34D;">None set</span>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <input type="text" id="input-set-primary-context" placeholder="Set Main Sermon Passage (e.g. Romans 8)" class="form-control" style="flex: 1; font-size: 12px;">
+                                <button type="button" id="btn-set-primary-context" class="btn btn-secondary btn-sm" style="font-size: 12px; font-weight: 600; white-space: nowrap; color: #38BDF8; border-color: rgba(56, 189, 248, 0.4);">
+                                    Set Main Passage
+                                </button>
+                            </div>
+                        </div>
+
                         <div class="form-row" style="margin-top: 14px;">
                             <div class="form-group">
                                 <label for="bible_tab_version_select">Default Offline Translation</label>

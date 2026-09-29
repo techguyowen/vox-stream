@@ -116,16 +116,58 @@ class ScriptureLookupResult:
     text: str
     version: str
     version_name: str
+    inferred_context: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
 
+WORD_TO_NUM: Dict[str, int] = {
+    "zero": 0, "one": 1, "first": 1, "two": 2, "second": 2, "three": 3, "third": 3,
+    "four": 4, "fourth": 4, "five": 5, "fifth": 5, "six": 6, "sixth": 6,
+    "seven": 7, "seventh": 7, "eight": 8, "eighth": 8, "nine": 9, "ninth": 9,
+    "ten": 10, "tenth": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
+    "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+    "nineteen": 19, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
+    "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90, "hundred": 100
+}
+
+
 class BibleEngine:
-    """High-speed offline scripture verse resolver and auto-prompter."""
+    """High-speed offline scripture verse resolver and context-aware auto-prompter."""
 
     def __init__(self, db_path: Optional[Path] = None):
         self.db_path = db_path or DB_PATH
+        self.primary_book: Optional[str] = None
+        self.primary_chapter: Optional[int] = None
+        self.recent_book: Optional[str] = None
+        self.recent_chapter: Optional[int] = None
+
+    def set_context(self, book: str, chapter: int, is_primary: bool = False):
+        canonical = self.normalize_book_name(book)
+        if not canonical:
+            return
+        self.recent_book = canonical
+        self.recent_chapter = chapter
+        if is_primary or not self.primary_book:
+            self.primary_book = canonical
+            self.primary_chapter = chapter
+
+    def clear_context(self):
+        self.primary_book = None
+        self.primary_chapter = None
+        self.recent_book = None
+        self.recent_chapter = None
+
+    def get_context_status(self) -> Dict[str, Any]:
+        return {
+            "primary_book": self.primary_book,
+            "primary_chapter": self.primary_chapter,
+            "primary_citation": f"{self.primary_book} {self.primary_chapter}" if self.primary_book and self.primary_chapter else None,
+            "recent_book": self.recent_book,
+            "recent_chapter": self.recent_chapter,
+            "recent_citation": f"{self.recent_book} {self.recent_chapter}" if self.recent_book and self.recent_chapter else None,
+        }
 
     @classmethod
     def get_available_versions(cls) -> List[Dict[str, str]]:
@@ -227,11 +269,103 @@ class BibleEngine:
     def parse_and_lookup_first(self, text: str, version: str = "bsb") -> Optional[ScriptureLookupResult]:
         """Scan a transcript string for scripture references and lookup the first match."""
         citations = self.extract_citations_from_text(text)
-        if not citations:
+        if citations:
+            book, ch, v_start, v_end = citations[0]
+            res = self.lookup_citation(book, ch, v_start, v_end, version=version)
+            if res:
+                self.set_context(book, ch)
+                return res
+
+        # If no explicit full citation match, attempt contextual verse lookup (e.g. "verse 8")
+        return self.lookup_contextual_verse(text, version=version)
+
+    def lookup_contextual_verse(self, text: str, version: str = "bsb") -> Optional[ScriptureLookupResult]:
+        if not text:
             return None
 
-        book, ch, v_start, v_end = citations[0]
-        return self.lookup_citation(book, ch, v_start, v_end, version=version)
+        parsed = self.extract_contextual_verse_reference(text)
+        if not parsed:
+            return None
+
+        explicit_chap, v_start, v_end = parsed
+
+        # Candidates to try in order: recent context first, then primary sermon context
+        candidates: List[Tuple[str, int]] = []
+        if explicit_chap is not None:
+            if self.recent_book:
+                candidates.append((self.recent_book, explicit_chap))
+            if self.primary_book and (self.primary_book, explicit_chap) not in candidates:
+                candidates.append((self.primary_book, explicit_chap))
+        else:
+            if self.recent_book and self.recent_chapter:
+                candidates.append((self.recent_book, self.recent_chapter))
+            if self.primary_book and self.primary_chapter and (self.primary_book, self.primary_chapter) not in candidates:
+                candidates.append((self.primary_book, self.primary_chapter))
+
+        for book, ch in candidates:
+            res = self.lookup_citation(book, ch, v_start, v_end, version=version)
+            if res:
+                res.inferred_context = f"{book} {ch}"
+                self.recent_book = book
+                self.recent_chapter = ch
+                return res
+
+        return None
+
+    @classmethod
+    def parse_spoken_num(cls, val: str) -> Optional[int]:
+        if not val:
+            return None
+        clean = val.strip().lower()
+        if clean.isdigit():
+            return int(clean)
+        if clean in WORD_TO_NUM:
+            return WORD_TO_NUM[clean]
+        parts = re.split(r"[\s\-]+", clean)
+        total = 0
+        for p in parts:
+            if p in WORD_TO_NUM:
+                n = WORD_TO_NUM[p]
+                if n == 100 and total > 0:
+                    total *= 100
+                else:
+                    total += n
+            else:
+                return None
+        return total if total > 0 else None
+
+    @classmethod
+    def extract_contextual_verse_reference(cls, text: str) -> Optional[Tuple[Optional[int], int, Optional[int]]]:
+        if not text:
+            return None
+        norm = text.lower().strip()
+
+        # 1. "chapter X verse Y [to Z]"
+        chap_v_pattern = re.compile(
+            r"\bchapter\s+(\d+|[a-z]+)\s+verses?\s+(\d+|[a-z]+)(?:\s+(?:to|through|thru|until|-)\s+(\d+|[a-z]+))?\b",
+            re.IGNORECASE,
+        )
+        m = chap_v_pattern.search(norm)
+        if m:
+            ch = cls.parse_spoken_num(m.group(1))
+            v1 = cls.parse_spoken_num(m.group(2))
+            v2 = cls.parse_spoken_num(m.group(3)) if m.group(3) else None
+            if ch and v1:
+                return (ch, v1, v2)
+
+        # 2. "verse X [to Y]" or "verses X to Y"
+        v_pattern = re.compile(
+            r"\bverses?\s+(\d+|[a-z]+)(?:\s+(?:to|through|thru|until|-)\s+(\d+|[a-z]+))?\b",
+            re.IGNORECASE,
+        )
+        m = v_pattern.search(norm)
+        if m:
+            v1 = cls.parse_spoken_num(m.group(1))
+            v2 = cls.parse_spoken_num(m.group(2)) if m.group(2) else None
+            if v1:
+                return (None, v1, v2)
+
+        return None
 
     @classmethod
     def extract_citations_from_text(cls, text: str) -> List[Tuple[str, int, int, Optional[int]]]:
@@ -268,5 +402,20 @@ class BibleEngine:
                 ch = int(psalm_match.group(2))
                 if 1 <= ch <= 150:
                     results.append(("Psalms", ch, 1, None))
+
+        # Check for Book + Chapter references (e.g. "John 3", "Romans 8")
+        if not results:
+            books_regex = "|".join(re.escape(b) for b in BOOK_ALIASES.keys())
+            book_chap_pattern = re.compile(
+                rf"\b({books_regex})\s+(?:chapter\s+)?(\d+)\b",
+                re.IGNORECASE,
+            )
+            match = book_chap_pattern.search(formatted)
+            if match:
+                raw_book = match.group(1).strip()
+                canonical = cls.normalize_book_name(raw_book)
+                if canonical:
+                    ch = int(match.group(2))
+                    results.append((canonical, ch, 1, None))
 
         return results
