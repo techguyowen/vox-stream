@@ -103,8 +103,8 @@
                     <span id="header-rec-dot" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#94A3B8;"></span>
                     <span id="header-rec-text">⏺ REC Sidecar</span>
                 </button>
-                <button id="btn-header-qr" class="btn btn-secondary" title="Scan QR Code to open Stage Confidence Monitor / Reader View on mobile or iPad" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.35); color: #7DD3FC; padding: 6px 12px; border-radius: 6px; cursor: pointer;">
-                    <span>📱 Stage QR</span>
+                <button id="btn-header-qr" class="btn btn-secondary btn-open-captions-qr" title="Scan or Share QR code to open Audience Caption Display on mobile or iPad" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.35); color: #7DD3FC; padding: 6px 12px; border-radius: 6px; cursor: pointer;">
+                    <span>📱 Audience QR</span>
                 </button>
                 <a href="http://localhost:3050" target="_blank" rel="noopener" class="btn btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 5px; font-weight: 600; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #6ee7b7;" title="Sanctuary AV Controller (Port 3050)">
                     <span>🎛️ AV Controller ↗</span>
@@ -2593,12 +2593,12 @@
         <div class="modal-content" style="background: var(--bg-card); border: 1.5px solid rgba(56, 189, 248, 0.4); border-radius: 14px; padding: 24px; max-width: 440px; width: 92%; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.7);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
                 <h3 style="margin: 0; font-size: 17px; color: #38BDF8; display: flex; align-items: center; gap: 8px;">
-                    <span>📱 Stage &amp; Reader Display QR</span>
+                    <span>📱 Audience Caption Display QR</span>
                 </h3>
                 <button type="button" id="btn-close-qr-modal" style="background: none; border: none; font-size: 24px; color: var(--text-muted); cursor: pointer; line-height: 1;">&times;</button>
             </div>
             <p class="subtext" style="font-size: 13px; margin-bottom: 14px; color: #94A3B8; text-align: center;">
-                Scan with any iPad, tablet, or smartphone on your local Wi-Fi to open the live stage confidence teleprompter or read-along screen.
+                Scan with any smartphone, iPad, or tablet on your local Wi-Fi to open live audience captions and scripture.
             </p>
             <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 14px; background: rgba(15,23,42,0.4); padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);">
                 <label for="qr-language-select" style="font-size: 12px; color: #94A3B8; margin: 0; font-weight: 600; white-space: nowrap;">Mobile Language:</label>
