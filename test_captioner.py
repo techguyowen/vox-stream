@@ -5197,6 +5197,115 @@ class TestStandaloneLauncher(unittest.TestCase):
                 pass
 
 
+class TestOBSProjectorWatchdog(unittest.TestCase):
+    """Test suite for 24/7 OBS Projector Monitor Keeper & Watchdog automation."""
+
+    def test_obs_config_watchdog_fields(self):
+        from obs_captioner.config import OBSConfig
+        cfg = OBSConfig()
+        self.assertFalse(cfg.projector_persistent_lock)
+        self.assertEqual(cfg.projector_lock_check_interval_seconds, 15)
+        self.assertFalse(cfg.projector_lock_schedule_enabled)
+        self.assertEqual(cfg.projector_lock_schedule_days, ["Sun", "Wed"])
+        self.assertEqual(cfg.projector_lock_schedule_start, "07:00")
+        self.assertEqual(cfg.projector_lock_schedule_end, "14:00")
+
+    def test_is_projector_schedule_active_continuous_24_7(self):
+        import datetime
+        from obs_captioner.config import OBSConfig
+        from obs_captioner.obs.ws_client import OBSWebSocketClient
+
+        cfg = OBSConfig(projector_persistent_lock=False)
+        client = OBSWebSocketClient(cfg)
+        self.assertFalse(client.is_projector_schedule_active())
+
+        cfg.projector_persistent_lock = True
+        cfg.projector_lock_schedule_enabled = False  # 24/7 mode
+        client = OBSWebSocketClient(cfg)
+
+        # Test any random day & time (e.g. Tuesday midnight, Sunday afternoon)
+        dt1 = datetime.datetime(2026, 10, 6, 2, 30)  # Tuesday
+        dt2 = datetime.datetime(2026, 10, 4, 11, 0)  # Sunday
+        self.assertTrue(client.is_projector_schedule_active(dt1))
+        self.assertTrue(client.is_projector_schedule_active(dt2))
+
+    def test_is_projector_schedule_active_schedule_window(self):
+        import datetime
+        from obs_captioner.config import OBSConfig
+        from obs_captioner.obs.ws_client import OBSWebSocketClient
+
+        cfg = OBSConfig(
+            projector_persistent_lock=True,
+            projector_lock_schedule_enabled=True,
+            projector_lock_schedule_days=["Sun", "Wed"],
+            projector_lock_schedule_start="08:30",
+            projector_lock_schedule_end="13:30",
+        )
+        client = OBSWebSocketClient(cfg)
+
+        # Sunday 2026-10-04
+        sun_inside = datetime.datetime(2026, 10, 4, 10, 15)
+        sun_early = datetime.datetime(2026, 10, 4, 7, 45)
+        sun_late = datetime.datetime(2026, 10, 4, 14, 0)
+
+        # Wednesday 2026-10-07
+        wed_inside = datetime.datetime(2026, 10, 7, 9, 0)
+
+        # Friday 2026-10-09
+        fri_inside_time = datetime.datetime(2026, 10, 9, 10, 15)
+
+        self.assertTrue(client.is_projector_schedule_active(sun_inside))
+        self.assertFalse(client.is_projector_schedule_active(sun_early))
+        self.assertFalse(client.is_projector_schedule_active(sun_late))
+        self.assertTrue(client.is_projector_schedule_active(wed_inside))
+        self.assertFalse(client.is_projector_schedule_active(fri_inside_time))
+
+    def test_is_projector_schedule_active_overnight_window(self):
+        import datetime
+        from obs_captioner.config import OBSConfig
+        from obs_captioner.obs.ws_client import OBSWebSocketClient
+
+        cfg = OBSConfig(
+            projector_persistent_lock=True,
+            projector_lock_schedule_enabled=True,
+            projector_lock_schedule_days=["Sat"],
+            projector_lock_schedule_start="22:00",
+            projector_lock_schedule_end="04:00",
+        )
+        client = OBSWebSocketClient(cfg)
+
+        # Saturday 2026-10-10
+        sat_night = datetime.datetime(2026, 10, 10, 23, 15)
+        sat_early_morning = datetime.datetime(2026, 10, 10, 2, 30)
+        sat_afternoon = datetime.datetime(2026, 10, 10, 15, 0)
+
+        self.assertTrue(client.is_projector_schedule_active(sat_night))
+        self.assertTrue(client.is_projector_schedule_active(sat_early_morning))
+        self.assertFalse(client.is_projector_schedule_active(sat_afternoon))
+
+    def test_obs_client_status_watchdog_metrics(self):
+        from obs_captioner.config import OBSConfig
+        from obs_captioner.obs.ws_client import OBSWebSocketClient
+
+        cfg = OBSConfig(
+            projector_persistent_lock=True,
+            projector_lock_check_interval_seconds=20,
+            projector_lock_schedule_enabled=False,
+        )
+        client = OBSWebSocketClient(cfg)
+        client.watchdog_verifications_count = 5
+        client.last_watchdog_check = "2026-10-02 18:00:00"
+        client.last_watchdog_success = True
+
+        status = client.get_status()
+        self.assertTrue(status["projector_persistent_lock"])
+        self.assertEqual(status["projector_lock_check_interval_seconds"], 20)
+        self.assertTrue(status["watchdog_active"])
+        self.assertEqual(status["watchdog_verifications_count"], 5)
+        self.assertEqual(status["last_watchdog_check"], "2026-10-02 18:00:00")
+        self.assertTrue(status["last_watchdog_success"])
+
+
 if __name__ == "__main__":
     unittest.main()
 

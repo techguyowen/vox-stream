@@ -2221,7 +2221,106 @@
                         <input type="text" id="obs_projector_source_name" class="form-control" placeholder="Captions Overlay" value="Captions Overlay">
                     </div>
 
-                    <button id="btn-save-projector" class="btn btn-primary btn-block">💾 Save Projector Automation Settings</button>
+                    <button id="btn-save-projector" class="btn btn-primary btn-block" style="margin-bottom: 24px;">💾 Save Projector Automation Settings</button>
+
+                    <!-- 🛡️ 24/7 Projector Monitor Keeper & Watchdog Card -->
+                    <div style="background: rgba(16, 185, 129, 0.07); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px; padding: 18px; margin-bottom: 24px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
+                            <h3 style="margin: 0; color: #34D399; font-size: 15px; display: flex; align-items: center; gap: 8px;">
+                                <span>🛡️ 24/7 Projector Monitor Keeper &amp; Watchdog</span>
+                            </h3>
+                            <div id="projector-watchdog-badge" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 6px; font-size: 11.5px; font-weight: 700; background: rgba(100, 116, 139, 0.2); border: 1px solid rgba(100, 116, 139, 0.4); color: #94A3B8;">
+                                <span class="status-dot" style="background: #64748B;"></span>
+                                <span id="projector-watchdog-badge-text">Watchdog Off</span>
+                            </div>
+                        </div>
+                        <p style="font-size: 13px; color: #E0E7FF; margin-bottom: 14px; line-height: 1.5;">
+                            Guarantees your external monitor or sanctuary stage display stays persistently open 24/7 or during weekly service times. VoxStream's background heartbeat watchdog automatically re-engages the OBS fullscreen projector if a monitor power cycles, HDMI/SDI handshake drops, or OBS restarts.
+                        </p>
+
+                        <div class="form-group toggle-row" style="margin-bottom: 14px;">
+                            <label class="switch-label">
+                                <input type="checkbox" id="obs_projector_persistent_lock">
+                                <span class="switch-text"><strong style="color: #F3F4F6;">Enable Persistent Monitor Keeper &amp; Auto-Reengage Watchdog</strong></span>
+                            </label>
+                        </div>
+
+                        <div id="obs-projector-watchdog-details" style="display: flex; flex-direction: column; gap: 14px;">
+                            <div class="form-row">
+                                <div class="form-group" style="flex: 2;">
+                                    <label for="obs_projector_lock_mode">Enforcement Schedule</label>
+                                    <select id="obs_projector_lock_mode" class="form-control">
+                                        <option value="24_7" selected>🕒 24/7 Continuous (Always Keep Open)</option>
+                                        <option value="schedule">📅 Weekly Schedule (Specific Service Days &amp; Hours)</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="flex: 1;">
+                                    <label for="obs_projector_lock_interval">Heartbeat Interval</label>
+                                    <select id="obs_projector_lock_interval" class="form-control">
+                                        <option value="5">Every 5 seconds (Instant Recovery)</option>
+                                        <option value="10">Every 10 seconds</option>
+                                        <option value="15" selected>Every 15 seconds (Recommended)</option>
+                                        <option value="30">Every 30 seconds</option>
+                                        <option value="60">Every 60 seconds</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Weekly Schedule Settings (Visible when mode is 'schedule') -->
+                            <div id="obs-projector-schedule-container" style="display: none; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 14px;">
+                                <label style="font-size: 12px; font-weight: 700; color: #A5B4FC; margin-bottom: 8px; display: block;">
+                                    Active Service Days:
+                                </label>
+                                <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px;" id="obs-projector-day-pills">
+                                    <label style="display: inline-flex; align-items: center; gap: 5px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12.5px; user-select: none;">
+                                        <input type="checkbox" value="Sun" checked class="obs-projector-day-cb"> Sun
+                                    </label>
+                                    <label style="display: inline-flex; align-items: center; gap: 5px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12.5px; user-select: none;">
+                                        <input type="checkbox" value="Mon" class="obs-projector-day-cb"> Mon
+                                    </label>
+                                    <label style="display: inline-flex; align-items: center; gap: 5px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12.5px; user-select: none;">
+                                        <input type="checkbox" value="Tue" class="obs-projector-day-cb"> Tue
+                                    </label>
+                                    <label style="display: inline-flex; align-items: center; gap: 5px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12.5px; user-select: none;">
+                                        <input type="checkbox" value="Wed" checked class="obs-projector-day-cb"> Wed
+                                    </label>
+                                    <label style="display: inline-flex; align-items: center; gap: 5px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12.5px; user-select: none;">
+                                        <input type="checkbox" value="Thu" class="obs-projector-day-cb"> Thu
+                                    </label>
+                                    <label style="display: inline-flex; align-items: center; gap: 5px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12.5px; user-select: none;">
+                                        <input type="checkbox" value="Fri" class="obs-projector-day-cb"> Fri
+                                    </label>
+                                    <label style="display: inline-flex; align-items: center; gap: 5px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12.5px; user-select: none;">
+                                        <input type="checkbox" value="Sat" class="obs-projector-day-cb"> Sat
+                                    </label>
+                                </div>
+
+                                <div class="form-row" style="margin-bottom: 0;">
+                                    <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                                        <label for="obs_projector_schedule_start">Start Time (HH:MM)</label>
+                                        <input type="time" id="obs_projector_schedule_start" class="form-control" value="07:00">
+                                    </div>
+                                    <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                                        <label for="obs_projector_schedule_end">End Time (HH:MM)</label>
+                                        <input type="time" id="obs_projector_schedule_end" class="form-control" value="14:00">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Live Watchdog Telemetry Status Bar -->
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; color: #94A3B8; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.08); padding: 8px 14px; border-radius: 6px;">
+                                <span>Heartbeat Verifications: <strong id="watchdog-verifications-count" style="color: #34D399; font-family: 'JetBrains Mono', monospace;">0</strong></span>
+                                <span>Last Verified: <strong id="watchdog-last-check" style="color: #E2E8F0;">None</strong></span>
+                                <span>Enforcement State: <strong id="watchdog-last-status" style="color: #FBBF24;">Standby</strong></span>
+                            </div>
+
+                            <div style="text-align: right;">
+                                <button type="button" id="btn-save-projector-watchdog" class="btn btn-secondary btn-sm" style="font-weight: 600; border-color: rgba(16, 185, 129, 0.5); color: #6EE7B7;">
+                                    💾 Save 24/7 Watchdog Settings
+                                </button>
+                            </div>
+                        </div>
+                    </div>
 
                     <!-- Safe Mode & Crash Prevention Info -->
                     <div style="margin-top: 24px; padding: 14px; background: rgba(15, 15, 20, 0.6); border: 1px solid var(--border-color); border-radius: 8px;">

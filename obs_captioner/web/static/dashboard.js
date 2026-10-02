@@ -2253,6 +2253,37 @@ function populateFormFields(cfg) {
             const sanEl = document.getElementById("obs_scene_active_names");
             if (sanEl) sanEl.value = (cfg.obs.scene_active_names || []).join(", ");
         }
+
+        // 24/7 Watchdog Keeper
+        if (cfg.obs.projector_persistent_lock !== undefined) {
+            const plEl = document.getElementById("obs_projector_persistent_lock");
+            if (plEl) plEl.checked = !!cfg.obs.projector_persistent_lock;
+        }
+        if (cfg.obs.projector_lock_schedule_enabled !== undefined) {
+            const modeEl = document.getElementById("obs_projector_lock_mode");
+            if (modeEl) modeEl.value = cfg.obs.projector_lock_schedule_enabled ? "schedule" : "24_7";
+            const schedCont = document.getElementById("obs-projector-schedule-container");
+            if (schedCont) schedCont.style.display = cfg.obs.projector_lock_schedule_enabled ? "block" : "none";
+        }
+        if (cfg.obs.projector_lock_check_interval_seconds !== undefined) {
+            const intEl = document.getElementById("obs_projector_lock_interval");
+            if (intEl) intEl.value = String(cfg.obs.projector_lock_check_interval_seconds);
+        }
+        if (cfg.obs.projector_lock_schedule_days) {
+            const cbs = document.querySelectorAll(".obs-projector-day-cb");
+            cbs.forEach(cb => {
+                cb.checked = (cfg.obs.projector_lock_schedule_days || []).includes(cb.value);
+            });
+        }
+        if (cfg.obs.projector_lock_schedule_start) {
+            const stEl = document.getElementById("obs_projector_schedule_start");
+            if (stEl) stEl.value = cfg.obs.projector_lock_schedule_start;
+        }
+        if (cfg.obs.projector_lock_schedule_end) {
+            const etEl = document.getElementById("obs_projector_schedule_end");
+            if (etEl) etEl.value = cfg.obs.projector_lock_schedule_end;
+        }
+
         toggleProjectorSourceField();
     }
 
@@ -3673,6 +3704,60 @@ async function loadObsStatus() {
                     }
                 }
             }
+
+            // Watchdog telemetry updates
+            const wdBadge = document.getElementById("projector-watchdog-badge");
+            const wdBadgeText = document.getElementById("projector-watchdog-badge-text");
+            const wdCount = document.getElementById("watchdog-verifications-count");
+            const wdLastCheck = document.getElementById("watchdog-last-check");
+            const wdLastStatus = document.getElementById("watchdog-last-status");
+
+            if (wdBadge && wdBadgeText) {
+                if (data.watchdog_active) {
+                    wdBadge.style.background = "rgba(16, 185, 129, 0.15)";
+                    wdBadge.style.borderColor = "rgba(16, 185, 129, 0.4)";
+                    wdBadge.style.color = "#34D399";
+                    const dot = wdBadge.querySelector(".status-dot");
+                    if (dot) dot.style.background = "#10B981";
+                    const monIdx = data.projector_monitor_index !== undefined ? data.projector_monitor_index : 1;
+                    const monLabel = monIdx === -1 ? "Windowed" : `Screen ${monIdx + 1}`;
+                    const modeLabel = data.projector_lock_schedule_enabled ? "Schedule Active" : `24/7 Lock (${monLabel})`;
+                    wdBadgeText.textContent = `Active • ${modeLabel}`;
+                    if (wdLastStatus) {
+                        wdLastStatus.style.color = "#34D399";
+                        wdLastStatus.textContent = "Locked & Enforcing";
+                    }
+                } else if (data.projector_persistent_lock) {
+                    wdBadge.style.background = "rgba(245, 158, 11, 0.15)";
+                    wdBadge.style.borderColor = "rgba(245, 158, 11, 0.4)";
+                    wdBadge.style.color = "#FBBF24";
+                    const dot = wdBadge.querySelector(".status-dot");
+                    if (dot) dot.style.background = "#F59E0B";
+                    wdBadgeText.textContent = "Schedule Inactive (Standby)";
+                    if (wdLastStatus) {
+                        wdLastStatus.style.color = "#FBBF24";
+                        wdLastStatus.textContent = "Standby (Outside Schedule)";
+                    }
+                } else {
+                    wdBadge.style.background = "rgba(100, 116, 139, 0.2)";
+                    wdBadge.style.borderColor = "rgba(100, 116, 139, 0.4)";
+                    wdBadge.style.color = "#94A3B8";
+                    const dot = wdBadge.querySelector(".status-dot");
+                    if (dot) dot.style.background = "#64748B";
+                    wdBadgeText.textContent = "Watchdog Off";
+                    if (wdLastStatus) {
+                        wdLastStatus.style.color = "#94A3B8";
+                        wdLastStatus.textContent = "Disabled";
+                    }
+                }
+            }
+            if (wdCount && data.watchdog_verifications_count !== undefined) {
+                wdCount.textContent = `${data.watchdog_verifications_count} checks`;
+            }
+            if (wdLastCheck && data.last_watchdog_check) {
+                wdLastCheck.textContent = data.last_watchdog_check;
+            }
+
             return data;
         }
     } catch (e) {
@@ -3819,6 +3904,47 @@ if (btnQuickOpenProjector) {
             }
             showToast(`Error: ${e.message}`, "error");
         }
+    });
+}
+
+const lockModeSelect = document.getElementById("obs_projector_lock_mode");
+if (lockModeSelect) {
+    lockModeSelect.addEventListener("change", () => {
+        const schedCont = document.getElementById("obs-projector-schedule-container");
+        if (schedCont) {
+            schedCont.style.display = (lockModeSelect.value === "schedule") ? "block" : "none";
+        }
+    });
+}
+
+const btnSaveWatchdog = document.getElementById("btn-save-projector-watchdog");
+if (btnSaveWatchdog) {
+    btnSaveWatchdog.addEventListener("click", async () => {
+        const persistentLock = document.getElementById("obs_projector_persistent_lock")?.checked ?? false;
+        const lockMode = document.getElementById("obs_projector_lock_mode")?.value || "24_7";
+        const intervalSec = parseInt(document.getElementById("obs_projector_lock_interval")?.value || "15", 10);
+        const scheduleEnabled = (lockMode === "schedule");
+
+        const selectedDays = [];
+        document.querySelectorAll(".obs-projector-day-cb:checked").forEach(cb => {
+            selectedDays.push(cb.value);
+        });
+        const startTime = document.getElementById("obs_projector_schedule_start")?.value || "07:00";
+        const endTime = document.getElementById("obs_projector_schedule_end")?.value || "14:00";
+
+        const payload = {
+            obs: {
+                projector_persistent_lock: persistentLock,
+                projector_lock_check_interval_seconds: intervalSec,
+                projector_lock_schedule_enabled: scheduleEnabled,
+                projector_lock_schedule_days: selectedDays.length > 0 ? selectedDays : ["Sun", "Wed"],
+                projector_lock_schedule_start: startTime,
+                projector_lock_schedule_end: endTime,
+            }
+        };
+
+        await saveConfigPayload(payload, "24/7 Projector Monitor Keeper & Watchdog settings saved!");
+        await loadObsStatus();
     });
 }
 

@@ -1,6 +1,7 @@
 """OBS WebSocket v5 Client with Auto-Start Hooks."""
 
 import asyncio
+import datetime
 import json
 import logging
 from typing import Any, Callable, Optional, Union
@@ -21,7 +22,7 @@ def _generate_auth_string(password: str, salt: str, challenge: str) -> str:
 
 
 class OBSWebSocketClient:
-    """Async client for OBS Studio WebSocket v5 protocol with auto-reconnection."""
+    """Async client for OBS Studio WebSocket v5 protocol with auto-reconnection and 24/7 projector keeper."""
 
     def __init__(self, config: Union[OBSConfig, Any]):
         self.config: OBSConfig = config.obs if hasattr(config, "obs") else config
@@ -33,6 +34,10 @@ class OBSWebSocketClient:
         self._pending_requests = {}
         self._listen_task: Optional[asyncio.Task] = None
         self._reconnect_task: Optional[asyncio.Task] = None
+        self._watchdog_task: Optional[asyncio.Task] = None
+        self.watchdog_verifications_count: int = 0
+        self.last_watchdog_check: Optional[str] = None
+        self.last_watchdog_success: Optional[bool] = None
         self._closing = False
         self.on_stream_state_changed: Optional[Callable[[bool], None]] = None
         self.on_record_state_changed: Optional[Callable[[bool], None]] = None
@@ -40,12 +45,15 @@ class OBSWebSocketClient:
         self.current_scene: Optional[str] = None
 
     async def connect(self) -> bool:
-        """Connect and authenticate with OBS WebSocket v5, starting auto-reconnector."""
+        """Connect and authenticate with OBS WebSocket v5, starting auto-reconnector and watchdog."""
         if not self.config.enabled:
             return False
 
         if not self._reconnect_task or self._reconnect_task.done():
             self._reconnect_task = asyncio.create_task(self._reconnect_loop())
+
+        if not self._watchdog_task or self._watchdog_task.done():
+            self._watchdog_task = asyncio.create_task(self._projector_watchdog_loop())
 
         return await self._attempt_connect()
 
@@ -361,8 +369,89 @@ class OBSWebSocketClient:
             }
         return {"connected": self.is_connected, "current_scene": self.current_scene or "", "scenes": []}
 
+    def is_projector_schedule_active(self, now: Optional[datetime.datetime] = None) -> bool:
+        """Check if projector lock is currently active based on 24/7 setting or weekly schedule window."""
+        if not getattr(self.config, "projector_persistent_lock", False):
+            return False
+        if not getattr(self.config, "projector_lock_schedule_enabled", False):
+            return True  # 24/7 Continuous Mode
+
+        if now is None:
+            now = datetime.datetime.now()
+
+        # 1. Day Check
+        day_map = {
+            "mon": "Mon", "monday": "Mon",
+            "tue": "Tue", "tues": "Tue", "tuesday": "Tue",
+            "wed": "Wed", "wednesday": "Wed",
+            "thu": "Thu", "thur": "Thu", "thurs": "Thu", "thursday": "Thu",
+            "fri": "Fri", "friday": "Fri",
+            "sat": "Sat", "saturday": "Sat",
+            "sun": "Sun", "sunday": "Sun"
+        }
+        current_day_abbr = now.strftime("%a")  # e.g. "Sun", "Wed"
+        raw_days = getattr(self.config, "projector_lock_schedule_days", ["Sun", "Wed"]) or []
+        configured_days = [
+            day_map.get(str(d).strip().lower(), str(d).strip())
+            for d in raw_days
+        ]
+        if configured_days and current_day_abbr not in configured_days:
+            return False
+
+        # 2. Time Window Check
+        try:
+            start_str = getattr(self.config, "projector_lock_schedule_start", "07:00") or "07:00"
+            end_str = getattr(self.config, "projector_lock_schedule_end", "14:00") or "14:00"
+            start_parts = [int(p) for p in start_str.split(":")]
+            end_parts = [int(p) for p in end_str.split(":")]
+            start_t = datetime.time(start_parts[0], start_parts[1] if len(start_parts) > 1 else 0)
+            end_t = datetime.time(end_parts[0], end_parts[1] if len(end_parts) > 1 else 0)
+            curr_t = now.time()
+
+            if start_t <= end_t:
+                return start_t <= curr_t <= end_t
+            else:
+                # Overnight window (e.g. 22:00 -> 04:00)
+                return curr_t >= start_t or curr_t <= end_t
+        except Exception as ex:
+            logger.debug(f"Error checking projector schedule time window: {ex}")
+            return True
+
+    async def _projector_watchdog_loop(self):
+        """Periodic heartbeat loop to verify and keep OBS projector locked to target monitor 24/7 or on schedule."""
+        while not self._closing and getattr(self.config, "enabled", True):
+            interval = max(5, int(getattr(self.config, "projector_lock_check_interval_seconds", 15) or 15))
+            await asyncio.sleep(interval)
+
+            if self._closing or not getattr(self.config, "enabled", True):
+                break
+
+            if not getattr(self.config, "projector_persistent_lock", False):
+                continue
+
+            if not self.is_connected or not self.ws:
+                continue
+
+            if self.is_projector_schedule_active():
+                try:
+                    success = await self.open_projector(
+                        mix_type=self.config.projector_type,
+                        monitor_index=self.config.projector_monitor_index,
+                        source_name=self.config.projector_source_name,
+                    )
+                    self.watchdog_verifications_count += 1
+                    self.last_watchdog_check = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    self.last_watchdog_success = success
+                    if success:
+                        logger.debug(f"Projector watchdog verified on monitor {self.config.projector_monitor_index}.")
+                except Exception as ex:
+                    self.last_watchdog_check = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    self.last_watchdog_success = False
+                    logger.debug(f"Projector watchdog verification error: {ex}")
+
     def get_status(self) -> dict:
         """Return real-time OBS WebSocket connection status and diagnostic telemetry."""
+        is_sched_active = self.is_projector_schedule_active()
         return {
             "enabled": self.config.enabled,
             "connected": self.is_connected,
@@ -376,6 +465,17 @@ class OBSWebSocketClient:
             "projector_type": self.config.projector_type,
             "projector_monitor_index": self.config.projector_monitor_index,
             "projector_source_name": self.config.projector_source_name,
+            "projector_persistent_lock": getattr(self.config, "projector_persistent_lock", False),
+            "projector_lock_check_interval_seconds": getattr(self.config, "projector_lock_check_interval_seconds", 15),
+            "projector_lock_schedule_enabled": getattr(self.config, "projector_lock_schedule_enabled", False),
+            "projector_lock_schedule_days": getattr(self.config, "projector_lock_schedule_days", ["Sun", "Wed"]),
+            "projector_lock_schedule_start": getattr(self.config, "projector_lock_schedule_start", "07:00"),
+            "projector_lock_schedule_end": getattr(self.config, "projector_lock_schedule_end", "14:00"),
+            "watchdog_active": getattr(self.config, "projector_persistent_lock", False) and is_sched_active,
+            "watchdog_schedule_active": is_sched_active,
+            "watchdog_verifications_count": self.watchdog_verifications_count,
+            "last_watchdog_check": self.last_watchdog_check,
+            "last_watchdog_success": self.last_watchdog_success,
         }
 
     async def reconnect(self, new_config: Optional[Union[OBSConfig, Any]] = None) -> bool:
@@ -402,11 +502,13 @@ class OBSWebSocketClient:
             )
 
     async def close(self):
-        """Close WebSocket connection and stop reconnect loop."""
+        """Close WebSocket connection and stop reconnect loop and watchdog."""
         self._closing = True
         self.is_connected = False
         if self._reconnect_task:
             self._reconnect_task.cancel()
+        if self._watchdog_task:
+            self._watchdog_task.cancel()
         if self._listen_task:
             self._listen_task.cancel()
         if self.ws:

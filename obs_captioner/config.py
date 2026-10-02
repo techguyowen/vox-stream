@@ -157,6 +157,12 @@ class OBSConfig:
     scene_active_names: List[str] = field(default_factory=list)  # OBS scenes where captions should be active/resumed
     auto_stop_on_stream: bool = False  # Auto-stop captioning when OBS stops streaming (prevents cloud token waste)
     auto_stop_on_record: bool = False  # Auto-stop captioning when OBS stops recording (prevents cloud token waste)
+    projector_persistent_lock: bool = False  # Keep projector open 24/7 on target display monitor
+    projector_lock_check_interval_seconds: int = 15  # Periodic watchdog verification interval (seconds)
+    projector_lock_schedule_enabled: bool = False  # Enforce only on specific schedule window (or 24/7 if False)
+    projector_lock_schedule_days: List[str] = field(default_factory=lambda: ["Sun", "Wed"])  # Active schedule days
+    projector_lock_schedule_start: str = "07:00"  # Schedule start time (HH:MM)
+    projector_lock_schedule_end: str = "14:00"  # Schedule end time (HH:MM)
 
 
 @dataclass
