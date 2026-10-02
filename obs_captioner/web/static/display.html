@@ -2426,7 +2426,7 @@
                             setFontSize(parseInt(d.font_size, 10));
                         }
                         // 4. Line Height
-                        if (d.line_height) {
+                        if (d.line_height && localStorage.getItem('voxstream_display_a11y') === null) {
                             document.documentElement.style.setProperty('--line-height', `${d.line_height}`);
                         }
                         // 5. Interim Speech (Final Only)
