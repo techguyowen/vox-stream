@@ -2405,13 +2405,47 @@
             };
         }
 
-        async function loadServerOverlayConfig() {
+        async function loadServerDisplayConfig() {
             try {
                 const res = await fetch('/api/config');
                 if (res.ok) {
                     const cfg = await res.json();
+                    if (cfg && cfg.display) {
+                        const d = cfg.display;
+                        // 1. Theme
+                        if (d.theme && localStorage.getItem('voxstream_display_theme') === null && !urlParams.has('theme')) {
+                            const themeClass = d.theme.startsWith('theme-') ? d.theme : `theme-${d.theme}`;
+                            setTheme(themeClass);
+                        }
+                        // 2. Font Family
+                        if (d.font_family && localStorage.getItem('voxstream_display_font') === null && !urlParams.has('font')) {
+                            setFontFamily(d.font_family);
+                        }
+                        // 3. Font Size
+                        if (d.font_size && localStorage.getItem('voxstream_display_fontsize') === null && !urlParams.has('size')) {
+                            setFontSize(parseInt(d.font_size, 10));
+                        }
+                        // 4. Line Height
+                        if (d.line_height) {
+                            document.documentElement.style.setProperty('--line-height', `${d.line_height}`);
+                        }
+                        // 5. Interim Speech (Final Only)
+                        if (d.show_interim !== undefined && localStorage.getItem("voxstream_display_final_only") === null && !urlParams.has('final_only')) {
+                            applyDisplayFinalOnlyMode(!d.show_interim);
+                        }
+                        // 6. Dyslexia Mode
+                        if (d.dyslexia_mode !== undefined && localStorage.getItem("voxstream_display_a11y") === null && !urlParams.has('dyslexia')) {
+                            applyDisplayA11yMode(Boolean(d.dyslexia_mode));
+                        }
+                        // 7. Custom Branding Title
+                        if (d.custom_title && !urlParams.has('title')) {
+                            document.title = `${d.custom_title} - VoxStream`;
+                            const headerTitle = document.querySelector('.header-title') || document.querySelector('h1');
+                            if (headerTitle) headerTitle.textContent = d.custom_title;
+                        }
+                    }
                     if (cfg && cfg.overlay && cfg.overlay.final_only !== undefined) {
-                        if (localStorage.getItem("voxstream_display_final_only") === null && !urlParams.has('final_only')) {
+                        if (localStorage.getItem("voxstream_display_final_only") === null && !urlParams.has('final_only') && (!cfg.display || cfg.display.show_interim === undefined)) {
                             applyDisplayFinalOnlyMode(Boolean(cfg.overlay.final_only));
                         }
                     }
@@ -2422,7 +2456,7 @@
         connectWebSocket();
         applyDisplayMode(currentMode);
         loadServerHistory();
-        loadServerOverlayConfig();
+        loadServerDisplayConfig();
 
         function formatEngineBadge(engine, engineName) {
             const raw = (engineName || engine || '').toLowerCase();

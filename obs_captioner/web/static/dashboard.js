@@ -34,6 +34,21 @@ function updateNetworkUrls(data) {
         pillCaptionsDisplayUrl.textContent = data.display_url || `${base}/display`;
     }
 
+    // 1c. Audience Display Tab URL
+    const displayTabUrlEl = document.getElementById("display-tab-live-url");
+    if (displayTabUrlEl) {
+        const primaryDisplayUrl = data.display_url || `${base}/display`;
+        if (isNetwork) {
+            displayTabUrlEl.innerHTML = `<span style="color: #38BDF8; font-weight: 700;">${primaryDisplayUrl}</span> <span style="color: #64748B; font-size: 11px; margin-left: 6px;">(Local: http://127.0.0.1:${currentPort}/display)</span>`;
+        } else {
+            displayTabUrlEl.innerHTML = `<span style="color: #38BDF8; font-weight: 700;">${primaryDisplayUrl}</span>`;
+        }
+    }
+    const btnOpenAudienceTab = document.getElementById("btn-open-audience-tab");
+    if (btnOpenAudienceTab) {
+        btnOpenAudienceTab.href = data.display_url || `${base}/display`;
+    }
+
     // 2. OBS Overlay Live URL display
     const obsUrlEl = document.getElementById("obs-overlay-live-url");
     if (obsUrlEl) {
@@ -190,6 +205,7 @@ function setupA11yPresets() {
 
 // Feature Module Manager & Dynamic Tab Visibility
 const FEATURE_DEFAULTS = {
+    display: true,
     bible: true,
     vocabulary: true,
     filter: true,
@@ -2221,6 +2237,49 @@ function populateFormFields(cfg) {
         toggleProjectorSourceField();
     }
 
+    // Audience Display tab
+    if (cfg.display) {
+        const d = cfg.display;
+        if (d.theme) setSelectValue(document.getElementById("display_theme"), d.theme);
+        if (d.custom_title) {
+            const el = document.getElementById("display_custom_title");
+            if (el && document.activeElement !== el) el.value = d.custom_title;
+        }
+        if (d.font_family) setSelectValue(document.getElementById("display_font_family"), d.font_family);
+        if (d.font_size) {
+            const fs = parseInt(d.font_size, 10) || 48;
+            const el = document.getElementById("display_font_size");
+            if (el) el.value = fs;
+            const valEl = document.getElementById("val-display-font-size");
+            if (valEl) valEl.textContent = `${fs}px`;
+        }
+        if (d.line_height) {
+            const lh = parseFloat(d.line_height) || 1.45;
+            const el = document.getElementById("display_line_height");
+            if (el) el.value = lh;
+            const valEl = document.getElementById("val-display-line-height");
+            if (valEl) valEl.textContent = lh.toFixed(2);
+        }
+        if (d.text_align) setSelectValue(document.getElementById("display_text_align"), d.text_align);
+        if (d.vertical_align) setSelectValue(document.getElementById("display_vertical_align"), d.vertical_align);
+        if (d.max_lines !== undefined) setSelectValue(document.getElementById("display_max_lines"), d.max_lines);
+        if (d.show_interim !== undefined) {
+            const el = document.getElementById("display_show_interim");
+            if (el) el.checked = !!d.show_interim;
+        }
+        if (d.show_scripture !== undefined) {
+            const el = document.getElementById("display_show_scripture");
+            if (el) el.checked = !!d.show_scripture;
+        }
+        if (d.dyslexia_mode !== undefined) {
+            const el = document.getElementById("display_dyslexia_mode");
+            if (el) el.checked = !!d.dyslexia_mode;
+        }
+        if (typeof updateAudienceDisplayPreview === "function") {
+            updateAudienceDisplayPreview();
+        }
+    }
+
     // Twitch tab
     if (cfg.twitch) {
         document.getElementById("twitch_enabled").checked = !!cfg.twitch.enabled;
@@ -3276,6 +3335,188 @@ document.getElementById("btn-save-projector").addEventListener("click", async ()
     };
     await saveConfigPayload(payload, "Projector & Display automation settings saved!");
 });
+
+// --- Audience Caption Display (/display) Studio & Defaults ---
+
+const THEME_DISPLAY_PALETTES = {
+    "oled": { bg: "#000000", text: "#FFFFFF", interim: "#93C5FD", card: "#1E293B", cardBorder: "rgba(245, 158, 11, 0.4)", cardText: "#F8FAFC", navBg: "rgba(22, 27, 34, 0.9)", border: "#243242" },
+    "amber": { bg: "#050505", text: "#FFB703", interim: "#FB8500", card: "#1A1608", cardBorder: "rgba(255, 183, 3, 0.4)", cardText: "#FFD166", navBg: "rgba(26, 22, 8, 0.95)", border: "#382A0B" },
+    "slate": { bg: "#0F172A", text: "#F8FAFC", interim: "#FBBF24", card: "#1E293B", cardBorder: "rgba(56, 189, 248, 0.4)", cardText: "#F8FAFC", navBg: "rgba(15, 23, 42, 0.95)", border: "#334155" },
+    "light": { bg: "#F8FAFC", text: "#0F172A", interim: "#2563EB", card: "#FFFFFF", cardBorder: "rgba(203, 213, 225, 0.8)", cardText: "#0F172A", navBg: "rgba(241, 245, 249, 0.95)", border: "#CBD5E1" },
+    "black-on-white": { bg: "#FFFFFF", text: "#000000", interim: "#374151", card: "#F3F4F6", cardBorder: "rgba(0, 0, 0, 0.25)", cardText: "#000000", navBg: "rgba(243, 244, 246, 0.95)", border: "#D1D5DB" },
+    "high-vis": { bg: "#000000", text: "#FFFF00", interim: "#FEF08A", card: "#111111", cardBorder: "#FFFF00", cardText: "#FFFFFF", navBg: "rgba(17, 17, 17, 0.95)", border: "#FFFF00" },
+    "pro-green": { bg: "#051A14", text: "#34D399", interim: "#6EE7B7", card: "#062E23", cardBorder: "rgba(52, 211, 153, 0.4)", cardText: "#ECFDF5", navBg: "rgba(5, 26, 20, 0.95)", border: "#047857" },
+    "hacker": { bg: "#000000", text: "#00FF66", interim: "#66FF99", card: "#0A1A0F", cardBorder: "rgba(0, 255, 102, 0.4)", cardText: "#D1FAE5", navBg: "rgba(0, 0, 0, 0.95)", border: "#00AA44" },
+    "dark": { bg: "#0D1117", text: "#C9D1D9", interim: "#58A6FF", card: "#161B22", cardBorder: "rgba(48, 54, 61, 0.8)", cardText: "#F0F6FC", navBg: "rgba(22, 27, 34, 0.95)", border: "#30363D" }
+};
+
+function updateAudienceDisplayPreview() {
+    const themeKey = document.getElementById("display_theme")?.value || "oled";
+    const palette = THEME_DISPLAY_PALETTES[themeKey] || THEME_DISPLAY_PALETTES["oled"];
+    
+    const viewport = document.getElementById("audience-preview-viewport");
+    const frame = document.getElementById("audience-preview-phone-frame");
+    const navbar = document.getElementById("audience-preview-navbar");
+    const titleEl = document.getElementById("audience-preview-title");
+    const captionBox = document.getElementById("audience-preview-caption-box");
+    const finalLine = document.getElementById("audience-preview-final-line");
+    const interimLine = document.getElementById("audience-preview-interim-line");
+    const scriptureCard = document.getElementById("audience-preview-scripture-card");
+    
+    if (viewport) {
+        viewport.style.backgroundColor = palette.bg;
+        viewport.style.color = palette.text;
+    }
+    if (frame) {
+        frame.style.borderColor = palette.border;
+    }
+    if (navbar) {
+        navbar.style.backgroundColor = palette.navBg;
+    }
+    if (titleEl) {
+        const customTitle = document.getElementById("display_custom_title")?.value.trim();
+        titleEl.textContent = customTitle || "Live Audience Captions";
+    }
+    
+    // Typography
+    const fontFamily = document.getElementById("display_font_family")?.value || "'Inter', sans-serif";
+    const fontSize = parseInt(document.getElementById("display_font_size")?.value, 10) || 48;
+    const lineHeight = parseFloat(document.getElementById("display_line_height")?.value) || 1.45;
+    const textAlign = document.getElementById("display_text_align")?.value || "center";
+    const vertAlign = document.getElementById("display_vertical_align")?.value || "bottom";
+    const showInterim = document.getElementById("display_show_interim")?.checked ?? true;
+    const showScripture = document.getElementById("display_show_scripture")?.checked ?? true;
+    const dyslexiaMode = document.getElementById("display_dyslexia_mode")?.checked ?? false;
+    
+    // Update value badges
+    const valSize = document.getElementById("val-display-font-size");
+    if (valSize) valSize.textContent = `${fontSize}px`;
+    const valLh = document.getElementById("val-display-line-height");
+    if (valLh) valLh.textContent = lineHeight.toFixed(2);
+    
+    if (captionBox) {
+        captionBox.style.fontFamily = fontFamily;
+        // Scale font size proportionally for phone preview mockup
+        const scaledSize = Math.max(16, Math.min(42, Math.round(fontSize * 0.58)));
+        captionBox.style.fontSize = `${scaledSize}px`;
+        captionBox.style.lineHeight = `${lineHeight}`;
+        captionBox.style.textAlign = textAlign;
+        
+        if (dyslexiaMode) {
+            captionBox.style.letterSpacing = "0.06em";
+            captionBox.style.wordSpacing = "0.15em";
+        } else {
+            captionBox.style.letterSpacing = "normal";
+            captionBox.style.wordSpacing = "normal";
+        }
+    }
+    
+    if (finalLine) {
+        finalLine.style.color = palette.text;
+    }
+    
+    if (interimLine) {
+        interimLine.style.color = palette.interim;
+        interimLine.style.display = showInterim ? "block" : "none";
+    }
+    
+    if (scriptureCard) {
+        scriptureCard.style.display = showScripture ? "block" : "none";
+        scriptureCard.style.backgroundColor = palette.card;
+        scriptureCard.style.borderColor = palette.cardBorder;
+        scriptureCard.style.color = palette.cardText;
+    }
+    
+    if (viewport) {
+        if (vertAlign === "top") {
+            viewport.style.justifyContent = "flex-start";
+        } else if (vertAlign === "middle") {
+            viewport.style.justifyContent = "center";
+        } else {
+            viewport.style.justifyContent = "flex-end";
+        }
+    }
+}
+
+function initAudienceDisplayTab() {
+    // 1. Copy URL Button
+    const btnCopyUrl = document.getElementById("btn-copy-audience-url");
+    if (btnCopyUrl) {
+        btnCopyUrl.addEventListener("click", () => {
+            const url = `${getMachineBaseUrl()}/display`;
+            navigator.clipboard.writeText(url).then(() => {
+                showToast("📋 Copied Audience Display URL to clipboard!", "success", 3000);
+            }).catch(() => {
+                showToast(`Audience URL: ${url}`, "info", 6000);
+            });
+        });
+    }
+
+    // 2. Show QR Button
+    const btnShowQr = document.getElementById("btn-show-audience-qr");
+    if (btnShowQr) {
+        btnShowQr.addEventListener("click", () => {
+            if (typeof openDisplayQrModal === "function") {
+                openDisplayQrModal();
+            }
+        });
+    }
+
+    // 3. Live Preview Listeners
+    const previewInputs = [
+        "display_theme", "display_custom_title", "display_font_family",
+        "display_font_size", "display_line_height", "display_text_align",
+        "display_vertical_align", "display_max_lines", "display_show_interim",
+        "display_show_scripture", "display_dyslexia_mode"
+    ];
+    previewInputs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener("input", updateAudienceDisplayPreview);
+            el.addEventListener("change", updateAudienceDisplayPreview);
+        }
+    });
+
+    // 4. Test Text Input in Preview
+    const btnTestPreview = document.getElementById("btn-test-audience-preview");
+    const testInput = document.getElementById("audience-preview-test-input");
+    if (btnTestPreview && testInput) {
+        btnTestPreview.addEventListener("click", () => {
+            const val = testInput.value.trim();
+            const finalEl = document.getElementById("audience-preview-final-line");
+            if (finalEl && val) {
+                finalEl.textContent = val;
+                showToast("Updated preview text!", "info", 2000);
+            }
+        });
+        testInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") btnTestPreview.click();
+        });
+    }
+
+    // 5. Save Default Display Settings
+    const btnSaveDisplay = document.getElementById("btn-save-display-config");
+    if (btnSaveDisplay) {
+        btnSaveDisplay.addEventListener("click", async () => {
+            const payload = {
+                display: {
+                    theme: document.getElementById("display_theme")?.value || "oled",
+                    custom_title: document.getElementById("display_custom_title")?.value.trim() || "Live Audience Captions",
+                    font_family: document.getElementById("display_font_family")?.value || "'Inter', system-ui, -apple-system, sans-serif",
+                    font_size: parseInt(document.getElementById("display_font_size")?.value, 10) || 48,
+                    line_height: parseFloat(document.getElementById("display_line_height")?.value) || 1.45,
+                    text_align: document.getElementById("display_text_align")?.value || "center",
+                    vertical_align: document.getElementById("display_vertical_align")?.value || "bottom",
+                    max_lines: parseInt(document.getElementById("display_max_lines")?.value, 10) || 3,
+                    show_interim: document.getElementById("display_show_interim") ? document.getElementById("display_show_interim").checked : true,
+                    show_scripture: document.getElementById("display_show_scripture") ? document.getElementById("display_show_scripture").checked : true,
+                    dyslexia_mode: document.getElementById("display_dyslexia_mode") ? document.getElementById("display_dyslexia_mode").checked : false,
+                }
+            };
+            await saveConfigPayload(payload, "Audience Display default settings saved successfully!");
+        });
+    }
+}
 
 // Scene-Aware Auto-Mute Handlers
 const btnSaveSceneMute = document.getElementById("btn-save-scene-mute");
@@ -5735,6 +5976,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
     await checkCaddyStatus();
     initGeminiModelScanner();
+    initAudienceDisplayTab();
 
     // Periodic status poll (every 4s)
     setInterval(refreshEngineStatus, 4000);

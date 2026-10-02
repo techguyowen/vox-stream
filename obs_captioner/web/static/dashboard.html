@@ -131,12 +131,13 @@
             <!-- Navigation Tabs -->
             <nav class="nav-tabs">
                 <button class="tab-btn active" data-tab="styling">🎬 OBS Caption Overlay</button>
+                <button class="tab-btn" data-tab="display">📱 Audience Display</button>
                 <button class="tab-btn" data-tab="bible">📖 Scripture Overlay</button>
                 <button class="tab-btn" data-tab="vocabulary">📚 Glossary</button>
                 <button class="tab-btn" data-tab="filter">🛡️ Safety Filter</button>
                 <button class="tab-btn" data-tab="translation">🌐 Translation</button>
                 <button class="tab-btn" data-tab="audio">🎙️ Audio &amp; Engine</button>
-                <button class="tab-btn" data-tab="projectors">📺 Displays</button>
+                <button class="tab-btn" data-tab="projectors">📺 OBS Projectors</button>
                 <button class="tab-btn" data-tab="twitch">👾 Twitch Bot</button>
                 <button class="tab-btn" data-tab="transcript">📜 Transcripts</button>
                 <button class="tab-btn" data-tab="api">⚡ API &amp; Docks</button>
@@ -483,6 +484,269 @@
                         <div class="preview-actions">
                             <input type="text" id="preview-test-input" placeholder="Type custom test phrase..." class="form-control">
                             <button id="btn-test-preview" class="btn btn-secondary">Test Text</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB: AUDIENCE CAPTIONS DISPLAY SETTINGS & DESIGN -->
+            <div id="tab-display" class="tab-pane">
+                <!-- 1. Dedicated Audience Display Share & Launch Card -->
+                <div class="panel" style="margin-bottom: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;">
+                        <div>
+                            <h2 style="margin: 0; font-size: 1rem; color: var(--accent); display: flex; align-items: center; gap: 8px;">
+                                <span>📱 Live Audience Captions Display</span>
+                                <span class="badge" style="background: var(--accent-subtle); color: var(--accent); border: 1px solid var(--border-color); font-size: 0.6875rem; padding: 2px 8px; border-radius: var(--radius-full);">/display</span>
+                            </h2>
+                            <p class="subtext" style="margin: 4px 0 0 0; font-size: 0.8125rem;">
+                                Instant, zero-install mobile read-along display for in-person congregants, hard-of-hearing attendees, classrooms, and overflow rooms.
+                            </p>
+                        </div>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <button type="button" id="btn-copy-audience-url" class="btn btn-primary btn-sm">
+                                <span>📋 Copy URL</span>
+                            </button>
+                            <button type="button" id="btn-show-audience-qr" class="btn btn-secondary btn-sm">
+                                <span>📲 QR Code</span>
+                            </button>
+                            <a id="btn-open-audience-tab" href="/display" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration: none;">
+                                <span>↗️ Open Live Display</span>
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Live Shareable URL Pill & Badges -->
+                    <div style="display: flex; gap: 14px; flex-wrap: wrap; align-items: center; justify-content: space-between; background: var(--surface-raised); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 16px; font-size: 0.8125rem; margin-bottom: 14px;">
+                        <div style="flex: 1; min-width: 260px; font-family: monospace; color: var(--accent); word-break: break-all;">
+                            <span style="color: var(--text-muted); font-size: 0.6875rem; text-transform: uppercase; display: block; margin-bottom: 2px; font-weight: 700; letter-spacing: 0.05em;">Attendee Mobile / Browser URL:</span>
+                            <span id="display-tab-live-url" style="font-weight: 700; font-size: 0.875rem;">http://127.0.0.1:8765/display</span>
+                        </div>
+                        <div style="display: flex; gap: 12px; font-size: 0.75rem; color: var(--text-muted); flex-wrap: wrap; border-left: 1px solid var(--border-color); padding-left: 14px;">
+                            <div>⚡ <strong>Zero App Install</strong></div>
+                            <div>📱 <strong>Mobile &amp; Tablet Ready</strong></div>
+                            <div>♿ <strong>Accessible &amp; Low-Latency</strong></div>
+                        </div>
+                    </div>
+
+                    <!-- Audience Quick Usage Guide -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                        <div style="background: var(--surface-raised); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px 14px; font-size: 0.75rem;">
+                            <strong style="color: var(--text-main); display: block; margin-bottom: 2px;">1. Share QR or Link</strong>
+                            <span style="color: var(--text-muted);">Print the QR code or project it on welcome slides before service begins.</span>
+                        </div>
+                        <div style="background: var(--surface-raised); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px 14px; font-size: 0.75rem;">
+                            <strong style="color: var(--text-main); display: block; margin-bottom: 2px;">2. Scan &amp; Follow Along</strong>
+                            <span style="color: var(--text-muted);">Attendees simply scan with phone cameras to read live captions in their hand.</span>
+                        </div>
+                        <div style="background: var(--surface-raised); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px 14px; font-size: 0.75rem;">
+                            <strong style="color: var(--text-main); display: block; margin-bottom: 2px;">3. Set Venue Defaults</strong>
+                            <span style="color: var(--text-muted);">Configure default typography, colors, and layout below for all new visitors.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. Interactive Live Audience Display Studio (Controls + Real-Time Preview) -->
+                <div class="studio-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start;">
+                    <!-- Left Column: Default Settings & Controls -->
+                    <div style="display: flex; flex-direction: column; gap: 18px;">
+                        <!-- Appearance & Theme Card -->
+                        <div class="panel">
+                            <h3 style="font-size: 0.9375rem; color: var(--text-main); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                                <span>🎨 Default Appearance &amp; Color Theme</span>
+                            </h3>
+
+                            <div class="form-group">
+                                <label for="display_theme">Default Color Theme</label>
+                                <select id="display_theme" class="form-control">
+                                    <option value="oled" selected>🌑 OLED Pitch Black (High-Contrast, Battery Saver)</option>
+                                    <option value="amber">🌕 Amber Gold on Black (Sanctuary / Warm Glow)</option>
+                                    <option value="slate">🌌 Slate Navy (Modern Crisp Blue)</option>
+                                    <option value="light">☀️ Light Studio (Paper White Clean)</option>
+                                    <option value="black-on-white">📄 High-Contrast Black on White (E-Ink Style)</option>
+                                    <option value="high-vis">⚡ High-Vis Neon Yellow (Maximum Low-Vision Aid)</option>
+                                    <option value="pro-green">🌲 Pro Green Matrix (Subdued Emerald)</option>
+                                    <option value="hacker">💻 Terminal Hacker (JetBrains Monospace Green)</option>
+                                    <option value="dark">🌒 Dark Charcoal (Subtle Slate)</option>
+                                </select>
+                                <span class="help-text">Default palette applied when an attendee opens the display page.</span>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="display_custom_title">Branding Header Title</label>
+                                <input type="text" id="display_custom_title" class="form-control" placeholder="Live Audience Captions" value="Live Audience Captions">
+                                <span class="help-text">Top navbar header displayed on attendee phones (e.g. "Grace Church Live Read-Along").</span>
+                            </div>
+                        </div>
+
+                        <!-- Typography & Layout Card -->
+                        <div class="panel">
+                            <h3 style="font-size: 0.9375rem; color: var(--text-main); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                                <span>🔤 Default Typography &amp; Layout</span>
+                            </h3>
+
+                            <div class="form-group">
+                                <label for="display_font_family">Default Font Family</label>
+                                <select id="display_font_family" class="form-control">
+                                    <option value="'Inter', system-ui, -apple-system, sans-serif" selected>Inter (Clean Modern Sans-Serif)</option>
+                                    <option value="'Roboto', sans-serif">Roboto (Crisp Geometric Sans)</option>
+                                    <option value="'Montserrat', sans-serif">Montserrat (Bold Modern Header)</option>
+                                    <option value="'OpenDyslexic', sans-serif">OpenDyslexic (Specialized Reading Aid)</option>
+                                    <option value="'Lora', Georgia, serif">Lora (Classic Elegant Serif)</option>
+                                    <option value="'JetBrains Mono', monospace">JetBrains Mono (Technical Monospace)</option>
+                                    <option value="'Poppins', sans-serif">Poppins (Rounded Modern)</option>
+                                    <option value="'Oswald', sans-serif">Oswald (Condensed Impact)</option>
+                                    <option value="'Bebas Neue', sans-serif">Bebas Neue (Tall Display)</option>
+                                </select>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group" style="flex: 1;">
+                                    <label for="display_font_size">
+                                        Default Font Size: <span id="val-display-font-size" style="color: var(--accent); font-weight: 700;">48px</span>
+                                    </label>
+                                    <input type="range" id="display_font_size" min="24" max="96" step="2" value="48" class="form-control range-slider">
+                                </div>
+                                <div class="form-group" style="flex: 1;">
+                                    <label for="display_line_height">
+                                        Line Height: <span id="val-display-line-height" style="color: var(--accent); font-weight: 700;">1.45</span>
+                                    </label>
+                                    <input type="range" id="display_line_height" min="1.15" max="2.00" step="0.05" value="1.45" class="form-control range-slider">
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group" style="flex: 1;">
+                                    <label for="display_text_align">Text Alignment</label>
+                                    <select id="display_text_align" class="form-control">
+                                        <option value="center" selected>Center Aligned</option>
+                                        <option value="left">Left Aligned (Book Style)</option>
+                                        <option value="right">Right Aligned</option>
+                                    </select>
+                                </div>
+                                <div class="form-group" style="flex: 1;">
+                                    <label for="display_vertical_align">Vertical Screen Alignment</label>
+                                    <select id="display_vertical_align" class="form-control">
+                                        <option value="bottom" selected>Bottom Aligned (Subtitle style)</option>
+                                        <option value="middle">Middle Aligned (Centered in screen)</option>
+                                        <option value="top">Top Aligned (Header style)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="display_max_lines">Max Visible Sentence Lines</label>
+                                <select id="display_max_lines" class="form-control">
+                                    <option value="1">1 Line (Single caption focus)</option>
+                                    <option value="2">2 Lines (Standard TV / subtitle)</option>
+                                    <option value="3" selected>3 Lines (Default recommended)</option>
+                                    <option value="4">4 Lines (Extended paragraph)</option>
+                                    <option value="5">5 Lines (Full paragraph)</option>
+                                    <option value="8">8 Lines (Long transcript)</option>
+                                    <option value="0">All / Continuous Scroll</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Behavior & Accessibility Toggles Card -->
+                        <div class="panel">
+                            <h3 style="font-size: 0.9375rem; color: var(--text-main); margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
+                                <span>♿ Experience &amp; Accessibility Defaults</span>
+                            </h3>
+
+                            <div class="form-group toggle-row" style="margin-bottom: 10px;">
+                                <label class="switch-label">
+                                    <input type="checkbox" id="display_show_interim" checked>
+                                    <span class="switch-text">
+                                        <strong>Show Live Interim Words (Real-Time In-Progress Speech)</strong>
+                                        <small style="display: block; color: var(--text-muted); font-size: 0.75rem;">Display spoken words immediately with active pulsing cursor before sentence completes.</small>
+                                    </span>
+                                </label>
+                            </div>
+
+                            <div class="form-group toggle-row" style="margin-bottom: 10px;">
+                                <label class="switch-label">
+                                    <input type="checkbox" id="display_show_scripture" checked>
+                                    <span class="switch-text">
+                                        <strong>Show Spoken Scripture / Bible Passage Cards</strong>
+                                        <small style="display: block; color: var(--text-muted); font-size: 0.75rem;">Pop up Bible verses automatically when chapter and verse references are detected.</small>
+                                    </span>
+                                </label>
+                            </div>
+
+                            <div class="form-group toggle-row" style="margin-bottom: 6px;">
+                                <label class="switch-label">
+                                    <input type="checkbox" id="display_dyslexia_mode">
+                                    <span class="switch-text">
+                                        <strong>Enable Dyslexia-Friendly Spacing by Default</strong>
+                                        <small style="display: block; color: var(--text-muted); font-size: 0.75rem;">Increases character and word tracking (+0.06em) and line height for enhanced readability.</small>
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Save Settings Button -->
+                        <button type="button" id="btn-save-display-config" class="btn btn-primary btn-block" style="padding: 12px 20px; font-weight: 700; font-size: 0.9375rem;">
+                            💾 Save Default Audience Display Settings
+                        </button>
+                    </div>
+
+                    <!-- Right Column: Live Interactive Device Preview -->
+                    <div class="panel preview-sticky-panel" style="position: sticky; top: 18px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                            <h3 style="font-size: 0.9375rem; color: var(--text-main); margin: 0; display: flex; align-items: center; gap: 6px;">
+                                <span>📱 Live Audience Display Preview</span>
+                            </h3>
+                            <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34D399; font-size: 0.6875rem; padding: 2px 8px; border-radius: var(--radius-full);">Real-Time Sync</span>
+                        </div>
+
+                        <!-- Phone Mockup Container -->
+                        <div id="audience-preview-phone-frame" style="background: #000000; border: 2px solid var(--border-color); border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7); display: flex; flex-direction: column; min-height: 460px; max-height: 540px; position: relative;">
+                            <!-- Fake Phone Top Bar -->
+                            <div id="audience-preview-navbar" style="background: rgba(22, 27, 34, 0.9); border-bottom: 1px solid rgba(255,255,255,0.08); padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: #E0E7FF; z-index: 2;">
+                                <div style="display: flex; align-items: center; gap: 6px; font-weight: 700;">
+                                    <span id="audience-preview-title">Live Audience Captions</span>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <span style="font-size: 0.6875rem; padding: 2px 6px; background: rgba(16, 185, 129, 0.2); color: #34D399; border-radius: 4px; font-weight: 700;">● LIVE</span>
+                                    <span style="font-size: 0.6875rem; color: var(--text-muted);">⚙️</span>
+                                </div>
+                            </div>
+
+                            <!-- Phone Body / Captions Scroll Area -->
+                            <div id="audience-preview-viewport" style="flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; justify-content: flex-end; background: #000000; transition: background-color 0.2s ease;">
+                                <!-- Spoken Scripture Card Preview -->
+                                <div id="audience-preview-scripture-card" style="background: rgba(30, 41, 59, 0.85); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; font-size: 0.8125rem; line-height: 1.4;">
+                                    <div style="font-size: 0.6875rem; font-weight: 800; color: #FBBF24; text-transform: uppercase; margin-bottom: 4px; display: flex; align-items: center; gap: 5px;">
+                                        <span>📖 John 3:16 (BSB)</span>
+                                    </div>
+                                    <div style="color: #F8FAFC; font-style: italic;">
+                                        &ldquo;For God so loved the world that He gave His one and only Son, that everyone who believes in Him shall not perish but have eternal life.&rdquo;
+                                    </div>
+                                </div>
+
+                                <!-- Captions Container -->
+                                <div id="audience-preview-caption-box" style="font-family: 'Inter', sans-serif; font-size: 32px; line-height: 1.45; text-align: center; color: #FFFFFF;">
+                                    <div id="audience-preview-final-line" style="margin-bottom: 6px; color: #FFFFFF;">
+                                        Welcome to today's service. The grace of our Lord Jesus Christ be with you all.
+                                    </div>
+                                    <div id="audience-preview-interim-line" style="color: #93C5FD; opacity: 0.95;">
+                                        we are glad you could join us today <span class="blinking-cursor" style="display: inline-block; width: 3px; height: 1em; background: currentColor; vertical-align: text-bottom; margin-left: 2px;"></span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Phone Bottom Bar -->
+                            <div style="background: rgba(22, 27, 34, 0.7); border-top: 1px solid rgba(255,255,255,0.06); padding: 6px 14px; display: flex; justify-content: space-between; align-items: center; font-size: 0.6875rem; color: var(--text-muted);">
+                                <span>🔒 Auto-Scroll Locked</span>
+                                <span>📱 Read-Along Mode</span>
+                            </div>
+                        </div>
+
+                        <!-- Test Phrase Controls -->
+                        <div class="preview-actions" style="margin-top: 14px; display: flex; gap: 8px;">
+                            <input type="text" id="audience-preview-test-input" placeholder="Type sample speech to test preview..." class="form-control" style="font-size: 0.8125rem;">
+                            <button type="button" id="btn-test-audience-preview" class="btn btn-secondary btn-sm" style="white-space: nowrap;">Test Text</button>
                         </div>
                     </div>
                 </div>
@@ -2442,6 +2706,18 @@
             </div>
 
             <div class="feature-toggle-list" style="display: flex; flex-direction: column; gap: 10px;">
+                <!-- Audience Display -->
+                <div class="feature-toggle-item" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px;">
+                    <div>
+                        <strong style="color: var(--text-main); display: block; font-size: 13.5px;">📱 Audience Captions Display</strong>
+                        <span style="font-size: 11.5px; color: var(--text-muted);">Shareable live read-along web viewer (/display), QR sharing, and default attendee styling.</span>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="feat_toggle_display" data-target-tab="display" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
                 <!-- Scripture Overlay -->
                 <div class="feature-toggle-item" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px;">
                     <div>

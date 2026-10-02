@@ -314,6 +314,22 @@ class CaddyConfig:
 
 
 @dataclass
+class DisplayConfig:
+    """Default design and layout settings for the live Audience Caption Display (/display)."""
+    theme: str = "oled"  # "oled", "amber", "slate", "light", "black-on-white"
+    font_family: str = "'Inter', system-ui, -apple-system, sans-serif"
+    font_size: int = 48
+    line_height: float = 1.45
+    text_align: str = "center"  # "center", "left", "right"
+    vertical_align: str = "bottom"  # "bottom", "middle", "top"
+    max_lines: int = 3
+    show_interim: bool = True
+    show_scripture: bool = True
+    dyslexia_mode: bool = False
+    custom_title: str = "Live Audience Captions"
+
+
+@dataclass
 class AppConfig:
     general: GeneralConfig = field(default_factory=GeneralConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
@@ -333,6 +349,7 @@ class AppConfig:
     bandwidth: BandwidthConfig = field(default_factory=BandwidthConfig)
     obs: OBSConfig = field(default_factory=OBSConfig)
     overlay: OverlayConfig = field(default_factory=OverlayConfig)
+    display: DisplayConfig = field(default_factory=DisplayConfig)
     bible: BibleConfig = field(default_factory=BibleConfig)
     api: APIConfig = field(default_factory=APIConfig)
     update: UpdateConfig = field(default_factory=UpdateConfig)
@@ -423,6 +440,7 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         bandwidth=_safe_dataclass_load(BandwidthConfig, data.get("bandwidth")),
         obs=_safe_dataclass_load(OBSConfig, data.get("obs")),
         overlay=_safe_dataclass_load(OverlayConfig, data.get("overlay")),
+        display=_safe_dataclass_load(DisplayConfig, data.get("display")),
         bible=_safe_dataclass_load(BibleConfig, data.get("bible")),
         api=_safe_dataclass_load(APIConfig, data.get("api")),
         update=_safe_dataclass_load(UpdateConfig, data.get("update")),

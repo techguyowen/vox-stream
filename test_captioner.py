@@ -151,6 +151,53 @@ class TestThemes(unittest.TestCase):
         ov.final_only = True
         self.assertTrue(ov.final_only)
 
+    def test_display_config_defaults_and_load(self):
+        from obs_captioner.config import DisplayConfig, AppConfig, save_config, load_config
+        import tempfile, os
+        dc = DisplayConfig()
+        self.assertEqual(dc.theme, "oled")
+        self.assertEqual(dc.font_size, 48)
+        self.assertEqual(dc.line_height, 1.45)
+        self.assertEqual(dc.max_lines, 3)
+        self.assertTrue(dc.show_interim)
+        self.assertTrue(dc.show_scripture)
+        self.assertFalse(dc.dyslexia_mode)
+
+        # Verify serialization and deserialization
+        cfg = AppConfig(display=DisplayConfig(
+            theme="amber",
+            font_family="'Lora', serif",
+            font_size=56,
+            line_height=1.6,
+            text_align="left",
+            vertical_align="middle",
+            max_lines=4,
+            show_interim=False,
+            show_scripture=False,
+            dyslexia_mode=True,
+            custom_title="Grace Sanctuary Read-Along"
+        ))
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+            tmp_path = f.name
+        try:
+            saved = save_config(cfg, tmp_path)
+            self.assertTrue(saved)
+            loaded = load_config(tmp_path)
+            self.assertEqual(loaded.display.theme, "amber")
+            self.assertEqual(loaded.display.font_family, "'Lora', serif")
+            self.assertEqual(loaded.display.font_size, 56)
+            self.assertEqual(loaded.display.line_height, 1.6)
+            self.assertEqual(loaded.display.text_align, "left")
+            self.assertEqual(loaded.display.vertical_align, "middle")
+            self.assertEqual(loaded.display.max_lines, 4)
+            self.assertFalse(loaded.display.show_interim)
+            self.assertFalse(loaded.display.show_scripture)
+            self.assertTrue(loaded.display.dyslexia_mode)
+            self.assertEqual(loaded.display.custom_title, "Grace Sanctuary Read-Along")
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
 
 class TestDisplayBionicReading(unittest.TestCase):
     """Bionic Reading must stay visibly distinct on every display theme.
