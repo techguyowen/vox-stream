@@ -180,10 +180,23 @@ body {
 
 .header-controls {
     display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.header-tier-status,
+.header-tier-actions {
+    display: flex;
     align-items: center;
     gap: 6px;
-    flex-wrap: wrap;
     justify-content: flex-end;
+    flex-wrap: nowrap;
+}
+
+.header-tier-status {
+    font-variant-numeric: tabular-nums;
 }
 
 /* Audio VU Meter */
@@ -224,6 +237,7 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
     font-size: 10.5px;
     font-weight: 700;
+    font-variant-numeric: tabular-nums;
     color: var(--text-muted);
     min-width: 44px;
     text-align: right;
@@ -239,6 +253,7 @@ body {
     border-radius: var(--radius-sm);
     padding: 4px 8px;
     font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -278,6 +293,7 @@ body {
     padding: 4px 8px;
     font-size: 11px;
     font-weight: 600;
+    font-variant-numeric: tabular-nums;
     color: var(--text-muted);
     display: inline-flex;
     align-items: center;
@@ -1111,8 +1127,13 @@ body {
         padding: 12px 14px;
     }
     .header-controls {
+        align-items: flex-start;
+        gap: 8px;
+    }
+    .header-tier-status,
+    .header-tier-actions {
         justify-content: flex-start;
-        gap: 6px;
+        flex-wrap: wrap;
     }
     .nav-tabs {
         gap: 4px;

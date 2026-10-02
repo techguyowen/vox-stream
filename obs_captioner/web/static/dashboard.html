@@ -44,85 +44,91 @@
             </div>
             
             <div class="header-controls">
-                <!-- 1. Live Audio Meter -->
-                <div class="vu-container" id="vu-container" title="Live Microphone Audio Level (dBFS)">
-                    <span class="vu-label">MIC</span>
-                    <div class="vu-bar-wrapper">
-                        <div id="vu-meter-bar" class="vu-meter-bar"></div>
+                <!-- Top Status & Telemetry Tier -->
+                <div class="header-tier-status">
+                    <!-- 1. Live Audio Meter -->
+                    <div class="vu-container" id="vu-container" title="Live Microphone Audio Level (dBFS)">
+                        <span class="vu-label">MIC</span>
+                        <div class="vu-bar-wrapper">
+                            <div id="vu-meter-bar" class="vu-meter-bar"></div>
+                        </div>
+                        <span id="vu-meter-db" class="vu-db-text">-∞ dB</span>
                     </div>
-                    <span id="vu-meter-db" class="vu-db-text">-∞ dB</span>
-                </div>
-                <div id="mic-silence-warning" style="display: none; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.5); color: #FCA5A5; font-size: 11px; font-weight: 700; padding: 3px 6px; border-radius: 4px; align-items: center; gap: 4px;" title="Microphone audio signal is silent or muted (< -55 dBFS)">
-                    ⚠️ Mic Muted
-                </div>
-
-                <!-- 2. Active Engine Pill (Click to switch engine) -->
-                <div class="active-engine-pill" id="active-engine-pill" title="Currently Active Speech Recognition Model (Click to configure)">
-                    <span id="active-engine-dot" class="status-dot pulse-active"></span>
-                    <span id="active-engine-badge-text">Engine: Loading...</span>
-                    <span id="active-engine-status-tag" class="status-tag-mini">LISTENING</span>
-                </div>
-
-                <!-- 3. Telemetry Mini Chips Cluster -->
-                <div class="telemetry-group">
-                    <div class="telemetry-chip gemini-ping-pill" id="gemini-ping-pill" title="Network latency to Gemini API" style="display: none;">
-                        <span id="gemini-ping-dot" class="mini-dot"></span>
-                        <span id="gemini-ping-text">-- ms</span>
+                    <div id="mic-silence-warning" style="display: none; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.5); color: #FCA5A5; font-size: 11px; font-weight: 700; padding: 3px 6px; border-radius: 4px; align-items: center; gap: 4px;" title="Microphone audio signal is silent or muted (< -55 dBFS)">
+                        ⚠️ Mic Muted
                     </div>
-                    <div class="telemetry-chip wpm-pill" id="live-wpm-pill" title="Current Speaking Pace (Words Per Minute)">
-                        <span id="wpm-dot" class="mini-dot"></span>
-                        <span id="live-wpm-badge-text">⚡ 0 WPM</span>
+
+                    <!-- 2. Active Engine Pill (Click to switch engine) -->
+                    <div class="active-engine-pill" id="active-engine-pill" title="Currently Active Speech Recognition Model (Click to configure)">
+                        <span id="active-engine-dot" class="status-dot pulse-active"></span>
+                        <span id="active-engine-badge-text">Engine: Loading...</span>
+                        <span id="active-engine-status-tag" class="status-tag-mini">LISTENING</span>
                     </div>
-                    <div class="telemetry-chip hardware-pill" id="hardware-pill" title="Detected GPU Hardware & Model RAM Footprint">
-                        <span id="hardware-gpu-text">🎮 GPU</span>
-                        <span class="chip-sep">|</span>
-                        <span id="hardware-ram-text">🧠 RAM</span>
-                        <button type="button" id="btn-trim-ram" style="display: none;">Flush RAM</button>
+
+                    <!-- 3. Telemetry Mini Chips Cluster -->
+                    <div class="telemetry-group">
+                        <div class="telemetry-chip gemini-ping-pill" id="gemini-ping-pill" title="Network latency to Gemini API" style="display: none;">
+                            <span id="gemini-ping-dot" class="mini-dot"></span>
+                            <span id="gemini-ping-text">-- ms</span>
+                        </div>
+                        <div class="telemetry-chip wpm-pill" id="live-wpm-pill" title="Current Speaking Pace (Words Per Minute)">
+                            <span id="wpm-dot" class="mini-dot"></span>
+                            <span id="live-wpm-badge-text">⚡ 0 WPM</span>
+                        </div>
+                        <div class="telemetry-chip hardware-pill" id="hardware-pill" title="Detected GPU Hardware & Model RAM Footprint">
+                            <span id="hardware-gpu-text">🎮 GPU</span>
+                            <span class="chip-sep">|</span>
+                            <span id="hardware-ram-text">🧠 RAM</span>
+                            <button type="button" id="btn-trim-ram" style="display: none;">Flush RAM</button>
+                        </div>
+                    </div>
+
+                    <!-- Redundant status pill hidden to keep JS bindings intact -->
+                    <div class="status-pill" id="status-pill" style="display: none;">
+                        <span class="status-dot online"></span>
+                        <span id="status-text">Active</span>
                     </div>
                 </div>
 
-                <!-- Redundant status pill hidden to keep JS bindings intact -->
-                <div class="status-pill" id="status-pill" style="display: none;">
-                    <span class="status-dot online"></span>
-                    <span id="status-text">Active</span>
+                <!-- Bottom Actions Tier -->
+                <div class="header-tier-actions">
+                    <!-- 4. Master Engine Toggle -->
+                    <button id="btn-toggle-engine" class="btn btn-danger btn-sm" style="font-weight: 700; min-height: 28px; padding: 4px 12px;">⏹ Stop Captions</button>
+
+                    <!-- 5. Audience Display & QR Actions -->
+                    <a href="/display" target="_blank" id="btn-header-captions-view" class="btn btn-secondary btn-sm" title="Open Audience Caption Display & Room View" style="text-decoration: none;">📺 Display</a>
+                    <button id="btn-header-captions-qr" class="btn btn-secondary btn-sm btn-open-captions-qr" title="Scan or Share QR code for Audience Caption Display">📲 QR</button>
+                    <button id="btn-header-qr" class="btn-open-captions-qr" style="display: none;"></button>
+                    <button id="btn-reopen-projector" style="display: none;"></button>
+
+                    <!-- 6. Compact Utility Controls -->
+                    <button id="btn-open-scheduler-modal" class="btn btn-secondary btn-sm" title="Auto-Stop Timer & Weekly Schedule">
+                        <span id="scheduler-btn-icon">⏱️</span>
+                        <span id="scheduler-btn-label">Auto-Stop</span>
+                        <span id="scheduler-countdown-badge" style="display:none;" class="countdown-badge"></span>
+                    </button>
+                    <button id="btn-header-rec" class="btn btn-secondary btn-sm" title="Subtitle Sidecar Recording (.srt / .vtt)">
+                        <span id="header-rec-dot" class="rec-dot"></span>
+                        <span id="header-rec-text">⏺ REC</span>
+                    </button>
+
+                    <!-- 7. Custom Quick Links Container -->
+                    <div id="custom-header-links" class="custom-links-wrapper"></div>
+                    <button id="btn-add-header-link" class="btn btn-secondary btn-sm" title="Add Custom Header Quick Link Button">
+                        <span>➕ Link</span>
+                    </button>
+
+                    <!-- 8. Update, Settings & Shortcuts -->
+                    <button id="btn-header-update" class="btn btn-sm" style="display: none; background: linear-gradient(135deg, #10B981, #059669); color: #fff; font-weight: 700;" title="A new VoxStream update is available!">
+                        <span>✨ Update</span>
+                    </button>
+                    <button id="btn-open-features-modal" class="btn btn-secondary btn-sm" title="Advanced Settings & Features">
+                        <span>⚙️ Settings</span>
+                    </button>
+                    <button id="btn-open-shortcuts-modal" class="btn btn-secondary btn-sm" title="Keyboard Shortcuts Cheatsheet (?)" style="font-size: 11px; padding: 4px 8px;">
+                        <span>⌨️ ?</span>
+                    </button>
                 </div>
-
-                <!-- 4. Master Engine Toggle -->
-                <button id="btn-toggle-engine" class="btn btn-danger" style="font-weight: 700; min-height: 32px; padding: 4px 12px;">⏹ Stop Captions</button>
-
-                <!-- 5. Audience Display & QR Actions -->
-                <a href="/display" target="_blank" id="btn-header-captions-view" class="btn btn-secondary btn-sm" title="Open Audience Caption Display & Room View" style="text-decoration: none;">📺 Display</a>
-                <button id="btn-header-captions-qr" class="btn btn-secondary btn-sm btn-open-captions-qr" title="Scan or Share QR code for Audience Caption Display">📲 QR</button>
-                <button id="btn-header-qr" class="btn-open-captions-qr" style="display: none;"></button>
-                <button id="btn-reopen-projector" style="display: none;"></button>
-
-                <!-- 6. Compact Utility Controls -->
-                <button id="btn-open-scheduler-modal" class="btn btn-secondary btn-sm" title="Auto-Stop Timer & Weekly Schedule">
-                    <span id="scheduler-btn-icon">⏱️</span>
-                    <span id="scheduler-btn-label">Auto-Stop</span>
-                    <span id="scheduler-countdown-badge" style="display:none;" class="countdown-badge"></span>
-                </button>
-                <button id="btn-header-rec" class="btn btn-secondary btn-sm" title="Subtitle Sidecar Recording (.srt / .vtt)">
-                    <span id="header-rec-dot" class="rec-dot"></span>
-                    <span id="header-rec-text">⏺ REC</span>
-                </button>
-
-                <!-- 7. Custom Quick Links Container -->
-                <div id="custom-header-links" class="custom-links-wrapper"></div>
-                <button id="btn-add-header-link" class="btn btn-secondary btn-sm" title="Add Custom Header Quick Link Button">
-                    <span>➕ Link</span>
-                </button>
-
-                <!-- 8. Update, Settings & Shortcuts -->
-                <button id="btn-header-update" class="btn btn-sm" style="display: none; background: linear-gradient(135deg, #10B981, #059669); color: #fff; font-weight: 700;" title="A new VoxStream update is available!">
-                    <span>✨ Update</span>
-                </button>
-                <button id="btn-open-features-modal" class="btn btn-secondary btn-sm" title="Advanced Settings & Features">
-                    <span>⚙️ Settings</span>
-                </button>
-                <button id="btn-open-shortcuts-modal" class="btn btn-secondary btn-sm" title="Keyboard Shortcuts Cheatsheet (?)" style="font-size: 11px; padding: 4px 8px;">
-                    <span>⌨️ ?</span>
-                </button>
             </div>
         </header>
 
@@ -3053,7 +3059,7 @@
                     a.href = link.url;
                     a.target = "_blank";
                     a.rel = "noopener";
-                    a.className = "btn btn-secondary";
+                    a.className = "btn btn-secondary btn-sm";
                     a.style.textDecoration = "none";
                     a.style.display = "inline-flex";
                     a.style.alignItems = "center";
