@@ -3626,11 +3626,23 @@ if (btnRefreshObsScenes) {
 
 // --- OBS WebSocket Connection & Status Diagnostics ---
 
+async function parseResponseJson(res) {
+    const text = await res.text();
+    try {
+        return text ? JSON.parse(text) : {};
+    } catch (_) {
+        const fallbackMsg = (res.status === 404)
+            ? "API route not found (HTTP 404). Please restart VoxStream to load the updated server."
+            : (res.status === 401 ? "Unauthorized (HTTP 401). Please check your credentials." : (text || `Server returned HTTP ${res.status}`));
+        return { status: res.ok ? "success" : "error", message: fallbackMsg };
+    }
+}
+
 async function loadObsStatus() {
     try {
         const res = await fetch("/api/obs/status");
         if (res.ok) {
-            const data = await res.json();
+            const data = await parseResponseJson(res);
             const badge = document.getElementById("obs-ws-status-badge");
             const text = document.getElementById("obs-ws-status-text");
             const feedback = document.getElementById("obs-connection-feedback");
@@ -3684,7 +3696,7 @@ if (btnObsReconnect) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ host, port, password: pw, enabled: true }),
             });
-            const data = await res.json();
+            const data = await parseResponseJson(res);
             if (res.ok && data.connected) {
                 showToast(data.message || "Connected to OBS WebSocket!", "success");
                 await loadObsStatus();
@@ -3786,7 +3798,7 @@ if (btnQuickOpenProjector) {
                     source_name: sourceName,
                 }),
             });
-            const data = await res.json();
+            const data = await parseResponseJson(res);
             if (res.ok && data.status === "success") {
                 if (statusMsg) {
                     statusMsg.style.color = "#34D399";
@@ -3814,7 +3826,7 @@ async function loadObsMonitors() {
     try {
         const res = await fetch("/api/obs/monitors");
         if (res.ok) {
-            const data = await res.json();
+            const data = await parseResponseJson(res);
             if (data.monitors && data.monitors.length > 0) {
                 const populate = (id) => {
                     const sel = document.getElementById(id);
