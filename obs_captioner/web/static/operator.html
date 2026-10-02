@@ -326,6 +326,47 @@
             font-weight: 700;
         }
 
+        /* Guarded Engine Settings Drawer / Collapsible Box */
+        .engine-settings-toggle-btn {
+            background: var(--surface-raised);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            color: var(--primary);
+            padding: 6px 12px;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .engine-settings-toggle-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent-hover);
+            background: var(--accent-subtle);
+        }
+
+        .engine-settings-panel {
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border);
+            animation: fadeIn 0.2s ease;
+        }
+
+        .engine-settings-panel.open {
+            display: flex;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
         /* Sermon Context Box */
         .context-box {
             background: var(--surface-raised);
@@ -457,18 +498,42 @@
             </div>
         </div>
 
-        <!-- STT Recognition Model Selection -->
-        <div class="card">
-            <div class="card-header">
-                <div class="card-title"><span>⚙️</span> Speech Recognition Engine</div>
+        <!-- Guarded Engine Settings (Safe Collapsible Section) -->
+        <div class="card" style="background: rgba(16, 23, 34, 0.7); border-color: rgba(36, 50, 66, 0.8);">
+            <div class="card-header" style="cursor: pointer;" id="header-engine-settings">
+                <div class="card-title">
+                    <span>⚙️</span> Speech Engine Settings
+                </div>
+                <button type="button" id="btn-toggle-engine-settings" class="engine-settings-toggle-btn" aria-expanded="false" title="Expand or collapse speech engine options">
+                    <span id="engine-toggle-icon">🔒</span>
+                    <span id="engine-toggle-label">Change Engine</span>
+                </button>
             </div>
-            <div class="engine-grid" id="engine-grid">
-                <button class="engine-pill" data-engine="vosk">⚡ Vosk (Local)</button>
-                <button class="engine-pill" data-engine="gemini_live">✨ Gemini Live</button>
-                <button class="engine-pill" data-engine="parakeet">🚀 Parakeet ONNX</button>
-                <button class="engine-pill" data-engine="moonshine">🌙 Moonshine</button>
-                <button class="engine-pill" data-engine="sherpa">🏔️ Sherpa-ONNX</button>
-                <button class="engine-pill" data-engine="sensevoice">🌐 SenseVoice</button>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8125rem; color: var(--secondary);">
+                <span>Current Engine: <strong id="operator-current-engine-name" style="color: var(--accent);">Vosk</strong></span>
+                <span style="font-size: 0.75rem; color: #64748B;">Guarded from accidental taps</span>
+            </div>
+
+            <div id="engine-settings-panel" class="engine-settings-panel">
+                <div style="font-size: 0.75rem; color: #F59E0B; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: var(--radius-sm); padding: 6px 10px;">
+                    ⚠️ <strong>Live Speech Notice:</strong> Tapping an engine below immediately hot-swaps speech recognition.
+                </div>
+                <div class="engine-grid" id="engine-grid">
+                    <button type="button" class="engine-pill" data-engine="vosk">⚡ Vosk (Local Fast)</button>
+                    <button type="button" class="engine-pill" data-engine="gemini_live">✨ Gemini Live (Cloud AI)</button>
+                    <button type="button" class="engine-pill" data-engine="parakeet">🚀 Parakeet CTC (ONNX)</button>
+                    <button type="button" class="engine-pill" data-engine="moonshine">🌙 Moonshine (Edge STT)</button>
+                    <button type="button" class="engine-pill" data-engine="sherpa">🏔️ Sherpa-ONNX (Zipformer)</button>
+                    <button type="button" class="engine-pill" data-engine="sensevoice">🌐 SenseVoice (Multilingual)</button>
+                    <button type="button" class="engine-pill" data-engine="local_whisper">🎙️ Faster-Whisper (Local)</button>
+                    <button type="button" class="engine-pill" data-engine="google_stt">🌐 Google Cloud STT</button>
+                </div>
+                <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+                    <button type="button" id="btn-close-engine-settings" class="btn btn-secondary" style="min-height: 36px; padding: 0 14px; font-size: 0.75rem; width: auto;">
+                        ✕ Close &amp; Lock Engine Panel
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -587,6 +652,9 @@
                 if (activeEngineBadge) {
                     activeEngineBadge.textContent = isRunning ? `🟢 ${engineName}` : `⏸️ ${engineName} (Paused)`;
                 }
+                if (operatorCurrentEngineName) {
+                    operatorCurrentEngineName.textContent = engineName;
+                }
 
                 // Update active pill highlight
                 document.querySelectorAll('.engine-pill').forEach(pill => {
@@ -643,6 +711,51 @@
                 };
             }
 
+            // Engine Settings Collapsible Drawer
+            const headerEngineSettings = document.getElementById('header-engine-settings');
+            const btnToggleEngineSettings = document.getElementById('btn-toggle-engine-settings');
+            const btnCloseEngineSettings = document.getElementById('btn-close-engine-settings');
+            const engineSettingsPanel = document.getElementById('engine-settings-panel');
+            const engineToggleIcon = document.getElementById('engine-toggle-icon');
+            const engineToggleLabel = document.getElementById('engine-toggle-label');
+            const operatorCurrentEngineName = document.getElementById('operator-current-engine-name');
+
+            function toggleEngineSettingsPanel(open) {
+                if (!engineSettingsPanel) return;
+                const shouldOpen = (open !== undefined) ? open : !engineSettingsPanel.classList.contains('open');
+                if (shouldOpen) {
+                    engineSettingsPanel.classList.add('open');
+                    if (engineToggleIcon) engineToggleIcon.textContent = '🔓';
+                    if (engineToggleLabel) engineToggleLabel.textContent = 'Lock / Hide';
+                    if (btnToggleEngineSettings) btnToggleEngineSettings.setAttribute('aria-expanded', 'true');
+                } else {
+                    engineSettingsPanel.classList.remove('open');
+                    if (engineToggleIcon) engineToggleIcon.textContent = '🔒';
+                    if (engineToggleLabel) engineToggleLabel.textContent = 'Change Engine';
+                    if (btnToggleEngineSettings) btnToggleEngineSettings.setAttribute('aria-expanded', 'false');
+                }
+            }
+
+            if (btnToggleEngineSettings) {
+                btnToggleEngineSettings.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    toggleEngineSettingsPanel();
+                });
+            }
+
+            if (headerEngineSettings) {
+                headerEngineSettings.addEventListener('click', () => {
+                    toggleEngineSettingsPanel();
+                });
+            }
+
+            if (btnCloseEngineSettings) {
+                btnCloseEngineSettings.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    toggleEngineSettingsPanel(false);
+                });
+            }
+
             // Control Actions
             if (btnToggleCaptions) {
                 btnToggleCaptions.addEventListener('click', async () => {
@@ -681,12 +794,14 @@
                 });
             }
 
-            // Engine Switch Pills
+            // Engine Switch Pills (Guarded with auto-relock)
             document.querySelectorAll('.engine-pill').forEach(pill => {
-                pill.addEventListener('click', async () => {
+                pill.addEventListener('click', async (e) => {
+                    e.stopPropagation();
                     const engine = pill.dataset.engine;
                     if (!engine) return;
-                    showToast(`⏳ Switching engine to ${engine}...`);
+                    const pillName = pill.textContent.trim();
+                    showToast(`⏳ Switching engine to ${pillName}...`, 3000);
                     try {
                         const res = await fetch('/api/config', {
                             method: 'POST',
@@ -694,8 +809,11 @@
                             body: JSON.stringify({ general: { engine: engine } })
                         });
                         if (res.ok) {
-                            showToast(`✅ Engine set to ${engine}`);
+                            showToast(`✅ Engine set to ${pillName}`);
+                            toggleEngineSettingsPanel(false); // Automatically re-lock to prevent accidental touches
                             fetchStatus();
+                        } else {
+                            showToast(`❌ Failed to switch engine`);
                         }
                     } catch(e) {
                         showToast(`❌ Failed to switch engine`);
