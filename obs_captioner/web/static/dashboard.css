@@ -327,7 +327,7 @@ body {
 }
 
 .tab-btn.active {
-    color: var(--on-accent);
+    color: #000000;
     background: var(--accent);
     border-color: var(--accent);
     font-weight: 700;
