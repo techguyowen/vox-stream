@@ -34,19 +34,25 @@
 }
 
 :root {
-    --bg-primary: #0a0e17;
-    --bg-secondary: #101726;
-    --bg-card: #161f32;
-    --bg-card-hover: #1e293b;
-    --border-color: rgba(255, 255, 255, 0.08);
-    --accent: #38bdf8;
-    --accent-hover: #0284c7;
-    --accent-subtle: rgba(56, 189, 248, 0.12);
-    --text-main: #f8fafc;
-    --text-muted: #94a3b8;
-    --success: #10b981;
-    --danger: #ef4444;
-    --warning: #f59e0b;
+    --bg-primary: #090D13;
+    --bg-secondary: #101722;
+    --bg-card: #101722;
+    --bg-card-hover: #182230;
+    --border-color: #243242;
+    --accent: #7BAFD4;
+    --accent-hover: #93BFDF;
+    --accent-subtle: #12263A;
+    --on-accent: #081018;
+    --text-main: #F0F6FC;
+    --text-muted: #8B9BB0;
+    --success: #10B981;
+    --danger: #EF4444;
+    --warning: #F59E0B;
+
+    --radius-sm: 4px;
+    --radius-md: 6px;
+    --radius-lg: 10px;
+    --radius-full: 9999px;
 }
 
 * {
@@ -58,8 +64,8 @@
 body {
     background-color: var(--bg-primary);
     color: var(--text-main);
-    font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    font-size: 13.5px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+    font-size: 0.875rem;
     line-height: 1.5;
     overflow-x: hidden;
 }
@@ -321,9 +327,10 @@ body {
 }
 
 .tab-btn.active {
-    color: #FFFFFF;
+    color: var(--on-accent);
     background: var(--accent);
     border-color: var(--accent);
+    font-weight: 700;
 }
 
 /* Tab Panes */
@@ -361,7 +368,7 @@ body {
 .preset-cat-btn {
     background: rgba(255, 255, 255, 0.04);
     border: 1px solid var(--border-color);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     color: var(--text-muted);
     padding: 6px 13px;
     font-size: 12px;
@@ -381,10 +388,10 @@ body {
 }
 
 .preset-cat-btn.active {
-    background: rgba(56, 189, 248, 0.15);
-    border-color: rgba(56, 189, 248, 0.5);
-    color: #38BDF8;
-    box-shadow: 0 0 12px rgba(56, 189, 248, 0.15);
+    background: var(--accent-subtle);
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 0 12px rgba(123, 175, 212, 0.2);
 }
 
 .theme-card-cat-tag {
@@ -541,7 +548,7 @@ body {
 .btn {
     padding: 7px 14px;
     white-space: nowrap;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     font-size: 12.5px;
     font-weight: 600;
     border: 1px solid transparent;
@@ -552,11 +559,13 @@ body {
     align-items: center;
     justify-content: center;
     gap: 6px;
+    min-height: 36px;
 }
 
 .btn-primary {
     background: var(--accent);
-    color: #FFFFFF;
+    color: var(--on-accent);
+    font-weight: 700;
 }
 
 .btn-primary:hover {
