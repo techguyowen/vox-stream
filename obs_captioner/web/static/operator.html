@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="theme-color" content="#0F172A">
+    <meta name="theme-color" content="#090D13">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>VoxStream Mobile Operator</title>
@@ -14,23 +14,27 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
     
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-    
     <style>
         :root {
-            --bg-body: #090D16;
-            --bg-card: #151D2A;
-            --bg-card-alt: #1E293B;
-            --border-color: rgba(255, 255, 255, 0.1);
-            --primary: #38BDF8;
+            --primary: #F0F6FC;
+            --secondary: #8B9BB0;
+            --neutral: #090D13;
+            --surface: #101722;
+            --surface-raised: #182230;
+            --border: #243242;
+            --accent: #7BAFD4;
+            --accent-hover: #93BFDF;
+            --accent-subtle: #12263A;
+            --on-accent: #081018;
+
             --success: #10B981;
             --warning: #F59E0B;
             --danger: #EF4444;
-            --text-main: #F8FAFC;
-            --text-muted: #94A3B8;
+
+            --radius-sm: 4px;
+            --radius-md: 6px;
+            --radius-lg: 10px;
+            --radius-full: 9999px;
         }
 
         * {
@@ -43,9 +47,11 @@
         body, html {
             width: 100%;
             height: 100%;
-            background-color: var(--bg-body);
-            color: var(--text-main);
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--neutral);
+            color: var(--primary);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+            font-size: 0.875rem;
+            line-height: 1.5;
             overflow-x: hidden;
             touch-action: manipulation;
         }
@@ -57,15 +63,15 @@
             min-height: 100vh;
             display: flex;
             flex-direction: column;
-            padding: 14px 14px 40px 14px;
-            gap: 14px;
+            padding: 16px;
+            gap: 16px;
         }
 
         /* Header Bar */
         .header-bar {
-            background: rgba(21, 29, 42, 0.95);
-            border: 1px solid var(--border-color);
-            border-radius: 14px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
             padding: 12px 16px;
             display: flex;
             align-items: center;
@@ -81,23 +87,24 @@
             display: flex;
             align-items: center;
             gap: 8px;
-            font-weight: 800;
-            font-size: 16px;
-            color: var(--primary);
-            letter-spacing: -0.3px;
+            font-weight: 700;
+            font-size: 1rem;
+            color: var(--accent);
+            letter-spacing: -0.02em;
         }
 
         .status-badge {
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            font-size: 11.5px;
-            font-weight: 700;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
             padding: 4px 10px;
-            border-radius: 20px;
-            background: rgba(16, 185, 129, 0.15);
-            color: #34D399;
-            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: var(--radius-full);
+            background: var(--surface-raised);
+            color: var(--accent);
+            border: 1px solid var(--border);
         }
 
         .status-badge.offline {
@@ -107,22 +114,22 @@
         }
 
         .status-dot {
-            width: 7px;
-            height: 7px;
-            border-radius: 50%;
+            width: 8px;
+            height: 8px;
+            border-radius: var(--radius-full);
             background: currentColor;
             display: inline-block;
         }
 
         /* Card Section */
         .card {
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: 14px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
             padding: 16px;
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 16px;
             box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
         }
 
@@ -134,11 +141,11 @@
         }
 
         .card-title {
-            font-size: 13.5px;
-            font-weight: 700;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: var(--text-muted);
+            color: var(--secondary);
             display: flex;
             align-items: center;
             gap: 6px;
@@ -146,20 +153,21 @@
 
         /* Live Audio & Meter Bar */
         .audio-meter-box {
-            background: #0D131F;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 10px;
+            background: var(--surface-raised);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
             padding: 10px 14px;
             display: flex;
             align-items: center;
             gap: 12px;
+            min-height: 44px;
         }
 
         .vu-wrapper {
             flex: 1;
             height: 12px;
-            background: rgba(255, 255, 255, 0.08);
-            border-radius: 6px;
+            background: var(--neutral);
+            border-radius: var(--radius-sm);
             overflow: hidden;
             position: relative;
         }
@@ -168,27 +176,27 @@
             height: 100%;
             width: 0%;
             background: linear-gradient(90deg, #10B981, #F59E0B, #EF4444);
-            border-radius: 6px;
+            border-radius: var(--radius-sm);
             transition: width 0.08s ease;
         }
 
         .vu-db-text {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 12px;
-            font-weight: 700;
-            color: var(--text-muted);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--secondary);
             min-width: 55px;
             text-align: right;
         }
 
-        /* Control Buttons (Touch-Optimized) */
+        /* Control Buttons (Touch-Optimized - min 44px) */
         .btn {
             width: 100%;
-            min-height: 54px;
+            min-height: 48px;
             border: none;
-            border-radius: 12px;
+            border-radius: var(--radius-md);
             font-family: inherit;
-            font-size: 15px;
+            font-size: 0.875rem;
             font-weight: 700;
             cursor: pointer;
             display: inline-flex;
@@ -196,40 +204,60 @@
             justify-content: center;
             gap: 8px;
             transition: transform 0.1s ease, opacity 0.15s ease, background-color 0.2s ease;
-            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
             padding: 10px 16px;
         }
 
         .btn:active {
-            transform: scale(0.97);
+            transform: scale(0.98);
             opacity: 0.9;
         }
 
+        .btn-primary {
+            background: var(--accent);
+            color: var(--on-accent);
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+        }
+
         .btn-success {
-            background: linear-gradient(135deg, #10B981, #059669);
-            color: #FFFFFF;
+            background: var(--accent);
+            color: var(--on-accent);
+        }
+
+        .btn-success:hover {
+            background: var(--accent-hover);
         }
 
         .btn-danger {
-            background: linear-gradient(135deg, #EF4444, #DC2626);
-            color: #FFFFFF;
+            background: rgba(239, 68, 68, 0.2);
+            color: #FCA5A5;
+            border: 1px solid rgba(239, 68, 68, 0.4);
         }
 
         .btn-warning {
-            background: linear-gradient(135deg, #F59E0B, #D97706);
-            color: #000000;
+            background: var(--accent-subtle);
+            color: var(--accent);
+            border: 1px solid var(--accent);
         }
 
         .btn-secondary {
-            background: #1E293B;
-            color: var(--text-main);
-            border: 1px solid var(--border-color);
+            background: var(--surface-raised);
+            color: var(--primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: var(--accent-subtle);
+            color: var(--primary);
         }
 
         .btn-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 10px;
+            gap: 8px;
         }
 
         /* Form Inputs */
@@ -240,70 +268,87 @@
 
         .form-control {
             flex: 1;
-            min-height: 48px;
-            background: #0D131F;
-            border: 1px solid var(--border-color);
-            border-radius: 10px;
+            min-height: 44px;
+            background: var(--surface-raised);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
             padding: 10px 14px;
-            color: #FFFFFF;
+            color: var(--primary);
             font-family: inherit;
-            font-size: 14px;
+            font-size: 0.875rem;
             outline: none;
             transition: border-color 0.2s ease;
         }
 
         .form-control:focus {
-            border-color: var(--primary);
+            border-color: var(--accent);
         }
 
-        /* Engine Pill Grid */
+        /* Engine Pill Grid - Responsive (1 col on mobile, 2 col on >640px) */
         .engine-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: 1fr;
             gap: 8px;
         }
 
+        @media (min-width: 640px) {
+            .engine-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
         .engine-pill {
-            background: #1E293B;
-            border: 1px solid var(--border-color);
-            border-radius: 10px;
+            background: var(--surface-raised);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
             padding: 10px 12px;
-            font-size: 13px;
-            font-weight: 700;
-            color: var(--text-muted);
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--secondary);
             cursor: pointer;
             text-align: center;
+            min-height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             transition: all 0.15s ease;
         }
 
-        .engine-pill.active {
-            background: rgba(56, 189, 248, 0.15);
-            border-color: var(--primary);
+        .engine-pill:hover {
             color: var(--primary);
+            border-color: var(--accent);
+        }
+
+        .engine-pill.active {
+            background: var(--accent-subtle);
+            border-color: var(--accent);
+            color: var(--primary);
+            font-weight: 700;
         }
 
         /* Sermon Context Box */
         .context-box {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid var(--border-color);
-            border-radius: 10px;
-            padding: 10px 12px;
+            background: var(--surface-raised);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 12px;
             display: flex;
             flex-direction: column;
             gap: 4px;
         }
 
         .context-label {
-            font-size: 10.5px;
+            font-size: 0.75rem;
             text-transform: uppercase;
-            font-weight: 700;
-            color: var(--text-muted);
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            color: var(--secondary);
         }
 
         .context-value {
-            font-size: 13.5px;
+            font-size: 0.875rem;
             font-weight: 700;
-            color: #7DD3FC;
+            color: var(--accent);
         }
 
         /* Toast Notifications */
@@ -322,13 +367,13 @@
         }
 
         .toast {
-            background: rgba(15, 23, 42, 0.95);
-            color: var(--text-main);
-            border: 1px solid var(--primary);
-            border-radius: 12px;
+            background: var(--surface-raised);
+            color: var(--primary);
+            border: 1px solid var(--accent);
+            border-radius: var(--radius-md);
             padding: 12px 18px;
-            font-size: 13.5px;
-            font-weight: 700;
+            font-size: 0.875rem;
+            font-weight: 600;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
             backdrop-filter: blur(10px);
             opacity: 0;
@@ -348,10 +393,10 @@
             background: rgba(239, 68, 68, 0.2);
             border: 1px solid rgba(239, 68, 68, 0.5);
             color: #FCA5A5;
-            font-size: 12px;
-            font-weight: 700;
+            font-size: 0.75rem;
+            font-weight: 600;
             padding: 8px 12px;
-            border-radius: 8px;
+            border-radius: var(--radius-sm);
             text-align: center;
         }
     </style>
