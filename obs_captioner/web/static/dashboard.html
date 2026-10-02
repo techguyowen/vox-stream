@@ -2045,17 +2045,78 @@
                 </div>
             </div>
 
-            <!-- TAB: PROJECTORS & DISPLAYS (EMBRACE CONFERENCE / LONTIUM) -->
+            <!-- TAB: PROJECTORS & DISPLAYS (OBS PROJECTOR & WEBSOCKET HUB) -->
             <div id="tab-projectors" class="tab-pane">
                 <div class="panel">
-                    <h2>📺 OBS Projector &amp; Display Automation</h2>
-                    <p class="subtext">Automatically project your video preview or live captions to external conference screens (LONTIUM), stage monitors, or projectors with 1 click.</p>
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
+                        <div>
+                            <h2 style="margin: 0; color: var(--accent); display: flex; align-items: center; gap: 8px;">
+                                <span>📺 OBS Projector &amp; Display Automation</span>
+                            </h2>
+                            <p class="subtext" style="margin: 4px 0 0 0;">
+                                Send your OBS video preview, program feed, or caption overlay directly to external screens, stage confidence monitors, or projectors with 1 click.
+                            </p>
+                        </div>
+                        <div id="obs-ws-status-badge" style="display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #F87171;">
+                            <span class="status-dot" style="background: #EF4444;"></span>
+                            <span id="obs-ws-status-text">OBS Disconnected</span>
+                        </div>
+                    </div>
+
+                    <!-- OBS WebSocket Server Connection Settings Card -->
+                    <div style="background: rgba(30, 41, 59, 0.5); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
+                            <h3 style="margin: 0; font-size: 14px; color: #93C5FD; display: flex; align-items: center; gap: 6px;">
+                                <span>🔌 OBS Studio WebSocket Connection</span>
+                            </h3>
+                            <div style="display: flex; gap: 8px;">
+                                <button type="button" id="btn-obs-reconnect" class="btn btn-secondary btn-sm" style="font-weight: 600; border-color: rgba(59, 130, 246, 0.5); color: #93C5FD;">
+                                    🔌 Connect / Test Connection
+                                </button>
+                                <button type="button" id="btn-save-obs-connection" class="btn btn-primary btn-sm">
+                                    💾 Save Credentials
+                                </button>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group" style="flex: 2;">
+                                <label for="obs_host">OBS Server IP / Host</label>
+                                <input type="text" id="obs_host" class="form-control" placeholder="127.0.0.1" value="127.0.0.1">
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label for="obs_port">Server Port</label>
+                                <input type="number" id="obs_port" class="form-control" placeholder="4455" value="4455">
+                            </div>
+                            <div class="form-group" style="flex: 2;">
+                                <label for="obs_password">Server Password (if enabled in OBS)</label>
+                                <div style="display: flex; gap: 6px;">
+                                    <input type="password" id="obs_password" class="form-control" placeholder="••••••••" autocomplete="off">
+                                    <button type="button" id="btn-toggle-obs-pw" class="btn btn-secondary btn-sm" title="Show/Hide Password" style="padding: 0 10px;">👁️</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="obs-connection-feedback" style="font-size: 12px; margin-top: 8px; display: none; line-height: 1.4;"></div>
+                    </div>
 
                     <!-- Quick 1-Click Launch Action -->
                     <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-                        <h3 style="margin-top: 0; color: #38BDF8;">🚀 1-Click Projector Trigger</h3>
-                        <p style="font-size: 13px; color: #E0E7FF; margin-bottom: 12px;">Instantly send the OBS video preview to the conference room screen without navigating right-click menus:</p>
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+                            <h3 style="margin: 0; color: #38BDF8; font-size: 15px;">🚀 1-Click Projector Trigger</h3>
+                            <button type="button" id="btn-refresh-obs-monitors" class="btn btn-secondary btn-sm" style="font-size: 11.5px; padding: 4px 10px; border-color: rgba(56, 189, 248, 0.4); color: #7DD3FC;">
+                                🔄 Refresh Displays
+                            </button>
+                        </div>
+                        <p style="font-size: 13px; color: #E0E7FF; margin-bottom: 12px;">Instantly send the selected OBS video output to the connected monitor or projector:</p>
                         <div class="form-row" style="align-items: flex-end;">
+                            <div class="form-group" style="flex: 1.5;">
+                                <label for="quick_projector_type">Projector Content</label>
+                                <select id="quick_projector_type" class="form-control">
+                                    <option value="preview" selected>Video Preview (Full Scene Preview)</option>
+                                    <option value="program">Program Output (Live Broadcast Feed)</option>
+                                    <option value="multiview">Multiview (8-Scene Grid)</option>
+                                    <option value="source">Specific Source (e.g. Captions Overlay)</option>
+                                </select>
+                            </div>
                             <div class="form-group" style="flex: 2;">
                                 <label for="quick_projector_monitor">Target Display Screen</label>
                                 <select id="quick_projector_monitor" class="form-control">
@@ -2066,16 +2127,20 @@
                                 </select>
                             </div>
                             <div class="form-group" style="flex: 1;">
-                                <button type="button" id="btn-quick-open-projector" class="btn btn-primary btn-block" >📺 Open to Screen</button>
+                                <button type="button" id="btn-quick-open-projector" class="btn btn-primary btn-block" style="font-weight: 700;">📺 Open Projector</button>
                             </div>
                         </div>
-                        <div id="projector-status-msg" style="font-size: 12px; margin-top: 8px; display: none;"></div>
+                        <div class="form-group" id="group-quick-projector-source" style="display: none; margin-top: 10px;">
+                            <label for="quick_projector_source_name">Source Name to Project</label>
+                            <input type="text" id="quick_projector_source_name" class="form-control" placeholder="Captions Overlay" value="Captions Overlay">
+                        </div>
+                        <div id="projector-status-msg" style="font-size: 12.5px; margin-top: 10px; display: none; padding: 8px 12px; border-radius: 6px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1);"></div>
                     </div>
 
                     <!-- Scene-Aware Caption Control (OBS Auto-Mute on Music/Video) -->
                     <div style="background: rgba(139, 92, 246, 0.08); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 8px; padding: 16px; margin-bottom: 24px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
-                            <h3 style="margin: 0; color: #A78BFA; display: flex; align-items: center; gap: 8px; font-size: 16px;">
+                            <h3 style="margin: 0; color: #A78BFA; display: flex; align-items: center; gap: 8px; font-size: 15px;">
                                 <span>🎬 Scene-Aware Auto-Mute (OBS Scene Tracking)</span>
                             </h3>
                             <button type="button" id="btn-refresh-obs-scenes" class="btn btn-secondary btn-sm" style="font-size: 11.5px; padding: 4px 12px; border-color: rgba(139, 92, 246, 0.4); color: #C4B5FD;">
@@ -2136,6 +2201,7 @@
                             <select id="obs_projector_type" class="form-control">
                                 <option value="preview" selected>Video Preview (Full Scene Preview)</option>
                                 <option value="program">Program Output (Live Broadcast Feed)</option>
+                                <option value="multiview">Multiview (8-Scene Grid)</option>
                                 <option value="source">Specific Source (e.g. Captions Overlay Only)</option>
                             </select>
                         </div>
@@ -2161,7 +2227,7 @@
                     <div style="margin-top: 24px; padding: 14px; background: rgba(15, 15, 20, 0.6); border: 1px solid var(--border-color); border-radius: 8px;">
                         <h4 style="margin: 0 0 6px 0; color: #F59E0B;">🛡️ Auto-Start Tip: Crash &amp; Safe Mode Prevention</h4>
                         <p style="font-size: 12px; color: var(--text-muted); margin: 0; line-height: 1.5;">
-                            Use the included <code>launch_obs_clean.bat</code> launcher to open OBS without prompt interruptions. In OBS, also enable <em>Settings ➔ General ➔ Projectors ➔ Save projectors on exit</em>.
+                            In OBS Studio, verify WebSocket server is enabled via <strong>Tools ➔ WebSocket Server Settings</strong> (Server Port: 4455). To preserve screen positions across reboots, enable <strong>Settings ➔ General ➔ Projectors ➔ Save projectors on exit</strong>.
                         </p>
                     </div>
                 </div>

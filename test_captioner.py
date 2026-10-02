@@ -2439,6 +2439,26 @@ class TestWindowsAuditAndResilience(unittest.IsolatedAsyncioTestCase):
             {"sourceName": "Test Source", "monitorIndex": 2}
         )
 
+        # 4. Multiview mix projector
+        res = await client.open_projector(monitor_index=1, mix_type="multiview")
+        self.assertTrue(res)
+        client.send_request.assert_called_with(
+            "OpenVideoMixProjector",
+            {"videoMixType": "OBS_WEBSOCKET_VIDEO_MIX_TYPE_MULTIVIEW", "monitorIndex": 1}
+        )
+
+        # 5. Diagnostic status and error recording
+        status = client.get_status()
+        self.assertTrue(status["connected"])
+        self.assertEqual(status["host"], "127.0.0.1")
+        self.assertEqual(status["port"], 4455)
+
+        # 6. Failure captures error message
+        client.send_request = AsyncMock(return_value={"requestStatus": {"result": False, "comment": "Requested monitor not found"}})
+        res_fail = await client.open_projector(monitor_index=-1, mix_type="preview")
+        self.assertFalse(res_fail)
+        self.assertIn("Requested monitor not found", client.last_projector_error)
+
     def test_vosk_search_dirs(self):
         from obs_captioner.model_downloader import get_vosk_search_dirs
         dirs = get_vosk_search_dirs()

@@ -218,6 +218,8 @@ class WebOverlayServer:
 
 
         # OBS Projector & Display Automation
+        self.app.router.add_get("/api/obs/status", self._handle_get_obs_status)
+        self.app.router.add_post("/api/obs/reconnect", self._handle_post_obs_reconnect)
         self.app.router.add_post("/api/obs/projector/open", self._handle_open_projector)
         self.app.router.add_get("/api/obs/monitors", self._handle_get_monitors)
         self.app.router.add_get("/api/obs/scenes", self._handle_get_scenes)
@@ -1356,11 +1358,71 @@ class WebOverlayServer:
             "captions_active": True,
         })
 
-    async def _handle_open_projector(self, request: web.Request) -> web.Response:
+    async def _handle_get_obs_status(self, request: web.Request) -> web.Response:
+        """Return real-time OBS WebSocket connection status and diagnostic telemetry."""
+        if not self.obs_client:
+            return web.json_response({
+                "enabled": getattr(self.config.obs, "enabled", False),
+                "connected": False,
+                "host": getattr(self.config.obs, "host", "127.0.0.1"),
+                "port": getattr(self.config.obs, "port", 4455),
+                "has_password": bool(getattr(self.config.obs, "password", "")),
+                "current_scene": "",
+                "last_connect_error": "OBS WebSocket client not initialized in this process.",
+                "last_projector_error": None,
+            })
+        status = self.obs_client.get_status()
+        return web.json_response(status)
+
+    async def _handle_post_obs_reconnect(self, request: web.Request) -> web.Response:
+        """Update OBS WebSocket connection credentials and trigger immediate reconnect."""
         if not self._check_auth(request):
             return web.json_response({"error": "Unauthorized"}, status=401)
         if not self.obs_client:
             return web.json_response({"error": "OBS WebSocket client not initialized"}, status=503)
+
+        try:
+            body = await request.json()
+            if "host" in body and str(body["host"]).strip():
+                self.config.obs.host = str(body["host"]).strip()
+            if "port" in body:
+                try:
+                    self.config.obs.port = int(body["port"])
+                except (ValueError, TypeError):
+                    pass
+            if "password" in body and body["password"] != self.SECRET_SENTINEL:
+                self.config.obs.password = str(body["password"]).strip()
+            if "enabled" in body:
+                self.config.obs.enabled = bool(body["enabled"])
+            save_config(self.config)
+        except Exception as ex:
+            logger.debug(f"Error parsing reconnect payload: {ex}")
+
+        connected = await self.obs_client.reconnect(self.config.obs)
+        if connected:
+            return web.json_response({
+                "status": "success",
+                "connected": True,
+                "message": f"Successfully connected and authenticated with OBS Studio WebSocket (ws://{self.config.obs.host}:{self.config.obs.port})!",
+                "current_scene": self.obs_client.current_scene or "",
+            })
+        else:
+            err_msg = self.obs_client.last_connect_error or f"Could not connect to OBS Studio at ws://{self.config.obs.host}:{self.config.obs.port}. Please verify OBS Studio is running and WebSocket server is enabled in Tools -> WebSocket Server Settings."
+            return web.json_response({
+                "status": "error",
+                "connected": False,
+                "message": err_msg,
+                "last_connect_error": self.obs_client.last_connect_error,
+            }, status=400)
+
+    async def _handle_open_projector(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        if not self.obs_client:
+            return web.json_response({
+                "status": "error",
+                "message": "OBS WebSocket client not initialized"
+            }, status=503)
 
         try:
             data = await request.json()
@@ -1369,7 +1431,8 @@ class WebOverlayServer:
 
         mix_type = sanitize_text(data.get("mix_type", self.config.obs.projector_type or "preview"))
         try:
-            monitor_index = int(data.get("monitor_index", self.config.obs.projector_monitor_index or 1))
+            raw_mon = data.get("monitor_index", self.config.obs.projector_monitor_index)
+            monitor_index = int(raw_mon) if raw_mon is not None else 1
         except (ValueError, TypeError):
             monitor_index = 1
         source_name = sanitize_text(data.get("source_name", self.config.obs.projector_source_name or ""))
@@ -1380,15 +1443,21 @@ class WebOverlayServer:
             source_name=source_name if source_name else None,
         )
 
+        target_label = "Windowed Projector" if monitor_index == -1 else f"Screen {monitor_index + 1} (Monitor {monitor_index})"
         if success:
             return web.json_response({
                 "status": "success",
-                "message": f"Projector ({mix_type}) opened on monitor {monitor_index}."
+                "message": f"Successfully opened OBS Projector ({mix_type.upper()}) on {target_label}!",
+                "mix_type": mix_type,
+                "monitor_index": monitor_index,
             })
         else:
+            err = self.obs_client.last_projector_error or self.obs_client.last_connect_error or "Failed to open projector. Check OBS WebSocket."
             return web.json_response({
                 "status": "error",
-                "message": "Failed to open projector. Check that OBS Studio is running and WebSocket is connected."
+                "message": f"Failed to open OBS projector: {err}",
+                "last_projector_error": self.obs_client.last_projector_error,
+                "connected": self.obs_client.is_connected,
             }, status=500)
 
     async def _handle_get_monitors(self, request: web.Request) -> web.Response:

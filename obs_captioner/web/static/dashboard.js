@@ -1510,6 +1510,10 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
             loadTranscriptHistory();
         } else if (btn.dataset.tab === "filter") {
             loadFilterState();
+        } else if (btn.dataset.tab === "projectors") {
+            loadObsStatus();
+            loadObsMonitors();
+            refreshObsScenesList();
         }
     });
 });
@@ -2215,13 +2219,28 @@ function populateFormFields(cfg) {
 
     // Projector & OBS Display Automation tab
     if (cfg.obs) {
+        const obsHostEl = document.getElementById("obs_host");
+        if (obsHostEl && cfg.obs.host) obsHostEl.value = cfg.obs.host;
+        const obsPortEl = document.getElementById("obs_port");
+        if (obsPortEl && cfg.obs.port) obsPortEl.value = cfg.obs.port;
+        const obsPwEl = document.getElementById("obs_password");
+        if (obsPwEl && cfg.obs.password) obsPwEl.value = cfg.obs.password;
+
         document.getElementById("obs_auto_projector").checked = !!cfg.obs.auto_open_projector;
-        if (cfg.obs.projector_type) document.getElementById("obs_projector_type").value = cfg.obs.projector_type;
+        if (cfg.obs.projector_type) {
+            document.getElementById("obs_projector_type").value = cfg.obs.projector_type;
+            const qpt = document.getElementById("quick_projector_type");
+            if (qpt) qpt.value = cfg.obs.projector_type;
+        }
         if (cfg.obs.projector_monitor_index !== undefined) {
             document.getElementById("obs_projector_monitor").value = cfg.obs.projector_monitor_index;
             document.getElementById("quick_projector_monitor").value = cfg.obs.projector_monitor_index;
         }
-        if (cfg.obs.projector_source_name) document.getElementById("obs_projector_source_name").value = cfg.obs.projector_source_name;
+        if (cfg.obs.projector_source_name) {
+            document.getElementById("obs_projector_source_name").value = cfg.obs.projector_source_name;
+            const qps = document.getElementById("quick_projector_source_name");
+            if (qps) qps.value = cfg.obs.projector_source_name;
+        }
         if (cfg.obs.scene_auto_mute_enabled !== undefined) {
             const samEl = document.getElementById("obs_scene_auto_mute_enabled");
             if (samEl) samEl.checked = !!cfg.obs.scene_auto_mute_enabled;
@@ -3605,38 +3624,191 @@ if (btnRefreshObsScenes) {
     btnRefreshObsScenes.addEventListener("click", refreshObsScenesList);
 }
 
-document.getElementById("btn-quick-open-projector").addEventListener("click", async () => {
-    const rawVal = document.getElementById("quick_projector_monitor").value;
-    const parsed = parseInt(rawVal, 10);
-    const monitorIndex = isNaN(parsed) ? 0 : parsed;
-    const statusMsg = document.getElementById("projector-status-msg");
-    statusMsg.style.display = "block";
-    statusMsg.style.color = "#38BDF8";
-    const targetLabel = monitorIndex === -1 ? "Windowed Projector" : `Monitor ${monitorIndex}`;
-    statusMsg.textContent = `Opening Preview Projector on ${targetLabel}...`;
+// --- OBS WebSocket Connection & Status Diagnostics ---
 
+async function loadObsStatus() {
     try {
-        const res = await fetch("/api/obs/projector/open", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                mix_type: "preview",
-                monitor_index: monitorIndex,
-            }),
-        });
-        const data = await res.json();
-        if (res.ok && data.status === "success") {
-            statusMsg.style.color = "#10B981";
-            statusMsg.textContent = `✅ Successfully projected to ${targetLabel}!`;
-        } else {
-            statusMsg.style.color = "#EF4444";
-            statusMsg.textContent = `❌ ${data.message || "Failed to open projector. Check OBS WebSocket."}`;
+        const res = await fetch("/api/obs/status");
+        if (res.ok) {
+            const data = await res.json();
+            const badge = document.getElementById("obs-ws-status-badge");
+            const text = document.getElementById("obs-ws-status-text");
+            const feedback = document.getElementById("obs-connection-feedback");
+
+            if (badge && text) {
+                if (data.connected) {
+                    badge.style.background = "rgba(16, 185, 129, 0.15)";
+                    badge.style.borderColor = "rgba(16, 185, 129, 0.4)";
+                    badge.style.color = "#34D399";
+                    const dot = badge.querySelector(".status-dot");
+                    if (dot) dot.style.background = "#10B981";
+                    text.textContent = `OBS Connected (Port ${data.port || 4455})`;
+                    if (feedback) {
+                        feedback.style.display = "none";
+                    }
+                } else {
+                    badge.style.background = "rgba(239, 68, 68, 0.15)";
+                    badge.style.borderColor = "rgba(239, 68, 68, 0.4)";
+                    badge.style.color = "#F87171";
+                    const dot = badge.querySelector(".status-dot");
+                    if (dot) dot.style.background = "#EF4444";
+                    text.textContent = "OBS Disconnected";
+                    if (feedback) {
+                        feedback.style.display = "block";
+                        feedback.style.color = "#FCA5A5";
+                        const err = data.last_connect_error || "OBS WebSocket is not reachable.";
+                        feedback.innerHTML = `⚠️ <strong>OBS Connection Notice:</strong> ${err}<br><span style="color: #94A3B8;">1. Open OBS Studio ➔ <em>Tools ➔ WebSocket Server Settings</em>.<br>2. Check <strong>Enable WebSocket server</strong> (Port: <code>${data.port || 4455}</code>).<br>3. If password protected, enter the server password above and click <em>Connect / Test Connection</em>.</span>`;
+                    }
+                }
+            }
+            return data;
         }
     } catch (e) {
-        statusMsg.style.color = "#EF4444";
-        statusMsg.textContent = `❌ Error: ${e.message}`;
+        console.debug("Could not query OBS status:", e);
     }
-});
+    return null;
+}
+
+const btnObsReconnect = document.getElementById("btn-obs-reconnect");
+if (btnObsReconnect) {
+    btnObsReconnect.addEventListener("click", async () => {
+        btnObsReconnect.disabled = true;
+        btnObsReconnect.textContent = "🔄 Connecting...";
+        const host = (document.getElementById("obs_host")?.value || "127.0.0.1").trim();
+        const port = parseInt(document.getElementById("obs_port")?.value, 10) || 4455;
+        const pw = document.getElementById("obs_password")?.value || "";
+
+        try {
+            const res = await fetch("/api/obs/reconnect", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ host, port, password: pw, enabled: true }),
+            });
+            const data = await res.json();
+            if (res.ok && data.connected) {
+                showToast(data.message || "Connected to OBS WebSocket!", "success");
+                await loadObsStatus();
+                await loadObsMonitors();
+                await refreshObsScenesList();
+            } else {
+                showToast(data.message || "Failed to connect to OBS.", "error", 6000);
+                await loadObsStatus();
+            }
+        } catch (e) {
+            showToast(`Connection error: ${e.message}`, "error");
+        } finally {
+            btnObsReconnect.disabled = false;
+            btnObsReconnect.textContent = "🔌 Connect / Test Connection";
+        }
+    });
+}
+
+const btnSaveObsConn = document.getElementById("btn-save-obs-connection");
+if (btnSaveObsConn) {
+    btnSaveObsConn.addEventListener("click", async () => {
+        const host = (document.getElementById("obs_host")?.value || "127.0.0.1").trim();
+        const port = parseInt(document.getElementById("obs_port")?.value, 10) || 4455;
+        const pw = document.getElementById("obs_password")?.value || "";
+
+        const payload = {
+            obs: {
+                enabled: true,
+                host: host,
+                port: port,
+                password: pw,
+            }
+        };
+        await saveConfigPayload(payload, "OBS connection settings saved!");
+        await loadObsStatus();
+    });
+}
+
+const btnToggleObsPw = document.getElementById("btn-toggle-obs-pw");
+if (btnToggleObsPw) {
+    btnToggleObsPw.addEventListener("click", () => {
+        const input = document.getElementById("obs_password");
+        if (!input) return;
+        if (input.type === "password") {
+            input.type = "text";
+            btnToggleObsPw.textContent = "🔒";
+        } else {
+            input.type = "password";
+            btnToggleObsPw.textContent = "👁️";
+        }
+    });
+}
+
+const quickProjTypeEl = document.getElementById("quick_projector_type");
+if (quickProjTypeEl) {
+    quickProjTypeEl.addEventListener("change", () => {
+        const grp = document.getElementById("group-quick-projector-source");
+        if (grp) grp.style.display = (quickProjTypeEl.value === "source") ? "block" : "none";
+    });
+}
+
+const btnRefreshObsMonitors = document.getElementById("btn-refresh-obs-monitors");
+if (btnRefreshObsMonitors) {
+    btnRefreshObsMonitors.addEventListener("click", async () => {
+        btnRefreshObsMonitors.disabled = true;
+        btnRefreshObsMonitors.textContent = "🔄 Refreshing...";
+        await loadObsMonitors();
+        await loadObsStatus();
+        btnRefreshObsMonitors.disabled = false;
+        btnRefreshObsMonitors.textContent = "🔄 Refresh Displays";
+        showToast("Connected displays refreshed from OBS!", "info");
+    });
+}
+
+const btnQuickOpenProjector = document.getElementById("btn-quick-open-projector");
+if (btnQuickOpenProjector) {
+    btnQuickOpenProjector.addEventListener("click", async () => {
+        const rawVal = document.getElementById("quick_projector_monitor")?.value;
+        const parsed = parseInt(rawVal, 10);
+        const monitorIndex = isNaN(parsed) ? 1 : parsed;
+        const mixType = document.getElementById("quick_projector_type")?.value || "preview";
+        const sourceName = document.getElementById("quick_projector_source_name")?.value.trim() || "";
+
+        const statusMsg = document.getElementById("projector-status-msg");
+        if (statusMsg) {
+            statusMsg.style.display = "block";
+            statusMsg.style.color = "#38BDF8";
+            const targetLabel = monitorIndex === -1 ? "Windowed Projector" : `Screen ${monitorIndex + 1} (Monitor ${monitorIndex})`;
+            statusMsg.textContent = `🔄 Opening ${mixType.toUpperCase()} projector on ${targetLabel}...`;
+        }
+
+        try {
+            const res = await fetch("/api/obs/projector/open", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    mix_type: mixType,
+                    monitor_index: monitorIndex,
+                    source_name: sourceName,
+                }),
+            });
+            const data = await res.json();
+            if (res.ok && data.status === "success") {
+                if (statusMsg) {
+                    statusMsg.style.color = "#34D399";
+                    statusMsg.textContent = `✅ ${data.message || "Successfully opened projector!"}`;
+                }
+                showToast(data.message || "Projector opened!", "success");
+            } else {
+                if (statusMsg) {
+                    statusMsg.style.color = "#F87171";
+                    statusMsg.textContent = `❌ ${data.message || "Failed to open projector. Check OBS WebSocket connection."}`;
+                }
+                showToast(data.message || "Failed to open projector", "error", 6000);
+            }
+        } catch (e) {
+            if (statusMsg) {
+                statusMsg.style.color = "#F87171";
+                statusMsg.textContent = `❌ Connection Error: ${e.message}`;
+            }
+            showToast(`Error: ${e.message}`, "error");
+        }
+    });
+}
 
 async function loadObsMonitors() {
     try {
@@ -3654,7 +3826,8 @@ async function loadObsMonitors() {
                         const monIdx = (m.monitorIndex !== undefined) ? m.monitorIndex : idx;
                         opt.value = monIdx;
                         const name = m.monitorName || `Display ${monIdx + 1}`;
-                        opt.textContent = `Screen ${monIdx + 1}: ${name} (${m.monitorWidth || '?'}x${m.monitorHeight || '?'})`;
+                        const dim = (m.monitorWidth && m.monitorHeight) ? ` (${m.monitorWidth}x${m.monitorHeight})` : '';
+                        opt.textContent = `Screen ${monIdx + 1}: ${name}${dim}`;
                         sel.appendChild(opt);
                     });
                     const windowedOpt = document.createElement("option");
@@ -5873,6 +6046,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     await loadAvailableGpus();
     initGpuSelector();
     await loadObsMonitors();
+    await loadObsStatus();
     await loadVocabularyState();
     await loadFilterState();
     await refreshEngineStatus();

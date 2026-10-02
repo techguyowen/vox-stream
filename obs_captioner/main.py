@@ -344,6 +344,8 @@ async def main_async(args):
             sink.update_config(new_cfg)
         if subtitle_recorder:
             subtitle_recorder.update_config(new_cfg.obs)
+        if obs_client:
+            obs_client.config = new_cfg.obs
         if audio_capture:
             audio_capture.update_device(new_cfg.audio)
         if engine:
