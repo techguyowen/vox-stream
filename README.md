@@ -39,10 +39,16 @@ It features an integrated **In-OBS Web Control Dashboard & Custom Dock**, **7 Mu
 * **2 Tailored Display Modes**:
   * **`📜 Scrollable History` (Default)**: Full persistent, bi-directional scrollable transcript of the service. Presenters and readers can scroll up with touch or mouse wheel to review earlier points or scripture verses.
   * **`⚡ Live Prompter (Auto-Fade)`**: Displays only the active 2 lines on screen and automatically fades out on silence for clean broadcast teleprompting.
-* **Floating Scripture Prompter Card**: Seamlessly displays full Bible passages alongside the live read-along speech stream.
+* **Dedicated Audience Display Configuration Studio**: Customize default branding titles, typography, OLED/high-contrast themes, line height, max lines, and accessibility presets directly from the dashboard with live interactive device preview.
 * **Fully Responsive UI**: Clamped viewport layout fluidly adapts across 4K displays, ultrawide monitors, iPads, and mobile phones with zero horizontal bleed.
 
-<p align="center"><img src="docs/screenshots/stage_monitor.png" alt="VoxStream Live Read-Along Display and Stage Confidence Monitor PWA" width="850" style="border-radius: 8px;"></p>
+<p align="center">
+  <img src="docs/screenshots/dashboard_display.png" alt="VoxStream Audience Captions Display Studio and Real-Time Device Preview" width="850" style="border-radius: 8px;">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/stage_monitor.png" alt="VoxStream Live Read-Along Display and Stage Confidence Monitor PWA" width="850" style="border-radius: 8px;">
+</p>
 
 ---
 
