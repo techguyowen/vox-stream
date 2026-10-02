@@ -106,12 +106,11 @@
                 <button id="btn-header-qr" class="btn btn-secondary btn-open-captions-qr" title="Scan or Share QR code to open Audience Caption Display on mobile or iPad" style="display: inline-flex; align-items: center; gap: 6px; font-weight: 600; background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.35); color: #7DD3FC; padding: 6px 12px; border-radius: 6px; cursor: pointer;">
                     <span>📱 Audience QR</span>
                 </button>
-                <a href="http://localhost:3050" target="_blank" rel="noopener" class="btn btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 5px; font-weight: 600; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #6ee7b7;" title="Sanctuary AV Controller (Port 3050)">
-                    <span>🎛️ AV Controller ↗</span>
-                </a>
-                <a href="http://localhost:8085" target="_blank" rel="noopener" class="btn btn-secondary" style="text-decoration: none; display: inline-flex; align-items: center; gap: 5px; font-weight: 600; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.4); color: #c084fc;" title="Waypoint Sound Booth Operations Hub (Port 8085)">
-                    <span>📖 Booth Ops ↗</span>
-                </a>
+                <!-- Custom User Quick Links Container -->
+                <div id="custom-header-links" style="display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap;"></div>
+                <button id="btn-add-header-link" class="btn btn-secondary" title="Add Custom Header Quick Link Button" style="display: inline-flex; align-items: center; gap: 4px; font-weight: 600;">
+                    <span>➕ Quick Link</span>
+                </button>
                 <button id="btn-header-update" class="btn btn-sm" style="display: none; background: linear-gradient(135deg, #10B981, #059669); color: #fff; font-weight: 700; border: none; padding: 6px 12px; border-radius: 6px; align-items: center; gap: 6px; cursor: pointer;" title="A new VoxStream update is available!">
                     <span>✨ Update Available</span>
                 </button>
@@ -2719,6 +2718,175 @@
             </div>
         </div>
     </div>
+
+    <!-- 🔗 Custom Quick Links Manager Modal -->
+    <div id="modal-quick-links" class="modal-backdrop" style="display: none;">
+        <div class="modal-content" style="max-width: 480px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h2 style="font-size: 16px; font-weight: 700; margin: 0;">🔗 Manage Custom Header Links</h2>
+                <button type="button" id="btn-close-quick-links-modal" class="btn btn-secondary btn-sm">✕</button>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted);">Link Label / Name</label>
+                    <input type="text" id="ql-input-name" class="form-control" placeholder="e.g. AV Controller, Sound Desk, ProPresenter">
+                </div>
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted);">URL / Web Address</label>
+                    <input type="text" id="ql-input-url" class="form-control" placeholder="e.g. http://localhost:3050 or https://...">
+                </div>
+                <button type="button" id="btn-save-new-quick-link" class="btn btn-primary" style="margin-top: 6px;">➕ Add Quick Link Button</button>
+            </div>
+
+            <div style="border-top: 1px solid var(--border-color); padding-top: 12px;">
+                <h3 style="font-size: 13px; font-weight: 600; margin-bottom: 8px;">Active Quick Links</h3>
+                <div id="modal-quick-links-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto;">
+                    <!-- Dynamically populated -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🔗 Custom Quick Links Manager Script -->
+    <script>
+    (function() {
+        'use strict';
+        const STORAGE_KEY = "voxstream_custom_quick_links";
+
+        function getQuickLinks() {
+            try {
+                const raw = localStorage.getItem(STORAGE_KEY);
+                return raw ? JSON.parse(raw) : [];
+            } catch(e) {
+                return [];
+            }
+        }
+
+        function saveQuickLinks(links) {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(links));
+            } catch(e) {
+                console.error(e);
+            }
+            renderQuickLinks();
+        }
+
+        function escapeHtml(str) {
+            return (str || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        }
+
+        function renderQuickLinks() {
+            const container = document.getElementById("custom-header-links");
+            const listInModal = document.getElementById("modal-quick-links-list");
+            const links = getQuickLinks();
+
+            if (container) {
+                container.innerHTML = "";
+                links.forEach((link) => {
+                    const a = document.createElement("a");
+                    a.href = link.url;
+                    a.target = "_blank";
+                    a.rel = "noopener";
+                    a.className = "btn btn-secondary";
+                    a.style.textDecoration = "none";
+                    a.style.display = "inline-flex";
+                    a.style.alignItems = "center";
+                    a.style.gap = "5px";
+                    a.style.fontWeight = "600";
+                    a.title = `${link.title} (${link.url})`;
+                    a.innerHTML = `<span>🔗 ${escapeHtml(link.title)} ↗</span>`;
+                    container.appendChild(a);
+                });
+            }
+
+            if (listInModal) {
+                listInModal.innerHTML = "";
+                if (links.length === 0) {
+                    listInModal.innerHTML = `<div style="font-size: 12px; color: var(--text-muted); text-align: center; padding: 12px;">No custom quick links added yet. Click "+ Add Quick Link Button" above!</div>`;
+                } else {
+                    links.forEach((link, idx) => {
+                        const item = document.createElement("div");
+                        item.style.display = "flex";
+                        item.style.justifyContent = "space-between";
+                        item.style.alignItems = "center";
+                        item.style.padding = "6px 10px";
+                        item.style.background = "var(--bg-card)";
+                        item.style.border = "1px solid var(--border-color)";
+                        item.style.borderRadius = "6px";
+                        item.style.fontSize = "12.5px";
+                        item.innerHTML = `
+                            <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 320px;">
+                                <strong>🔗 ${escapeHtml(link.title)}</strong>
+                                <span style="display: block; font-size: 11px; color: var(--text-muted); text-overflow: ellipsis; overflow: hidden;">${escapeHtml(link.url)}</span>
+                            </div>
+                            <button type="button" class="btn btn-danger btn-sm btn-remove-ql" data-index="${idx}" style="padding: 2px 8px; font-size: 11px;">Remove</button>
+                        `;
+                        listInModal.appendChild(item);
+                    });
+
+                    listInModal.querySelectorAll(".btn-remove-ql").forEach(btn => {
+                        btn.addEventListener("click", () => {
+                            const idx = parseInt(btn.dataset.index, 10);
+                            const current = getQuickLinks();
+                            current.splice(idx, 1);
+                            saveQuickLinks(current);
+                        });
+                    });
+                }
+            }
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            const btnAdd = document.getElementById("btn-add-header-link");
+            const modal = document.getElementById("modal-quick-links");
+            const btnClose = document.getElementById("btn-close-quick-links-modal");
+            const btnSave = document.getElementById("btn-save-new-quick-link");
+            const inputName = document.getElementById("ql-input-name");
+            const inputUrl = document.getElementById("ql-input-url");
+
+            if (btnAdd && modal) {
+                btnAdd.addEventListener("click", () => {
+                    modal.style.display = "flex";
+                    renderQuickLinks();
+                });
+            }
+
+            if (btnClose && modal) {
+                btnClose.addEventListener("click", () => {
+                    modal.style.display = "none";
+                });
+            }
+
+            if (modal) {
+                modal.addEventListener("click", (e) => {
+                    if (e.target === modal) modal.style.display = "none";
+                });
+            }
+
+            if (btnSave && inputName && inputUrl) {
+                btnSave.addEventListener("click", () => {
+                    const title = inputName.value.trim();
+                    let url = inputUrl.value.trim();
+                    if (!title || !url) {
+                        alert("Please enter both a name and a URL for the quick link.");
+                        return;
+                    }
+                    if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("/")) {
+                        url = "http://" + url;
+                    }
+                    const links = getQuickLinks();
+                    links.push({ title, url });
+                    saveQuickLinks(links);
+                    inputName.value = "";
+                    inputUrl.value = "";
+                });
+            }
+
+            renderQuickLinks();
+        });
+    })();
+    </script>
 
     <!-- ⏱️ Auto-Stop Scheduler JavaScript -->
     <script>
