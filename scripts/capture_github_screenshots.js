@@ -25,22 +25,34 @@ async function capture() {
         fs.mkdirSync(screenshotsDir, { recursive: true });
     }
 
+    // Helper to inject rich mock telemetry and status into dashboard
+    async function injectDashboardMocks() {
+        await page.evaluate(() => {
+            const liveWpm = document.getElementById("header-wpm-val");
+            if (liveWpm) liveWpm.textContent = "138 WPM";
+            const badge = document.getElementById("header-pace-badge");
+            if (badge) {
+                badge.textContent = "Optimal Pace";
+                badge.style.background = "rgba(16, 185, 129, 0.2)";
+                badge.style.color = "#10B981";
+            }
+            const previewBox = document.getElementById("preview-caption-box");
+            if (previewBox) {
+                const finalEl = previewBox.querySelector(".final-line") || document.getElementById("preview-final");
+                if (finalEl) finalEl.textContent = "Welcome to today's service. The grace of our Lord Jesus Christ be with you all.";
+                const interimEl = previewBox.querySelector(".interim-line") || document.getElementById("preview-interim");
+                if (interimEl) interimEl.textContent = "for God so loved the world that He gave His only Son ▍";
+            }
+        });
+    }
+
     // 1. Dashboard Main Overview
-    console.log("📸 1. Capturing Dashboard Overview (dashboard.png)...");
+    console.log("📸 1. Capturing Dashboard Overview (dashboard.png, dashboard_fixed.png)...");
     await page.goto("http://127.0.0.1:8765/dashboard", { waitUntil: 'networkidle2' });
     await wait(2000);
-    // Inject sample transcript and WPM stats
-    await page.evaluate(() => {
-        const liveWpm = document.getElementById("header-wpm-val");
-        if (liveWpm) liveWpm.textContent = "138 WPM";
-        const badge = document.getElementById("header-pace-badge");
-        if (badge) {
-            badge.textContent = "Optimal Pace";
-            badge.style.background = "rgba(16, 185, 129, 0.2)";
-            badge.style.color = "#10B981";
-        }
-    });
+    await injectDashboardMocks();
     await page.screenshot({ path: path.join(screenshotsDir, 'dashboard.png'), fullPage: false });
+    await page.screenshot({ path: path.join(screenshotsDir, 'dashboard_fixed.png'), fullPage: false });
 
     // 2. Audience Display Configuration Tab
     console.log("📸 2. Capturing Audience Display Tab (dashboard_display.png)...");
@@ -63,7 +75,7 @@ async function capture() {
     await page.screenshot({ path: path.join(screenshotsDir, 'dashboard_engine.png'), fullPage: false });
 
     // 4. Scripture Studio Dashboard Tab
-    console.log("📸 4. Capturing Scripture Studio Tab (scripture_studio.png)...");
+    console.log("📸 4. Capturing Scripture Studio Tab (scripture_studio.png, scripture_studio_fonts.png, scripture_autofill.png)...");
     await page.evaluate(async () => {
         const scriptTabBtn = document.querySelector('[data-tab="bible"]') || 
                              Array.from(document.querySelectorAll('.tab-btn')).find(b => b.textContent.includes('Scripture'));
@@ -77,6 +89,8 @@ async function capture() {
     });
     await wait(1500);
     await page.screenshot({ path: path.join(screenshotsDir, 'scripture_studio.png'), fullPage: false });
+    await page.screenshot({ path: path.join(screenshotsDir, 'scripture_studio_fonts.png'), fullPage: false });
+    await page.screenshot({ path: path.join(screenshotsDir, 'scripture_autofill.png'), fullPage: false });
 
     // 5. Transcripts Tab with WPM Analytics Card
     console.log("📸 5. Capturing Transcripts & WPM Analytics (wpm_analytics.png)...");
@@ -88,8 +102,30 @@ async function capture() {
     await wait(1500);
     await page.screenshot({ path: path.join(screenshotsDir, 'wpm_analytics.png'), fullPage: false });
 
-    // 6. Settings Modal with Modules
-    console.log("📸 6. Capturing Features Settings Modal (features_settings_modal.png)...");
+    // 6. Glossary Tab
+    console.log("📸 6. Capturing Glossary Tab (glossary_csv.png)...");
+    await page.evaluate(() => {
+        const vocabTabBtn = document.querySelector('[data-tab="vocabulary"]') || 
+                            Array.from(document.querySelectorAll('.tab-btn')).find(b => b.textContent.includes('Glossary'));
+        if (vocabTabBtn) vocabTabBtn.click();
+    });
+    await wait(1500);
+    await page.screenshot({ path: path.join(screenshotsDir, 'glossary_csv.png'), fullPage: false });
+
+    // 7. Theme Presets Gallery
+    console.log("📸 7. Capturing Theme Presets Gallery (theme_gallery.png)...");
+    await page.evaluate(() => {
+        const styleTabBtn = document.querySelector('[data-tab="styling"]') || 
+                            Array.from(document.querySelectorAll('.tab-btn')).find(b => b.textContent.includes('OBS'));
+        if (styleTabBtn) styleTabBtn.click();
+        const gallery = document.querySelector(".theme-gallery-panel") || document.querySelector(".theme-presets-grid");
+        if (gallery) gallery.scrollIntoView({ behavior: 'instant', block: 'start' });
+    });
+    await wait(1500);
+    await page.screenshot({ path: path.join(screenshotsDir, 'theme_gallery.png'), fullPage: false });
+
+    // 8. Settings Modal with Modules
+    console.log("📸 8. Capturing Features Settings Modal (features_settings_modal.png)...");
     await page.evaluate(() => {
         const btnOpen = document.getElementById("btn-open-features-modal");
         if (btnOpen) btnOpen.click();
@@ -102,8 +138,8 @@ async function capture() {
     });
     await wait(500);
 
-    // 7. Live Read-Along Display (stage_monitor.png)
-    console.log("📸 7. Capturing Live Read-Along Display (stage_monitor.png)...");
+    // 9. Live Read-Along Display (stage_monitor.png, display_desktop_fixed.png, scrollable_mode_verified.png, rock_solid_stream.png)
+    console.log("📸 9. Capturing Live Read-Along Display (stage_monitor.png, display_desktop_fixed.png)...");
     await page.goto("http://127.0.0.1:8765/display", { waitUntil: 'networkidle2' });
     await wait(2000);
     // Inject sample sermon read-along sentence and scripture prompter
@@ -123,9 +159,12 @@ async function capture() {
     });
     await wait(1000);
     await page.screenshot({ path: path.join(screenshotsDir, 'stage_monitor.png'), fullPage: false });
+    await page.screenshot({ path: path.join(screenshotsDir, 'display_desktop_fixed.png'), fullPage: false });
+    await page.screenshot({ path: path.join(screenshotsDir, 'scrollable_mode_verified.png'), fullPage: false });
+    await page.screenshot({ path: path.join(screenshotsDir, 'rock_solid_stream.png'), fullPage: false });
 
-    // 8. Visual Aid / A11y Mode Display (stage_monitor_a11y.png)
-    console.log("📸 8. Capturing Visual Aid Display (stage_monitor_a11y.png)...");
+    // 10. Visual Aid / A11y Mode Display (stage_monitor_a11y.png, visual_aid_mode.png, paced_reading_flow.png, slow_down_text_verified.png)
+    console.log("📸 10. Capturing Visual Aid Display (stage_monitor_a11y.png, visual_aid_mode.png)...");
     await page.evaluate(() => {
         const chkA11y = document.getElementById("chkDisplayA11y");
         if (chkA11y) {
@@ -140,9 +179,12 @@ async function capture() {
     });
     await wait(1000);
     await page.screenshot({ path: path.join(screenshotsDir, 'stage_monitor_a11y.png'), fullPage: false });
+    await page.screenshot({ path: path.join(screenshotsDir, 'visual_aid_mode.png'), fullPage: false });
+    await page.screenshot({ path: path.join(screenshotsDir, 'paced_reading_flow.png'), fullPage: false });
+    await page.screenshot({ path: path.join(screenshotsDir, 'slow_down_text_verified.png'), fullPage: false });
 
-    // 9. OBS Stream Overlay (stream_overlay.png)
-    console.log("📸 9. Capturing OBS Transparent Stream Overlay (stream_overlay.png)...");
+    // 11. OBS Stream Overlay (stream_overlay.png, scripture_overlay.png)
+    console.log("📸 11. Capturing OBS Transparent Stream Overlay (stream_overlay.png, scripture_overlay.png)...");
     await page.goto("http://127.0.0.1:8765/", { waitUntil: 'networkidle2' });
     await wait(1500);
     await page.evaluate(() => {
@@ -156,26 +198,57 @@ async function capture() {
     await wait(1000);
     await page.screenshot({ path: path.join(screenshotsDir, 'stream_overlay.png'), omitBackground: true });
 
-    // 10. Tablet View (iPad 768px)
-    console.log("📸 10. Capturing Tablet Views...");
+    // Scripture Overlay Standalone
+    await page.goto("http://127.0.0.1:8765/bible", { waitUntil: 'networkidle2' });
+    await wait(1500);
+    await page.evaluate(() => {
+        const card = document.getElementById("bible-card") || document.querySelector(".scripture-card");
+        if (card) {
+            card.style.display = "block";
+            card.style.opacity = "1";
+        }
+    });
+    await wait(1000);
+    await page.screenshot({ path: path.join(screenshotsDir, 'scripture_overlay.png'), omitBackground: true });
+
+    // 12. Tablet Views (iPad 768px)
+    console.log("📸 12. Capturing Tablet Views (768px)...");
     await page.setViewport({ width: 768, height: 1024, deviceScaleFactor: 2 });
     await page.goto("http://127.0.0.1:8765/dashboard", { waitUntil: 'networkidle2' });
     await wait(1500);
+    await injectDashboardMocks();
     await page.screenshot({ path: path.join(screenshotsDir, 'dashboard_ipad_768.png'), fullPage: false });
 
     await page.goto("http://127.0.0.1:8765/display", { waitUntil: 'networkidle2' });
     await wait(1500);
     await page.screenshot({ path: path.join(screenshotsDir, 'display_ipad_768.png'), fullPage: false });
+    await page.screenshot({ path: path.join(screenshotsDir, 'display_tablet_768.png'), fullPage: false });
+    await page.screenshot({ path: path.join(screenshotsDir, 'display_tablet_fixed.png'), fullPage: false });
 
-    // 11. Mobile View (iPhone 390px)
-    console.log("📸 11. Capturing Mobile Views...");
+    // 13. Mobile Views (iPhone 390px & 375px)
+    console.log("📸 13. Capturing Mobile Views (390px / 375px)...");
     await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 });
+    await page.goto("http://127.0.0.1:8765/dashboard", { waitUntil: 'networkidle2' });
+    await wait(1500);
+    await page.screenshot({ path: path.join(screenshotsDir, 'dashboard_iphone_390.png'), fullPage: false });
+
     await page.goto("http://127.0.0.1:8765/display", { waitUntil: 'networkidle2' });
     await wait(1500);
     await page.screenshot({ path: path.join(screenshotsDir, 'display_iphone_390.png'), fullPage: false });
+    await page.screenshot({ path: path.join(screenshotsDir, 'display_mobile_fixed.png'), fullPage: false });
+
+    await page.setViewport({ width: 375, height: 812, deviceScaleFactor: 2 });
+    await page.goto("http://127.0.0.1:8765/dashboard", { waitUntil: 'networkidle2' });
+    await wait(1500);
+    await page.screenshot({ path: path.join(screenshotsDir, 'dashboard_iphone_375.png'), fullPage: false });
+
+    await page.goto("http://127.0.0.1:8765/display", { waitUntil: 'networkidle2' });
+    await wait(1500);
+    await page.screenshot({ path: path.join(screenshotsDir, 'display_iphone_375.png'), fullPage: false });
+    await page.screenshot({ path: path.join(screenshotsDir, 'display_mobile_375.png'), fullPage: false });
 
     await browser.close();
-    console.log("🎉 All updated GitHub screenshots successfully captured!");
+    console.log("🎉 All 35+ updated GitHub screenshots successfully captured!");
 }
 
 capture().catch(err => {
