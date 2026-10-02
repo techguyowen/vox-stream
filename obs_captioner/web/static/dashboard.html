@@ -117,8 +117,8 @@
                 <button id="btn-open-features-modal" class="btn btn-secondary" title="Advanced Settings & Features" style="display: inline-flex; align-items: center; gap: 5px; font-weight: 600;">
                     <span>⚙️ Advanced Settings</span>
                 </button>
-                <button id="btn-open-shortcuts-modal" class="btn btn-secondary" title="Keyboard Shortcuts Cheatsheet (?)" style="display: inline-flex; align-items: center; gap: 5px; font-weight: 600;">
-                    <span>⌨️ Shortcuts</span>
+                <button id="btn-open-shortcuts-modal" class="btn btn-secondary btn-sm" title="Keyboard Shortcuts Cheatsheet (?)" style="display: inline-flex; align-items: center; gap: 4px; font-weight: 600; font-size: 11px; padding: 4px 8px;">
+                    <span>⌨️ ?</span>
                 </button>
             </div>
         </header>
@@ -2687,34 +2687,34 @@
 
     <!-- ⌨️ Keyboard Shortcuts Cheatsheet Modal -->
     <div id="modal-shortcuts" class="modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 10000; justify-content: center; align-items: center; backdrop-filter: blur(6px);">
-        <div class="modal-content" style="background: var(--bg-card); border: 1.5px solid rgba(56, 189, 248, 0.4); border-radius: 14px; padding: 24px; max-width: 480px; width: 92%; box-shadow: 0 25px 70px rgba(0,0,0,0.8); color: #fff;">
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 12px; margin-bottom: 16px;">
-                <h3 style="font-size: 18px; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 8px; color: #38BDF8;">
-                    <span>⌨️</span> Keyboard Shortcuts Cheatsheet
+        <div class="modal-content" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 16px 20px; max-width: 380px; width: 92%; box-shadow: 0 20px 50px rgba(0,0,0,0.85); color: var(--text-main);">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 12px;">
+                <h3 style="font-size: 0.875rem; font-weight: 700; margin: 0; display: flex; align-items: center; gap: 6px; color: var(--accent);">
+                    <span>⌨️</span> Keyboard Shortcuts
                 </h3>
-                <button type="button" id="btn-close-shortcuts-modal" style="background: none; border: none; font-size: 24px; color: var(--text-muted); cursor: pointer; line-height: 1;">&times;</button>
+                <button type="button" id="btn-close-shortcuts-modal" style="background: none; border: none; font-size: 18px; color: var(--text-muted); cursor: pointer; line-height: 1;">&times;</button>
             </div>
-            <div style="display: grid; grid-template-columns: auto 1fr; gap: 12px 16px; align-items: center; margin-bottom: 20px;">
-                <kbd style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 6px; font-family: monospace; font-size: 13px; font-weight: 700; color: #7DD3FC; justify-self: start;">Space</kbd>
-                <span style="font-size: 13px; color: #E2E8F0;">Toggle Start / Stop STT Captions</span>
+            <div style="display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; align-items: center; margin-bottom: 14px;">
+                <kbd style="background: var(--surface-raised); border: 1px solid var(--border-color); padding: 2px 7px; border-radius: var(--radius-sm); font-family: monospace; font-size: 11px; font-weight: 700; color: var(--accent); justify-self: start;">Space</kbd>
+                <span style="font-size: 11.5px; color: var(--text-main);">Toggle Start / Stop STT Captions</span>
 
-                <kbd style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 6px; font-family: monospace; font-size: 13px; font-weight: 700; color: #7DD3FC; justify-self: start;">C</kbd>
-                <span style="font-size: 13px; color: #E2E8F0;">Panic Clear All Displays & Subtitles</span>
+                <kbd style="background: var(--surface-raised); border: 1px solid var(--border-color); padding: 2px 7px; border-radius: var(--radius-sm); font-family: monospace; font-size: 11px; font-weight: 700; color: var(--accent); justify-self: start;">C</kbd>
+                <span style="font-size: 11.5px; color: var(--text-main);">Panic Clear All Displays & Subtitles</span>
 
-                <kbd style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 6px; font-family: monospace; font-size: 13px; font-weight: 700; color: #7DD3FC; justify-self: start;">E</kbd>
-                <span style="font-size: 13px; color: #E2E8F0;">Focus STT Engine Selector</span>
+                <kbd style="background: var(--surface-raised); border: 1px solid var(--border-color); padding: 2px 7px; border-radius: var(--radius-sm); font-family: monospace; font-size: 11px; font-weight: 700; color: var(--accent); justify-self: start;">E</kbd>
+                <span style="font-size: 11.5px; color: var(--text-main);">Focus STT Engine Selector</span>
 
-                <kbd style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 6px; font-family: monospace; font-size: 13px; font-weight: 700; color: #7DD3FC; justify-self: start;">S</kbd>
-                <span style="font-size: 13px; color: #E2E8F0;">Open Advanced Settings</span>
+                <kbd style="background: var(--surface-raised); border: 1px solid var(--border-color); padding: 2px 7px; border-radius: var(--radius-sm); font-family: monospace; font-size: 11px; font-weight: 700; color: var(--accent); justify-self: start;">S</kbd>
+                <span style="font-size: 11.5px; color: var(--text-main);">Open Advanced Settings</span>
 
-                <kbd style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 6px; font-family: monospace; font-size: 13px; font-weight: 700; color: #7DD3FC; justify-self: start;">?</kbd>
-                <span style="font-size: 13px; color: #E2E8F0;">Toggle Shortcuts Cheatsheet</span>
+                <kbd style="background: var(--surface-raised); border: 1px solid var(--border-color); padding: 2px 7px; border-radius: var(--radius-sm); font-family: monospace; font-size: 11px; font-weight: 700; color: var(--accent); justify-self: start;">?</kbd>
+                <span style="font-size: 11.5px; color: var(--text-main);">Toggle Shortcuts Cheatsheet</span>
 
-                <kbd style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 6px; font-family: monospace; font-size: 13px; font-weight: 700; color: #7DD3FC; justify-self: start;">Esc</kbd>
-                <span style="font-size: 13px; color: #E2E8F0;">Close Active Modal Dialog</span>
+                <kbd style="background: var(--surface-raised); border: 1px solid var(--border-color); padding: 2px 7px; border-radius: var(--radius-sm); font-family: monospace; font-size: 11px; font-weight: 700; color: var(--accent); justify-self: start;">Esc</kbd>
+                <span style="font-size: 11.5px; color: var(--text-main);">Close Active Modal Dialog</span>
             </div>
             <div style="display: flex; justify-content: flex-end;">
-                <button type="button" id="btn-done-shortcuts-modal" class="btn btn-secondary btn-sm">Close</button>
+                <button type="button" id="btn-done-shortcuts-modal" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 3px 10px;">Close</button>
             </div>
         </div>
     </div>
