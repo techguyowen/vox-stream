@@ -792,10 +792,23 @@ function initBibleHandlers() {
         });
     }
 
+    // Two-way sync for Stage Display Scripture toggle between Scripture and Display tabs
+    const bibleStageToggle = document.getElementById("bible_tab_show_on_stage_display");
+    const displayScriptureToggle = document.getElementById("display_show_scripture");
+    if (bibleStageToggle && displayScriptureToggle) {
+        bibleStageToggle.addEventListener("change", (e) => {
+            displayScriptureToggle.checked = e.target.checked;
+        });
+        displayScriptureToggle.addEventListener("change", (e) => {
+            bibleStageToggle.checked = e.target.checked;
+        });
+    }
+
     // 7. Save Settings Button
     const btnSaveBible = document.getElementById("btn-save-bible-tab-settings");
     if (btnSaveBible) {
         btnSaveBible.addEventListener("click", async () => {
+            const isStageDisplay = document.getElementById("bible_tab_show_on_stage_display") ? document.getElementById("bible_tab_show_on_stage_display").checked : true;
             const payload = {
                 bible: {
                     enabled: document.getElementById("bible_tab_enabled").checked,
@@ -809,7 +822,11 @@ function initBibleHandlers() {
                     use_italics: document.getElementById("bible_tab_use_italics") ? document.getElementById("bible_tab_use_italics").checked : false,
                     letter_spacing: (document.getElementById("bible_tab_letter_spacing") && document.getElementById("bible_tab_letter_spacing").checked) ? "0.05em" : "normal",
                     high_contrast_outline: document.getElementById("bible_tab_high_contrast") ? document.getElementById("bible_tab_high_contrast").checked : false,
-                    show_on_stream_overlay: document.getElementById("bible_tab_show_on_stream_overlay") ? document.getElementById("bible_tab_show_on_stream_overlay").checked : false
+                    show_on_stream_overlay: document.getElementById("bible_tab_show_on_stream_overlay") ? document.getElementById("bible_tab_show_on_stream_overlay").checked : false,
+                    show_on_stage_display: isStageDisplay,
+                },
+                display: {
+                    show_scripture: isStageDisplay,
                 }
             };
             await saveConfigPayload(payload, "Scripture Studio settings saved successfully!");
@@ -2392,6 +2409,12 @@ function populateFormFields(cfg) {
         const bStream = document.getElementById("bible_tab_show_on_stream_overlay");
         if (bStream) bStream.checked = !!b.show_on_stream_overlay;
 
+        const bStage = document.getElementById("bible_tab_show_on_stage_display");
+        if (bStage) {
+            const isStageEnabled = (b.show_on_stage_display !== undefined) ? !!b.show_on_stage_display : (cfg.display ? !!cfg.display.show_scripture : true);
+            bStage.checked = isStageEnabled;
+        }
+
         if (typeof updateBibleTabPreviewStyling === "function") {
             updateBibleTabPreviewStyling();
         }
@@ -3561,6 +3584,9 @@ function initAudienceDisplayTab() {
                     show_interim: document.getElementById("display_show_interim") ? document.getElementById("display_show_interim").checked : true,
                     show_scripture: document.getElementById("display_show_scripture") ? document.getElementById("display_show_scripture").checked : true,
                     dyslexia_mode: document.getElementById("display_dyslexia_mode") ? document.getElementById("display_dyslexia_mode").checked : false,
+                },
+                bible: {
+                    show_on_stage_display: document.getElementById("display_show_scripture") ? document.getElementById("display_show_scripture").checked : true,
                 }
             };
             await saveConfigPayload(payload, "Audience Display default settings saved successfully!");
