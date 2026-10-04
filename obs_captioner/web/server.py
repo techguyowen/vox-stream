@@ -2196,23 +2196,38 @@ class WebOverlayServer:
         action = data.get("action", "")
         if action == "clear":
             self.bible_engine.clear_context()
+            ctx_status = self.bible_engine.get_context_status()
+            await self.broadcast_control({"type": "bible_context_updated", "context": ctx_status})
             return web.json_response({
                 "status": "success",
                 "message": "Sermon scripture context reset.",
-                "context": self.bible_engine.get_context_status()
+                "context": ctx_status
             })
         citation = data.get("citation", "").strip()
         if citation:
-            match = re.search(r"([A-Za-z0-9\s]+?)\s+(\d+)", citation)
+            pattern = re.compile(
+                r"^((?:(?:1st|2nd|3rd|first|second|third|[1-3])\s+)?[A-Za-z]+(?:\s+of\s+[A-Za-z]+)?)(?:\s+(\d+))?",
+                re.IGNORECASE
+            )
+            match = pattern.search(citation)
             if match:
-                book, ch = match.group(1), int(match.group(2))
-                self.bible_engine.set_context(book, ch, is_primary=True)
-                return web.json_response({
-                    "status": "success",
-                    "message": f"Primary sermon context set to {self.bible_engine.primary_book} {self.bible_engine.primary_chapter}.",
-                    "context": self.bible_engine.get_context_status()
-                })
-        return web.json_response({"error": "Invalid citation format. Specify e.g. 'Romans 8'"}, status=400)
+                raw_book = match.group(1).strip()
+                canonical = self.bible_engine.normalize_book_name(raw_book)
+                if canonical:
+                    ch = int(match.group(2)) if match.group(2) else 1
+                    self.bible_engine.set_context(canonical, ch, is_primary=True)
+                    ctx_status = self.bible_engine.get_context_status()
+                    await self.broadcast_control({"type": "bible_context_updated", "context": ctx_status})
+                    return web.json_response({
+                        "status": "success",
+                        "message": f"Primary sermon context set to {canonical} {ch}.",
+                        "context": ctx_status
+                    })
+                else:
+                    return web.json_response({"error": f"Unknown Bible book '{raw_book}'."}, status=400)
+            else:
+                return web.json_response({"error": "Invalid citation format. Specify e.g. 'Romans 8' or 'John 3'"}, status=400)
+        return web.json_response({"error": "Citation cannot be empty. Specify e.g. 'Romans 8'"}, status=400)
 
     async def trigger_scripture_lookup(self, text: str):
         """Auto-lookup scripture citation from finalized transcript and broadcast if found."""
