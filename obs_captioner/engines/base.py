@@ -14,6 +14,8 @@ class TranscriptEvent:
     confidence: float = 1.0
     timestamp: float = 0.0
     translated_text: Optional[str] = None
+    seq: int = 0
+    utterance_id: int = 0
 
     def __post_init__(self):
         if self.timestamp == 0.0:

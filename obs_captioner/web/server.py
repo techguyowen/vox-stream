@@ -116,6 +116,7 @@ class WebOverlayServer:
         # connected /ws clients so refreshed views aren't blank until the next utterance.
         self._recent_finals: list = []
         self._max_snapshot_lines = 10
+        self._caption_translate_chain: Optional[asyncio.Task] = None
 
         @web.middleware
         async def cors_middleware(request, handler):
@@ -1909,7 +1910,19 @@ class WebOverlayServer:
                     except Exception:
                         self.caption_sockets.pop(ws, None)
 
-            asyncio.create_task(_translate_and_send())
+            # Chain translation batches so successive finals translate and send
+            # in broadcast order instead of racing and arriving out of order.
+            previous = self._caption_translate_chain
+
+            async def _chained_translate_and_send():
+                if previous is not None:
+                    try:
+                        await previous
+                    except Exception:
+                        pass
+                await _translate_and_send()
+
+            self._caption_translate_chain = asyncio.create_task(_chained_translate_and_send())
 
         if is_final and self.control_sockets and self.history:
             try:

@@ -362,9 +362,11 @@ class GeminiLiveEngine(BaseSTTEngine):
                 else:
                     logger.warning(f"Suppressed hallucinated final transcript from Gemini Live: {text}")
 
-        # 2. Speculative interim hypothesis (updates rapidly while user speaks)
+        # 2. Speculative interim hypothesis (updates rapidly while user speaks).
+        # Dropped when this same message already carries an authoritative final,
+        # otherwise the interim would emit AFTER its final and linger on screen.
         interim_obj = server_content.get("interimInputTranscription")
-        if isinstance(interim_obj, dict) and interim_obj.get("text"):
+        if not events and isinstance(interim_obj, dict) and interim_obj.get("text"):
             text = str(interim_obj["text"]).strip()
             if text:
                 if not is_hallucinated_or_leaked_text(text):
@@ -380,7 +382,9 @@ class GeminiLiveEngine(BaseSTTEngine):
             full_part_text = "".join(part_texts).strip()
             if full_part_text:
                 is_done = bool(server_content.get("turnComplete") or server_content.get("generationComplete"))
-                if not is_hallucinated_or_leaked_text(full_part_text):
+                if events and not is_done:
+                    logger.debug("Suppressed modelTurn interim arriving with a final in the same message.")
+                elif not is_hallucinated_or_leaked_text(full_part_text):
                     events.append((full_part_text, is_done))
                 else:
                     logger.debug(f"Suppressed hallucinated modelTurn from Gemini Live: {full_part_text}")

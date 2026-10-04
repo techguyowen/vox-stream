@@ -5306,6 +5306,194 @@ class TestOBSProjectorWatchdog(unittest.TestCase):
         self.assertTrue(status["last_watchdog_success"])
 
 
+class TestInterimFinalOrdering(unittest.TestCase):
+    """Interim/final desync guards: ordering fields, same-message suppression."""
+
+    def test_transcript_event_ordering_fields_default(self):
+        from obs_captioner.engines.base import TranscriptEvent
+
+        evt = TranscriptEvent(text="hello", is_final=False)
+        self.assertEqual(evt.seq, 0)
+        self.assertEqual(evt.utterance_id, 0)
+        # Legacy constructors keep working; new fields are optional.
+        evt2 = TranscriptEvent(text="hi", is_final=True, seq=7, utterance_id=3)
+        self.assertEqual(evt2.seq, 7)
+        self.assertEqual(evt2.utterance_id, 3)
+
+    def test_gemini_parse_drops_interim_when_final_present(self):
+        """A server message carrying both final and interim must not emit interim after final."""
+        cfg = AppConfig()
+        engine = GeminiLiveEngine(cfg)
+
+        data = {
+            "serverContent": {
+                "inputTranscription": {"text": "Hello world."},
+                "interimInputTranscription": {"text": "Hello wor"},
+            }
+        }
+        events = engine.parse_server_message(data)
+        self.assertEqual(events, [("Hello world.", True)])
+
+        # Pure interim messages still emit interim.
+        interim_only = {"serverContent": {"interimInputTranscription": {"text": "Hello"}}}
+        self.assertEqual(engine.parse_server_message(interim_only), [("Hello", False)])
+
+
+class TestInterimFinalOrderingAsync(unittest.IsolatedAsyncioTestCase):
+    """Async sink/server ordering: seq stamping, dedupe, serialization."""
+
+    def _make_sink(self):
+        from unittest.mock import AsyncMock, MagicMock
+        from obs_captioner.config import AppConfig
+        from obs_captioner.obs.caption_sink import CaptionSink
+
+        cfg = AppConfig()
+        cfg.overlay.auto_hide_seconds = 0
+        if hasattr(cfg, "bible") and cfg.bible:
+            cfg.bible.enabled = False
+        cfg.translation.enabled = False
+        sink = CaptionSink(cfg)
+        mock_web = MagicMock()
+        mock_web.broadcast_caption = AsyncMock()
+        sink.web_server = mock_web
+        return sink, mock_web
+
+    async def test_sink_assigns_monotonic_seq_and_utterance_ids(self):
+        sink, mock_web = self._make_sink()
+
+        await sink.handle_transcript(TranscriptEvent(text="hello", is_final=False))
+        await sink.handle_transcript(TranscriptEvent(text="hello world", is_final=False))
+        await sink.handle_transcript(TranscriptEvent(text="hello world", is_final=True))
+        await sink.handle_transcript(TranscriptEvent(text="next one", is_final=False))
+
+        payloads = [c[0][0] for c in mock_web.broadcast_caption.call_args_list]
+        self.assertEqual(len(payloads), 4)
+        seqs = [p["seq"] for p in payloads]
+        self.assertEqual(seqs, sorted(seqs))
+        self.assertEqual(len(set(seqs)), 4)
+        utts = [p["utterance_id"] for p in payloads]
+        # First three belong to one utterance; the post-final interim starts a new one.
+        self.assertEqual(utts[0], utts[1])
+        self.assertEqual(utts[1], utts[2])
+        self.assertGreater(utts[3], utts[2])
+
+    async def test_sink_dedupes_immediate_duplicate_final(self):
+        sink, mock_web = self._make_sink()
+
+        await sink.handle_transcript(TranscriptEvent(text="Praise the Lord", is_final=True))
+        await sink.handle_transcript(TranscriptEvent(text="Praise the Lord", is_final=True))
+
+        payloads = [c[0][0] for c in mock_web.broadcast_caption.call_args_list]
+        finals = [p for p in payloads if p.get("is_final") and (p.get("text") or "").strip()]
+        self.assertEqual(len(finals), 1)
+        # History must not record the duplicate either.
+        self.assertEqual(len(sink.history.get_history()), 1)
+
+    async def test_sink_serializes_concurrent_events(self):
+        """Bandwidth-style concurrent interim+final must broadcast in call order."""
+        sink, mock_web = self._make_sink()
+        sink.config.translation.enabled = True
+
+        async def fake_translate(text):
+            if text.startswith("Interim"):
+                await asyncio.sleep(0.05)
+            return (text, None)
+
+        sink.translator.translate_text = fake_translate
+        interim = TranscriptEvent(text="Interim hello there", is_final=False)
+        final = TranscriptEvent(text="Final sentence here.", is_final=True)
+        await asyncio.gather(sink.handle_transcript(interim), sink.handle_transcript(final))
+
+        payloads = [c[0][0] for c in mock_web.broadcast_caption.call_args_list]
+        self.assertEqual(len(payloads), 2)
+        self.assertFalse(payloads[0]["is_final"])
+        self.assertTrue(payloads[1]["is_final"])
+
+    async def test_server_serializes_non_english_final_translations(self):
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock
+        from obs_captioner.config import AppConfig
+        from obs_captioner.web.server import WebOverlayServer
+
+        cfg = AppConfig()
+        server = WebOverlayServer(cfg)
+        sent = []
+
+        class FakeWs:
+            async def send_str(self, payload_str):
+                sent.append(json.loads(payload_str)["text"])
+
+        ws = FakeWs()
+        server.caption_sockets[ws] = "es"
+
+        async def fake_translate(text, target_lang="es"):
+            if text.startswith("First"):
+                await asyncio.sleep(0.05)
+            return f"[{target_lang}]{text}"
+
+        server.translator.translate_to_language = fake_translate
+        await server.broadcast_caption({"text": "First final.", "is_final": True})
+        await server.broadcast_caption({"text": "Second final.", "is_final": True})
+
+        chain = getattr(server, "_caption_translate_chain", None)
+        if chain is not None:
+            await chain
+        else:
+            await asyncio.sleep(0.2)
+        self.assertEqual(sent, ["[es]First final.", "[es]Second final."])
+
+    async def test_sherpa_endpoint_finalizes_lingering_interim(self):
+        from types import SimpleNamespace
+        from obs_captioner.config import AppConfig
+        from obs_captioner.engines.sherpa_engine import SherpaEngine
+
+        cfg = AppConfig()
+        engine = SherpaEngine(cfg)
+
+        script = [("hello", False), ("hello world", False), ("", True)]
+
+        class FakeRecognizer:
+            def __init__(self):
+                self.i = 0
+
+            def create_stream(self):
+                return SimpleNamespace(accept_waveform=lambda *a: None)
+
+            def is_ready(self, stream):
+                return False
+
+            def decode_stream(self, stream):
+                pass
+
+            def is_endpoint(self, stream):
+                return script[self.i][1]
+
+            def get_result(self, stream):
+                text = script[self.i][0]
+                self.i = min(self.i + 1, len(script) - 1)
+                return SimpleNamespace(text=text)
+
+            def reset(self, stream):
+                pass
+
+        engine.recognizer = FakeRecognizer()
+        engine._running = True
+
+        async def audio():
+            for _ in range(3):
+                yield b"\x00\x00" * 160
+
+        events = []
+
+        async def on_transcript(evt):
+            events.append(evt)
+
+        await engine.start_streaming(audio(), on_transcript)
+        finals = [e for e in events if e.is_final]
+        self.assertEqual(len(finals), 1)
+        self.assertEqual(finals[0].text, "hello world")
+
+
 if __name__ == "__main__":
     unittest.main()
 

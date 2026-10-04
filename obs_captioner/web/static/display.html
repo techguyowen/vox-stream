@@ -1525,6 +1525,12 @@
 
         let finalSentences = [];
         let interimText = "";
+        let lastSeenSeq = 0;
+        let lastFinalUtteranceId = 0;
+        let interimGen = 0;
+        let captionMsgCounter = 0;
+        let pendingInterimText = null;
+        let interimRafPending = false;
         let ws = null;
         let autoScroll = true;
         let silenceHideTimer = null;
@@ -2070,12 +2076,7 @@
                 localStorage.setItem("voxstream_display_final_only", enabled ? "true" : "false");
             } catch(e) {}
             if (enabled) {
-                interimText = "";
-                const interimNode = getInterimNode();
-                if (interimNode) {
-                    interimNode.textContent = '';
-                    interimNode.style.display = 'none';
-                }
+                clearInterimLine();
             }
         }
 
@@ -2398,8 +2399,21 @@
             if (emptyEl) emptyEl.remove();
         }
 
+        function clearInterimLine() {
+            interimText = "";
+            pendingInterimText = null;
+            interimGen++;
+            const node = document.getElementById("liveInterimNode");
+            if (node) {
+                node.textContent = '';
+                node.style.display = 'none';
+            }
+        }
+
         function appendFinalSentence(text) {
             if (!text || !transcriptContent) return;
+            pendingInterimText = null;
+            interimGen++;
             removeEmptyIndicator();
             wakeLiveDisplay();
 
@@ -2433,8 +2447,24 @@
             triggerSilenceTimer(isPacedReadingEnabled ? 12000 : 4000);
         }
 
-        let pendingInterimText = null;
-        let interimRafPending = false;
+        function replaceLastFinalSentence(text) {
+            if (!text || !transcriptContent) return;
+            pendingInterimText = null;
+            interimGen++;
+            removeEmptyIndicator();
+            wakeLiveDisplay();
+
+            if (finalSentences.length > 0) {
+                finalSentences[finalSentences.length - 1] = text;
+            } else {
+                finalSentences.push(text);
+            }
+            renderCaptions();
+
+            if (autoScroll) scrollToBottom(false);
+
+            triggerSilenceTimer(isPacedReadingEnabled ? 12000 : 4000);
+        }
 
         function updateInterimSpeech(text) {
             if (isFinalOnlyMode) return;
@@ -2442,9 +2472,11 @@
             pendingInterimText = text;
             if (interimRafPending) return;
             interimRafPending = true;
+            const gen = interimGen;
 
             requestAnimationFrame(() => {
                 interimRafPending = false;
+                if (gen !== interimGen) return;
                 const curText = pendingInterimText;
                 if (!curText && curText !== '') return;
                 removeEmptyIndicator();
@@ -2504,6 +2536,7 @@
         // Fetch session transcript history from server so Scrollable History is immediately populated
         async function loadServerHistory() {
             if (currentMode === 'live') return;
+            const beforeCount = finalSentences.length;
             try {
                 const res = await fetch('/api/transcript/history?limit=100');
                 if (res.ok) {
@@ -2512,6 +2545,7 @@
                         const chronological = [...data.history].reverse();
                         const lines = chronological.map(e => (e.text || '').trim()).filter(Boolean);
                         if (lines.length > 0) {
+                            if (finalSentences.length !== beforeCount) return;
                             finalSentences = lines;
                             renderCaptions();
                             scrollToBottom(false);
@@ -2549,6 +2583,13 @@
                     const data = JSON.parse(event.data);
 
                     if (data.type === 'snapshot') {
+                        clearInterimLine();
+                        if (data.lines) {
+                            for (const l of data.lines) {
+                                if (l && typeof l.seq === 'number' && l.seq > lastSeenSeq) lastSeenSeq = l.seq;
+                                if (l && typeof l.utterance_id === 'number' && l.utterance_id > lastFinalUtteranceId) lastFinalUtteranceId = l.utterance_id;
+                            }
+                        }
                         if (currentMode !== 'live' && data.lines && data.lines.length > 0 && finalSentences.length === 0) {
                             const snapshotTexts = data.lines.map(l => (typeof l === 'string' ? l : (l.text || ''))).map(t => t.trim()).filter(Boolean);
                             if (snapshotTexts.length > 0) {
@@ -2576,8 +2617,27 @@
                     }
 
                     if (data.type === 'caption' || data.text !== undefined) {
+                        if (typeof data.seq === 'number' && data.seq > 0) {
+                            if (data.seq <= lastSeenSeq) return;
+                            lastSeenSeq = data.seq;
+                        }
+                        if (!data.is_final && typeof data.utterance_id === 'number' && data.utterance_id > 0
+                            && data.utterance_id <= lastFinalUtteranceId) return;
+
                         let text = (data.text || '').trim();
-                        if (!text) return;
+
+                        if (data.panic) {
+                            clearAllCaptions();
+                            return;
+                        }
+
+                        if (!text) {
+                            clearInterimLine();
+                            if (data.is_final) triggerSilenceTimer(0);
+                            return;
+                        }
+
+                        const myMsgId = ++captionMsgCounter;
 
                         // When connected with ?lang=XX, server WebSocket already delivers pre-translated text in data.text
                         // with original English in data.original_text. Fallback to HTTP translation only if text is untranslated.
@@ -2589,11 +2649,21 @@
                                     text = tData.translated || text;
                                 }
                             } catch (e) {}
+                            if (myMsgId !== captionMsgCounter) return;
                         }
 
                         if (data.is_final) {
-                            interimText = "";
-                            appendFinalSentence(text);
+                            if (typeof data.utterance_id === 'number' && data.utterance_id > 0) {
+                                lastFinalUtteranceId = Math.max(lastFinalUtteranceId, data.utterance_id);
+                            }
+                            clearInterimLine();
+                            if (data.replace_last) {
+                                replaceLastFinalSentence(text);
+                            } else {
+                                const prevFinal = finalSentences.length > 0 ? finalSentences[finalSentences.length - 1] : "";
+                                if (prevFinal.trim().toLowerCase() === text.trim().toLowerCase()) return;
+                                appendFinalSentence(text);
+                            }
                         } else {
                             if (isFinalOnlyMode) return;
                             interimText = text;
@@ -2606,6 +2676,7 @@
             };
 
             ws.onclose = () => {
+                clearInterimLine();
                 const retrySec = Math.round(reconnectDelayMs / 1000);
                 if (statusText) statusText.innerHTML = '<span class="status-live-label">DISCONNECTED</span>';
                 if (statusPill) {

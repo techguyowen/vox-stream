@@ -113,6 +113,23 @@ let fadeWipeTimer = null;
 let finalLines = [];
 let ws = null;
 let controlWs = null;
+let lastCaptionSeq = 0;
+let lastFinalUtterance = 0;
+
+function isStaleCaption(data) {
+    if (typeof data.seq === "number" && data.seq > 0) {
+        if (data.seq <= lastCaptionSeq) return true;
+        lastCaptionSeq = data.seq;
+    }
+    if (!data.is_final && typeof data.utterance_id === "number" && data.utterance_id > 0
+        && data.utterance_id <= lastFinalUtterance) {
+        return true;
+    }
+    if (data.is_final && typeof data.utterance_id === "number" && data.utterance_id > 0) {
+        lastFinalUtterance = Math.max(lastFinalUtterance, data.utterance_id);
+    }
+    return false;
+}
 
 const captionBox = document.getElementById("caption-box");
 const finalLinesEl = document.getElementById("final-lines");
@@ -367,6 +384,8 @@ function handleCaption(data) {
         interimLineEl.innerHTML = "";
         const now = Date.now();
         for (const line of data.lines || []) {
+            if (line && typeof line.seq === "number" && line.seq > lastCaptionSeq) lastCaptionSeq = line.seq;
+            if (line && typeof line.utterance_id === "number" && line.utterance_id > lastFinalUtterance) lastFinalUtterance = line.utterance_id;
             const t = (line.text || "").trim();
             if (t) finalLines.push({
                 text: t,
@@ -385,6 +404,8 @@ function handleCaption(data) {
         }
         return;
     }
+
+    if (isStaleCaption(data)) return;
 
     const text = (data.text || "").trim();
     const translated = data.translated_text || null;
@@ -407,12 +428,19 @@ function handleCaption(data) {
             const minDisp = Math.max(0, parseFloat(config.min_display_seconds) || 0);
 
             // If replacing the last finalized line (e.g. clause or boundary stitch)
-            if (data.replace_last && finalLines.length > 0) {
-                finalLines[finalLines.length - 1].text = text;
-                if (translated) {
-                    finalLines[finalLines.length - 1].translated = translated;
+            if (data.replace_last && (finalLines.length > 0 || pendingFinalQueue.length > 0)) {
+                if (pendingFinalQueue.length > 0) {
+                    pendingFinalQueue[pendingFinalQueue.length - 1].text = text;
+                    if (translated) {
+                        pendingFinalQueue[pendingFinalQueue.length - 1].translated = translated;
+                    }
+                } else {
+                    finalLines[finalLines.length - 1].text = text;
+                    if (translated) {
+                        finalLines[finalLines.length - 1].translated = translated;
+                    }
+                    finalLines[finalLines.length - 1].displayedAt = Date.now();
                 }
-                finalLines[finalLines.length - 1].displayedAt = Date.now();
                 lastLineDisplayedAt = Date.now();
                 interimLineEl.innerHTML = "";
                 renderFinalLines(false);

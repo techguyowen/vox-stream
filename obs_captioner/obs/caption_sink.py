@@ -75,6 +75,12 @@ class CaptionSink:
         self._last_partial_text: Optional[str] = None
         self._auto_clear_task: Optional[asyncio.Task] = None
         self._last_final_time = 0.0
+        self._lock: Optional[asyncio.Lock] = None
+        self._seq = 0
+        self._utterance_id = 0
+        self._last_final_utterance_id = 0
+        self._last_final_text: Optional[str] = None
+        self._duplicate_final_window = 0.75
 
     def update_config(self, new_config: AppConfig):
         """Live update configuration, filter dictionary, and translation rules."""
@@ -173,8 +179,21 @@ class CaptionSink:
 
         return clean_text, False
 
+    def _stamp_payload(self, payload: dict, utterance_id: int) -> dict:
+        """Attach monotonic seq / utterance ids so clients can drop stale out-of-order messages."""
+        self._seq += 1
+        payload["seq"] = self._seq
+        payload["utterance_id"] = utterance_id
+        return payload
+
     async def handle_transcript(self, event: TranscriptEvent):
         """Process, filter, translate, record, and dispatch a new transcript event."""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        async with self._lock:
+            await self._handle_transcript_locked(event)
+
+    async def _handle_transcript_locked(self, event: TranscriptEvent):
         if self.is_paused and self.is_paused():
             return
 
@@ -192,7 +211,10 @@ class CaptionSink:
                 self._last_partial_text = None
                 if self.web_server:
                     await self.web_server.broadcast_caption(
-                        {"text": "", "is_final": False, "is_censored": False, "timestamp": event.timestamp}
+                        self._stamp_payload(
+                            {"text": "", "is_final": False, "is_censored": False, "timestamp": event.timestamp},
+                            self._utterance_id,
+                        )
                     )
             return
 
@@ -204,7 +226,10 @@ class CaptionSink:
                 self._last_partial_text = None
                 if self.web_server:
                     await self.web_server.broadcast_caption(
-                        {"text": "", "is_final": False, "is_censored": False, "timestamp": event.timestamp}
+                        self._stamp_payload(
+                            {"text": "", "is_final": False, "is_censored": False, "timestamp": event.timestamp},
+                            self._utterance_id,
+                        )
                     )
             else:
                 logger.debug(f"Interim hallucination suppressed in caption sink: {raw_text}")
@@ -212,6 +237,14 @@ class CaptionSink:
 
         if event.is_final:
             self._last_partial_text = None
+            # A final closes the current utterance; finals-only engines (no
+            # preceding interim) each get their own utterance id.
+            if self._utterance_active:
+                utterance_id = self._utterance_id
+            else:
+                self._utterance_id += 1
+                utterance_id = self._utterance_id
+            self._last_final_utterance_id = utterance_id
         else:
             # Continuous engines (Vosk) re-emit identical partials every audio
             # chunk; skip re-broadcasting unchanged interim text.
@@ -222,6 +255,8 @@ class CaptionSink:
             if not self._utterance_active:
                 self._utterance_active = True
                 self._sentence_start_time = time.time()
+                self._utterance_id += 1
+            utterance_id = self._utterance_id
 
         # 1. Custom Vocabulary & Glossary Replacements
         vocab_text, _ = self.vocabulary.replace(raw_text)
@@ -238,10 +273,34 @@ class CaptionSink:
             self._utterance_active = False
             if self.web_server:
                 await self.web_server.broadcast_caption(
-                    {"text": "", "is_final": False, "is_censored": True, "timestamp": event.timestamp}
+                    self._stamp_payload(
+                        {"text": "", "is_final": False, "is_censored": True, "timestamp": event.timestamp},
+                        utterance_id,
+                    )
                 )
             logger.info("✓ [FINAL]   🛡️ [DROPPED]")
             return
+
+        # Drop an immediate identical re-finalization (engine double-emit):
+        # legitimate verbatim repetitions arrive as new utterances later, well
+        # outside this sub-second window. Still clear the interim line.
+        if event.is_final and clean_text:
+            normalized_final = re.sub(r"\s+", " ", clean_text).strip().casefold()
+            if (
+                normalized_final
+                and normalized_final == self._last_final_text
+                and (time.time() - self._last_final_time) < self._duplicate_final_window
+            ):
+                logger.info(f"✓ [FINAL]   [DUPLICATE SUPPRESSED] {clean_text}")
+                self._utterance_active = False
+                if self.web_server:
+                    await self.web_server.broadcast_caption(
+                        self._stamp_payload(
+                            {"text": "", "is_final": False, "is_censored": False, "timestamp": event.timestamp},
+                            utterance_id,
+                        )
+                    )
+                return
 
         # Boundary Stitcher for split chunks
         if event.is_final and clean_text:
@@ -255,17 +314,21 @@ class CaptionSink:
                 # Dispatch updated full sentence to Web Overlay and OBS Text Source
                 last_entry = self.history.entries[-1]
                 updated_text = last_entry.text
+                self._last_final_text = re.sub(r"\s+", " ", updated_text).strip().casefold()
 
                 if self.web_server:
                     await self.web_server.broadcast_caption(
-                        {
-                            "text": updated_text,
-                            "translated_text": None,
-                            "is_final": True,
-                            "is_censored": last_entry.is_censored,
-                            "timestamp": event.timestamp,
-                            "replace_last": True,
-                        }
+                        self._stamp_payload(
+                            {
+                                "text": updated_text,
+                                "translated_text": None,
+                                "is_final": True,
+                                "is_censored": last_entry.is_censored,
+                                "timestamp": event.timestamp,
+                                "replace_last": True,
+                            },
+                            utterance_id,
+                        )
                     )
 
                 if self.obs_client and self.obs_client.is_connected:
@@ -300,6 +363,7 @@ class CaptionSink:
             sentence_start = self._sentence_start_time
             sentence_end = time.time()
             self._last_final_time = sentence_end
+            self._last_final_text = re.sub(r"\s+", " ", clean_text).strip().casefold()
             recorded_text = clean_text
             if translated_text:
                 dual_fmt = getattr(self.config.translation, "dual_subtitle_format", "clean")
@@ -342,16 +406,19 @@ class CaptionSink:
         # 7. Dispatch to Web Overlay (Browser Source) and Dashboard Preview
         if self.web_server:
             await self.web_server.broadcast_caption(
-                {
-                    "text": display_text,
-                    "translated_text": translated_text,
-                    "dual_color": getattr(self.config.translation, "dual_subtitle_color", "#FFD700"),
-                    "dual_scale": getattr(self.config.translation, "dual_subtitle_scale", 0.85),
-                    "dual_format": getattr(self.config.translation, "dual_subtitle_format", "clean"),
-                    "is_final": event.is_final,
-                    "is_censored": was_censored,
-                    "timestamp": event.timestamp,
-                }
+                self._stamp_payload(
+                    {
+                        "text": display_text,
+                        "translated_text": translated_text,
+                        "dual_color": getattr(self.config.translation, "dual_subtitle_color", "#FFD700"),
+                        "dual_scale": getattr(self.config.translation, "dual_subtitle_scale", 0.85),
+                        "dual_format": getattr(self.config.translation, "dual_subtitle_format", "clean"),
+                        "is_final": event.is_final,
+                        "is_censored": was_censored,
+                        "timestamp": event.timestamp,
+                    },
+                    utterance_id,
+                )
             )
 
         # 8. Dispatch to OBS WebSocket (Text Source & CEA-608)
@@ -400,7 +467,10 @@ class CaptionSink:
             # Clear web overlay browser source too
             if self.web_server:
                 await self.web_server.broadcast_caption(
-                    {"text": "", "is_final": True, "is_censored": False, "timestamp": 0}
+                    self._stamp_payload(
+                        {"text": "", "is_final": True, "is_censored": False, "timestamp": 0},
+                        self._utterance_id,
+                    )
                 )
         except asyncio.CancelledError:
             pass

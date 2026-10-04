@@ -234,6 +234,17 @@ class SherpaEngine(BaseSTTEngine):
                                 timestamp=time.time(),
                             )
                         )
+                    elif last_text:
+                        # Endpoint fired with an empty hypothesis while an interim
+                        # is still on screen: finalize it instead of letting it linger.
+                        await on_transcript(
+                            TranscriptEvent(
+                                text=last_text,
+                                is_final=True,
+                                confidence=0.98,
+                                timestamp=time.time(),
+                            )
+                        )
                     self.recognizer.reset(stream)
                     last_text = ""
                 elif text and text != last_text:

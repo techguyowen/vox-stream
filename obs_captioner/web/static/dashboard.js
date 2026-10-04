@@ -4811,6 +4811,8 @@ function connectControlWs() {
 }
 
 let captionReconnectAttempts = 0;
+let captionLastSeq = 0;
+let captionLastFinalUtterance = 0;
 function connectCaptionWs() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -4823,11 +4825,29 @@ function connectCaptionWs() {
             if (data.type === "snapshot") {
                 // Show the most recent line from the replayed history, if any
                 const lines = data.lines || [];
+                for (const l of lines) {
+                    if (l && typeof l.seq === "number" && l.seq > captionLastSeq) captionLastSeq = l.seq;
+                    if (l && typeof l.utterance_id === "number" && l.utterance_id > captionLastFinalUtterance) captionLastFinalUtterance = l.utterance_id;
+                }
                 const last = lines[lines.length - 1];
                 if (last && last.text) previewFinal.textContent = last.text;
+                previewInterim.textContent = "";
                 return;
             }
+            if (typeof data.seq === "number" && data.seq > 0) {
+                if (data.seq <= captionLastSeq) return;
+                captionLastSeq = data.seq;
+            }
+            if (!data.is_final && typeof data.utterance_id === "number" && data.utterance_id > 0
+                && data.utterance_id <= captionLastFinalUtterance) return;
+            if (data.is_final && typeof data.utterance_id === "number" && data.utterance_id > 0) {
+                captionLastFinalUtterance = Math.max(captionLastFinalUtterance, data.utterance_id);
+            }
             if (data.is_final) {
+                if (!data.text || !(data.text || "").trim()) {
+                    previewInterim.textContent = "";
+                    return;
+                }
                 triggerModelTranscribingActivity(data.text);
                 let displayText = data.text;
                 if (data.translated_text) {
