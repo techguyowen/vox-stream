@@ -1303,6 +1303,15 @@
                             </div>
                             <input type="checkbox" id="chkKeepScreenAwake" checked style="width: 20px; height: 20px; cursor: pointer; accent-color: #3B82F6;">
                         </label>
+
+                        <!-- Bible / Scripture Overlay Toggle -->
+                        <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.35); padding: 10px 12px; border-radius: 8px;">
+                            <div>
+                                <span style="font-size: 13.5px; font-weight: 700; color: #C084FC; display: block;">📖 Show Bible / Scripture Overlay</span>
+                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Shows pop-up verse cards when scriptures are detected or pushed. Turn off to display speech captions only.</span>
+                            </div>
+                            <input type="checkbox" id="chkShowScriptureOverlay" checked style="width: 20px; height: 20px; cursor: pointer; accent-color: #A855F7;">
+                        </label>
                     </div>
                 </div>
 
@@ -1522,6 +1531,7 @@
                 let isPacedReadingEnabled = false;
         let isBionicReadingEnabled = false;
         let isFinalOnlyMode = false;
+        let isScriptureOverlayEnabled = true;
 
         // DOM Elements
         const stageContainer = document.getElementById('stageContainer');
@@ -1540,6 +1550,7 @@
         const chkDisplayBionic = document.getElementById('chkDisplayBionic');
         const chkDisplayFinalOnly = document.getElementById('chkDisplayFinalOnly');
         const chkDisableTextShadow = document.getElementById('chkDisableTextShadow');
+        const chkShowScriptureOverlay = document.getElementById('chkShowScriptureOverlay');
 
         const btnOpenSettings = document.getElementById('btnOpenSettings');
         const btnCloseSettings = document.getElementById('btnCloseSettings');
@@ -2107,6 +2118,36 @@
             chkDisableTextShadow.addEventListener("change", (e) => applyDisplayNoTextShadowMode(e.target.checked));
         }
 
+        // 📖 Scripture / Bible Overlay Display Toggle
+        function applyDisplayScriptureOverlayMode(enabled) {
+            isScriptureOverlayEnabled = !!enabled;
+            if (chkShowScriptureOverlay) chkShowScriptureOverlay.checked = isScriptureOverlayEnabled;
+            try {
+                localStorage.setItem("voxstream_display_show_scripture", isScriptureOverlayEnabled ? "true" : "false");
+            } catch(e) {}
+            if (!isScriptureOverlayEnabled) {
+                dismissStageScripture();
+            }
+        }
+
+        try {
+            const urlBible = urlParams.get('bible') || urlParams.get('scripture');
+            if (urlBible !== null) {
+                applyDisplayScriptureOverlayMode(!(urlBible === '0' || urlBible === 'false' || urlBible === 'off' || urlBible === 'no'));
+            } else {
+                const savedScripture = localStorage.getItem("voxstream_display_show_scripture");
+                if (savedScripture !== null) {
+                    applyDisplayScriptureOverlayMode(savedScripture === "true");
+                } else {
+                    applyDisplayScriptureOverlayMode(true);
+                }
+            }
+        } catch(e) {}
+
+        if (chkShowScriptureOverlay) {
+            chkShowScriptureOverlay.addEventListener("change", (e) => applyDisplayScriptureOverlayMode(e.target.checked));
+        }
+
         // Settings Modal Open/Close Logic
         if (btnOpenSettings && settingsModal) {
             btnOpenSettings.addEventListener('click', () => {
@@ -2520,7 +2561,7 @@
                     }
 
                     if (data.type === 'scripture_verse' || (data.type === 'scripture' && data.action === 'show')) {
-                        if (data.show_on_stage_display === false) return;
+                        if (data.show_on_stage_display === false || !isScriptureOverlayEnabled) return;
                         showStageScripture(data);
                         return;
                     }
@@ -2919,6 +2960,7 @@
         let stageScriptureTimer = null;
 
         function showStageScripture(data) {
+            if (!isScriptureOverlayEnabled) return;
             if (!scripturePrompterCard) return;
             if (stageScriptureTimer) clearTimeout(stageScriptureTimer);
             
