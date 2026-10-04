@@ -14,7 +14,7 @@ try:
 except ImportError:
     np = None
 
-from .base import BaseSTTEngine, CaptionCallback, TranscriptEvent
+from .base import BaseSTTEngine, CaptionCallback, PreRollBuffer, TranscriptEvent
 from ..config import AppConfig
 from ..vad import VoiceActivityDetector
 
@@ -281,6 +281,7 @@ class ParakeetEngine(BaseSTTEngine):
 
         audio_buffer = bytearray()
         silence_start_time = None
+        preroll = PreRollBuffer(sample_rate=self.config.audio.sample_rate)
 
         try:
             async for chunk in audio_stream:
@@ -300,6 +301,12 @@ class ParakeetEngine(BaseSTTEngine):
                 # Approximate word ceiling: ~2.5 words/sec
                 approx_words = (len(audio_buffer) / (self.config.audio.sample_rate * 2)) * 2.5
                 is_word_ceiling = approx_words >= max_sentence_words
+
+                if is_speech and len(audio_buffer) == 0:
+                    # Speech onset: prepend retained pre-roll so a VAD-missed
+                    # onset chunk doesn't clip the first phoneme.
+                    audio_buffer.extend(preroll.take())
+                preroll.push(chunk)
 
                 if is_speech:
                     silence_start_time = None
@@ -324,7 +331,8 @@ class ParakeetEngine(BaseSTTEngine):
                             audio_buffer.clear()
                             silence_start_time = None
 
-            if audio_buffer and self._running:
+            # Flush on loop exit including stop() during engine switch.
+            if audio_buffer:
                 await self._process_utterance(bytes(audio_buffer), on_transcript)
 
         except asyncio.CancelledError:
@@ -373,10 +381,11 @@ class ParakeetEngine(BaseSTTEngine):
             logger.debug(f"Parakeet utterance transcription error: {e}")
 
     async def stop(self) -> None:
-        """Stop streaming and release model resources."""
+        """Stop streaming. Loaded weights are kept so pause/resume and the
+        trailing-utterance flush don't lose speech; the engine object release
+        (plus release_stt_memory) frees memory on switch/shutdown."""
         self._running = False
         self.is_running = False
-        self.model = None
         try:
             from ..hardware import release_stt_memory
             release_stt_memory()

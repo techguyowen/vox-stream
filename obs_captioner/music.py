@@ -23,14 +23,16 @@ logger = logging.getLogger("obs_captioner.music")
 # Musical symbols emitted by Whisper, Moonshine, and other ASR models
 MUSIC_SYMBOLS = set("♪♫♩♬♭♯")
 
-# Regex patterns for music tags and musical descriptions
+# Regex patterns for music tags and musical descriptions.
+# Note: crowd sounds (applause/cheering/laughter) are sound effects, not music;
+# SenseVoice event captions such as "[Applause]" must stay visible.
 MUSIC_TAG_PATTERNS = [
     re.compile(
-        r"\[[^\]]*(?:music|singing|chords|instrumental|choir|applause|cheering|organ|piano|guitar|hymn)[^\]]*\]",
+        r"\[[^\]]*(?:music|singing|chords|instrumental|choir|organ|piano|guitar|hymn)[^\]]*\]",
         re.IGNORECASE,
     ),
     re.compile(
-        r"\([^)]*(?:music|singing|chords|instrumental|choir|applause|cheering|organ|piano|guitar|hymn)[^)]*\)",
+        r"\([^)]*(?:music|singing|chords|instrumental|choir|organ|piano|guitar|hymn)[^)]*\)",
         re.IGNORECASE,
     ),
     re.compile(
@@ -56,6 +58,15 @@ HALLUCINATION_PHRASES = [
     "english subtitles",
     "like and subscribe",
 ]
+
+# Single-word sacred chants ("amen amen amen") are worship refrains, not
+# autoregressive loops, so short runs of these words are exempt from the
+# 1-gram repetition check (long runaway loops are still suppressed).
+SACRED_CHANT_WORDS = {
+    "amen", "hallelujah", "alleluia", "holy", "hosanna",
+    "jesus", "christ", "god", "lord", "glory",
+}
+
 
 # Orphan function words / click noise phonemes emitted during silence/breaths
 ORPHAN_NOISE_WORDS = {
@@ -87,12 +98,13 @@ def is_repetition_loop(text: str) -> bool:
     if "dot" in words and words.count("dot") >= 2:
         return True
 
-    # Check for vocabulary collapse / low entropy (e.g. 'other in other other in other other')
+    # Check for vocabulary collapse / low entropy (e.g. 'other in other other in other other').
+    # Thresholds stay above short liturgical refrains ("Holy holy holy is the Lord").
     counts = collections.Counter(words)
     most_common_word, most_common_count = counts.most_common(1)[0]
-    if total_words >= 4 and (most_common_count / total_words) >= 0.5:
+    if total_words >= 6 and (most_common_count / total_words) >= 0.6:
         return True
-    if total_words >= 5 and len(counts) <= 2:
+    if total_words >= 7 and len(counts) <= 2:
         return True
 
     # Check 1-gram, 2-gram, 3-gram, 4-gram repetitions
@@ -105,6 +117,14 @@ def is_repetition_loop(text: str) -> bool:
             while j + n <= total_words and words[j : j + n] == ngram:
                 count += 1
                 j += n
+            # Single-word chants of sacred words ("amen amen amen") are worship,
+            # not decoder loops, unless they run away past a short refrain.
+            if (
+                n == 1
+                and ngram[0] in SACRED_CHANT_WORDS
+                and total_words <= 8
+            ):
+                continue
             # If repeated at least 3 times and covers at least 50% of the utterance
             if count >= 3 and (count * n) >= (total_words * 0.5):
                 return True
@@ -154,9 +174,18 @@ def is_music_text(text: str, strict: bool = False) -> bool:
 
     lower_text = stripped.lower()
 
-    # 1. Known neural ASR hallucination phrases (silence / sustained tone artifacts)
-    for h in HALLUCINATION_PHRASES:
-        if h in lower_text:
+    # 1. Known neural ASR hallucination phrases (silence / sustained tone artifacts).
+    # Only when they dominate the utterance: a sermon sentence that merely
+    # contains such a phrase ("Thank you for watching online, see you Sunday")
+    # is legitimate speech and must be kept.
+    matched_hallucinations = [h for h in HALLUCINATION_PHRASES if h in lower_text]
+    if matched_hallucinations:
+        total_words = len(re.findall(r"\b\w+\b", lower_text))
+        remainder = lower_text
+        for h in sorted(matched_hallucinations, key=len, reverse=True):
+            remainder = remainder.replace(h, " ")
+        remaining_words = len(re.findall(r"\b\w+\b", remainder))
+        if total_words and (total_words - remaining_words) / total_words >= 0.5:
             return True
 
     # 2. Direct musical note symbols (if note is present at start/end or dominates)

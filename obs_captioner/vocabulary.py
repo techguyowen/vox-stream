@@ -84,6 +84,9 @@ class VocabularyReplacer:
             orig_clean = original.strip()
             if not orig_clean:
                 continue
+            if not (replacement or "").strip():
+                # An empty replacement would silently delete matched words.
+                continue
 
             escaped = re.escape(orig_clean)
             # Use flexible word boundaries to match full words/phrases even with punctuation

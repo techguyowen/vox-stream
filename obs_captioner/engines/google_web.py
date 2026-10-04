@@ -17,7 +17,7 @@ try:
 except ImportError:
     sr = None
 
-from .base import BaseSTTEngine, CaptionCallback, TranscriptEvent
+from .base import BaseSTTEngine, CaptionCallback, PreRollBuffer, TranscriptEvent
 from ..config import AppConfig
 from ..vad import VoiceActivityDetector
 
@@ -117,6 +117,7 @@ class GoogleWebEngine(BaseSTTEngine):
 
         audio_buffer = bytearray()
         silence_start_time = None
+        preroll = PreRollBuffer(sample_rate=self.config.audio.sample_rate)
         min_bytes = int(self.config.audio.sample_rate * 2 * 0.3)  # ~300ms minimum speech
         sentence_break_s = (getattr(self.config.audio, "sentence_break_ms", 650) or 650) / 1000.0
         max_sentence_s = getattr(self.config.audio, "max_sentence_duration_seconds", 7.0) or 7.0
@@ -137,6 +138,12 @@ class GoogleWebEngine(BaseSTTEngine):
             max_sentence_s = getattr(self.config.audio, "max_sentence_duration_seconds", 7.0) or 7.0
             max_sentence_words = getattr(self.config.audio, "max_sentence_words", 24) or 24
             max_buffer_bytes = int(self.config.audio.sample_rate * 2 * max_sentence_s)
+
+            if has_speech and len(audio_buffer) == 0:
+                # Speech onset: prepend retained pre-roll so a VAD-missed
+                # onset chunk doesn't clip the first phoneme.
+                audio_buffer.extend(preroll.take())
+            preroll.push(chunk)
 
             if has_speech:
                 audio_buffer.extend(chunk)
@@ -173,8 +180,9 @@ class GoogleWebEngine(BaseSTTEngine):
                         )
                     )
 
-        # Flush remaining audio buffer when stream terminates
-        if len(audio_buffer) >= min_bytes and self.is_running:
+        # Flush remaining audio buffer when stream terminates, including a
+        # stop() during engine switch: the trailing utterance must finalize.
+        if len(audio_buffer) >= min_bytes:
             even_len = len(audio_buffer) & ~1
             pcm_data = bytes(audio_buffer[:even_len])
             audio_buffer.clear()

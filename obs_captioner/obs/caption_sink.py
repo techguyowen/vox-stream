@@ -271,6 +271,7 @@ class CaptionSink:
         # connected views without wiping their visible caption history.
         if event.is_final and was_censored and self.config.censor.mode == "drop_sentence":
             self._utterance_active = False
+            self._last_partial_text = None
             if self.web_server:
                 await self.web_server.broadcast_caption(
                     self._stamp_payload(
@@ -282,14 +283,18 @@ class CaptionSink:
             return
 
         # Drop an immediate identical re-finalization (engine double-emit):
-        # legitimate verbatim repetitions arrive as new utterances later, well
-        # outside this sub-second window. Still clear the interim line.
+        # a genuine repeated sentence is virtually always preceded by fresh
+        # interim hypotheses for the new utterance, while a double-emit
+        # arrives back-to-back with no new interim in between. Legitimate
+        # verbatim repetitions also fall outside this sub-second window.
+        # Still clear the interim line.
         if event.is_final and clean_text:
             normalized_final = re.sub(r"\s+", " ", clean_text).strip().casefold()
             if (
                 normalized_final
                 and normalized_final == self._last_final_text
                 and (time.time() - self._last_final_time) < self._duplicate_final_window
+                and not self._utterance_active
             ):
                 logger.info(f"✓ [FINAL]   [DUPLICATE SUPPRESSED] {clean_text}")
                 self._utterance_active = False
@@ -304,6 +309,7 @@ class CaptionSink:
 
         # Boundary Stitcher for split chunks
         if event.is_final and clean_text:
+            prev_entry_text = self.history.entries[-1].text if self.history.entries else None
             stitched_text, is_absorbed = self._attempt_boundary_stitch(clean_text)
             if is_absorbed:
                 logger.info(f"✓ [STITCHED & ABSORBED] '{clean_text}' into previous entry")
@@ -338,12 +344,52 @@ class CaptionSink:
                             updated_text,
                         )
 
+                # Rewrite the sidecar block so the absorbed continuation also
+                # reaches the .srt/.vtt recording instead of being lost there.
+                if self.subtitle_recorder and getattr(self.subtitle_recorder, "is_recording", False):
+                    self.subtitle_recorder.update_last_caption(updated_text, end_time=time.time())
+
                 if self.config.overlay.auto_hide_seconds > 0:
                     if self._auto_clear_task:
                         self._auto_clear_task.cancel()
                     self._auto_clear_task = asyncio.create_task(self._auto_clear_worker())
 
                 return
+            if prev_entry_text is not None and self.history.entries:
+                _seal_norm = lambda t: re.sub(r"\s*\([^)]*\)$", "", t).rstrip(".,;:… ")
+                prev_changed = _seal_norm(self.history.entries[-1].text) != _seal_norm(prev_entry_text)
+            else:
+                prev_changed = False
+            if prev_changed:
+                # A lexical mid-word correction rewrote the previous history
+                # entry ("way poi" -> "Waypoint") while the remainder continues
+                # as a new sentence: propagate the correction so web views, OBS,
+                # and the subtitle sidecar don't keep the stale split word.
+                # (A seal-only change that merely appends "." is skipped.)
+                corrected_entry = self.history.entries[-1]
+                corrected_text = corrected_entry.text
+                if self.web_server:
+                    await self.web_server.broadcast_caption(
+                        self._stamp_payload(
+                            {
+                                "text": corrected_text,
+                                "translated_text": None,
+                                "is_final": True,
+                                "is_censored": corrected_entry.is_censored,
+                                "timestamp": event.timestamp,
+                                "replace_last": True,
+                            },
+                            utterance_id,
+                        )
+                    )
+                if self.obs_client and self.obs_client.is_connected:
+                    if self.config.obs.update_text_source and self.config.obs.text_source_name:
+                        await self.obs_client.update_text_source(
+                            self.config.obs.text_source_name,
+                            corrected_text,
+                        )
+                if self.subtitle_recorder and getattr(self.subtitle_recorder, "is_recording", False):
+                    self.subtitle_recorder.update_last_caption(corrected_text)
             clean_text = stitched_text
 
         # 4. Live Translation if enabled

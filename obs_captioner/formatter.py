@@ -594,8 +594,11 @@ def is_hallucinated_or_leaked_text(text: str) -> bool:
     # 1. Box / checkbox / unprintable bullet prefix with quotes or brackets: e.g. □'...' or \u25a1'...' or [ ] '...'
     if re.match(r"^[\u25a0-\u25ff\ufffd\u2022\[\]\s]*['\"]", s):
         return True
-    # 2. Raw Python / JSON list syntax: e.g. ["a", "b"] or ['a', 'b'] or starts with [
-    if s.startswith("[") and ("," in s or s.endswith("]")):
+    # 2. Raw Python / JSON list syntax: e.g. ["a", "b"] or ['a', 'b'].
+    # Plain sound tags ("[Applause]", "[Music]") are legitimate SDH-style
+    # captions, so brackets alone don't qualify — list leaks carry commas
+    # and/or quote characters.
+    if s.startswith("[") and "]" in s and ("," in s or "'" in s or '"' in s):
         return True
     # 3. Comma-separated quoted strings (repr list leakage): e.g. '1 Corinthians', 'Gospel'
     if re.search(r"['\"][^'\"]{1,50}['\"]\s*,\s*['\"][^'\"]{1,50}['\"]", s):

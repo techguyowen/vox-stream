@@ -16,7 +16,7 @@ try:
 except ImportError:
     np = None
 
-from .base import BaseSTTEngine, CaptionCallback, TranscriptEvent
+from .base import BaseSTTEngine, CaptionCallback, PreRollBuffer, TranscriptEvent
 from ..config import AppConfig
 from ..vad import VoiceActivityDetector
 
@@ -135,6 +135,7 @@ class MoonshineEngine(BaseSTTEngine):
         buffer = bytearray()
         silence_start_time = None
         last_transcribe_time = time.time()
+        preroll = PreRollBuffer(sample_rate=self.config.audio.sample_rate)
 
         # Min audio before first transcription (~250ms)
         min_bytes = int(self.config.audio.sample_rate * 2 * 0.25)
@@ -160,6 +161,12 @@ class MoonshineEngine(BaseSTTEngine):
             max_sentence_seconds = getattr(self.config.audio, "max_sentence_duration_seconds", 7.0) or 7.0
             max_sentence_words = getattr(self.config.audio, "max_sentence_words", 24) or 24
             max_bytes = int(self.config.audio.sample_rate * 2 * max_sentence_seconds)
+
+            if has_speech and len(buffer) == 0:
+                # Speech onset: prepend retained pre-roll so a VAD-missed
+                # onset chunk doesn't clip the first phoneme.
+                buffer.extend(preroll.take())
+            preroll.push(chunk)
 
             if has_speech:
                 buffer.extend(chunk)
@@ -228,13 +235,10 @@ class MoonshineEngine(BaseSTTEngine):
             buffer.clear()
 
     async def stop(self) -> None:
-        """Stop STT engine and free memory."""
+        """Stop streaming. Loaded weights are kept so pause/resume and the
+        trailing-utterance flush don't lose speech; the engine object release
+        (plus release_stt_memory) frees memory on switch/shutdown."""
         self.is_running = False
-        self.model = None
-        if hasattr(self, 'tokenizer'):
-            self.tokenizer = None
-        if hasattr(self, 'processor'):
-            self.processor = None
         from ..hardware import release_stt_memory
         release_stt_memory()
-        logger.info("Moonshine engine stopped and memory freed.")
+        logger.info("Moonshine engine stopped.")

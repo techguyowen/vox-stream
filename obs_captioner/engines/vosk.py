@@ -210,12 +210,15 @@ class VoskEngine(BaseSTTEngine):
                 pause_break_seconds * 1.5 if last_word in DANGLING_CONNECTORS else pause_break_seconds
             )
 
-            # Condition A: Natural pause/breath detected (speaker stopped speaking for pause_break_seconds)
-            is_pause_timeout = (
-                speech_started
-                and silence_start_time is not None
-                and (now - silence_start_time >= effective_pause_break)
-                and word_count >= 2
+            # Condition A: Natural pause/breath detected (speaker stopped speaking for pause_break_seconds).
+            # Single-word utterances ("Amen.", "Yes.") finalize too, but only
+            # after a longer pause so breath/click blips don't become finals
+            # (the sink's orphan-noise filter drops any that slip through).
+            long_pause_break = max(effective_pause_break * 2.0, 1.2)
+            silence_elapsed = (now - silence_start_time) if silence_start_time is not None else 0.0
+            is_pause_timeout = speech_started and silence_start_time is not None and (
+                (word_count >= 2 and silence_elapsed >= effective_pause_break)
+                or (word_count == 1 and silence_elapsed >= long_pause_break)
             )
 
             # Condition B: Max continuous speech duration reached (preacher preaching continuously without pause)
@@ -250,30 +253,27 @@ class VoskEngine(BaseSTTEngine):
                         )
                     )
 
-        # Final cleanup on stream stop
-        if self.is_running:
-            try:
-                final_json = rec.FinalResult()
-                final_data = json.loads(final_json)
-                text = final_data.get("text", "").strip() or current_partial_text
-                if text:
-                    await on_transcript(
-                        TranscriptEvent(
-                            text=text,
-                            is_final=True,
-                        )
+        # Final cleanup on stream stop, including a stop() during engine
+        # switch or pause: the trailing partial must finalize, not vanish.
+        try:
+            final_json = rec.FinalResult()
+            final_data = json.loads(final_json)
+            text = final_data.get("text", "").strip() or current_partial_text
+            if text:
+                await on_transcript(
+                    TranscriptEvent(
+                        text=text,
+                        is_final=True,
                     )
-            except Exception:
-                pass
+                )
+        except Exception:
+            pass
 
     async def stop(self) -> None:
-        """Stop STT engine and free memory."""
+        """Stop streaming. Loaded weights are kept so pause/resume and the
+        trailing-utterance flush don't lose speech; the engine object release
+        (plus release_stt_memory) frees memory on switch/shutdown."""
         self.is_running = False
-        self.model = None
-        if hasattr(self, 'tokenizer'):
-            self.tokenizer = None
-        if hasattr(self, 'processor'):
-            self.processor = None
         from ..hardware import release_stt_memory
         release_stt_memory()
-        logger.info("Vosk engine stopped and memory freed.")
+        logger.info("Vosk engine stopped.")

@@ -277,10 +277,11 @@ class SherpaEngine(BaseSTTEngine):
             logger.info("Sherpa-ONNX audio streaming stopped.")
 
     async def stop(self) -> None:
-        """Stop streaming and release recognizer resources."""
+        """Stop streaming. The loaded recognizer is kept so pause/resume and
+        the trailing-utterance flush don't lose speech; the engine object
+        release (plus release_stt_memory) frees memory on switch/shutdown."""
         self._running = False
         self.is_running = False
-        self.recognizer = None
         try:
             from ..hardware import release_stt_memory
             release_stt_memory()

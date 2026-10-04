@@ -4824,6 +4824,12 @@ function connectCaptionWs() {
             const data = JSON.parse(event.data);
             if (data.type === "snapshot") {
                 // Show the most recent line from the replayed history, if any
+                // Adopt the snapshot's high-water marks wholesale: it is the first
+                // message on a fresh connection, so after a server restart
+                // (seq/utterance ids reset to 1) stale old marks would otherwise
+                // discard every new caption.
+                captionLastSeq = 0;
+                captionLastFinalUtterance = 0;
                 const lines = data.lines || [];
                 for (const l of lines) {
                     if (l && typeof l.seq === "number" && l.seq > captionLastSeq) captionLastSeq = l.seq;

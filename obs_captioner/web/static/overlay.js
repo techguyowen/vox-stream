@@ -35,9 +35,13 @@ function processPendingQueue() {
     interimLineEl.innerHTML = "";
     showBox();
 
-    // If more items remain in queue, pace them smoothly
+    // If more items remain in queue, pace them smoothly, draining faster
+    // under backlog so queued finals catch up instead of going stale.
+    // Nothing is ever dropped from the queue.
     if (pendingFinalQueue.length > 0) {
-        const pace = pendingFinalQueue.length > 2 ? Math.min(minDisp, 1.2) : minDisp;
+        const backlog = pendingFinalQueue.length;
+        const pace = backlog > 8 ? Math.min(minDisp, 0.35)
+            : (backlog > 2 ? Math.min(minDisp, 1.2) : minDisp);
         queueAdvanceTimer = setTimeout(processPendingQueue, Math.max(50, pace * 1000));
     }
 }
@@ -288,6 +292,16 @@ function showBox() {
 }
 
 function hideBoxNow(force = false) {
+    if (pendingFinalQueue.length > 0) {
+        // Finals are still waiting to be shown: pump the queue now (which
+        // re-arms the hide timer) instead of discarding them unshown.
+        if (queueAdvanceTimer) {
+            clearTimeout(queueAdvanceTimer);
+            queueAdvanceTimer = null;
+        }
+        processPendingQueue();
+        return;
+    }
     if (!force) {
         const minDisp = Math.max(0, parseFloat(config.min_display_seconds) || 0);
         const elapsed = (Date.now() - lastLineDisplayedAt) / 1000;
@@ -382,6 +396,12 @@ function handleCaption(data) {
         finalLines = [];
         pendingFinalQueue = [];
         interimLineEl.innerHTML = "";
+        // Adopt the snapshot's high-water marks wholesale: it is the first
+        // message on a fresh connection, so after a server restart
+        // (seq/utterance ids reset to 1) stale old marks would otherwise
+        // discard every new caption.
+        lastCaptionSeq = 0;
+        lastFinalUtterance = 0;
         const now = Date.now();
         for (const line of data.lines || []) {
             if (line && typeof line.seq === "number" && line.seq > lastCaptionSeq) lastCaptionSeq = line.seq;
@@ -471,9 +491,6 @@ function handleCaption(data) {
                 } else {
                     interimLineEl.innerHTML = "";
                     pendingFinalQueue.push(lineItem);
-                    if (pendingFinalQueue.length > 5) {
-                        pendingFinalQueue.shift();
-                    }
                     if (!queueAdvanceTimer) {
                         const wait = Math.max(0.05, minDisp - age);
                         queueAdvanceTimer = setTimeout(processPendingQueue, wait * 1000);

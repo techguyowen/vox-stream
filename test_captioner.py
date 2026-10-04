@@ -3494,7 +3494,14 @@ class TestVersioningAndSemanticUpdater(unittest.TestCase):
         self.assertEqual(out4, "OBS.")
 
     def test_engine_stop_and_lifecycle_parity(self):
-        """Verify all new engines clean up their model references and release RAM on stop()."""
+        """Verify stop() halts streaming but keeps loaded weights for instant pause/resume.
+
+        Regression guard: stop() used to null model references, which broke
+        resume-after-pause (start_streaming with model None crashed, losing all
+        subsequent captions) and dropped the trailing utterance that flushes on
+        loop exit. Memory is freed by releasing the engine object plus
+        release_stt_memory() on switch/shutdown, not by nulling on stop().
+        """
         import asyncio
         from obs_captioner.engines.parakeet_engine import ParakeetEngine
         from obs_captioner.engines.sensevoice_engine import SenseVoiceEngine
@@ -3506,19 +3513,19 @@ class TestVersioningAndSemanticUpdater(unittest.TestCase):
             p_eng = ParakeetEngine(cfg)
             p_eng.model = object()
             loop.run_until_complete(p_eng.stop())
-            self.assertIsNone(p_eng.model)
+            self.assertIsNotNone(p_eng.model)
             self.assertFalse(p_eng.is_running)
 
             sv_eng = SenseVoiceEngine(cfg)
             sv_eng.model = object()
             loop.run_until_complete(sv_eng.stop())
-            self.assertIsNone(sv_eng.model)
+            self.assertIsNotNone(sv_eng.model)
             self.assertFalse(sv_eng.is_running)
 
             sh_eng = SherpaEngine(cfg)
             sh_eng.recognizer = object()
             loop.run_until_complete(sh_eng.stop())
-            self.assertIsNone(sh_eng.recognizer)
+            self.assertIsNotNone(sh_eng.recognizer)
             self.assertFalse(sh_eng.is_running)
         finally:
             loop.close()
@@ -5492,6 +5499,549 @@ class TestInterimFinalOrderingAsync(unittest.IsolatedAsyncioTestCase):
         finals = [e for e in events if e.is_final]
         self.assertEqual(len(finals), 1)
         self.assertEqual(finals[0].text, "hello world")
+
+
+class TestDroppedTextSuppressionNarrowing(unittest.TestCase):
+    """Over-aggressive suppression guards must not eat legitimate speech."""
+
+    def test_hallucination_phrase_must_dominate_utterance(self):
+        from obs_captioner.music import is_music_text
+
+        # Bare hallucinations are still suppressed.
+        self.assertTrue(is_music_text("Thank you for watching."))
+        self.assertTrue(is_music_text("Please subscribe to our channel."))
+        self.assertTrue(is_music_text("Subtitles by amara.org"))
+        self.assertTrue(is_music_text("Satsang with Mooji."))
+        # A sermon sentence merely containing such a phrase is kept.
+        self.assertFalse(
+            is_music_text("Thank you for watching online, we will see you on Sunday.")
+        )
+        self.assertFalse(
+            is_music_text("Please subscribe to the newsletter on your way out today folks.")
+        )
+
+    def test_repetition_loop_allows_liturgical_refrain(self):
+        from obs_captioner.music import is_repetition_loop
+
+        self.assertFalse(is_repetition_loop("Holy holy holy is the Lord"))
+        self.assertFalse(is_repetition_loop("Amen amen amen"))
+        self.assertFalse(is_repetition_loop("Praise the Lord praise the Lord"))
+        self.assertFalse(is_repetition_loop("Our God is good our God is good"))
+
+    def test_repetition_loop_still_catches_decoder_loops(self):
+        from obs_captioner.music import is_repetition_loop
+
+        self.assertTrue(is_repetition_loop("you you you you you"))
+        self.assertTrue(is_repetition_loop("other other other other"))
+        self.assertTrue(
+            is_repetition_loop("Hallelujah Amen Hallelujah Amen Hallelujah Amen")
+        )
+        self.assertTrue(
+            is_repetition_loop("Thank you. Thank you. Thank you. Thank you.")
+        )
+        self.assertTrue(is_repetition_loop("other in other other in other other"))
+        # Long runaway sacred-word loops are still hallucinations.
+        self.assertTrue(is_repetition_loop(" ".join(["amen"] * 10)))
+
+    def test_applause_tags_are_not_music(self):
+        from obs_captioner.music import is_music_text
+
+        self.assertFalse(is_music_text("[Applause]"))
+        self.assertFalse(is_music_text("(Applause)"))
+        self.assertFalse(is_music_text("[Cheering]"))
+        self.assertTrue(is_music_text("[Music]"))
+        self.assertTrue(is_music_text("[choir singing]"))
+        self.assertTrue(is_music_text("(instrumental)"))
+
+    def test_bracket_sound_tag_is_not_prompt_leak(self):
+        from obs_captioner.formatter import is_hallucinated_or_leaked_text
+
+        self.assertFalse(is_hallucinated_or_leaked_text("[Applause]"))
+        self.assertFalse(is_hallucinated_or_leaked_text("[Music]"))
+        self.assertTrue(is_hallucinated_or_leaked_text("['1 Corinthians', 'Gospel']"))
+        self.assertTrue(is_hallucinated_or_leaked_text("['G', 'G', 'G', 'G']"))
+
+    def test_vocabulary_skips_empty_replacement(self):
+        cfg = VocabularyConfig(terms={"hello": "", "bye": "Goodbye"})
+        replacer = VocabularyReplacer(cfg)
+        out, _ = replacer.replace("hello world")
+        self.assertEqual(out, "hello world")
+        out2, changed2 = replacer.replace("bye now")
+        self.assertTrue(changed2)
+        self.assertEqual(out2, "Goodbye now")
+
+
+class TestPreRollBuffer(unittest.TestCase):
+    """Pre-roll window keeps the most recent audio for speech onsets."""
+
+    def test_window_evicts_oldest_and_take_drains(self):
+        from obs_captioner.engines.base import PreRollBuffer
+
+        buf = PreRollBuffer(sample_rate=16000, preroll_seconds=0.3)
+        self.assertEqual(buf.max_bytes, 9600)
+        buf.push(b"A" * 3200)
+        buf.push(b"B" * 3200)
+        buf.push(b"C" * 3200)
+        buf.push(b"D" * 3200)  # 12800 total -> oldest 3200 evicted
+        data = buf.take()
+        self.assertEqual(len(data), 9600)
+        self.assertTrue(data.startswith(b"B" * 3200))
+        # take() drains the window.
+        self.assertEqual(buf.take(), b"")
+
+    def test_take_keeps_16bit_alignment(self):
+        from obs_captioner.engines.base import PreRollBuffer
+
+        buf = PreRollBuffer(sample_rate=16000, preroll_seconds=0.3)
+        buf.push(b"abc")
+        self.assertEqual(buf.take(), b"ab")
+
+
+class TestSubtitleRecorderRewrite(unittest.TestCase):
+    """Boundary-stitched sentences must rewrite the sidecar block, not vanish."""
+
+    def test_update_last_caption_rewrites_block_in_place(self):
+        import tempfile
+        from obs_captioner.subtitle_recorder import SubtitleRecorder
+
+        with tempfile.TemporaryDirectory() as tmp:
+            rec = SubtitleRecorder(enabled=True, output_format="both", output_dir=tmp)
+            path = rec.start_recording()
+            try:
+                self.assertTrue(rec.is_recording)
+                rec.add_caption("We come because", start_time=time.time())
+                rec.add_caption("Second line here", start_time=time.time())
+                merged = "We come because grace is sufficient for us."
+                self.assertTrue(rec.update_last_caption(merged, end_time=time.time()))
+                self.assertEqual(rec.entry_index, 2)
+                srt_text = Path(str(path)).read_text(encoding="utf-8")
+                self.assertIn(merged, srt_text)
+                self.assertNotIn("Second line here", srt_text)
+                vtt_text = Path(str(path.with_suffix(".vtt"))).read_text(encoding="utf-8")
+                self.assertIn(merged, vtt_text)
+            finally:
+                rec.stop_recording()
+
+    def test_update_last_caption_noops_without_recording(self):
+        from obs_captioner.subtitle_recorder import SubtitleRecorder
+
+        rec = SubtitleRecorder(enabled=True)
+        self.assertFalse(rec.update_last_caption("hello"))
+        self.assertFalse(rec.update_last_caption(""))
+
+
+class TestGeminiInterimBeyondFinal(unittest.TestCase):
+    """Same-message interim carrying newer speech must survive the stale guard."""
+
+    def _engine(self):
+        return GeminiLiveEngine(AppConfig())
+
+    def test_stale_interim_restating_final_still_suppressed(self):
+        engine = self._engine()
+        data = {
+            "serverContent": {
+                "inputTranscription": {"text": "Hello world."},
+                "interimInputTranscription": {"text": "Hello wor"},
+            }
+        }
+        self.assertEqual(engine.parse_server_message(data), [("Hello world.", True)])
+
+    def test_interim_extending_beyond_final_is_kept(self):
+        engine = self._engine()
+        data = {
+            "serverContent": {
+                "inputTranscription": {"text": "Hello world."},
+                "interimInputTranscription": {"text": "Hello world and welcome back"},
+            }
+        }
+        self.assertEqual(
+            engine.parse_server_message(data),
+            [("Hello world.", True), ("Hello world and welcome back", False)],
+        )
+
+    def test_distinct_model_turn_interim_is_kept(self):
+        engine = self._engine()
+        data = {
+            "serverContent": {
+                "inputTranscription": {"text": "Hello world."},
+                "modelTurn": {"parts": [{"text": "Sure, I can help with that."}]},
+            }
+        }
+        events = engine.parse_server_message(data)
+        self.assertEqual(
+            events, [("Hello world.", True), ("Sure, I can help with that.", False)]
+        )
+
+    def test_duplicate_model_turn_interim_still_suppressed(self):
+        engine = self._engine()
+        data = {
+            "serverContent": {
+                "inputTranscription": {"text": "Hello world."},
+                "modelTurn": {"parts": [{"text": "Hello world"}]},
+            }
+        }
+        self.assertEqual(engine.parse_server_message(data), [("Hello world.", True)])
+
+
+class TestAudioOverflowLogging(unittest.TestCase):
+    """Queue-overflow audio drops must be visible in logs, not silent."""
+
+    def test_inject_overflow_logs_warning(self):
+        import logging
+        from obs_captioner.audio_capture import AudioCapture
+        from obs_captioner.config import AudioConfig
+
+        capture = AudioCapture(AudioConfig())
+        chunk = b"\x00\x00" * 1600
+        for _ in range(100):
+            capture._queue.put_nowait(chunk)
+        with self.assertLogs("obs_captioner.audio", level="WARNING") as logs:
+            capture.inject_audio_chunk(chunk)
+        self.assertTrue(any("queue full" in line for line in logs.output))
+
+
+class TestCaptionTextLossJsGuards(unittest.TestCase):
+    """Static guards for the JS text-loss fixes (no JS runner in this repo)."""
+
+    @classmethod
+    def setUpClass(cls):
+        static_dir = Path(__file__).parent / "obs_captioner" / "web" / "static"
+        cls.display = (static_dir / "display.html").read_text(encoding="utf-8")
+        cls.overlay = (static_dir / "overlay.js").read_text(encoding="utf-8")
+        cls.dashboard = (static_dir / "dashboard.js").read_text(encoding="utf-8")
+
+    def test_display_dedupe_is_time_windowed(self):
+        # Untimed consecutive-final dedupe dropped every verbatim repeat.
+        self.assertIn("lastFinalTextAt", self.display)
+        self.assertIn("(nowMs - lastFinalTextAt) < 2500", self.display)
+
+    def test_display_translation_never_drops_slower_caption(self):
+        self.assertIn("captionTranslateChain", self.display)
+        self.assertNotIn("captionMsgCounter", self.display)
+        self.assertNotIn("myMsgId !== captionMsgCounter", self.display)
+
+    def test_display_snapshot_adopts_marks_after_restart(self):
+        self.assertIn("lastSeenSeq = 0;", self.display)
+        self.assertIn("lastFinalUtteranceId = 0;", self.display)
+
+    def test_overlay_snapshot_adopts_marks_after_restart(self):
+        self.assertIn("lastCaptionSeq = 0;", self.overlay)
+        self.assertIn("lastFinalUtterance = 0;", self.overlay)
+
+    def test_overlay_queue_never_drops_finals(self):
+        self.assertNotIn("pendingFinalQueue.length > 5", self.overlay)
+        self.assertNotIn("pendingFinalQueue.shift()", self.display)
+        # Auto-clear must pump waiting finals instead of wiping them.
+        self.assertIn("processPendingQueue();", self.overlay)
+
+    def test_dashboard_snapshot_adopts_marks_after_restart(self):
+        self.assertIn("captionLastSeq = 0;", self.dashboard)
+        self.assertIn("captionLastFinalUtterance = 0;", self.dashboard)
+
+
+class TestDroppedTextSinkPaths(unittest.IsolatedAsyncioTestCase):
+    """Sink text-loss paths: repeats, drop_sentence, stitch recorder gap."""
+
+    def _make_sink(self, censor_mode="asterisk"):
+        from unittest.mock import AsyncMock, MagicMock
+        from obs_captioner.obs.caption_sink import CaptionSink
+
+        cfg = AppConfig()
+        cfg.overlay.auto_hide_seconds = 0
+        cfg.censor.mode = censor_mode
+        if hasattr(cfg, "bible") and cfg.bible:
+            cfg.bible.enabled = False
+        cfg.translation.enabled = False
+        sink = CaptionSink(cfg)
+        mock_web = MagicMock()
+        mock_web.broadcast_caption = AsyncMock()
+        sink.web_server = mock_web
+        return sink, mock_web
+
+    async def test_repeat_with_fresh_interim_is_kept(self):
+        sink, mock_web = self._make_sink()
+        await sink.handle_transcript(TranscriptEvent(text="Praise the Lord", is_final=True))
+        await sink.handle_transcript(TranscriptEvent(text="Praise the", is_final=False))
+        await sink.handle_transcript(TranscriptEvent(text="Praise the Lord", is_final=True))
+        payloads = [c[0][0] for c in mock_web.broadcast_caption.call_args_list]
+        finals = [p for p in payloads if p.get("is_final") and (p.get("text") or "").strip()]
+        self.assertEqual(len(finals), 2)
+        self.assertEqual(len(sink.history.get_history()), 2)
+
+    async def test_back_to_back_double_emit_still_suppressed(self):
+        sink, mock_web = self._make_sink()
+        await sink.handle_transcript(TranscriptEvent(text="Praise the Lord", is_final=True))
+        await sink.handle_transcript(TranscriptEvent(text="Praise the Lord", is_final=True))
+        payloads = [c[0][0] for c in mock_web.broadcast_caption.call_args_list]
+        finals = [p for p in payloads if p.get("is_final") and (p.get("text") or "").strip()]
+        self.assertEqual(len(finals), 1)
+
+    async def test_drop_sentence_resets_partial_tracking(self):
+        sink, mock_web = self._make_sink(censor_mode="drop_sentence")
+        await sink.handle_transcript(TranscriptEvent(text="oh shit", is_final=False))
+        await sink.handle_transcript(TranscriptEvent(text="oh shit", is_final=True))
+        # The next identical interim must not be swallowed by stale dedupe state.
+        await sink.handle_transcript(TranscriptEvent(text="oh shit", is_final=False))
+        self.assertEqual(mock_web.broadcast_caption.call_count, 3)
+        self.assertEqual(len(sink.history.get_history()), 0)
+
+    async def test_stitch_absorb_rewrites_recorder_block(self):
+        import tempfile
+        from obs_captioner.subtitle_recorder import SubtitleRecorder
+
+        sink, _ = self._make_sink()
+        with tempfile.TemporaryDirectory() as tmp:
+            rec = SubtitleRecorder(enabled=True, output_format="srt", output_dir=tmp)
+            path = rec.start_recording()
+            try:
+                sink.subtitle_recorder = rec
+                await sink.handle_transcript(
+                    TranscriptEvent(text="We come because", is_final=True)
+                )
+                await sink.handle_transcript(
+                    TranscriptEvent(text="grace is sufficient for us", is_final=True)
+                )
+                merged = "We come because grace is sufficient for us."
+                self.assertEqual(rec.entry_index, 1)
+                content = Path(str(path)).read_text(encoding="utf-8")
+                self.assertIn(merged, content)
+                self.assertEqual(
+                    sink.history.entries[-1].text if sink.history.entries else "", merged
+                )
+            finally:
+                rec.stop_recording()
+
+    async def test_lexical_correction_propagates_replace_last(self):
+        sink, mock_web = self._make_sink()
+        await sink.handle_transcript(TranscriptEvent(text="He became a dis", is_final=True))
+        await sink.handle_transcript(
+            TranscriptEvent(text="ciple of the Lord", is_final=True)
+        )
+        payloads = [c[0][0] for c in mock_web.broadcast_caption.call_args_list]
+        corrections = [p for p in payloads if p.get("replace_last")]
+        self.assertEqual(len(corrections), 1)
+        self.assertEqual(corrections[0]["text"], "He became a disciple.")
+        self.assertEqual(sink.history.entries[0].text, "He became a disciple.")
+        self.assertEqual(sink.history.entries[1].text, "Of the Lord.")
+
+
+class TestDroppedTextEnginePaths(unittest.IsolatedAsyncioTestCase):
+    """Engine text-loss paths: stop flush, single-word finals, pre-roll onset."""
+
+    def _chunk(self, size=3200):
+        return b"\x01\x02" * (size // 2)
+
+    async def test_whisper_flushes_buffer_after_stop(self):
+        from unittest.mock import Mock
+
+        cfg = AppConfig()
+        engine = LocalWhisperEngine(cfg)
+        engine._transcribe_buffer = Mock(return_value="hello world")
+
+        calls = {"n": 0}
+
+        def fake_is_speech(chunk):
+            calls["n"] += 1
+            if calls["n"] == 5:
+                # Simulate stop() racing the stream: the loop must still flush.
+                engine.is_running = False
+            return True
+
+        engine.vad.is_speech = fake_is_speech
+
+        async def audio():
+            for _ in range(10):
+                yield self._chunk()
+
+        events = []
+
+        async def on_transcript(evt):
+            events.append(evt)
+
+        await engine.start_streaming(audio(), on_transcript)
+        finals = [e for e in events if e.is_final]
+        self.assertEqual(len(finals), 1)
+        self.assertEqual(finals[0].text, "hello world")
+
+    async def test_whisper_preroll_prepended_on_onset(self):
+        from unittest.mock import Mock
+
+        cfg = AppConfig()
+        engine = LocalWhisperEngine(cfg)
+        captured = {}
+
+        def fake_transcribe(audio_f32):
+            captured["n"] = len(audio_f32)
+            return "hello"
+
+        engine._transcribe_buffer = Mock(side_effect=fake_transcribe)
+        script = iter([False, False, False, True])
+        engine.vad.is_speech = Mock(side_effect=lambda chunk: next(script, True))
+
+        async def audio():
+            for _ in range(4):
+                yield self._chunk(size=3200)
+
+        events = []
+
+        async def on_transcript(evt):
+            events.append(evt)
+
+        await engine.start_streaming(audio(), on_transcript)
+        # 3 silence chunks retained as pre-roll (9600B window) + 1 speech
+        # chunk (3200B) = 12800 bytes = 6400 samples.
+        self.assertEqual(captured.get("n"), 6400)
+        self.assertTrue(any(e.is_final for e in events))
+
+    async def test_parakeet_flushes_after_stop(self):
+        from unittest.mock import AsyncMock
+
+        cfg = AppConfig()
+        engine = ParakeetEngine(cfg)
+        engine.model = object()
+        engine._process_utterance = AsyncMock()
+
+        calls = {"n": 0}
+
+        def fake_is_speech(chunk):
+            calls["n"] += 1
+            if calls["n"] == 4:
+                engine._running = False
+            return True
+
+        engine.vad.is_speech = fake_is_speech
+
+        async def audio():
+            for _ in range(10):
+                yield self._chunk(size=4000)
+
+        await engine.start_streaming(audio(), AsyncMock())
+        engine._process_utterance.assert_awaited_once()
+        flushed_audio = engine._process_utterance.call_args[0][0]
+        self.assertEqual(len(flushed_audio), 16000)
+
+    async def test_vosk_flushes_partial_after_stop(self):
+        import sys
+        import types
+        from unittest.mock import patch
+
+        fake_vosk = types.ModuleType("vosk")
+
+        class FakeRec:
+            def __init__(self, model, sample_rate):
+                pass
+
+            def SetWords(self, flag):
+                pass
+
+            def AcceptWaveform(self, chunk):
+                return False
+
+            def PartialResult(self):
+                return json.dumps({"partial": "hello"})
+
+            def Result(self):
+                return json.dumps({"text": ""})
+
+            def FinalResult(self):
+                return json.dumps({"text": "hello world"})
+
+        fake_vosk.KaldiRecognizer = FakeRec
+
+        cfg = AppConfig()
+        engine = VoskEngine(cfg)
+        engine.model = object()
+
+        calls = {"n": 0}
+
+        def fake_is_speech(chunk):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                engine.is_running = False
+            return True
+
+        engine.vad.is_speech = fake_is_speech
+
+        async def audio():
+            for _ in range(10):
+                yield self._chunk()
+
+        events = []
+
+        async def on_transcript(evt):
+            events.append(evt)
+
+        with patch.dict(sys.modules, {"vosk": fake_vosk}):
+            await engine.start_streaming(audio(), on_transcript)
+        finals = [e for e in events if e.is_final]
+        self.assertEqual(len(finals), 1)
+        self.assertEqual(finals[0].text, "hello world")
+
+    async def test_vosk_single_word_finalizes_after_long_pause(self):
+        import sys
+        import types
+        from unittest.mock import patch
+
+        fake_vosk = types.ModuleType("vosk")
+
+        class FakeRec:
+            def __init__(self, model, sample_rate):
+                pass
+
+            def SetWords(self, flag):
+                pass
+
+            def AcceptWaveform(self, chunk):
+                return False
+
+            def PartialResult(self):
+                return json.dumps({"partial": "Amen"})
+
+            def Result(self):
+                return json.dumps({"text": "Amen"})
+
+            def FinalResult(self):
+                return json.dumps({"text": ""})
+
+        fake_vosk.KaldiRecognizer = FakeRec
+
+        cfg = AppConfig()
+        cfg.audio.sentence_break_ms = 650
+        engine = VoskEngine(cfg)
+        engine.model = object()
+        engine.vad.is_speech = lambda chunk: False
+        spoken = {"done": False}
+
+        def vad_script(chunk):
+            if not spoken["done"]:
+                spoken["done"] = True
+                return True
+            return False
+
+        engine.vad.is_speech = vad_script
+
+        now = {"t": 1000.0}
+        chunk = self._chunk()
+        finals = []
+
+        async def on_transcript(evt):
+            if evt.is_final and evt.text:
+                finals.append(evt.text)
+
+        async def audio():
+            yield chunk  # speech: partial "Amen", speech_started
+            self.assertEqual(finals, [])
+            now["t"] += 0.4
+            yield chunk  # 0.4s silence: single word must NOT finalize yet
+            self.assertEqual(finals, [])
+            now["t"] += 1.6
+            yield chunk  # 2.0s silence (>=1.3s): single word finalizes here
+
+        with patch.dict(sys.modules, {"vosk": fake_vosk}), patch(
+            "time.time", side_effect=lambda: now["t"]
+        ):
+            await engine.start_streaming(audio(), on_transcript)
+        self.assertEqual(finals, ["Amen"])
 
 
 if __name__ == "__main__":

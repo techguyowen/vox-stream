@@ -150,6 +150,25 @@ class AudioCapture:
         self.is_recovering: bool = False
         self._recovery_task: Optional[asyncio.Task] = None
         self.on_recovery_status: Optional[Callable[[str, str], None]] = None
+        self._overflow_drops = 0
+        self._last_overflow_log = 0.0
+
+    def _note_queue_overflow(self) -> None:
+        """Record a queue-overflow chunk drop with a throttled warning.
+
+        Each overflow discards the oldest buffered audio (~100ms), i.e. a
+        gap in the middle of speech. Loud-but-throttled logging keeps such
+        gaps diagnosable without spamming the log during a stall.
+        """
+        self._overflow_drops += 1
+        now = time.monotonic()
+        if self._last_overflow_log == 0.0 or now - self._last_overflow_log >= 5.0:
+            self._last_overflow_log = now
+            dropped, self._overflow_drops = self._overflow_drops, 0
+            logger.warning(
+                f"Audio capture queue full; dropped {dropped} oldest chunk(s) "
+                f"to keep up (downstream consumer is stalled)."
+            )
 
     def _apply_agc_and_limiter(self, audio_f: np.ndarray) -> np.ndarray:
         """
@@ -296,6 +315,7 @@ class AudioCapture:
                             self._queue.put_nowait(pcm_bytes)
                         except Exception:
                             pass
+                        self._note_queue_overflow()
 
                 return audio_callback
 
@@ -360,6 +380,7 @@ class AudioCapture:
                 self._queue.put_nowait(pcm_bytes)
             except Exception:
                 pass
+            self._note_queue_overflow()
 
     def stop(self):
         """Stop the audio capture stream."""

@@ -79,6 +79,11 @@ class SubtitleRecorder:
         self._file_handle_vtt = None
         self.entry_index: int = 0
         self.active_video_path: str = ""
+        # Byte offsets / timing of the most recently written block, so a
+        # boundary-stitched sentence can rewrite it instead of losing text.
+        self._last_block_offset_srt: Optional[int] = None
+        self._last_block_offset_vtt: Optional[int] = None
+        self._last_rel_start: float = 0.0
 
     def update_config(self, obs_config) -> None:
         """Update recording settings from OBSConfig."""
@@ -100,6 +105,9 @@ class SubtitleRecorder:
             self.record_start_mono = now_mono
             self.entry_index = 0
             self.active_video_path = video_path or ""
+            self._last_block_offset_srt = None
+            self._last_block_offset_vtt = None
+            self._last_rel_start = 0.0
 
             # Determine destination directory & basename
             timestamp_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(now_wall))
@@ -179,28 +187,82 @@ class SubtitleRecorder:
                 rel_end = rel_start + max(1.2, len(clean_text.split()) * 0.35)
 
             self.entry_index += 1
+            self._last_rel_start = rel_start
 
             # Write SRT
             if self._file_handle_srt:
                 try:
+                    self._last_block_offset_srt = self._file_handle_srt.tell()
                     srt_time_str = f"{format_timestamp_srt(rel_start)} --> {format_timestamp_srt(rel_end)}"
                     block = f"{self.entry_index}\n{srt_time_str}\n{clean_text}\n\n"
                     self._file_handle_srt.write(block)
                     self._file_handle_srt.flush()
                 except Exception as e:
+                    self._last_block_offset_srt = None
                     logger.debug(f"Error writing SRT block: {e}")
 
             # Write VTT
             if self._file_handle_vtt:
                 try:
+                    self._last_block_offset_vtt = self._file_handle_vtt.tell()
                     vtt_time_str = f"{format_timestamp_vtt(rel_start)} --> {format_timestamp_vtt(rel_end)}"
                     block = f"{self.entry_index}\n{vtt_time_str}\n{clean_text}\n\n"
                     self._file_handle_vtt.write(block)
                     self._file_handle_vtt.flush()
                 except Exception as e:
+                    self._last_block_offset_vtt = None
                     logger.debug(f"Error writing VTT block: {e}")
 
             return True
+
+    def update_last_caption(self, text: str, end_time: Optional[float] = None) -> bool:
+        """Rewrite the most recently recorded block in place (boundary stitch).
+
+        Used when a finalized sentence is merged into (or corrects) the
+        previous history entry: without this, the absorbed continuation would
+        never reach the .srt/.vtt sidecar. Keeps the original entry index and
+        start time; extends the end time when a later one is given.
+        """
+        clean_text = (text or "").strip()
+        if not clean_text:
+            return False
+
+        with self._lock:
+            if not self.is_recording or self.entry_index <= 0:
+                return False
+            if not (self._file_handle_srt or self._file_handle_vtt):
+                return False
+
+            rel_start = max(0.0, self._last_rel_start)
+            if end_time and end_time > 0:
+                rel_end = max(rel_start + 0.8, end_time - self.record_start_wall)
+            else:
+                rel_end = rel_start + max(1.2, len(clean_text.split()) * 0.35)
+
+            updated = False
+            if self._file_handle_srt and self._last_block_offset_srt is not None:
+                try:
+                    self._file_handle_srt.seek(self._last_block_offset_srt)
+                    self._file_handle_srt.truncate()
+                    srt_time_str = f"{format_timestamp_srt(rel_start)} --> {format_timestamp_srt(rel_end)}"
+                    self._file_handle_srt.write(f"{self.entry_index}\n{srt_time_str}\n{clean_text}\n\n")
+                    self._file_handle_srt.flush()
+                    updated = True
+                except Exception as e:
+                    logger.debug(f"Error rewriting SRT block: {e}")
+
+            if self._file_handle_vtt and self._last_block_offset_vtt is not None:
+                try:
+                    self._file_handle_vtt.seek(self._last_block_offset_vtt)
+                    self._file_handle_vtt.truncate()
+                    vtt_time_str = f"{format_timestamp_vtt(rel_start)} --> {format_timestamp_vtt(rel_end)}"
+                    self._file_handle_vtt.write(f"{self.entry_index}\n{vtt_time_str}\n{clean_text}\n\n")
+                    self._file_handle_vtt.flush()
+                    updated = True
+                except Exception as e:
+                    logger.debug(f"Error rewriting VTT block: {e}")
+
+            return updated
 
     def _stop_internal(self) -> dict:
         """Internal worker to close handles."""

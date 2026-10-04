@@ -55,6 +55,23 @@ STREAM_RECONNECT_INITIAL_DELAY = 2.0
 STREAM_RECONNECT_MAX_DELAY = 15.0
 
 
+def _is_duplicate_of_events(text: str, events: List[Tuple[str, bool]]) -> bool:
+    """Return True when an interim hypothesis merely restates an event's text.
+
+    Same-message interim/final pairs overlap when the interim is a stale
+    prefix of the just-finalized utterance; genuinely newer speech extends
+    beyond the finals and must still be emitted.
+    """
+    candidate = " ".join(str(text).split()).casefold()
+    if not candidate:
+        return True
+    for event_text, _ in events:
+        existing = " ".join(str(event_text).split()).casefold()
+        if candidate and existing and candidate in existing:
+            return True
+    return False
+
+
 class GeminiLiveEngine(BaseSTTEngine):
     """Real-time streaming speech transcription using Gemini 3.5 Transcribe Live."""
 
@@ -363,14 +380,19 @@ class GeminiLiveEngine(BaseSTTEngine):
                     logger.warning(f"Suppressed hallucinated final transcript from Gemini Live: {text}")
 
         # 2. Speculative interim hypothesis (updates rapidly while user speaks).
-        # Dropped when this same message already carries an authoritative final,
-        # otherwise the interim would emit AFTER its final and linger on screen.
+        # Suppressed only when it merely restates a final from this same
+        # message, otherwise the stale interim would emit AFTER its final and
+        # linger on screen. An interim that reaches beyond the finals carries
+        # newer speech and is still emitted, so fresh words are never dropped.
         interim_obj = server_content.get("interimInputTranscription")
-        if not events and isinstance(interim_obj, dict) and interim_obj.get("text"):
+        if isinstance(interim_obj, dict) and interim_obj.get("text"):
             text = str(interim_obj["text"]).strip()
             if text:
                 if not is_hallucinated_or_leaked_text(text):
-                    events.append((text, False))
+                    if events and _is_duplicate_of_events(text, events):
+                        logger.debug("Suppressed stale interim restating a final in the same message.")
+                    else:
+                        events.append((text, False))
                 else:
                     logger.debug(f"Suppressed hallucinated interim transcript from Gemini Live: {text}")
 
@@ -382,8 +404,8 @@ class GeminiLiveEngine(BaseSTTEngine):
             full_part_text = "".join(part_texts).strip()
             if full_part_text:
                 is_done = bool(server_content.get("turnComplete") or server_content.get("generationComplete"))
-                if events and not is_done:
-                    logger.debug("Suppressed modelTurn interim arriving with a final in the same message.")
+                if events and not is_done and _is_duplicate_of_events(full_part_text, events):
+                    logger.debug("Suppressed modelTurn interim restating a final in the same message.")
                 elif not is_hallucinated_or_leaked_text(full_part_text):
                     events.append((full_part_text, is_done))
                 else:

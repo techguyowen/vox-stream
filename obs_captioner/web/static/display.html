@@ -1528,7 +1528,8 @@
         let lastSeenSeq = 0;
         let lastFinalUtteranceId = 0;
         let interimGen = 0;
-        let captionMsgCounter = 0;
+        let captionTranslateChain = Promise.resolve();
+        let lastFinalTextAt = 0;
         let pendingInterimText = null;
         let interimRafPending = false;
         let ws = null;
@@ -2584,6 +2585,12 @@
 
                     if (data.type === 'snapshot') {
                         clearInterimLine();
+                        // Adopt the snapshot's high-water marks wholesale: it is the
+                        // first message on a fresh connection, so after a server
+                        // restart (seq/utterance ids reset to 1) stale old marks
+                        // would otherwise discard every new caption.
+                        lastSeenSeq = 0;
+                        lastFinalUtteranceId = 0;
                         if (data.lines) {
                             for (const l of data.lines) {
                                 if (l && typeof l.seq === 'number' && l.seq > lastSeenSeq) lastSeenSeq = l.seq;
@@ -2637,19 +2644,24 @@
                             return;
                         }
 
-                        const myMsgId = ++captionMsgCounter;
-
                         // When connected with ?lang=XX, server WebSocket already delivers pre-translated text in data.text
                         // with original English in data.original_text. Fallback to HTTP translation only if text is untranslated.
+                        // Fetches are chained so captions still render in arrival order — a slower
+                        // caption waits its turn instead of being dropped.
                         if (currentLang !== 'en' && !data.original_text && text) {
-                            try {
-                                const res = await fetch(`/api/translate?text=${encodeURIComponent(text)}&target=${encodeURIComponent(currentLang)}`);
-                                if (res.ok) {
-                                    const tData = await res.json();
-                                    text = tData.translated || text;
-                                }
-                            } catch (e) {}
-                            if (myMsgId !== captionMsgCounter) return;
+                            const sourceText = text;
+                            const job = captionTranslateChain.then(async () => {
+                                try {
+                                    const res = await fetch(`/api/translate?text=${encodeURIComponent(sourceText)}&target=${encodeURIComponent(currentLang)}`);
+                                    if (res.ok) {
+                                        const tData = await res.json();
+                                        return tData.translated || sourceText;
+                                    }
+                                } catch (e) {}
+                                return sourceText;
+                            });
+                            captionTranslateChain = job.then(() => undefined, () => undefined);
+                            text = await job;
                         }
 
                         if (data.is_final) {
@@ -2658,10 +2670,17 @@
                             }
                             clearInterimLine();
                             if (data.replace_last) {
+                                lastFinalTextAt = Date.now();
                                 replaceLastFinalSentence(text);
                             } else {
                                 const prevFinal = finalSentences.length > 0 ? finalSentences[finalSentences.length - 1] : "";
-                                if (prevFinal.trim().toLowerCase() === text.trim().toLowerCase()) return;
+                                // Suppress only immediate engine double-emits: genuine
+                                // verbatim repetitions (chorus, "Amen.") arrive later
+                                // and must be kept.
+                                const nowMs = Date.now();
+                                if (prevFinal.trim().toLowerCase() === text.trim().toLowerCase()
+                                    && (nowMs - lastFinalTextAt) < 2500) return;
+                                lastFinalTextAt = nowMs;
                                 appendFinalSentence(text);
                             }
                         } else {
