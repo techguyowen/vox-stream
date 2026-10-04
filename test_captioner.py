@@ -6044,6 +6044,119 @@ class TestDroppedTextEnginePaths(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(finals, ["Amen"])
 
 
+class TestGeminiReconnectKeepsAudio(unittest.IsolatedAsyncioTestCase):
+    async def test_reconnect_resumes_audio_and_replays_interrupted_turn(self):
+        import aiohttp
+        from unittest.mock import patch
+        from obs_captioner.config import AppConfig
+        from obs_captioner.engines import gemini_live as gl
+
+        cfg = AppConfig()
+        cfg.gemini_live.api_key = "test-key"
+        cfg.gemini_live.enable_hybrid_vad = False
+        cfg.audio.suppress_music = False
+        engine = gl.GeminiLiveEngine(cfg)
+        engine.vad.is_music = lambda *a, **k: False
+
+        connections = []
+
+        class FakeMsg:
+            def __init__(self, type_, data=None):
+                self.type = type_
+                self.data = data
+                self.extra = ""
+
+        class FakeWs:
+            def __init__(self, idx):
+                self.idx = idx
+                self.closed = False
+                self.sent = []
+                self._setup_done = False
+
+            async def send_str(self, s):
+                if self.closed:
+                    raise ConnectionResetError("closed")
+                self.sent.append(json.loads(s))
+
+            async def receive(self, timeout=None):
+                return FakeMsg(aiohttp.WSMsgType.TEXT, json.dumps({"setupComplete": {}}))
+
+            def __aiter__(self):
+                return self._iter()
+
+            async def _iter(self):
+                if self.idx == 0:
+                    await asyncio.sleep(0.15)
+                    self.closed = True
+                    yield FakeMsg(aiohttp.WSMsgType.CLOSED)
+                else:
+                    while not self.closed:
+                        await asyncio.sleep(0.05)
+                    return
+
+            async def close(self):
+                self.closed = True
+
+        class FakeCtx:
+            def __init__(self, ws):
+                self.ws = ws
+
+            async def __aenter__(self):
+                return self.ws
+
+            async def __aexit__(self, *a):
+                return False
+
+        class FakeSession:
+            closed = False
+
+            def __init__(self, *a, **k):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            def ws_connect(self, *a, **k):
+                ws = FakeWs(len(connections))
+                connections.append(ws)
+                return FakeCtx(ws)
+
+        async def audio():
+            for i in range(40):
+                yield bytes([i % 200, 0]) * 160
+                await asyncio.sleep(0.02)
+            while engine.is_running:
+                await asyncio.sleep(0.05)
+
+        async def on_transcript(ev):
+            pass
+
+        with patch.object(gl.aiohttp, "ClientSession", FakeSession), \
+             patch.object(gl, "STREAM_RECONNECT_INITIAL_DELAY", 0.05), \
+             patch.object(gl, "STREAM_RECONNECT_MAX_DELAY", 0.1):
+            task = asyncio.ensure_future(engine.start_streaming(audio(), on_transcript))
+            await asyncio.sleep(1.2)
+            engine.is_running = False
+            if connections:
+                for c in connections:
+                    c.closed = True
+            await asyncio.wait_for(task, timeout=5)
+
+        self.assertGreaterEqual(len(connections), 2, "engine must reconnect after a drop")
+        audio_on_second = [m for m in connections[1].sent if "audio" in m.get("realtimeInput", {})]
+        self.assertGreater(len(audio_on_second), 0, "audio must keep flowing after reconnect")
+        first_audio = [m for m in connections[0].sent if "audio" in m.get("realtimeInput", {})]
+        self.assertGreater(len(first_audio), 0)
+        # The interrupted turn's first chunk is replayed on the new connection
+        self.assertEqual(
+            first_audio[0]["realtimeInput"]["audio"]["data"],
+            audio_on_second[0]["realtimeInput"]["audio"]["data"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
 

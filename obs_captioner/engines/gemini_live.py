@@ -583,7 +583,53 @@ class GeminiLiveEngine(BaseSTTEngine):
         audio_stream: AsyncGenerator[bytes, None],
         on_transcript: CaptionCallback,
     ) -> None:
-        """Stream real-time PCM audio to Gemini 3.5 Transcribe Live over raw WebSockets."""
+        """Stream real-time PCM audio to Gemini 3.5 Transcribe Live over raw WebSockets.
+
+        The capture generator is drained by one long-lived pump task into a
+        queue. Per-connection sender tasks read from that queue, so cancelling
+        a sender on disconnect can never kill the capture generator (a
+        cancelled async generator is finished forever, which would otherwise
+        leave every reconnect with no audio) and no queued audio is lost.
+        """
+        audio_q: asyncio.Queue = asyncio.Queue(maxsize=1500)
+
+        async def _pump() -> None:
+            try:
+                async for chunk in audio_stream:
+                    if audio_q.full():
+                        try:
+                            audio_q.get_nowait()  # drop oldest rather than block capture
+                        except asyncio.QueueEmpty:
+                            pass
+                    audio_q.put_nowait(chunk)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.debug(f"Gemini Live audio pump ended: {e}")
+            finally:
+                if audio_q.full():
+                    try:
+                        audio_q.get_nowait()
+                    except asyncio.QueueEmpty:
+                        pass
+                try:
+                    audio_q.put_nowait(None)  # end-of-stream sentinel
+                except asyncio.QueueFull:
+                    pass
+
+        pump_task = asyncio.ensure_future(_pump())
+        try:
+            await self._stream_from_queue(audio_q, on_transcript)
+        finally:
+            if not pump_task.done():
+                pump_task.cancel()
+
+    async def _stream_from_queue(
+        self,
+        audio_q: "asyncio.Queue",
+        on_transcript: CaptionCallback,
+    ) -> None:
+        """Reconnecting Gemini Live session loop fed from a persistent audio queue."""
         self.is_running = True
         model = self.config.gemini_live.model or "gemini-3.5-transcribe-live"
         sample_rate = self.config.audio.sample_rate or 16000
@@ -597,6 +643,15 @@ class GeminiLiveEngine(BaseSTTEngine):
             delay = reconnect_delay
             reconnect_delay = min(reconnect_delay * 2.0, STREAM_RECONNECT_MAX_DELAY)
             return delay
+
+        # Audio sent since the last audioStreamEnd (i.e. the turn still being
+        # transcribed). If the socket drops mid-turn that speech was never
+        # finalized by Gemini, so it is replayed on the next connection rather
+        # than lost. Capped to ~12s of PCM16 audio.
+        pending_turn_audio: List[bytes] = []
+        pending_turn_bytes = 0
+        pending_turn_cap = int(sample_rate * 2 * 12)
+        stream_state = {"finished": False}
 
         while self.is_running:
             self.api_key = self._get_api_key()
@@ -655,14 +710,50 @@ class GeminiLiveEngine(BaseSTTEngine):
                             await asyncio.sleep(delay)
                             continue
 
+                        # Replay the unfinalized turn's audio (if the previous socket dropped mid-turn)
+                        if pending_turn_audio:
+                            logger.info(f"Replaying {len(pending_turn_audio)} buffered audio chunks from the interrupted turn.")
+                            for buffered in list(pending_turn_audio):
+                                await ws.send_str(json.dumps({
+                                    "realtimeInput": {
+                                        "audio": {
+                                            "data": base64.b64encode(buffered).decode("utf-8"),
+                                            "mimeType": f"audio/pcm;rate={sample_rate}",
+                                        }
+                                    }
+                                }))
+                        stream_state["finished"] = False
+
                         # 2. Worker: stream audio chunks & signal Hybrid VAD end-of-speech
                         async def send_audio():
+                            nonlocal pending_turn_bytes
                             speech_active = False
                             speech_start_time = 0.0
                             last_speech_time = 0.0
 
-                            async for chunk in audio_stream:
+                            def _remember(buf: bytes) -> None:
+                                nonlocal pending_turn_bytes
+                                pending_turn_audio.append(buf)
+                                pending_turn_bytes += len(buf)
+                                while pending_turn_bytes > pending_turn_cap and pending_turn_audio:
+                                    pending_turn_bytes -= len(pending_turn_audio.pop(0))
+
+                            def _turn_ended() -> None:
+                                nonlocal pending_turn_bytes
+                                pending_turn_audio.clear()
+                                pending_turn_bytes = 0
+
+                            eof = False
+                            while True:
+                                chunk = await audio_q.get()
+                                if chunk is None:
+                                    eof = True
+                                    break
                                 if not self.is_running or ws.closed:
+                                    # Keep the chunk we already pulled so it can be replayed
+                                    # on the next connection instead of vanishing.
+                                    if chunk and self.is_running:
+                                        _remember(chunk[: len(chunk) & ~1])
                                     break
                                 if not chunk:
                                     continue
@@ -685,9 +776,13 @@ class GeminiLiveEngine(BaseSTTEngine):
                                         speech_start_time = 0.0
                                         try:
                                             await ws.send_str(json.dumps({"realtimeInput": {"audioStreamEnd": True}}))
+                                            _turn_ended()
                                         except Exception:
                                             pass
                                     continue
+
+                                # Remember before sending so a failed send never loses the chunk
+                                _remember(pcm_chunk)
 
                                 # Base64 encode raw PCM audio chunk
                                 b64_audio = base64.b64encode(pcm_chunk).decode("utf-8")
@@ -730,6 +825,11 @@ class GeminiLiveEngine(BaseSTTEngine):
                                                 }
                                             }
                                             await ws.send_str(json.dumps(end_signal))
+                                            _turn_ended()
+
+                            # Generator exhausted (or stopped) without the socket failing:
+                            # a genuine end of stream, not a connection drop.
+                            stream_state["finished"] = (eof or not self.is_running) and not ws.closed
 
                             # End of stream signal upon loop exit
                             if not ws.closed:
@@ -796,8 +896,8 @@ class GeminiLiveEngine(BaseSTTEngine):
                             ping_task.cancel()
                         self._ping_task = None
 
-                        if send_task in done:
-                            # Audio capture stream completed
+                        if send_task in done and stream_state["finished"]:
+                            # Audio capture stream completed (genuine end of stream)
                             if recv_task in pending and self.is_running:
                                 try:
                                     await asyncio.wait_for(asyncio.shield(recv_task), timeout=2.0)
@@ -808,7 +908,11 @@ class GeminiLiveEngine(BaseSTTEngine):
                                     t.cancel()
                             break
                         else:
-                            # Remote connection closed or errored
+                            # Remote connection closed or errored (or the sender failed mid-send)
+                            if send_task in done and not send_task.cancelled():
+                                send_exc = send_task.exception()
+                                if send_exc is not None:
+                                    logger.warning(f"Gemini Live audio sender failed ({send_exc}); reconnecting and replaying the interrupted turn...")
                             for t in pending:
                                 if not t.done():
                                     t.cancel()
