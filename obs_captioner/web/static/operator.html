@@ -449,9 +449,15 @@
             <div class="brand-title">
                 <span>🎙️</span> VoxStream Mobile
             </div>
-            <div id="conn-badge" class="status-badge offline">
-                <span class="status-dot"></span>
-                <span id="conn-text">Connecting...</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <button type="button" id="btn-toggle-wake" title="Toggle Keep Screen Awake (prevents phone display from sleeping)" style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); color: #34D399; font-size: 11px; font-weight: 700; border-radius: var(--radius-full); padding: 4px 9px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; outline: none; transition: all 0.15s ease;">
+                    <span id="wake-icon">📱</span>
+                    <span id="wake-text">Awake</span>
+                </button>
+                <div id="conn-badge" class="status-badge offline">
+                    <span class="status-dot"></span>
+                    <span id="conn-text">Connecting...</span>
+                </div>
             </div>
         </header>
 
@@ -928,6 +934,202 @@
                     }
                 });
             }
+
+            // --- Dual-Strategy Screen Wake Lock Manager (Native API + NoSleep Media Fallback for HTTP LAN) ---
+            class ScreenWakeLockManager {
+                constructor() {
+                    const savedPref = localStorage.getItem('voxstream_operator_keep_awake');
+                    this.enabled = savedPref === null ? true : savedPref === 'true';
+                    this.nativeWakeLock = null;
+                    this.isRequestingNative = false;
+                    this.videoElement = null;
+                    this.mediaActive = false;
+                    this.activeStrategy = 'none'; // 'native' | 'media' | 'none'
+                    this.toggleBtn = document.getElementById('btn-toggle-wake');
+                    this.wakeText = document.getElementById('wake-text');
+                    this.wakeIcon = document.getElementById('wake-icon');
+                    this.init();
+                }
+
+                init() {
+                    if (this.toggleBtn) {
+                        this.toggleBtn.addEventListener('click', () => {
+                            this.setEnabled(!this.enabled);
+                            showToast(this.enabled ? '📱 Screen Keep-Awake Enabled' : '💤 Screen Keep-Awake Disabled');
+                        });
+                    }
+
+                    if (this.enabled) {
+                        this.requestWakeLock();
+                    } else {
+                        this.updateUI();
+                    }
+
+                    // Re-acquire on visibility change (e.g. unlocking phone or returning to tab)
+                    document.addEventListener('visibilitychange', () => {
+                        if (document.visibilityState === 'visible' && this.enabled) {
+                            this.requestWakeLock();
+                        }
+                    });
+
+                    // User interactions to fulfill autoplay or gesture security policies on mobile
+                    const handleUserGesture = () => {
+                        if (this.enabled && this.activeStrategy === 'none') {
+                            this.requestWakeLock();
+                        }
+                    };
+                    window.addEventListener('click', handleUserGesture, { passive: true });
+                    window.addEventListener('touchstart', handleUserGesture, { passive: true });
+                    window.addEventListener('keydown', handleUserGesture, { passive: true });
+                }
+
+                updateUI() {
+                    if (!this.toggleBtn) return;
+                    if (!this.enabled) {
+                        if (this.wakeIcon) this.wakeIcon.textContent = '💤';
+                        if (this.wakeText) this.wakeText.textContent = 'Sleep';
+                        this.toggleBtn.style.color = '#94A3B8';
+                        this.toggleBtn.style.background = 'rgba(148, 163, 184, 0.15)';
+                        this.toggleBtn.style.borderColor = 'rgba(148, 163, 184, 0.3)';
+                    } else if (this.activeStrategy === 'native') {
+                        if (this.wakeIcon) this.wakeIcon.textContent = '📱';
+                        if (this.wakeText) this.wakeText.textContent = 'Awake (Lock)';
+                        this.toggleBtn.style.color = '#34D399';
+                        this.toggleBtn.style.background = 'rgba(16, 185, 129, 0.15)';
+                        this.toggleBtn.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+                    } else if (this.activeStrategy === 'media') {
+                        if (this.wakeIcon) this.wakeIcon.textContent = '📱';
+                        if (this.wakeText) this.wakeText.textContent = 'Awake (LAN)';
+                        this.toggleBtn.style.color = '#38BDF8';
+                        this.toggleBtn.style.background = 'rgba(56, 189, 248, 0.15)';
+                        this.toggleBtn.style.borderColor = 'rgba(56, 189, 248, 0.3)';
+                    } else {
+                        if (this.wakeIcon) this.wakeIcon.textContent = '⏳';
+                        if (this.wakeText) this.wakeText.textContent = 'Activating...';
+                        this.toggleBtn.style.color = '#FBBF24';
+                        this.toggleBtn.style.background = 'rgba(245, 158, 11, 0.15)';
+                        this.toggleBtn.style.borderColor = 'rgba(245, 158, 11, 0.3)';
+                    }
+                }
+
+                setEnabled(val) {
+                    this.enabled = !!val;
+                    localStorage.setItem('voxstream_operator_keep_awake', this.enabled ? 'true' : 'false');
+                    if (this.enabled) {
+                        this.requestWakeLock();
+                    } else {
+                        this.release();
+                    }
+                }
+
+                async requestWakeLock() {
+                    if (!this.enabled) return;
+
+                    // 1. Try Native Screen Wake Lock API (Requires HTTPS or localhost)
+                    if ('wakeLock' in navigator && navigator.wakeLock) {
+                        try {
+                            if (!this.nativeWakeLock && !this.isRequestingNative) {
+                                this.isRequestingNative = true;
+                                this.nativeWakeLock = await navigator.wakeLock.request('screen');
+                                this.activeStrategy = 'native';
+                                this.updateUI();
+                                this.nativeWakeLock.addEventListener('release', () => {
+                                    this.nativeWakeLock = null;
+                                    if (this.enabled && document.visibilityState === 'visible') {
+                                        this.requestWakeLock();
+                                    } else {
+                                        this.activeStrategy = 'none';
+                                        this.updateUI();
+                                    }
+                                });
+                                return;
+                            } else if (this.nativeWakeLock) {
+                                this.activeStrategy = 'native';
+                                this.updateUI();
+                                return;
+                            }
+                        } catch (err) {
+                            // Insecure context (HTTP over LAN IP e.g. http://192.168.0.x) or NotAllowedError
+                            this.nativeWakeLock = null;
+                        } finally {
+                            this.isRequestingNative = false;
+                        }
+                    }
+
+                    // 2. Fallback: Silent Inline Looping Video Element (Keeps Android & iOS screens awake over HTTP LAN)
+                    this.enableMediaFallback();
+                }
+
+                enableMediaFallback() {
+                    if (this.mediaActive && this.videoElement) {
+                        if (this.videoElement.paused) {
+                            this.videoElement.play().catch(() => {});
+                        }
+                        this.activeStrategy = 'media';
+                        this.updateUI();
+                        return;
+                    }
+
+                    try {
+                        if (!this.videoElement) {
+                            const video = document.createElement('video');
+                            video.setAttribute('title', 'VoxStream Screen Keep-Alive');
+                            video.setAttribute('playsinline', '');
+                            video.setAttribute('webkit-playsinline', '');
+                            video.setAttribute('muted', '');
+                            video.setAttribute('loop', '');
+                            video.muted = true;
+                            video.loop = true;
+                            video.playsInline = true;
+                            video.style.position = 'fixed';
+                            video.style.left = '-9999px';
+                            video.style.top = '-9999px';
+                            video.style.width = '1px';
+                            video.style.height = '1px';
+                            video.style.opacity = '0.001';
+                            video.style.pointerEvents = 'none';
+
+                            // Base64 silent WebM video loop
+                            const webmVideo = "data:video/webm;base64,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";
+                            video.src = webmVideo;
+                            document.body.appendChild(video);
+                            this.videoElement = video;
+                        }
+
+                        const playPromise = this.videoElement.play();
+                        if (playPromise !== undefined) {
+                            playPromise.then(() => {
+                                this.mediaActive = true;
+                                this.activeStrategy = 'media';
+                                this.updateUI();
+                            }).catch(() => {
+                                this.mediaActive = false;
+                                this.activeStrategy = 'none';
+                                this.updateUI();
+                            });
+                        }
+                    } catch (e) {
+                        this.mediaActive = false;
+                        this.activeStrategy = 'none';
+                        this.updateUI();
+                    }
+                }
+
+                release() {
+                    if (this.nativeWakeLock) {
+                        this.nativeWakeLock.release().catch(() => {});
+                        this.nativeWakeLock = null;
+                    }
+                    if (this.videoElement) {
+                        this.videoElement.pause();
+                        this.mediaActive = false;
+                    }
+                    this.activeStrategy = 'none';
+                    this.updateUI();
+                }
+            }
+
+            const screenWakeManager = new ScreenWakeLockManager();
 
             // Initial Execution
             fetchStatus();
