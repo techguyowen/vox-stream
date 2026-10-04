@@ -651,6 +651,14 @@
             .transcript-content {
                 padding-bottom: max(96px, calc(68px + env(safe-area-inset-bottom, 40px))) !important;
             }
+            #scripturePrompterCard {
+                margin: 4px 12px !important;
+                padding: 8px 12px !important;
+            }
+            #stageScriptureText, .scripture-prompter-text {
+                font-size: 16px !important;
+                line-height: 1.35 !important;
+            }
         }
 
         /* Tablets (481px-1024px, incl. landscape): keep the header clock visible. */
@@ -698,9 +706,18 @@
             }
         }
 
-        /* FIX: Scripture prompter card must not grow/squash the main caption area */
+        /* Scripture Prompter Card */
         #scripturePrompterCard {
             flex-shrink: 0;
+            display: none;
+            margin: 12px 24px;
+            padding: 16px 20px;
+            border-radius: 10px;
+            border: 2px solid #F59E0B;
+            background: rgba(245, 158, 11, 0.14);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
             transition: opacity 0.25s ease, transform 0.25s ease;
         }
         #scripturePrompterCard.visible {
@@ -711,6 +728,116 @@
         #scripturePrompterCard.hidden-card {
             opacity: 0 !important;
             transform: translateY(-8px) !important;
+        }
+        .scripture-prompter-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .scripture-prompter-badge {
+            background: #F59E0B;
+            color: #000000;
+            font-size: 13px;
+            font-weight: 800;
+            padding: 3px 10px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .btn-dismiss-scripture {
+            background: none;
+            border: none;
+            color: #F59E0B;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            padding: 0 6px;
+            line-height: 1;
+            transition: transform 0.15s ease, opacity 0.15s ease;
+        }
+        .btn-dismiss-scripture:hover {
+            opacity: 0.8;
+            transform: scale(1.1);
+        }
+        .scripture-prompter-text {
+            font-size: 26px;
+            font-weight: 700;
+            color: #FEF3C7;
+            line-height: 1.45;
+            font-style: italic;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+            text-wrap: pretty;
+        }
+
+        /* Light Themes Scripture Card Legibility */
+        body.theme-light #scripturePrompterCard,
+        body.theme-black-on-white #scripturePrompterCard {
+            background: #FEF3C7 !important;
+            border: 2px solid #D97706 !important;
+            box-shadow: 0 4px 20px rgba(217, 119, 6, 0.18) !important;
+        }
+        body.theme-light .scripture-prompter-badge,
+        body.theme-black-on-white .scripture-prompter-badge {
+            background: #D97706 !important;
+            color: #FFFFFF !important;
+        }
+        body.theme-light .btn-dismiss-scripture,
+        body.theme-black-on-white .btn-dismiss-scripture {
+            color: #92400E !important;
+        }
+        body.theme-light .scripture-prompter-text,
+        body.theme-black-on-white .scripture-prompter-text {
+            color: #78350F !important;
+            text-shadow: none !important;
+        }
+
+        /* High Visibility & Specialty Themes */
+        body.theme-high-vis #scripturePrompterCard {
+            background: #111111 !important;
+            border: 2px solid #FFFF00 !important;
+        }
+        body.theme-high-vis .scripture-prompter-badge {
+            background: #FFFF00 !important;
+            color: #000000 !important;
+        }
+        body.theme-high-vis .btn-dismiss-scripture {
+            color: #FFFF00 !important;
+        }
+        body.theme-high-vis .scripture-prompter-text {
+            color: #FFFF00 !important;
+            text-shadow: none !important;
+        }
+
+        body.theme-amber #scripturePrompterCard {
+            background: #1A1202 !important;
+            border: 2px solid #FFB703 !important;
+        }
+        body.theme-amber .scripture-prompter-badge {
+            background: #FFB703 !important;
+            color: #000000 !important;
+        }
+        body.theme-amber .btn-dismiss-scripture {
+            color: #FFB703 !important;
+        }
+        body.theme-amber .scripture-prompter-text {
+            color: #FFB703 !important;
+        }
+
+        body.theme-hacker #scripturePrompterCard {
+            background: #001A08 !important;
+            border: 2px solid #00FF66 !important;
+        }
+        body.theme-hacker .scripture-prompter-badge {
+            background: #00FF66 !important;
+            color: #000000 !important;
+        }
+        body.theme-hacker .btn-dismiss-scripture {
+            color: #00FF66 !important;
+        }
+        body.theme-hacker .scripture-prompter-text {
+            color: #00FF66 !important;
+            font-family: 'JetBrains Mono', monospace !important;
         }
 
         /* Floating Font Size Toast Badge */
@@ -1337,12 +1464,12 @@
         </div>
     </div>
 
-    <div id="scripturePrompterCard" style="display: none; background: rgba(245, 158, 11, 0.12); border: 2px solid #F59E0B; border-radius: 10px; padding: 16px 20px; margin: 12px 24px; box-shadow: 0 8px 30px rgba(0,0,0,0.5); backdrop-filter: blur(8px);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <span style="background: #F59E0B; color: #000; font-size: 13px; font-weight: 800; padding: 3px 10px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.04em;" id="stageScriptureCitation">📖 SCRIPTURE PASSAGE</span>
-            <button type="button" id="btnDismissStageScripture" style="background: none; border: none; color: #F59E0B; font-size: 18px; font-weight: bold; cursor: pointer; padding: 0 6px;" title="Dismiss Scripture Card">✕</button>
+    <div id="scripturePrompterCard" class="scripture-prompter-card" style="display: none;" role="region" aria-label="Scripture Verse">
+        <div class="scripture-prompter-header">
+            <span class="scripture-prompter-badge" id="stageScriptureCitation">📖 SCRIPTURE PASSAGE</span>
+            <button type="button" id="btnDismissStageScripture" class="btn-dismiss-scripture" title="Dismiss Scripture Card" aria-label="Dismiss Scripture Card">✕</button>
         </div>
-        <div style="font-size: 26px; font-weight: 700; color: #FEF3C7; line-height: 1.45; font-style: italic;" id="stageScriptureText">...</div>
+        <div class="scripture-prompter-text" id="stageScriptureText">...</div>
     </div>
 
     <!-- Main Scrolling Area -->
