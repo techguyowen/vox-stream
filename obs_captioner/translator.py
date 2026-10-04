@@ -219,7 +219,9 @@ class SubtitleTranslator:
                     target_lang=resolved_target,
                 )
             if len(self._cache) > 3000:
-                self._cache.clear()
+                # Evict oldest ~10% (dicts keep insertion order) instead of wiping everything
+                for old_key in list(self._cache.keys())[:300]:
+                    self._cache.pop(old_key, None)
             return translated
 
         return clean_text

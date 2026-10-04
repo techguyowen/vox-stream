@@ -117,6 +117,7 @@ class WebOverlayServer:
         self._recent_finals: list = []
         self._max_snapshot_lines = 10
         self._caption_translate_chain: Optional[asyncio.Task] = None
+        self._caption_translate_seq: int = 0
 
         @web.middleware
         async def cors_middleware(request, handler):
@@ -1897,6 +1898,10 @@ class WebOverlayServer:
             self.caption_sockets.pop(ws, None)
 
         if non_english_finals and raw_text:
+            self._caption_translate_seq += 1
+            my_seq = self._caption_translate_seq
+            queued_at = time.monotonic()
+
             async def _translate_and_send():
                 lang_cache = {}
                 for ws, lang in non_english_finals:
@@ -1904,7 +1909,19 @@ class WebOverlayServer:
                         continue
                     try:
                         if lang not in lang_cache:
-                            t_text = await self.translator.translate_to_language(raw_text, target_lang=lang)
+                            if self._caption_translate_seq > my_seq and (time.monotonic() - queued_at) > 3.0:
+                                # Genuinely backlogged (waited >3s) with a newer final queued
+                                # behind us: send the original text now (still in order)
+                                # instead of delaying every later caption.
+                                t_text = raw_text
+                            else:
+                                try:
+                                    t_text = await asyncio.wait_for(
+                                        self.translator.translate_to_language(raw_text, target_lang=lang),
+                                        timeout=5.0,
+                                    )
+                                except asyncio.TimeoutError:
+                                    t_text = raw_text
                             lang_cache[lang] = json.dumps({**payload, "text": t_text, "original_text": raw_text})
                         await ws.send_str(lang_cache[lang])
                     except Exception:
