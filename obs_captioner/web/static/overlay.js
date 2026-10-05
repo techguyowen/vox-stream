@@ -119,7 +119,6 @@ let ws = null;
 let controlWs = null;
 let lastCaptionSeq = 0;
 let lastFinalUtterance = 0;
-let currentInterimText = "";
 
 function isStaleCaption(data) {
     if (typeof data.seq === "number" && data.seq > 0) {
@@ -134,54 +133,6 @@ function isStaleCaption(data) {
         lastFinalUtterance = Math.max(lastFinalUtterance, data.utterance_id);
     }
     return false;
-}
-
-function isInterimContinuation(oldText, newText) {
-    if (!oldText || !newText) return false;
-    const normalize = (s) => s.replace(/[^\w\s]/g, "").toLowerCase().trim().replace(/\s+/g, " ");
-    const a = normalize(oldText);
-    const b = normalize(newText);
-    if (!a || !b) return false;
-    if (a === b) return true;
-    if (a.startsWith(b) || b.startsWith(a)) return true;
-    const aWords = a.split(" ");
-    const bWords = b.split(" ");
-    const maxOverlap = Math.min(aWords.length, bWords.length);
-    for (let n = maxOverlap; n >= 1; n--) {
-        if (aWords.slice(-n).join(" ") === bWords.slice(0, n).join(" ")) return true;
-    }
-    if (aWords.length >= 2 && bWords.length >= 2
-        && aWords[0] === bWords[0] && aWords[1] === bWords[1]) return true;
-    const setA = new Set(aWords);
-    const setB = new Set(bWords);
-    let intersection = 0;
-    for (const w of setA) {
-        if (setB.has(w)) intersection++;
-    }
-    const union = new Set([...setA, ...setB]).size;
-    if (union > 0 && intersection / union >= 0.4) return true;
-    return false;
-}
-
-function promoteInterimToFinal(promotedText) {
-    const trimmed = (promotedText || "").trim();
-    if (!trimmed) return;
-    if (finalLines.length > 0) {
-        const last = finalLines[finalLines.length - 1];
-        const lastText = (typeof last === "string" ? last : last.text || "").trim();
-        if (lastText === trimmed) return;
-    }
-    const lineItem = {
-        text: trimmed,
-        translated: null,
-        dual_color: config.dual_subtitle_color,
-        dual_scale: config.dual_subtitle_scale,
-        dual_format: config.dual_subtitle_format,
-        displayedAt: Date.now(),
-    };
-    lastLineDisplayedAt = lineItem.displayedAt;
-    finalLines.push(lineItem);
-    if (finalLines.length > config.max_lines) finalLines.shift();
 }
 
 const captionBox = document.getElementById("caption-box");
@@ -341,7 +292,6 @@ function showBox() {
 }
 
 function hideBoxNow(force = false) {
-    currentInterimText = "";
     if (pendingFinalQueue.length > 0) {
         // Finals are still waiting to be shown: pump the queue now (which
         // re-arms the hide timer) instead of discarding them unshown.
@@ -443,7 +393,6 @@ function handleCaption(data) {
     // Snapshot replay on (re)connect: reset stale local state, then adopt
     // the server's recent final lines.
     if (data.type === "snapshot") {
-        currentInterimText = "";
         finalLines = [];
         pendingFinalQueue = [];
         interimLineEl.innerHTML = "";
@@ -482,7 +431,6 @@ function handleCaption(data) {
     const translated = data.translated_text || null;
 
     if (data.is_final) {
-        currentInterimText = "";
         if (text) {
             if (deferredHideTimer) {
                 clearTimeout(deferredHideTimer);
@@ -581,23 +529,12 @@ function handleCaption(data) {
             hideBoxNow(false);
         }
     } else {
-        if (config.final_only) {
-            // Final-Only Mode: do not display live in-progress speech
-            currentInterimText = "";
-            return;
-        }
+        if (config.final_only) return;
         if (text) {
-            if (currentInterimText && currentInterimText.trim().split(/\s+/).length >= 3
-                && !isInterimContinuation(currentInterimText, text)) {
-                promoteInterimToFinal(currentInterimText);
-            }
-            currentInterimText = text;
             showBox();
             renderFinalLines(true);
             renderInterim(text);
         } else {
-            currentInterimText = "";
-            // Empty interim (e.g. a dropped sentence): clear the interim line only
             interimLineEl.innerHTML = "";
             renderFinalLines(false);
         }

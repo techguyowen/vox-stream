@@ -2558,36 +2558,6 @@
             }
         }
 
-        function isInterimContinuation(oldText, newText) {
-            if (!oldText || !newText) return false;
-            const norm = (s) => (s || "").replace(/[^\w\s]/g, "").trim().toLowerCase();
-            const a = norm(oldText);
-            const b = norm(newText);
-            if (!a || !b) return false;
-            if (a === b) return true;
-            if (a.startsWith(b) || b.startsWith(a)) return true;
-            const aWords = a.split(/\s+/).filter(Boolean);
-            const bWords = b.split(/\s+/).filter(Boolean);
-            // Suffix-to-prefix rolling word overlap
-            const maxN = Math.min(aWords.length, bWords.length);
-            for (let n = maxN; n >= 1; n--) {
-                const suffix = aWords.slice(aWords.length - n).join(" ");
-                const prefix = bWords.slice(0, n).join(" ");
-                if (suffix === prefix) return true;
-            }
-            // First 2 words match
-            if (aWords.length >= 2 && bWords.length >= 2
-                && aWords[0] === bWords[0] && aWords[1] === bWords[1]) return true;
-            // Word set overlap (Jaccard) >= 0.4
-            const setA = new Set(aWords);
-            const setB = new Set(bWords);
-            let inter = 0;
-            for (const w of setA) if (setB.has(w)) inter++;
-            const union = new Set([...setA, ...setB]).size;
-            if (union > 0 && inter / union >= 0.4) return true;
-            return false;
-        }
-
         // -------------------------------------------------------------
         // 🌐 WebSocket Connection Pipeline
         // -------------------------------------------------------------
@@ -2720,13 +2690,6 @@
                             }
                         } else {
                             if (isFinalOnlyMode) return;
-                            if (interimText) {
-                                const prevWords = interimText.trim().split(/\s+/).filter(Boolean);
-                                if (prevWords.length >= 3 && !isInterimContinuation(interimText, text)) {
-                                    lastFinalTextAt = Date.now();
-                                    appendFinalSentence(interimText);
-                                }
-                            }
                             interimText = text;
                             updateInterimSpeech(text);
                         }

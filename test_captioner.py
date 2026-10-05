@@ -2118,6 +2118,94 @@ class TestCaptionSinkFinalOnly(unittest.IsolatedAsyncioTestCase):
         obs_client.update_text_source.assert_called_once()
 
 
+class TestCaptionSinkAutoPromotion(unittest.IsolatedAsyncioTestCase):
+    def test_is_interim_continuation_heuristics(self):
+        from obs_captioner.obs.caption_sink import CaptionSink
+
+        cont = CaptionSink._is_interim_continuation
+        # Exact match (normalized) is a continuation
+        self.assertTrue(cont("Hello world", "hello WORLD!"))
+        # Rolling suffix-to-prefix overlap is a continuation
+        self.assertTrue(cont("the quick brown fox", "brown fox jumps high"))
+        # New text extending old text is a continuation
+        self.assertTrue(cont("hello world", "hello world today"))
+        # Old text extending new text needs >= 3 words in new text
+        self.assertFalse(cont("the worship music plays softly", "the worship"))
+        # Removed 2-word prefix rule: shared first words alone are NOT a continuation
+        self.assertFalse(cont("we praise the lord", "we praise jesus forever"))
+        # Stop-word-filtered content overlap is a continuation
+        self.assertTrue(cont("pastor john preached sermon", "sermon by pastor john today"))
+        # Disjoint utterances are NOT a continuation
+        self.assertFalse(cont("the worship team sings", "completely different topic here"))
+
+    async def test_disjoint_interim_promotes_orphan(self):
+        from obs_captioner.obs.caption_sink import CaptionSink
+
+        sink = CaptionSink(AppConfig())
+        try:
+            await sink.handle_transcript(
+                TranscriptEvent(text="the pastor welcomed everyone warmly", is_final=False)
+            )
+            self.assertEqual(sink._last_partial_text, "the pastor welcomed everyone warmly")
+            self.assertGreater(sink._last_partial_time, 0.0)
+
+            await sink.handle_transcript(
+                TranscriptEvent(text="the offering plates are ready now", is_final=False)
+            )
+            # Orphaned interim is auto-promoted to a finalized history entry
+            self.assertEqual(len(sink.history.entries), 1)
+            self.assertIn("pastor", sink.history.entries[-1].text.casefold())
+            self.assertEqual(sink._last_partial_text, "the offering plates are ready now")
+        finally:
+            if sink._auto_clear_task:
+                sink._auto_clear_task.cancel()
+
+    async def test_duplicate_final_preserves_active_utterance(self):
+        from obs_captioner.obs.caption_sink import CaptionSink
+
+        sink = CaptionSink(AppConfig())
+        try:
+            await sink.handle_transcript(
+                TranscriptEvent(text="let us pray together now", is_final=True)
+            )
+            self.assertEqual(len(sink.history.entries), 1)
+
+            await sink.handle_transcript(
+                TranscriptEvent(text="let us pray together", is_final=False)
+            )
+            self.assertTrue(sink._utterance_active)
+
+            # Duplicate final during an active new utterance: suppressed,
+            # utterance stays active, and the interim hypothesis is kept.
+            await sink.handle_transcript(
+                TranscriptEvent(text="let us pray together now", is_final=True)
+            )
+            self.assertEqual(len(sink.history.entries), 1)
+            self.assertTrue(sink._utterance_active)
+            self.assertEqual(sink._last_partial_text, "let us pray together")
+        finally:
+            if sink._auto_clear_task:
+                sink._auto_clear_task.cancel()
+
+    async def test_auto_clear_worker_promotes_terminal_speech(self):
+        from obs_captioner.obs.caption_sink import CaptionSink
+
+        cfg = AppConfig()
+        cfg.overlay.auto_hide_seconds = 0.05
+        cfg.overlay.min_display_seconds = 0.0
+        sink = CaptionSink(cfg)
+        try:
+            sink._last_partial_text = "closing blessing for the congregation"
+            sink._last_partial_time = time.time()
+            await sink._auto_clear_worker()
+            self.assertEqual(len(sink.history.entries), 1)
+            self.assertIn("blessing", sink.history.entries[-1].text.casefold())
+            self.assertIsNone(sink._last_partial_text)
+        finally:
+            if sink._auto_clear_task:
+                sink._auto_clear_task.cancel()
+
+
 class TestSentenceBreakConfiguration(unittest.IsolatedAsyncioTestCase):
     def test_audio_config_sentence_break_defaults(self):
         from obs_captioner.config import AudioConfig, OverlayConfig
@@ -5407,8 +5495,11 @@ class TestInterimFinalOrderingAsync(unittest.IsolatedAsyncioTestCase):
             return (text, None)
 
         sink.translator.translate_text = fake_translate
-        interim = TranscriptEvent(text="Interim hello there", is_final=False)
-        final = TranscriptEvent(text="Final sentence here.", is_final=True)
+        # The final continues the interim so orphan auto-promotion (which also
+        # runs for finals) does not add a third payload; this test is about
+        # serialization order, promotion is covered by TestOrphanedInterimAutoPromotion.
+        interim = TranscriptEvent(text="Interim hello there friends", is_final=False)
+        final = TranscriptEvent(text="Interim hello there friends.", is_final=True)
         await asyncio.gather(sink.handle_transcript(interim), sink.handle_transcript(final))
 
         payloads = [c[0][0] for c in mock_web.broadcast_caption.call_args_list]
@@ -5734,13 +5825,22 @@ class TestCaptionTextLossJsGuards(unittest.TestCase):
         # Auto-clear must pump waiting finals instead of wiping them.
         self.assertIn("processPendingQueue();", self.overlay)
 
-    def test_overlay_guards_orphaned_interim_discontinuity(self):
-        self.assertIn("isInterimContinuation", self.overlay)
-        self.assertIn("promoteInterimToFinal", self.overlay)
+    def test_overlay_has_no_client_side_auto_promotion(self):
+        # CaptionSink is the single authoritative source of finalized speech;
+        # the overlay must never promote interim text to final itself.
+        self.assertNotIn("isInterimContinuation", self.overlay)
+        self.assertNotIn("promoteInterimToFinal", self.overlay)
+        self.assertNotIn("currentInterimText", self.overlay)
+        # Final-branch dedup (matching last final updates text in-place) stays.
+        self.assertIn("lastNorm === normalize(text)", self.overlay)
 
-    def test_display_guards_orphaned_interim_discontinuity(self):
-        self.assertIn("isInterimContinuation", self.display)
-        self.assertIn("appendFinalSentence(interimText)", self.display)
+    def test_display_has_no_client_side_auto_promotion(self):
+        # CaptionSink is the single authoritative source of finalized speech;
+        # the display must never promote interim text to final itself.
+        self.assertNotIn("isInterimContinuation", self.display)
+        self.assertNotIn("appendFinalSentence(interimText)", self.display)
+        # Final-branch normalized dedup stays.
+        self.assertIn("norm(prevFinal) === norm(text)", self.display)
 
     def test_dashboard_snapshot_adopts_marks_after_restart(self):
         self.assertIn("captionLastSeq = 0;", self.dashboard)
@@ -5766,15 +5866,21 @@ class TestDroppedTextSinkPaths(unittest.IsolatedAsyncioTestCase):
         sink.web_server = mock_web
         return sink, mock_web
 
-    async def test_repeat_with_fresh_interim_is_kept(self):
+    async def test_repeat_with_fresh_interim_is_suppressed(self):
+        # A duplicate final inside the sub-second window is an engine
+        # double-emit even when a fresh interim arrived first, so it is
+        # suppressed — but the active new utterance and its interim
+        # hypothesis must survive the suppression.
         sink, mock_web = self._make_sink()
         await sink.handle_transcript(TranscriptEvent(text="Praise the Lord", is_final=True))
         await sink.handle_transcript(TranscriptEvent(text="Praise the", is_final=False))
         await sink.handle_transcript(TranscriptEvent(text="Praise the Lord", is_final=True))
         payloads = [c[0][0] for c in mock_web.broadcast_caption.call_args_list]
         finals = [p for p in payloads if p.get("is_final") and (p.get("text") or "").strip()]
-        self.assertEqual(len(finals), 2)
-        self.assertEqual(len(sink.history.get_history()), 2)
+        self.assertEqual(len(finals), 1)
+        self.assertEqual(len(sink.history.get_history()), 1)
+        self.assertTrue(sink._utterance_active)
+        self.assertEqual(sink._last_partial_text, "Praise the")
 
     async def test_back_to_back_double_emit_still_suppressed(self):
         sink, mock_web = self._make_sink()
@@ -5940,6 +6046,42 @@ class TestOrphanedInterimAutoPromotion(unittest.IsolatedAsyncioTestCase):
         mock_recorder.add_caption.assert_called_once()
         call_kwargs = mock_recorder.add_caption.call_args[1]
         self.assertEqual(call_kwargs["text"], "The Lord is my shepherd I shall not want.")
+
+    async def test_orphaned_interim_followed_by_immediate_final_auto_promotes(self):
+        sink, mock_web = self._make_sink()
+        evt_interim = TranscriptEvent(text="The Lord is my shepherd I shall not want", is_final=False)
+        evt_final = TranscriptEvent(text="Amen.", is_final=True)
+
+        await sink.handle_transcript(evt_interim)
+        self.assertEqual(len(sink.history.entries), 0)
+
+        await sink.handle_transcript(evt_final)
+        # BOTH sentences should be finalized into history
+        self.assertEqual(len(sink.history.entries), 2)
+        self.assertEqual(sink.history.entries[0].text, "The Lord is my shepherd I shall not want.")
+        self.assertEqual(sink.history.entries[1].text, "Amen.")
+
+    async def test_common_two_word_openings_auto_promote(self):
+        sink, mock_web = self._make_sink()
+        evt1 = TranscriptEvent(text="We are gathered here today to celebrate", is_final=False)
+        evt2 = TranscriptEvent(text="We are going to open our Bibles", is_final=False)
+
+        await sink.handle_transcript(evt1)
+        await sink.handle_transcript(evt2)
+        # The first sentence must NOT be dropped by the shared 'We are' opening
+        self.assertEqual(len(sink.history.entries), 1)
+        self.assertEqual(sink.history.entries[0].text, "We are gathered here today to celebrate.")
+
+    async def test_stop_word_overlap_in_short_sentences_does_not_drop(self):
+        sink, mock_web = self._make_sink()
+        evt1 = TranscriptEvent(text="It was for you and for us", is_final=False)
+        evt2 = TranscriptEvent(text="Where was it going to be", is_final=False)
+
+        await sink.handle_transcript(evt1)
+        await sink.handle_transcript(evt2)
+        # Shared stop words ('was', 'it', 'for') must not cause false continuation
+        self.assertEqual(len(sink.history.entries), 1)
+        self.assertEqual(sink.history.entries[0].text, "It was for you and for us.")
 
     def test_is_interim_continuation_helper(self):
         from obs_captioner.obs.caption_sink import CaptionSink

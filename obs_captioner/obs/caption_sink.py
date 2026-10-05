@@ -73,6 +73,7 @@ class CaptionSink:
         self._sentence_start_time = time.time()
         self._utterance_active = False
         self._last_partial_text: Optional[str] = None
+        self._last_partial_time = 0.0
         self._auto_clear_task: Optional[asyncio.Task] = None
         self._last_final_time = 0.0
         self._lock: Optional[asyncio.Lock] = None
@@ -124,34 +125,31 @@ class CaptionSink:
         if clean_old == clean_new:
             return True
 
-        # 2. Direct prefix / extension match
-        if clean_new.startswith(clean_old):
-            return True
-
         old_words = clean_old.split()
         new_words = clean_new.split()
         if not old_words or not new_words:
             return False
 
-        if clean_old.startswith(clean_new) and len(new_words) >= 2:
-            return True
-
-        # 3. Rolling suffix-to-prefix overlap (for streaming chunk ASR)
+        # 2. Rolling suffix-to-prefix overlap (for streaming chunk ASR)
         min_len = min(len(old_words), len(new_words))
         for n in range(2, min_len + 1):
             if old_words[-n:] == new_words[:n]:
                 return True
 
-        # 4. Word-level prefix overlap (at least first 2 words match)
-        if len(old_words) >= 2 and len(new_words) >= 2 and old_words[:2] == new_words[:2]:
+        # 3. Direct prefix / extension match
+        if clean_new.startswith(clean_old):
+            return True
+        if clean_old.startswith(clean_new) and len(new_words) >= 3 and len(clean_new) >= 12:
             return True
 
-        # 5. Word set overlap >= 40% of old_words
-        old_set = set(old_words)
-        new_set = set(new_words)
-        overlap = old_set & new_set
-        if len(overlap) / len(old_set) >= 0.40:
-            return True
+        # 4. Content word overlap >= 40% of old content words (stop-word filtered)
+        STOP_WORDS = {"the", "and", "a", "an", "in", "to", "of", "is", "it", "was", "we", "i", "that", "for", "with", "you", "on", "as", "at", "by", "this", "be", "are", "from", "or", "have", "so", "but"}
+        old_content = [w for w in old_words if w not in STOP_WORDS]
+        new_content = [w for w in new_words if w not in STOP_WORDS]
+        if old_content and new_content:
+            content_overlap = set(old_content) & set(new_content)
+            if len(content_overlap) >= 2 and (len(content_overlap) / len(set(old_content))) >= 0.40:
+                return True
 
         return False
 
@@ -287,7 +285,24 @@ class CaptionSink:
                 logger.debug(f"Interim hallucination suppressed in caption sink: {raw_text}")
             return
 
+        # Orphaned interim auto-promotion on semantic discontinuity
+        if self._last_partial_text:
+            prev_text = self._last_partial_text.strip()
+            prev_words = prev_text.split()
+            if len(prev_words) >= 3 and len(prev_text) >= 10:
+                if not self._is_interim_continuation(prev_text, raw_text):
+                    logger.info(f"⚡ [AUTO-PROMOTION] Discontinuous utterance detected: promoting orphaned interim \"{prev_text}\" to final")
+                    self._last_partial_text = None
+                    prev_time = self._last_partial_time or event.timestamp
+                    await self._handle_transcript_locked(
+                        TranscriptEvent(text=prev_text, is_final=True, timestamp=prev_time)
+                    )
+
         if event.is_final:
+            # Stash the live interim hypothesis: a duplicate final arriving
+            # mid-utterance must not destroy the new utterance's partial.
+            saved_partial_text = self._last_partial_text
+            saved_partial_time = self._last_partial_time
             self._last_partial_text = None
             # A final closes the current utterance; finals-only engines (no
             # preceding interim) each get their own utterance id.
@@ -302,22 +317,8 @@ class CaptionSink:
             # chunk; skip re-broadcasting unchanged interim text.
             if raw_text == self._last_partial_text:
                 return
-
-            # Orphaned interim auto-promotion on semantic discontinuity
-            if self._last_partial_text:
-                prev_text = self._last_partial_text.strip()
-                words = prev_text.split()
-                if len(words) >= 3 and len(prev_text) >= 10:
-                    if not self._is_interim_continuation(prev_text, raw_text):
-                        logger.info(
-                            f"⚡ [AUTO-PROMOTION] Discontinuous interim detected: "
-                            f"promoting orphaned interim '{prev_text}' to final"
-                        )
-                        await self._handle_transcript_locked(
-                            TranscriptEvent(text=prev_text, is_final=True, timestamp=event.timestamp)
-                        )
-
             self._last_partial_text = raw_text
+            self._last_partial_time = time.time()
             # First partial after a final marks the start of a new utterance
             if not self._utterance_active:
                 self._utterance_active = True
@@ -361,10 +362,15 @@ class CaptionSink:
                 normalized_final
                 and normalized_final == self._last_final_text
                 and (time.time() - self._last_final_time) < self._duplicate_final_window
-                and not self._utterance_active
             ):
                 logger.info(f"✓ [FINAL]   [DUPLICATE SUPPRESSED] {clean_text}")
-                self._utterance_active = False
+                if not self._utterance_active:
+                    self._utterance_active = False
+                else:
+                    # Active new utterance in progress: keep it active and
+                    # restore its interim hypothesis wiped above.
+                    self._last_partial_text = saved_partial_text
+                    self._last_partial_time = saved_partial_time
                 if self.web_server:
                     await self.web_server.broadcast_caption(
                         self._stamp_payload(
@@ -586,6 +592,17 @@ class CaptionSink:
             if sleep_duration <= 0:
                 return
             await asyncio.sleep(sleep_duration)
+            if self._last_partial_text:
+                prev_text = self._last_partial_text.strip()
+                prev_words = prev_text.split()
+                if len(prev_words) >= 3 and len(prev_text) >= 10:
+                    if (time.time() - self._last_partial_time) < (sleep_duration + 2.0):
+                        logger.info(f"⚡ [AUTO-PROMOTION] Silence timeout detected: promoting terminal speech \"{prev_text}\" to final")
+                        self._last_partial_text = None
+                        await self._handle_transcript_locked(
+                            TranscriptEvent(text=prev_text, is_final=True, timestamp=self._last_partial_time)
+                        )
+            self._last_partial_text = None
             # Clear OBS text source
             if self.obs_client and self.obs_client.is_connected:
                 if self.config.obs.update_text_source and self.config.obs.text_source_name:
