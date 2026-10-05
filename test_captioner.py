@@ -5734,6 +5734,14 @@ class TestCaptionTextLossJsGuards(unittest.TestCase):
         # Auto-clear must pump waiting finals instead of wiping them.
         self.assertIn("processPendingQueue();", self.overlay)
 
+    def test_overlay_guards_orphaned_interim_discontinuity(self):
+        self.assertIn("isInterimContinuation", self.overlay)
+        self.assertIn("promoteInterimToFinal", self.overlay)
+
+    def test_display_guards_orphaned_interim_discontinuity(self):
+        self.assertIn("isInterimContinuation", self.display)
+        self.assertIn("appendFinalSentence(interimText)", self.display)
+
     def test_dashboard_snapshot_adopts_marks_after_restart(self):
         self.assertIn("captionLastSeq = 0;", self.dashboard)
         self.assertIn("captionLastFinalUtterance = 0;", self.dashboard)
@@ -5823,6 +5831,129 @@ class TestDroppedTextSinkPaths(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(corrections[0]["text"], "He became a disciple.")
         self.assertEqual(sink.history.entries[0].text, "He became a disciple.")
         self.assertEqual(sink.history.entries[1].text, "Of the Lord.")
+
+
+class TestOrphanedInterimAutoPromotion(unittest.IsolatedAsyncioTestCase):
+    """Test orphaned interim auto-promotion and discontinuity guarding."""
+
+    def _make_sink(self):
+        from unittest.mock import AsyncMock, MagicMock
+        from obs_captioner.config import AppConfig
+        from obs_captioner.obs.caption_sink import CaptionSink
+
+        cfg = AppConfig()
+        cfg.overlay.auto_hide_seconds = 0
+        if hasattr(cfg, "bible") and cfg.bible:
+            cfg.bible.enabled = False
+        cfg.translation.enabled = False
+        sink = CaptionSink(cfg)
+        mock_web = MagicMock()
+        mock_web.broadcast_caption = AsyncMock()
+        sink.web_server = mock_web
+        return sink, mock_web
+
+    async def test_back_to_back_discontinuous_interims(self):
+        sink, mock_web = self._make_sink()
+        evt1 = TranscriptEvent(text="The Lord is my shepherd I shall not want", is_final=False)
+        evt2 = TranscriptEvent(text="He makes me lie down in green pastures", is_final=False)
+
+        await sink.handle_transcript(evt1)
+        self.assertEqual(len(sink.history.entries), 0)
+
+        await sink.handle_transcript(evt2)
+        # Verify sink.history.entries contains "The Lord is my shepherd I shall not want." as a finalized entry
+        self.assertEqual(len(sink.history.entries), 1)
+        self.assertEqual(
+            sink.history.entries[0].text, "The Lord is my shepherd I shall not want."
+        )
+
+        # Verify mock_web.broadcast_caption received is_final=True for the first sentence
+        payloads = [c[0][0] for c in mock_web.broadcast_caption.call_args_list]
+        finals = [p for p in payloads if p.get("is_final") and (p.get("text") or "").strip()]
+        self.assertEqual(len(finals), 1)
+        self.assertEqual(finals[0]["text"], "The Lord is my shepherd I shall not want.")
+        self.assertTrue(finals[0]["is_final"])
+
+        # Advance utterance ID for the new incoming interim utterance so they are clearly separated
+        interims = [p for p in payloads if not p.get("is_final") and (p.get("text") or "").strip()]
+        self.assertGreaterEqual(len(interims), 2)
+        self.assertEqual(interims[-1]["text"], "He makes me lie down in green pastures")
+        self.assertNotEqual(finals[0]["utterance_id"], interims[-1]["utterance_id"])
+
+    async def test_normal_interim_extension(self):
+        sink, mock_web = self._make_sink()
+        evt1 = TranscriptEvent(text="The Lord is", is_final=False)
+        evt2 = TranscriptEvent(text="The Lord is my shepherd", is_final=False)
+
+        await sink.handle_transcript(evt1)
+        await sink.handle_transcript(evt2)
+
+        # only 1 active utterance, 0 history entries until final
+        self.assertEqual(len(sink.history.entries), 0)
+        payloads = [c[0][0] for c in mock_web.broadcast_caption.call_args_list]
+        finals = [p for p in payloads if p.get("is_final") and (p.get("text") or "").strip()]
+        self.assertEqual(len(finals), 0)
+
+        interims = [p for p in payloads if not p.get("is_final") and (p.get("text") or "").strip()]
+        self.assertEqual(len(interims), 2)
+        self.assertEqual(interims[0]["utterance_id"], interims[1]["utterance_id"])
+
+    async def test_short_noise_clicks_not_promoted(self):
+        sink, mock_web = self._make_sink()
+        evt_noise1 = TranscriptEvent(text="uh", is_final=False)
+        evt_noise2 = TranscriptEvent(text="and", is_final=False)
+        evt_speech = TranscriptEvent(text="The Lord is my shepherd", is_final=False)
+
+        await sink.handle_transcript(evt_noise1)
+        await sink.handle_transcript(evt_noise2)
+        await sink.handle_transcript(evt_speech)
+
+        # 1-2 words like "uh", "and" are not falsely promoted
+        self.assertEqual(len(sink.history.entries), 0)
+        payloads = [c[0][0] for c in mock_web.broadcast_caption.call_args_list]
+        finals = [p for p in payloads if p.get("is_final") and (p.get("text") or "").strip()]
+        self.assertEqual(len(finals), 0)
+
+    async def test_promoted_sentence_updates_obs_and_recorder(self):
+        from unittest.mock import AsyncMock, MagicMock
+        sink, mock_web = self._make_sink()
+        mock_obs = MagicMock()
+        mock_obs.is_connected = True
+        mock_obs.update_text_source = AsyncMock()
+        sink.obs_client = mock_obs
+        sink.config.obs.update_text_source = True
+        sink.config.obs.text_source_name = "Captions"
+
+        mock_recorder = MagicMock()
+        mock_recorder.is_recording = True
+        sink.subtitle_recorder = mock_recorder
+
+        evt1 = TranscriptEvent(text="The Lord is my shepherd I shall not want", is_final=False)
+        evt2 = TranscriptEvent(text="He makes me lie down in green pastures", is_final=False)
+
+        await sink.handle_transcript(evt1)
+        await sink.handle_transcript(evt2)
+
+        mock_obs.update_text_source.assert_any_await(
+            "Captions", "The Lord is my shepherd I shall not want."
+        )
+        mock_recorder.add_caption.assert_called_once()
+        call_kwargs = mock_recorder.add_caption.call_args[1]
+        self.assertEqual(call_kwargs["text"], "The Lord is my shepherd I shall not want.")
+
+    def test_is_interim_continuation_helper(self):
+        from obs_captioner.obs.caption_sink import CaptionSink
+
+        self.assertTrue(CaptionSink._is_interim_continuation("The Lord is", "The Lord is my shepherd"))
+        self.assertTrue(CaptionSink._is_interim_continuation("The Lord is my shepherd", "The Lord is my shepherd I shall not want"))
+        self.assertTrue(CaptionSink._is_interim_continuation("The Lord is my sheep", "The Lord is my shepherd"))
+        self.assertFalse(
+            CaptionSink._is_interim_continuation(
+                "The Lord is my shepherd I shall not want",
+                "He makes me lie down in green pastures"
+            )
+        )
+        self.assertFalse(CaptionSink._is_interim_continuation("The Lord is my shepherd", "uh"))
 
 
 class TestDroppedTextEnginePaths(unittest.IsolatedAsyncioTestCase):

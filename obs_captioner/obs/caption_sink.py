@@ -103,6 +103,58 @@ class CaptionSink:
             ),
         )
 
+    @staticmethod
+    def _is_interim_continuation(old_text: str, new_text: str) -> bool:
+        """Check whether new_text continues, extends, or refines old_text.
+
+        Returns True if new_text is an extension, prefix match, word overlap >= 40%,
+        or rolling suffix overlap of old_text.
+        Returns False when new_text is a discontinuous, distinct new utterance.
+        """
+        if not old_text or not new_text:
+            return False
+
+        clean_old = re.sub(r"[^\w\s]", "", old_text).strip().lower()
+        clean_new = re.sub(r"[^\w\s]", "", new_text).strip().lower()
+
+        if not clean_old or not clean_new:
+            return False
+
+        # 1. Exact match
+        if clean_old == clean_new:
+            return True
+
+        # 2. Direct prefix / extension match
+        if clean_new.startswith(clean_old):
+            return True
+
+        old_words = clean_old.split()
+        new_words = clean_new.split()
+        if not old_words or not new_words:
+            return False
+
+        if clean_old.startswith(clean_new) and len(new_words) >= 2:
+            return True
+
+        # 3. Rolling suffix-to-prefix overlap (for streaming chunk ASR)
+        min_len = min(len(old_words), len(new_words))
+        for n in range(2, min_len + 1):
+            if old_words[-n:] == new_words[:n]:
+                return True
+
+        # 4. Word-level prefix overlap (at least first 2 words match)
+        if len(old_words) >= 2 and len(new_words) >= 2 and old_words[:2] == new_words[:2]:
+            return True
+
+        # 5. Word set overlap >= 40% of old_words
+        old_set = set(old_words)
+        new_set = set(new_words)
+        overlap = old_set & new_set
+        if len(overlap) / len(old_set) >= 0.40:
+            return True
+
+        return False
+
     def _attempt_boundary_stitch(self, clean_text: str) -> Tuple[str, bool]:
         """Stitch mid-word chunk boundary splits and continuing clauses between consecutive utterances."""
         now = time.time()
@@ -250,6 +302,21 @@ class CaptionSink:
             # chunk; skip re-broadcasting unchanged interim text.
             if raw_text == self._last_partial_text:
                 return
+
+            # Orphaned interim auto-promotion on semantic discontinuity
+            if self._last_partial_text:
+                prev_text = self._last_partial_text.strip()
+                words = prev_text.split()
+                if len(words) >= 3 and len(prev_text) >= 10:
+                    if not self._is_interim_continuation(prev_text, raw_text):
+                        logger.info(
+                            f"⚡ [AUTO-PROMOTION] Discontinuous interim detected: "
+                            f"promoting orphaned interim '{prev_text}' to final"
+                        )
+                        await self._handle_transcript_locked(
+                            TranscriptEvent(text=prev_text, is_final=True, timestamp=event.timestamp)
+                        )
+
             self._last_partial_text = raw_text
             # First partial after a final marks the start of a new utterance
             if not self._utterance_active:
