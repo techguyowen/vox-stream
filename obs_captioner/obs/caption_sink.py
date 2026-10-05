@@ -449,44 +449,60 @@ class CaptionSink:
         trans_tag = f" 🌐 [{translated_text}]" if translated_text else ""
         logger.info(f"{status}{censor_tag} {display_text or '[DROPPED]'}{trans_tag}")
 
-        # 7. Dispatch to Web Overlay (Browser Source) and Dashboard Preview
-        if self.web_server:
-            await self.web_server.broadcast_caption(
-                self._stamp_payload(
-                    {
-                        "text": display_text,
-                        "translated_text": translated_text,
-                        "dual_color": getattr(self.config.translation, "dual_subtitle_color", "#FFD700"),
-                        "dual_scale": getattr(self.config.translation, "dual_subtitle_scale", 0.85),
-                        "dual_format": getattr(self.config.translation, "dual_subtitle_format", "clean"),
-                        "is_final": event.is_final,
-                        "is_censored": was_censored,
-                        "timestamp": event.timestamp,
-                    },
-                    utterance_id,
-                )
-            )
-
-        # 8. Dispatch to OBS WebSocket (Text Source & CEA-608)
-        if self.obs_client and self.obs_client.is_connected:
-            obs_out_text = display_text
-            if translated_text and self.config.translation.display_mode == "dual":
-                dual_fmt = getattr(self.config.translation, "dual_subtitle_format", "clean")
-                if dual_fmt == "parentheses":
-                    obs_out_text = f"{display_text}\n({translated_text})"
-                else:
-                    obs_out_text = f"{display_text}\n{translated_text}"
-
-            if self.config.obs.update_text_source and self.config.obs.text_source_name:
-                if not getattr(self.config.overlay, "final_only", False) or event.is_final:
-                    await self.obs_client.update_text_source(
-                        self.config.obs.text_source_name,
-                        obs_out_text,
+        # 7 & 8. Concurrent dispatch to Web Overlay and OBS WebSocket
+        async def _dispatch_web():
+            if self.web_server:
+                try:
+                    await self.web_server.broadcast_caption(
+                        self._stamp_payload(
+                            {
+                                "text": display_text,
+                                "translated_text": translated_text,
+                                "dual_color": getattr(self.config.translation, "dual_subtitle_color", "#FFD700"),
+                                "dual_scale": getattr(self.config.translation, "dual_subtitle_scale", 0.85),
+                                "dual_format": getattr(self.config.translation, "dual_subtitle_format", "clean"),
+                                "is_final": event.is_final,
+                                "is_censored": was_censored,
+                                "timestamp": event.timestamp,
+                            },
+                            utterance_id,
+                        )
                     )
+                except Exception as e:
+                    logger.error(f"Error broadcasting caption to web overlay: {e}", exc_info=True)
 
-            # Send Twitch/YouTube Closed Captions (only on finalized sentences)
-            if self.config.obs.send_cea608_captions and event.is_final and clean_text and hasattr(self.obs_client, "send_stream_caption"):
-                await self.obs_client.send_stream_caption(clean_text)
+        async def _dispatch_obs():
+            if self.obs_client and self.obs_client.is_connected:
+                try:
+                    obs_out_text = display_text
+                    if translated_text and self.config.translation.display_mode == "dual":
+                        dual_fmt = getattr(self.config.translation, "dual_subtitle_format", "clean")
+                        if dual_fmt == "parentheses":
+                            obs_out_text = f"{display_text}\n({translated_text})"
+                        else:
+                            obs_out_text = f"{display_text}\n{translated_text}"
+
+                    if self.config.obs.update_text_source and self.config.obs.text_source_name:
+                        if not getattr(self.config.overlay, "final_only", False) or event.is_final:
+                            await self.obs_client.update_text_source(
+                                self.config.obs.text_source_name,
+                                obs_out_text,
+                            )
+
+                    # Send Twitch/YouTube Closed Captions (only on finalized sentences)
+                    if self.config.obs.send_cea608_captions and event.is_final and clean_text and hasattr(self.obs_client, "send_stream_caption"):
+                        await self.obs_client.send_stream_caption(clean_text)
+                except Exception as e:
+                    logger.error(f"Error dispatching caption to OBS WebSocket: {e}", exc_info=True)
+
+        dispatch_coros = []
+        if self.web_server:
+            dispatch_coros.append(_dispatch_web())
+        if self.obs_client and self.obs_client.is_connected:
+            dispatch_coros.append(_dispatch_obs())
+
+        if dispatch_coros:
+            await asyncio.gather(*dispatch_coros, return_exceptions=True)
 
         # Reset auto-clear timer
         if self.config.overlay.auto_hide_seconds > 0:

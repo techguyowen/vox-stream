@@ -1876,23 +1876,33 @@ class WebOverlayServer:
         stale = []
         non_english_finals = []
 
+        send_tasks = []
+        target_sockets = []
+
         for ws, lang in list(self.caption_sockets.items()):
-            try:
-                if lang in ("en", "original", "none", "") or not raw_text:
-                    if "en" not in lang_payloads:
-                        lang_payloads["en"] = json.dumps(payload)
-                    await ws.send_str(lang_payloads["en"])
-                elif not is_final:
-                    # Deliver interim text instantly with zero blocking network delay
-                    if lang not in lang_payloads:
-                        custom_payload = {**payload, "text": raw_text, "original_text": raw_text}
-                        lang_payloads[lang] = json.dumps(custom_payload)
-                    await ws.send_str(lang_payloads[lang])
-                else:
-                    # Finalized text for non-English subscriber: collect for non-blocking async translation
-                    non_english_finals.append((ws, lang))
-            except Exception:
-                stale.append(ws)
+            if lang in ("en", "original", "none", "") or not raw_text:
+                if "en" not in lang_payloads:
+                    lang_payloads["en"] = json.dumps(payload)
+                msg_str = lang_payloads["en"]
+            elif not is_final:
+                # Deliver interim text instantly with zero blocking network delay
+                if lang not in lang_payloads:
+                    custom_payload = {**payload, "text": raw_text, "original_text": raw_text}
+                    lang_payloads[lang] = json.dumps(custom_payload)
+                msg_str = lang_payloads[lang]
+            else:
+                # Finalized text for non-English subscriber: collect for non-blocking async translation
+                non_english_finals.append((ws, lang))
+                continue
+
+            target_sockets.append(ws)
+            send_tasks.append(ws.send_str(msg_str))
+
+        if send_tasks:
+            results = await asyncio.gather(*send_tasks, return_exceptions=True)
+            for ws, res in zip(target_sockets, results):
+                if isinstance(res, (Exception, BaseException)):
+                    stale.append(ws)
 
         for ws in stale:
             self.caption_sockets.pop(ws, None)

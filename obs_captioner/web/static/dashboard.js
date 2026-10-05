@@ -4850,7 +4850,7 @@ function connectCaptionWs() {
                 captionLastFinalUtterance = Math.max(captionLastFinalUtterance, data.utterance_id);
             }
             if (data.is_final) {
-                if (!data.text || !(data.text || "").trim()) {
+                if (!data.text?.trim()) {
                     previewInterim.textContent = "";
                     return;
                 }
