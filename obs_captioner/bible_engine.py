@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 import sqlite3
+import threading
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -12,6 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 logger = logging.getLogger("obs_captioner.bible_engine")
 
 DB_PATH = Path(__file__).parent / "data" / "bible.db"
+
 
 VERSION_METADATA: Dict[str, Dict[str, str]] = {
     "bsb": {
@@ -105,6 +107,48 @@ BOOK_ALIASES: Dict[str, str] = {
     "revelation": "Revelation", "revelations": "Revelation", "rev": "Revelation", "rv": "Revelation",
 }
 
+# Pre-compiled module-level regexes for citation extraction and cleanup
+_CITATION_PATTERN = re.compile(
+    r"\b((?:(?:1st|2nd|3rd|first|second|third|[1-3])\s+)?[A-Za-z]+(?:\s+of\s+[A-Za-z]+)?)\s+(\d+)[:\.](\d+)(?:[-–—](\d+))?\b",
+    re.IGNORECASE,
+)
+_PSALM_PATTERN = re.compile(r"\b(psalms?)\s+(\d+)\b", re.IGNORECASE)
+_BOOK_CHAP_PATTERN = re.compile(
+    rf"\b({'|'.join(re.escape(b) for b in BOOK_ALIASES.keys())})\s+(?:chapter\s+)?(\d+)\b",
+    re.IGNORECASE,
+)
+_CHAP_V_PATTERN = re.compile(
+    r"\bchapter\s+(\d+|[a-z]+)\s+verses?\s+(\d+|[a-z]+)(?:\s+(?:to|through|thru|until|-)\s+(\d+|[a-z]+))?\b",
+    re.IGNORECASE,
+)
+_V_PATTERN = re.compile(
+    r"\bverses?\s+(\d+|[a-z]+)(?:\s+(?:to|through|thru|until|-)\s+(\d+|[a-z]+))?\b",
+    re.IGNORECASE,
+)
+_STRONGS_PATTERN = re.compile(r"<S>\d+</S>")
+_MARKUP_PATTERN = re.compile(r"<[^>]+>")
+_WHITESPACE_PATTERN = re.compile(r"\s+")
+
+_cached_lexicon_formatter = None
+
+
+def _get_lexicon_formatter():
+    """Module-level cached ChurchLexiconFormatter instance to prevent per-line re-instantiation."""
+    global _cached_lexicon_formatter
+    if _cached_lexicon_formatter is None:
+        try:
+            from .church_lexicon import ChurchLexiconFormatter
+            _cached_lexicon_formatter = ChurchLexiconFormatter()
+        except Exception:
+            pass
+    return _cached_lexicon_formatter
+
+
+# Eagerly initialize once at module import
+_get_lexicon_formatter()
+
+
+
 
 @dataclass
 class ScriptureLookupResult:
@@ -142,6 +186,46 @@ class BibleEngine:
         self.primary_chapter: Optional[int] = None
         self.recent_book: Optional[str] = None
         self.recent_chapter: Optional[int] = None
+        self._conn: Optional[sqlite3.Connection] = None
+        self._db_lock = threading.Lock()
+
+    def _get_connection(self) -> Optional[sqlite3.Connection]:
+        """Get or lazily open the persistent read-only SQLite connection (caller must hold _db_lock)."""
+        if self._conn is not None:
+            return self._conn
+        if not self.db_path.exists():
+            logger.warning(f"Bible database not found at {self.db_path}")
+            return None
+        try:
+            self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
+            return self._conn
+        except Exception as e:
+            logger.error(f"Error connecting to bible.db: {e}", exc_info=True)
+            return None
+
+    def close(self):
+        """Cleanly close persistent SQLite database connection if opened."""
+        with self._db_lock:
+            if self._conn is not None:
+                try:
+                    self._conn.close()
+                except Exception:
+                    pass
+                finally:
+                    self._conn = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def __del__(self):
+        try:
+            self.close()
+        except Exception:
+            pass
+
 
     def set_context(self, book: str, chapter: int, is_primary: bool = False):
         canonical = self.normalize_book_name(book)
@@ -202,69 +286,66 @@ class BibleEngine:
             logger.warning(f"Bible database not found at {self.db_path}")
             return None
 
-        conn = None
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cur = conn.cursor()
+        with self._db_lock:
+            conn = self._get_connection()
+            if not conn:
+                return None
+            try:
+                cur = conn.cursor()
 
-            if verse_end and verse_end > verse_start:
-                # Multi-verse range (e.g. John 3:16-18)
-                cur.execute(
-                    """
-                    SELECT verse, text FROM verses
-                    WHERE translation = ? AND (book_name = ? OR book_name = ?) AND chapter = ? AND verse >= ? AND verse <= ?
-                    ORDER BY verse ASC
-                    """,
-                    (ver_code, canonical_book, canonical_book.replace("Psalms", "Psalm"), chapter, verse_start, verse_end),
+                if verse_end and verse_end > verse_start:
+                    # Multi-verse range (e.g. John 3:16-18)
+                    cur.execute(
+                        """
+                        SELECT verse, text FROM verses
+                        WHERE translation = ? AND (book_name = ? OR book_name = ?) AND chapter = ? AND verse >= ? AND verse <= ?
+                        ORDER BY verse ASC
+                        """,
+                        (ver_code, canonical_book, canonical_book.replace("Psalms", "Psalm"), chapter, verse_start, verse_end),
+                    )
+                    rows = cur.fetchall()
+                    if not rows:
+                        return None
+
+                    combined_text = " ".join([r[1].strip() for r in rows])
+                    citation = f"{canonical_book} {chapter}:{verse_start}-{verse_end}"
+                else:
+                    # Single verse (e.g. John 3:16)
+                    cur.execute(
+                        """
+                        SELECT text FROM verses
+                        WHERE translation = ? AND (book_name = ? OR book_name = ?) AND chapter = ? AND verse = ?
+                        LIMIT 1
+                        """,
+                        (ver_code, canonical_book, canonical_book.replace("Psalms", "Psalm"), chapter, verse_start),
+                    )
+                    row = cur.fetchone()
+                    if not row:
+                        return None
+
+                    combined_text = row[0].strip()
+                    citation = f"{canonical_book} {chapter}:{verse_start}"
+
+                # Clean Strong's numbers (e.g. <S>1063</S>) and markup annotations
+                combined_text = _STRONGS_PATTERN.sub("", combined_text)
+                combined_text = _MARKUP_PATTERN.sub("", combined_text)
+                combined_text = _WHITESPACE_PATTERN.sub(" ", combined_text).strip()
+
+                ver_meta = VERSION_METADATA.get(ver_code, VERSION_METADATA["bsb"])
+                return ScriptureLookupResult(
+                    citation=citation,
+                    book=canonical_book,
+                    chapter=chapter,
+                    verse_start=verse_start,
+                    verse_end=verse_end if (verse_end and verse_end > verse_start) else None,
+                    text=combined_text,
+                    version=ver_meta["code"].upper(),
+                    version_name=ver_meta["name"],
                 )
-                rows = cur.fetchall()
-                if not rows:
-                    return None
+            except Exception as e:
+                logger.error(f"Error querying bible.db: {e}", exc_info=True)
+                return None
 
-                combined_text = " ".join([r[1].strip() for r in rows])
-                citation = f"{canonical_book} {chapter}:{verse_start}-{verse_end}"
-            else:
-                # Single verse (e.g. John 3:16)
-                cur.execute(
-                    """
-                    SELECT text FROM verses
-                    WHERE translation = ? AND (book_name = ? OR book_name = ?) AND chapter = ? AND verse = ?
-                    LIMIT 1
-                    """,
-                    (ver_code, canonical_book, canonical_book.replace("Psalms", "Psalm"), chapter, verse_start),
-                )
-                row = cur.fetchone()
-                if not row:
-                    return None
-
-                combined_text = row[0].strip()
-                citation = f"{canonical_book} {chapter}:{verse_start}"
-
-            # Clean Strong's numbers (e.g. <S>1063</S>) and markup annotations
-            combined_text = re.sub(r"<S>\d+</S>", "", combined_text)
-            combined_text = re.sub(r"<[^>]+>", "", combined_text)
-            combined_text = re.sub(r"\s+", " ", combined_text).strip()
-
-            ver_meta = VERSION_METADATA.get(ver_code, VERSION_METADATA["bsb"])
-            return ScriptureLookupResult(
-                citation=citation,
-                book=canonical_book,
-                chapter=chapter,
-                verse_start=verse_start,
-                verse_end=verse_end if (verse_end and verse_end > verse_start) else None,
-                text=combined_text,
-                version=ver_meta["code"].upper(),
-                version_name=ver_meta["name"],
-            )
-        except Exception as e:
-            logger.error(f"Error querying bible.db: {e}", exc_info=True)
-            return None
-        finally:
-            if conn:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
 
     def parse_and_lookup_first(self, text: str, version: str = "bsb") -> Optional[ScriptureLookupResult]:
         """Scan a transcript string for scripture references and lookup the first match."""
@@ -341,11 +422,7 @@ class BibleEngine:
         norm = text.lower().strip()
 
         # 1. "chapter X verse Y [to Z]"
-        chap_v_pattern = re.compile(
-            r"\bchapter\s+(\d+|[a-z]+)\s+verses?\s+(\d+|[a-z]+)(?:\s+(?:to|through|thru|until|-)\s+(\d+|[a-z]+))?\b",
-            re.IGNORECASE,
-        )
-        m = chap_v_pattern.search(norm)
+        m = _CHAP_V_PATTERN.search(norm)
         if m:
             ch = cls.parse_spoken_num(m.group(1))
             v1 = cls.parse_spoken_num(m.group(2))
@@ -354,11 +431,7 @@ class BibleEngine:
                 return (ch, v1, v2)
 
         # 2. "verse X [to Y]" or "verses X to Y"
-        v_pattern = re.compile(
-            r"\bverses?\s+(\d+|[a-z]+)(?:\s+(?:to|through|thru|until|-)\s+(\d+|[a-z]+))?\b",
-            re.IGNORECASE,
-        )
-        m = v_pattern.search(norm)
+        m = _V_PATTERN.search(norm)
         if m:
             v1 = cls.parse_spoken_num(m.group(1))
             v2 = cls.parse_spoken_num(m.group(2)) if m.group(2) else None
@@ -374,19 +447,17 @@ class BibleEngine:
             return []
 
         # First normalize spoken numbers/formats if needed
-        try:
-            from .church_lexicon import ChurchLexiconFormatter
-            formatted = ChurchLexiconFormatter().format_church_text(text)
-        except Exception:
+        formatter = _get_lexicon_formatter()
+        if formatter is not None:
+            try:
+                formatted = formatter.format_church_text(text)
+            except Exception:
+                formatted = text
+        else:
             formatted = text
 
-        pattern = re.compile(
-            r"\b((?:(?:1st|2nd|3rd|first|second|third|[1-3])\s+)?[A-Za-z]+(?:\s+of\s+[A-Za-z]+)?)\s+(\d+)[:\.](\d+)(?:[-–—](\d+))?\b",
-            re.IGNORECASE,
-        )
-
         results = []
-        for match in pattern.finditer(formatted):
+        for match in _CITATION_PATTERN.finditer(formatted):
             raw_book = match.group(1).strip()
             canonical = cls.normalize_book_name(raw_book)
             if canonical:
@@ -397,7 +468,7 @@ class BibleEngine:
 
         # Check for Psalm chapter references (e.g. "Psalm 23")
         if not results:
-            psalm_match = re.search(r"\b(psalms?)\s+(\d+)\b", formatted, re.IGNORECASE)
+            psalm_match = _PSALM_PATTERN.search(formatted)
             if psalm_match:
                 ch = int(psalm_match.group(2))
                 if 1 <= ch <= 150:
@@ -405,12 +476,7 @@ class BibleEngine:
 
         # Check for Book + Chapter references (e.g. "John 3", "Romans 8")
         if not results:
-            books_regex = "|".join(re.escape(b) for b in BOOK_ALIASES.keys())
-            book_chap_pattern = re.compile(
-                rf"\b({books_regex})\s+(?:chapter\s+)?(\d+)\b",
-                re.IGNORECASE,
-            )
-            match = book_chap_pattern.search(formatted)
+            match = _BOOK_CHAP_PATTERN.search(formatted)
             if match:
                 raw_book = match.group(1).strip()
                 canonical = cls.normalize_book_name(raw_book)
@@ -419,3 +485,4 @@ class BibleEngine:
                     results.append((canonical, ch, 1, None))
 
         return results
+

@@ -1,13 +1,14 @@
 """Transcript history tracker and subtitle exporter (SRT, VTT, TXT)."""
 
+import collections
 import datetime
 import re
 import time
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Deque, List, Optional
 
 
-@dataclass
+@dataclass(slots=True)
 class HistoryEntry:
     id: int
     start_time: float
@@ -24,7 +25,7 @@ class TranscriptHistory:
 
     def __init__(self, max_entries: int = 5000):
         self.max_entries = max_entries
-        self.entries: List[HistoryEntry] = []
+        self.entries: collections.deque[HistoryEntry] = collections.deque(maxlen=self.max_entries)
         self._counter = 1
         self.session_start_time = time.time()
 
@@ -46,9 +47,6 @@ class TranscriptHistory:
         )
         self._counter += 1
         self.entries.append(entry)
-
-        if len(self.entries) > self.max_entries:
-            self.entries.pop(0)
 
     def get_history(self, limit: int = 100, search: str = "") -> List[dict]:
         """Query recent history items with optional search filter."""

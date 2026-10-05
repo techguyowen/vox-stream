@@ -1,11 +1,15 @@
 """Church, Ministry, and Biblical Vocabulary & Scripture Citation Formatter."""
 
 import re
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
+
+
+_PATTERN_CACHE: Dict[str, Tuple[re.Pattern, List[Tuple[re.Pattern, str]]]] = {}
 
 
 class ChurchLexiconFormatter:
     """Comprehensive church vocabulary, sacred names, books of the Bible, and scripture citation restorer."""
+
 
     # Numbers dictionary
     UNITS: Dict[str, int] = {
@@ -479,13 +483,19 @@ class ChurchLexiconFormatter:
     def __init__(self, enabled: bool = True, church_name: str = "Waypoint Church"):
         self.enabled = enabled
         self.church_name = (church_name or "Waypoint Church").strip()
-        self._compiled_church_patterns: List[Tuple[re.Pattern, str]] = []
-        books_sorted = sorted(self.BOOKS_OF_BIBLE.keys(), key=len, reverse=True)
-        self._citation_trigger_pattern = re.compile(
-            rf"\b(?:{'|'.join(re.escape(b) for b in books_sorted)}|chapter|verse|verses|psalm|psalms)\b",
-            re.IGNORECASE,
-        )
-        self._build_patterns()
+        cache_key = self.church_name
+        if cache_key in _PATTERN_CACHE:
+            self._citation_trigger_pattern, self._compiled_church_patterns = _PATTERN_CACHE[cache_key]
+        else:
+            self._compiled_church_patterns: List[Tuple[re.Pattern, str]] = []
+            books_sorted = sorted(self.BOOKS_OF_BIBLE.keys(), key=len, reverse=True)
+            self._citation_trigger_pattern = re.compile(
+                rf"\b(?:{'|'.join(re.escape(b) for b in books_sorted)}|chapter|verse|verses|psalm|psalms)\b",
+                re.IGNORECASE,
+            )
+            self._build_patterns()
+            _PATTERN_CACHE[cache_key] = (self._citation_trigger_pattern, self._compiled_church_patterns)
+
 
     def get_all_church_terms(self) -> Dict[str, str]:
         """Return combined church terms including built-in autocorrects and configured church name variations."""
@@ -569,16 +579,9 @@ class ChurchLexiconFormatter:
         'first corinthians 13 4 through 7' -> '1 Corinthians 13:4-7'
         'Psalm 23' -> 'Psalm 23'
         """
-        books_sorted = sorted(self.BOOKS_OF_BIBLE.keys(), key=len, reverse=True)
-        books_regex = "|".join([re.escape(b) for b in books_sorted])
-        num_phrase = self._number_phrase_regex()
+        digit_pattern, spoken_range_pattern, spoken_single_pattern, psalm_pattern = _get_citation_patterns()
 
         # 1. Format digit citations: Book + digit + digit (e.g. "John 3 16", "Romans 8 28")
-        digit_pattern = re.compile(
-            rf"\b(?P<book>{books_regex})\s+(?P<chap>\d+)(?:[:\s]|,\s*verse\s+)(?P<verse>\d+)(?:\s*(?:through|thru|to|-)\s*(?P<end_verse>\d+))?\b",
-            re.IGNORECASE,
-        )
-
         def replace_digits(m):
             raw_book = m.group("book").lower()
             canon_book = self.BOOKS_OF_BIBLE.get(raw_book, raw_book.capitalize())
@@ -593,11 +596,6 @@ class ChurchLexiconFormatter:
         text = digit_pattern.sub(replace_digits, text)
 
         # 2. Spoken Verse Range: e.g. "romans four one to eight", "first thessalonians five sixteen through eighteen"
-        spoken_range_pattern = re.compile(
-            rf"\b(?P<book>{books_regex})\s+(?:chapter\s+)?(?P<chap>{num_phrase})\s+(?:verse\s+|verses\s+)?(?P<verse>{num_phrase})\s+(?:through|thru|to|-)\s+(?:verse\s+)?(?P<end_verse>{num_phrase})\b",
-            re.IGNORECASE,
-        )
-
         def replace_spoken_range(m):
             raw_book = m.group("book").lower()
             canon_book = self.BOOKS_OF_BIBLE.get(raw_book, raw_book.capitalize())
@@ -611,11 +609,6 @@ class ChurchLexiconFormatter:
         text = spoken_range_pattern.sub(replace_spoken_range, text)
 
         # 3. Spoken Single Citation: e.g. "john three sixteen", "romans eight twenty eight", "genesis one one"
-        spoken_single_pattern = re.compile(
-            rf"\b(?P<book>{books_regex})\s+(?:chapter\s+)?(?P<chap>{num_phrase})\s+(?:verse\s+)?(?P<verse>{num_phrase})\b",
-            re.IGNORECASE,
-        )
-
         def replace_spoken_single(m):
             raw_book = m.group("book").lower()
             canon_book = self.BOOKS_OF_BIBLE.get(raw_book, raw_book.capitalize())
@@ -628,11 +621,6 @@ class ChurchLexiconFormatter:
         text = spoken_single_pattern.sub(replace_spoken_single, text)
 
         # 4. Psalm pattern: "Psalm twenty three" -> "Psalm 23", "psalm one hundred nineteen" -> "Psalm 119"
-        psalm_pattern = re.compile(
-            rf"\b(?P<psalm>psalms?)\s+(?P<num>{num_phrase})\b",
-            re.IGNORECASE,
-        )
-
         def replace_psalm(m):
             num_val = self._words_to_number(m.group("num"))
             if 1 <= num_val <= 150:
@@ -642,3 +630,41 @@ class ChurchLexiconFormatter:
         text = psalm_pattern.sub(replace_psalm, text)
 
         return text
+
+
+_DIGIT_PATTERN: Optional[re.Pattern] = None
+_SPOKEN_RANGE_PATTERN: Optional[re.Pattern] = None
+_SPOKEN_SINGLE_PATTERN: Optional[re.Pattern] = None
+_PSALM_PHRASE_PATTERN: Optional[re.Pattern] = None
+
+
+def _get_citation_patterns() -> Tuple[re.Pattern, re.Pattern, re.Pattern, re.Pattern]:
+    """Module-level cached regex patterns for spoken citation recognition."""
+    global _DIGIT_PATTERN, _SPOKEN_RANGE_PATTERN, _SPOKEN_SINGLE_PATTERN, _PSALM_PHRASE_PATTERN
+    if _DIGIT_PATTERN is None:
+        books_sorted = sorted(ChurchLexiconFormatter.BOOKS_OF_BIBLE.keys(), key=len, reverse=True)
+        books_regex = "|".join([re.escape(b) for b in books_sorted])
+        num_phrase = ChurchLexiconFormatter._number_phrase_regex()
+        _DIGIT_PATTERN = re.compile(
+            rf"\b(?P<book>{books_regex})\s+(?P<chap>\d+)(?:[:\s]|,\s*verse\s+)(?P<verse>\d+)(?:\s*(?:through|thru|to|-)\s*(?P<end_verse>\d+))?\b",
+            re.IGNORECASE,
+        )
+        _SPOKEN_RANGE_PATTERN = re.compile(
+            rf"\b(?P<book>{books_regex})\s+(?:chapter\s+)?(?P<chap>{num_phrase})\s+(?:verse\s+|verses\s+)?(?P<verse>{num_phrase})\s+(?:through|thru|to|-)\s+(?:verse\s+)?(?P<end_verse>{num_phrase})\b",
+            re.IGNORECASE,
+        )
+        _SPOKEN_SINGLE_PATTERN = re.compile(
+            rf"\b(?P<book>{books_regex})\s+(?:chapter\s+)?(?P<chap>{num_phrase})\s+(?:verse\s+)?(?P<verse>{num_phrase})\b",
+            re.IGNORECASE,
+        )
+        _PSALM_PHRASE_PATTERN = re.compile(
+            rf"\b(?P<psalm>psalms?)\s+(?P<num>{num_phrase})\b",
+            re.IGNORECASE,
+        )
+    return _DIGIT_PATTERN, _SPOKEN_RANGE_PATTERN, _SPOKEN_SINGLE_PATTERN, _PSALM_PHRASE_PATTERN
+
+
+# Eagerly initialize once at module load
+_get_citation_patterns()
+
+
