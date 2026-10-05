@@ -20,6 +20,28 @@ except ImportError:
 
 logger = logging.getLogger("obs_captioner.music")
 
+# Module-level Hanning window cache to eliminate repeated allocations per chunk
+_HANNING_WINDOWS: dict[int, np.ndarray] = {}
+_BIN_RANGES: dict[tuple[int, int], tuple[int, int]] = {}
+
+
+def _get_hanning_window(size: int) -> np.ndarray:
+    w = _HANNING_WINDOWS.get(size)
+    if w is None:
+        w = np.hanning(size).astype(np.float32)
+        _HANNING_WINDOWS[size] = w
+    return w
+
+
+def _get_bin_range(sample_rate: int, freq_bins: int) -> tuple[int, int]:
+    r = _BIN_RANGES.get((sample_rate, freq_bins))
+    if r is None:
+        min_bin = max(1, int(100.0 * freq_bins / (sample_rate / 2)))
+        max_bin = min(freq_bins, int(4000.0 * freq_bins / (sample_rate / 2)))
+        r = (min_bin, max_bin)
+        _BIN_RANGES[(sample_rate, freq_bins)] = r
+    return r
+
 # Musical symbols emitted by Whisper, Moonshine, and other ASR models
 MUSIC_SYMBOLS = set("♪♫♩♬♭♯")
 
@@ -245,6 +267,7 @@ class AcousticMusicDetector:
         sample_rate: int = 16000,
         noise_gate_db: float = -45.0,
         strict: bool = False,
+        precomputed_rms_db: Optional[float] = None,
     ) -> bool:
         """Process one 100ms PCM chunk and return True if sustained acoustic music is detected."""
         if np is None or not audio_chunk_bytes:
@@ -255,21 +278,20 @@ class AcousticMusicDetector:
             if even_len == 0:
                 return False
 
-            samples = np.frombuffer(audio_chunk_bytes[:even_len], dtype=np.int16).astype(np.float64)
+            samples = np.frombuffer(audio_chunk_bytes[:even_len], dtype=np.int16).astype(np.float32)
             if len(samples) < 128:
                 return False
 
             # 1. RMS Energy
-            rms = np.sqrt(np.mean(samples ** 2))
-            if rms <= 0:
-                self._history.append((-100.0, 1.0, 0.0))
-                if self._music_hold_counter > 0:
-                    self._music_hold_counter -= 1
-                    return True
-                self.music_detected = False
-                return False
+            if precomputed_rms_db is not None:
+                rms_db = precomputed_rms_db
+            else:
+                mean_sq = float(np.dot(samples, samples) / len(samples))
+                if mean_sq <= 0:
+                    rms_db = -100.0
+                else:
+                    rms_db = 10.0 * math.log10(mean_sq / 1073676289.0)
 
-            rms_db = 20.0 * math.log10(rms / 32767.0)
             if rms_db < noise_gate_db:
                 # Below noise gate -> silence/inactive
                 self._history.append((rms_db, 1.0, 0.0))
@@ -280,19 +302,19 @@ class AcousticMusicDetector:
                 return False
 
             # 2. Zero-Crossing Rate (ZCR)
-            zero_crossings = np.sum(np.abs(np.diff(samples > 0)))
+            zero_crossings = np.count_nonzero((samples[:-1] > 0) != (samples[1:] > 0))
             zcr = float(zero_crossings) / len(samples)
 
             # 3. Spectral Flatness (Wiener entropy)
-            # Apply Hanning window to reduce spectral leakage
-            windowed = samples * np.hanning(len(samples))
-            spectrum = np.abs(np.fft.rfft(windowed)) ** 2
-            spectrum = spectrum + 1e-10  # Prevent log(0)
+            # Apply cached Hanning window to reduce spectral leakage
+            window = _get_hanning_window(len(samples))
+            windowed = samples * window
+            rfft = np.fft.rfft(windowed)
+            # Calculate power spectrum (real^2 + imag^2) directly without intermediate sqrt
+            spectrum = (rfft.real * rfft.real + rfft.imag * rfft.imag) + 1e-10
 
             # Focus on 100 Hz - 4000 Hz where musical harmonics and speech reside
-            freq_bins = len(spectrum)
-            min_bin = max(1, int(100.0 * freq_bins / (sample_rate / 2)))
-            max_bin = min(freq_bins, int(4000.0 * freq_bins / (sample_rate / 2)))
+            min_bin, max_bin = _get_bin_range(sample_rate, len(spectrum))
             sub_spectrum = spectrum[min_bin:max_bin]
 
             geo_mean = float(np.exp(np.mean(np.log(sub_spectrum))))
@@ -310,20 +332,33 @@ class AcousticMusicDetector:
 
             # Filter for active frames (above noise gate)
             active_frames = [f for f in self._history if f[0] >= noise_gate_db]
-            if len(active_frames) < 5:
+            n_active = len(active_frames)
+            if n_active < 5:
                 if self._music_hold_counter > 0:
                     self._music_hold_counter -= 1
                     return True
                 self.music_detected = False
                 return False
 
-            flatness_values = [f[1] for f in active_frames]
-            zcr_values = [f[2] for f in active_frames]
+            # Single-pass fast statistics over active window (5-12 frames)
+            sum_flatness = 0.0
+            sum_sq_flatness = 0.0
+            sum_zcr = 0.0
+            max_zcr = -1.0
 
-            mean_flatness = float(np.mean(flatness_values))
-            std_flatness = float(np.std(flatness_values))
-            mean_zcr = float(np.mean(zcr_values))
-            max_zcr = float(np.max(zcr_values))
+            for f in active_frames:
+                fl = f[1]
+                zc = f[2]
+                sum_flatness += fl
+                sum_sq_flatness += fl * fl
+                sum_zcr += zc
+                if zc > max_zcr:
+                    max_zcr = zc
+
+            mean_flatness = sum_flatness / n_active
+            var_flatness = max(0.0, (sum_sq_flatness / n_active) - (mean_flatness * mean_flatness))
+            std_flatness = math.sqrt(var_flatness)
+            mean_zcr = sum_zcr / n_active
 
             # Acoustic music signature:
             # In strict mode: thresholds are broader to reliably detect full worship bands with drums/percussion

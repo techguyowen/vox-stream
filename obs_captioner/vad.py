@@ -104,7 +104,12 @@ class VoiceActivityDetector:
         self.suppress_music = getattr(audio_config, "suppress_music", self.suppress_music)
         self.suppress_music_strict = getattr(audio_config, "suppress_music_strict", self.suppress_music_strict)
 
-    def is_music(self, audio_chunk_bytes: bytes, strict: Optional[bool] = None) -> bool:
+    def is_music(
+        self,
+        audio_chunk_bytes: bytes,
+        strict: Optional[bool] = None,
+        precomputed_rms_db: Optional[float] = None,
+    ) -> bool:
         """Return True if sustained acoustic music (chords, organ, worship pads) is detected."""
         use_strict = strict if strict is not None else self.suppress_music_strict
         return self.music_detector.process_chunk(
@@ -112,6 +117,7 @@ class VoiceActivityDetector:
             sample_rate=self.sample_rate,
             noise_gate_db=self.noise_gate_db,
             strict=use_strict,
+            precomputed_rms_db=precomputed_rms_db,
         )
 
     def calculate_rms_db(self, audio_chunk_bytes: bytes) -> float:
@@ -123,7 +129,11 @@ class VoiceActivityDetector:
             audio_array = np.frombuffer(audio_chunk_bytes, dtype=np.int16)
             if len(audio_array) == 0:
                 return -100.0
-            rms = np.sqrt(np.mean(audio_array.astype(np.float64) ** 2))
+            samples_f = audio_array.astype(np.float32)
+            mean_sq = float(np.dot(samples_f, samples_f) / len(samples_f))
+            if mean_sq <= 0:
+                return -100.0
+            return 10.0 * math.log10(mean_sq / 1073676289.0)
         except Exception:
             import struct
             count = len(audio_chunk_bytes) // 2
@@ -131,14 +141,10 @@ class VoiceActivityDetector:
                 return -100.0
             shorts = struct.unpack(f"<{count}h", audio_chunk_bytes[: count * 2])
             sum_sq = sum(s * s for s in shorts)
-            rms = math.sqrt(sum_sq / count)
-
-        if rms <= 0:
-            return -100.0
-        
-        # Max amplitude for 16-bit is 32767
-        db = 20 * math.log10(rms / 32767.0)
-        return db
+            mean_sq = sum_sq / count
+            if mean_sq <= 0:
+                return -100.0
+            return 10.0 * math.log10(mean_sq / 1073676289.0)
 
     def is_speech(self, audio_chunk_bytes: bytes) -> bool:
         """Return True if speech is detected in the audio chunk."""
@@ -151,7 +157,7 @@ class VoiceActivityDetector:
         # 2. Acoustic music detection if suppress_music is enabled
         is_music_active = False
         if self.suppress_music:
-            is_music_active = self.is_music(audio_chunk_bytes)
+            is_music_active = self.is_music(audio_chunk_bytes, precomputed_rms_db=db)
 
         # 3. Silero VAD check if available
         if self.silero_model is not None:
