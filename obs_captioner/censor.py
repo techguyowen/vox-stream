@@ -2,7 +2,8 @@
 
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
+
 
 
 # Tier 1: Standard Profanities, vulgarities, and common expletives
@@ -117,8 +118,10 @@ class ContentFilter:
         self.config = config
         self.church_mode = church_mode
         self._blacklist_patterns: List[Tuple[re.Pattern, str]] = []
+        self._combined_blacklist_pattern: Optional[re.Pattern] = None
         self._whitelist_set: Set[str] = set()
         self._whitelist_patterns: List[re.Pattern] = []
+        self._combined_whitelist_pattern: Optional[re.Pattern] = None
         self._replacements: Dict[str, str] = {}
         self.rebuild_dictionary()
 
@@ -131,10 +134,18 @@ class ContentFilter:
                     self._whitelist_set.add(w.lower().strip())
 
         # Compile whitelist phrases so protected spans can be located in context
+        sorted_whitelist = sorted(self._whitelist_set, key=len, reverse=True)
         self._whitelist_patterns = [
             re.compile(rf"\b{re.escape(w)}\b", re.IGNORECASE)
-            for w in sorted(self._whitelist_set, key=len, reverse=True)
+            for w in sorted_whitelist
         ]
+        if sorted_whitelist:
+            self._combined_whitelist_pattern = re.compile(
+                rf"\b({'|'.join(re.escape(w) for w in sorted_whitelist)})\b",
+                re.IGNORECASE,
+            )
+        else:
+            self._combined_whitelist_pattern = None
 
         # Build active replacement map
         self._replacements = dict(DEFAULT_WHOLESOME_REPLACEMENTS)
@@ -178,6 +189,14 @@ class ContentFilter:
             pattern = re.compile(rf"\b{escaped}\b", re.IGNORECASE)
             self._blacklist_patterns.append((pattern, term))
 
+        if sorted_terms:
+            self._combined_blacklist_pattern = re.compile(
+                rf"\b({'|'.join(re.escape(t) for t in sorted_terms)})\b",
+                re.IGNORECASE,
+            )
+        else:
+            self._combined_blacklist_pattern = None
+
     def _mask_word(self, word: str) -> str:
         """Mask a single word into asterisks keeping first letter (e.g. f***)."""
         if len(word) <= 2:
@@ -191,11 +210,9 @@ class ContentFilter:
         "gates of hell") is left untouched — this is what makes the
         whitelist context-aware rather than a plain word comparison.
         """
-        spans = []
-        for pattern in self._whitelist_patterns:
-            for m in pattern.finditer(text):
-                spans.append(m.span())
-        return spans
+        if not self._combined_whitelist_pattern:
+            return []
+        return [m.span() for m in self._combined_whitelist_pattern.finditer(text)]
 
     def filter_text(self, text: str) -> Tuple[str, bool]:
         """
@@ -205,8 +222,15 @@ class ContentFilter:
         if not self.config.enabled or not text:
             return text, False
 
+        # Fast-path check: If no blacklist pattern matches the text, return immediately.
+        # Clean transcript lines (the vast majority of live sermon audio) return
+        # without running whitelist searches or the blacklist loop.
+        if not self._combined_blacklist_pattern or not self._combined_blacklist_pattern.search(text):
+            return text, False
+
         mode = self.config.mode
         protected = self._protected_spans(text)
+
 
         # Collect all blacklist matches against the ORIGINAL text so whitelist
         # spans stay valid. Patterns are sorted longest-term-first, so longer

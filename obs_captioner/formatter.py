@@ -1,10 +1,148 @@
 import re
-from typing import Dict, Set
+from typing import Dict, Set, Tuple
 from .church_lexicon import ChurchLexiconFormatter
+
+
+# Precompiled hallucination and prompt-leak detection patterns
+_LEAK_BULLET_PREFIX_PATTERN = re.compile(r"^[\u25a0-\u25ff\ufffd\u2022\[\]\s]*['\"]")
+_LEAK_REPR_LIST_PATTERN = re.compile(r"['\"][^'\"]{1,50}['\"]\s*,\s*['\"][^'\"]{1,50}['\"]")
+_LEAK_TOKEN_REPETITION_PATTERN = re.compile(r"\b(\w+)\b(?:\s*[, '\"]+\s*\1\b){3,}", re.IGNORECASE)
+
+# Precompiled ASR disfluency and phonetic spelling artifact replacements
+_DISFLUENCY_REPLACEMENTS: Tuple[Tuple[re.Pattern, str], ...] = (
+    (re.compile(r"\bI't\b"), "I don't"),
+    (re.compile(r"\bby by\b", re.IGNORECASE), "bye-bye"),
+    (re.compile(r"\bby-by\b", re.IGNORECASE), "bye-bye"),
+    (re.compile(r"\bspll\b", re.IGNORECASE), "spell"),
+    (re.compile(r"\bslipp\b", re.IGNORECASE), "slip"),
+    (re.compile(r"\bgonners\b", re.IGNORECASE), "goners"),
+    (re.compile(r"\bcovenn\b", re.IGNORECASE), "coven"),
+    (re.compile(r"\bdopple gangers\b", re.IGNORECASE), "doppelgängers"),
+    (re.compile(r"\bdoppel ganger\b", re.IGNORECASE), "doppelgänger"),
+    (re.compile(r"\bdopple ganger\b", re.IGNORECASE), "doppelgänger"),
+)
+
+# Precompiled deduplication patterns
+_SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[.!?])\s+")
+_PUNCT_STRIP_PATTERN = re.compile(r"[^\w\s]")
+_STUTTER_PATTERN = re.compile(r"\b(\w+(?:[^\w\n]+(?:\w+)){1,5})\s*[,;]?\s+\1\b", re.IGNORECASE)
+
+# Precompiled camelCase missing spaces pattern
+_CAMELCASE_PATTERN = re.compile(r"\b([a-z]+)([A-Z][a-z]+)\b")
+
+# Precompiled punctuation spacing normalization patterns
+_KNOWN_TLDS_STR = r"(?:com|org|net|edu|gov|io|co|tv|app|dev|church|ai|info|xyz|us|uk|ca)"
+_PUNCT_LEADING_SPACE_PATTERN = re.compile(r"\s+([,.:;?!])")
+_PUNCT_FOLLOWING_LETTER_PATTERN = re.compile(r"([,;?!])([a-zA-Z])")
+_COLON_FOLLOWING_LETTER_PATTERN = re.compile(r"(:)([a-zA-Z])")
+_PERIOD_CAP_PATTERN = re.compile(r"\b([a-zA-Z]+)(\.)([A-Z])")
+_PERIOD_LOWER_PATTERN = re.compile(r"\b([a-zA-Z]+)\.([a-z]+)\b")
+_KNOWN_TLD_PATTERN = re.compile(rf"^{_KNOWN_TLDS_STR}\b", re.IGNORECASE)
+_PUNCT_QUOTE_PAREN_PATTERN = re.compile(r"([.?!,;:][\"'\)\]])([a-zA-Z])")
+_MULTI_SPACE_PATTERN = re.compile(r"[ \t]+")
+
+# Precompiled spoken numbers normalization patterns & tables
+_ORDINAL_SUFFIXES = {1: "st", 2: "nd", 3: "rd"}
+
+
+def _ordinal_suffix(n: int) -> str:
+    if 11 <= (n % 100) <= 13:
+        return "th"
+    return _ORDINAL_SUFFIXES.get(n % 10, "th")
+
+
+_ORDINAL_WORDS = {
+    "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
+    "sixth": 6, "seventh": 7, "eighth": 8, "ninth": 9, "tenth": 10,
+    "eleventh": 11, "twelfth": 12, "thirteenth": 13, "fourteenth": 14,
+    "fifteenth": 15, "sixteenth": 16, "seventeenth": 17, "eighteenth": 18,
+    "nineteenth": 19, "twentieth": 20, "twenty-first": 21, "twenty-second": 22,
+    "twenty-third": 23, "twenty-fourth": 24, "twenty-fifth": 25,
+    "twenty-sixth": 26, "twenty-seventh": 27, "twenty-eighth": 28,
+    "twenty-ninth": 29, "thirtieth": 30, "thirty-first": 31,
+}
+
+_ORDINAL_UNITS = {
+    "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
+    "sixth": 6, "seventh": 7, "eighth": 8, "ninth": 9,
+}
+
+_TENS_PAT = "|".join(ChurchLexiconFormatter.TENS.keys())
+_UNITS_PAT = "|".join(ChurchLexiconFormatter.UNITS.keys())
+_ORD_UNITS_PAT = "|".join(_ORDINAL_UNITS.keys())
+_MINUTE_WORDS = "|".join(list(ChurchLexiconFormatter.TENS.keys()) + list(ChurchLexiconFormatter.UNITS.keys()))
+_HOUR_WORDS = {**ChurchLexiconFormatter.UNITS, **ChurchLexiconFormatter.TENS}
+
+_COMPOUND_ORDINAL_PATTERN = re.compile(
+    rf"\b({_TENS_PAT})[- ]+({_ORD_UNITS_PAT})\b(?!\s*:)",
+    re.IGNORECASE,
+)
+
+_STANDALONE_ORDINAL_PATTERN = re.compile(
+    r"\b(" + "|".join(re.escape(k) for k in sorted(_ORDINAL_WORDS, key=len, reverse=True)) + r")\b",
+    re.IGNORECASE,
+)
+
+_SPOKEN_TIME_PATTERN = re.compile(
+    rf"\b({_TENS_PAT}|{_UNITS_PAT})[- ]+({_MINUTE_WORDS}|o'clock)\b(?=\s+(?:in the|am|pm|a\.m|p\.m))",
+    re.IGNORECASE,
+)
+
+
+def _replace_compound_ordinal(m):
+    tens_word = m.group(1).lower()
+    ord_word = m.group(2).lower()
+    n = ChurchLexiconFormatter.TENS.get(tens_word, 0) + _ORDINAL_UNITS.get(ord_word, 0)
+    if n <= 0:
+        return m.group(0)
+    return f"{n}{_ordinal_suffix(n)}"
+
+
+def _replace_ordinal_word(m):
+    word = m.group(0).lower().replace("-", "")
+    n = _ORDINAL_WORDS.get(word) or _ORDINAL_WORDS.get(m.group(0).lower())
+    if n is None:
+        return m.group(0)
+    return f"{n}{_ordinal_suffix(n)}"
+
+
+def _replace_time(m):
+    hour_word = m.group(1).lower()
+    minute_word = m.group(2).lower() if m.group(2) else None
+    hour = _HOUR_WORDS.get(hour_word, 0)
+    if minute_word and minute_word != "o'clock":
+        minute = _HOUR_WORDS.get(minute_word, 0)
+    else:
+        minute = 0
+    if hour == 0:
+        return m.group(0)
+    return f"{hour}:{minute:02d}"
+
+
+def _replace_period_cap(m):
+    prefix = m.group(1)
+    dot = m.group(2)
+    next_char = m.group(3)
+    if len(prefix) == 1 and prefix.isupper():
+        return m.group(0)
+    return f"{prefix}{dot} {next_char}"
+
+
+def _replace_period_lower(m):
+    prefix = m.group(1)
+    next_word = m.group(2)
+    if _KNOWN_TLD_PATTERN.match(next_word):
+        return m.group(0)
+    if prefix.lower() in ("e", "i") and next_word.lower() in ("g", "e"):
+        return m.group(0)
+    if len(prefix) == 1 and prefix.isupper():
+        return m.group(0)
+    return f"{prefix}. {next_word}"
 
 
 class TextFormatter:
     """Restores capitalization, contractions, proper nouns, acronyms, and sentence-ending punctuation."""
+
 
     # Words to always capitalize (Proper nouns, days, months, acronyms, tech brands)
     PROPER_NOUNS: Dict[str, str] = {
@@ -252,21 +390,20 @@ class TextFormatter:
             return text
 
         # 1. Whole-sentence repetition (e.g. "Sentence A. Sentence A.")
-        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if s.strip()]
+        sentences = [s.strip() for s in _SENTENCE_SPLIT_PATTERN.split(text) if s.strip()]
         if len(sentences) >= 2:
             deduped = [sentences[0]]
             for s in sentences[1:]:
-                clean_curr = re.sub(r"[^\w\s]", "", s).lower().strip()
-                clean_prev = re.sub(r"[^\w\s]", "", deduped[-1]).lower().strip()
+                clean_curr = _PUNCT_STRIP_PATTERN.sub("", s).lower().strip()
+                clean_prev = _PUNCT_STRIP_PATTERN.sub("", deduped[-1]).lower().strip()
                 if clean_curr != clean_prev:
                     deduped.append(s)
             text = " ".join(deduped)
 
         # 2. Phrase-level stutters (2+ words repeated consecutively, e.g. "we want to we want to")
-        pattern = re.compile(r"\b(\w+(?:[^\w\n]+(?:\w+)){1,5})\s*[,;]?\s+\1\b", re.IGNORECASE)
         for _ in range(2):
             prev = text
-            text = pattern.sub(r"\1", text)
+            text = _STUTTER_PATTERN.sub(r"\1", text)
             if text == prev:
                 break
 
@@ -278,19 +415,8 @@ class TextFormatter:
         if not text or len(text) < 3:
             return text
 
-        # Broken contractions and conversational colloquialisms
-        text = re.sub(r"\bI't\b", "I don't", text)
-        text = re.sub(r"\bby by\b", "bye-bye", text, flags=re.IGNORECASE)
-        text = re.sub(r"\bby-by\b", "bye-bye", text, flags=re.IGNORECASE)
-
-        # Common phonetic ASR spelling artifacts and acoustic stutters
-        text = re.sub(r"\bspll\b", "spell", text, flags=re.IGNORECASE)
-        text = re.sub(r"\bslipp\b", "slip", text, flags=re.IGNORECASE)
-        text = re.sub(r"\bgonners\b", "goners", text, flags=re.IGNORECASE)
-        text = re.sub(r"\bcovenn\b", "coven", text, flags=re.IGNORECASE)
-        text = re.sub(r"\bdopple gangers\b", "doppelgängers", text, flags=re.IGNORECASE)
-        text = re.sub(r"\bdoppel ganger\b", "doppelgänger", text, flags=re.IGNORECASE)
-        text = re.sub(r"\bdopple ganger\b", "doppelgänger", text, flags=re.IGNORECASE)
+        for pattern, replacement in _DISFLUENCY_REPLACEMENTS:
+            text = pattern.sub(replacement, text)
 
         return text
 
@@ -350,103 +476,19 @@ class TextFormatter:
           'thirty second Sunday'    → '32nd Sunday'
         Skips tokens already formatted as scripture references (contain ':').
         """
-        from .church_lexicon import ChurchLexiconFormatter
-
-        UNITS = ChurchLexiconFormatter.UNITS
-        TENS = ChurchLexiconFormatter.TENS
-
-        ORDINAL_SUFFIXES = {1: "st", 2: "nd", 3: "rd"}
-
-        def ordinal_suffix(n: int) -> str:
-            if 11 <= (n % 100) <= 13:
-                return "th"
-            return ORDINAL_SUFFIXES.get(n % 10, "th")
-
-        # Pattern: optional tens word + units word + "th/st/nd/rd" → ordinal digit
-        # e.g. "twenty fourth" → "24th", "first" → "1st"
-        ORDINAL_WORDS = {
-            "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
-            "sixth": 6, "seventh": 7, "eighth": 8, "ninth": 9, "tenth": 10,
-            "eleventh": 11, "twelfth": 12, "thirteenth": 13, "fourteenth": 14,
-            "fifteenth": 15, "sixteenth": 16, "seventeenth": 17, "eighteenth": 18,
-            "nineteenth": 19, "twentieth": 20, "twenty-first": 21, "twenty-second": 22,
-            "twenty-third": 23, "twenty-fourth": 24, "twenty-fifth": 25,
-            "twenty-sixth": 26, "twenty-seventh": 27, "twenty-eighth": 28,
-            "twenty-ninth": 29, "thirtieth": 30, "thirty-first": 31,
-        }
-
-        ORDINAL_UNITS = {
-            "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
-            "sixth": 6, "seventh": 7, "eighth": 8, "ninth": 9,
-        }
-
-        # Build compound ordinal pattern: "twenty fourth", "thirty second", etc.
-        tens_pat = "|".join(TENS.keys())
-        units_pat = "|".join(UNITS.keys())
-        ord_units_pat = "|".join(ORDINAL_UNITS.keys())
-
-        def replace_compound_ordinal(m):
-            tens_word = m.group(1).lower()
-            ord_word = m.group(2).lower()
-            n = TENS.get(tens_word, 0) + ORDINAL_UNITS.get(ord_word, 0)
-            if n <= 0:
-                return m.group(0)
-            return f"{n}{ordinal_suffix(n)}"
-
-        text = re.sub(
-            rf"\b({tens_pat})[- ]+({ord_units_pat})\b(?!\s*:)",
-            replace_compound_ordinal,
-            text,
-            flags=re.IGNORECASE,
-        )
-
-        # Replace standalone ordinal words
-        def replace_ordinal_word(m):
-            word = m.group(0).lower().replace("-", "")
-            n = ORDINAL_WORDS.get(word) or ORDINAL_WORDS.get(m.group(0).lower())
-            if n is None:
-                return m.group(0)
-            return f"{n}{ordinal_suffix(n)}"
-
-        ordinal_pattern = re.compile(
-            r"\b(" + "|".join(re.escape(k) for k in sorted(ORDINAL_WORDS, key=len, reverse=True)) + r")\b",
-            re.IGNORECASE,
-        )
-        text = ordinal_pattern.sub(replace_ordinal_word, text)
-
-        # Spoken time: "ten thirty" / "ten o'clock" → "10:30" / "10:00"
-        hour_words = {**UNITS, **TENS}
-
-        def replace_time(m):
-            hour_word = m.group(1).lower()
-            minute_word = m.group(2).lower() if m.group(2) else None
-            hour = hour_words.get(hour_word, 0)
-            if minute_word and minute_word != "o'clock":
-                minute = hour_words.get(minute_word, 0)
-            else:
-                minute = 0
-            if hour == 0:
-                return m.group(0)
-            return f"{hour}:{minute:02d}"
-
-        minute_words = "|".join(list(TENS.keys()) + list(UNITS.keys()))
-        text = re.sub(
-            rf"\b({tens_pat}|{units_pat})[- ]+({minute_words}|o'clock)\b(?=\s+(?:in the|am|pm|a\.m|p\.m))",
-            replace_time,
-            text,
-            flags=re.IGNORECASE,
-        )
-
+        text = _COMPOUND_ORDINAL_PATTERN.sub(_replace_compound_ordinal, text)
+        text = _STANDALONE_ORDINAL_PATTERN.sub(_replace_ordinal_word, text)
+        text = _SPOKEN_TIME_PATTERN.sub(_replace_time, text)
         return text
 
-    KNOWN_TLDS: str = r"(?:com|org|net|edu|gov|io|co|tv|app|dev|church|ai|info|xyz|us|uk|ca)"
+    KNOWN_TLDS: str = _KNOWN_TLDS_STR
 
     @classmethod
     def fix_camelcase_missing_spaces(cls, text: str) -> str:
         """Fix missing spaces between concatenated words (e.g. 'areOther' -> 'are Other')."""
         if not text:
             return ""
-        return re.sub(r"\b([a-z]+)([A-Z][a-z]+)\b", r"\1 \2", text)
+        return _CAMELCASE_PATTERN.sub(r"\1 \2", text)
 
     @classmethod
     def normalize_punctuation_spacing(cls, text: str) -> str:
@@ -463,49 +505,27 @@ class TextFormatter:
             return ""
 
         # 1. Strip accidental whitespace before punctuation (e.g. "word ." -> "word.")
-        text = re.sub(r"\s+([,.:;?!])", r"\1", text)
+        text = _PUNCT_LEADING_SPACE_PATTERN.sub(r"\1", text)
 
         # 2. Add space after commas, semicolons, exclamation marks, and question marks
         # when immediately followed by a letter (e.g. "said,yes" -> "said, yes", "amen!Let" -> "amen! Let")
-        text = re.sub(r"([,;?!])([a-zA-Z])", r"\1 \2", text)
+        text = _PUNCT_FOLLOWING_LETTER_PATTERN.sub(r"\1 \2", text)
 
         # 3. Add space after colons when immediately followed by a letter (protecting 3:16 and https://)
-        text = re.sub(r"(:)([a-zA-Z])", r"\1 \2", text)
+        text = _COLON_FOLLOWING_LETTER_PATTERN.sub(r"\1 \2", text)
 
         # 4. Add space after periods when followed by a letter:
         # Case 4a: Period followed by a capital letter (e.g. "looks like.Guys" -> "looks like. Guys")
-        def replace_period_cap(m):
-            prefix = m.group(1)
-            dot = m.group(2)
-            next_char = m.group(3)
-            # Check if prefix is a single letter initialism like U.S.
-            if len(prefix) == 1 and prefix.isupper():
-                return m.group(0)
-            return f"{prefix}{dot} {next_char}"
-
-        text = re.sub(r"\b([a-zA-Z]+)(\.)([A-Z])", replace_period_cap, text)
+        text = _PERIOD_CAP_PATTERN.sub(_replace_period_cap, text)
 
         # Case 4b: Period followed by a lowercase letter, excluding known web domains and initialisms
-        def replace_period_lower(m):
-            prefix = m.group(1)
-            next_word = m.group(2)
-            # Protect web domains (e.g. "church.org", "google.com")
-            if re.match(rf"^{cls.KNOWN_TLDS}\b", next_word, re.IGNORECASE):
-                return m.group(0)
-            # Protect e.g. or i.e.
-            if prefix.lower() in ("e", "i") and next_word.lower() in ("g", "e"):
-                return m.group(0)
-            if len(prefix) == 1 and prefix.isupper():
-                return m.group(0)
-            return f"{prefix}. {next_word}"
-
-        text = re.sub(r"\b([a-zA-Z]+)\.([a-z]+)\b", replace_period_lower, text)
+        text = _PERIOD_LOWER_PATTERN.sub(_replace_period_lower, text)
 
         # 5. Punctuation followed by closing quote or paren then letter: e.g. 'end."Next' -> 'end." Next'
-        text = re.sub(r"([.?!,;:][\"'\)\]])([a-zA-Z])", r"\1 \2", text)
+        text = _PUNCT_QUOTE_PAREN_PATTERN.sub(r"\1 \2", text)
 
         # 6. Normalize multiple consecutive spaces
-        text = re.sub(r"[ \t]+", " ", text).strip()
+        text = _MULTI_SPACE_PATTERN.sub(" ", text).strip()
 
         return text
 
@@ -592,7 +612,7 @@ def is_hallucinated_or_leaked_text(text: str) -> bool:
         return False
     s = text.strip()
     # 1. Box / checkbox / unprintable bullet prefix with quotes or brackets: e.g. □'...' or \u25a1'...' or [ ] '...'
-    if re.match(r"^[\u25a0-\u25ff\ufffd\u2022\[\]\s]*['\"]", s):
+    if _LEAK_BULLET_PREFIX_PATTERN.match(s):
         return True
     # 2. Raw Python / JSON list syntax: e.g. ["a", "b"] or ['a', 'b'].
     # Plain sound tags ("[Applause]", "[Music]") are legitimate SDH-style
@@ -601,10 +621,10 @@ def is_hallucinated_or_leaked_text(text: str) -> bool:
     if s.startswith("[") and "]" in s and ("," in s or "'" in s or '"' in s):
         return True
     # 3. Comma-separated quoted strings (repr list leakage): e.g. '1 Corinthians', 'Gospel'
-    if re.search(r"['\"][^'\"]{1,50}['\"]\s*,\s*['\"][^'\"]{1,50}['\"]", s):
+    if _LEAK_REPR_LIST_PATTERN.search(s):
         return True
     # 4. Token repetition loop (degenerative decoding artifact: e.g. 'G', 'G', 'G' or G, G, G, G)
-    if re.search(r"\b(\w+)\b(?:\s*[, '\"]+\s*\1\b){3,}", s, re.IGNORECASE):
+    if _LEAK_TOKEN_REPETITION_PATTERN.search(s):
         return True
     return False
 
