@@ -3678,12 +3678,16 @@
                     const val = geminiKeyInput.value.trim();
                     if (!val || val === '••••••••' || val.includes('•••')) {
                         geminiKeyStatus.style.display = 'none';
-                    } else if (val.startsWith('AIzaSy') && val.length >= 35) {
+                    } else if ((val.startsWith('AIzaSy') || val.startsWith('AQ.')) && val.length >= 25) {
                         geminiKeyStatus.textContent = '✓ Valid Key Format';
                         geminiKeyStatus.style.color = '#22c55e';
                         geminiKeyStatus.style.display = 'inline';
-                    } else if (val.length > 5) {
-                        geminiKeyStatus.textContent = '⚠️ Key should start with AIzaSy...';
+                    } else if (val.length >= 20) {
+                        geminiKeyStatus.textContent = '✓ Key Entered';
+                        geminiKeyStatus.style.color = '#22c55e';
+                        geminiKeyStatus.style.display = 'inline';
+                    } else if (val.length > 3) {
+                        geminiKeyStatus.textContent = '⚠️ Key too short';
                         geminiKeyStatus.style.color = '#ef4444';
                         geminiKeyStatus.style.display = 'inline';
                     } else {
