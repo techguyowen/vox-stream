@@ -1289,6 +1289,18 @@ class TestChurchCensorship(unittest.TestCase):
         self.assertTrue(censored3)
         self.assertNotIn("hell", text3)
 
+    def test_overlapping_whitelist_phrases_all_protected(self):
+        cf = ContentFilter(CensorConfig(enabled=True, mode="asterisk"), church_mode=False)
+        cf.config.custom_whitelist = ["alpha beta", "beta hell"]
+        cf.rebuild_dictionary()
+        spans = cf._protected_spans("say alpha beta hell now")
+        covered = {text for text in ("alpha beta", "beta hell")
+                   if any("say alpha beta hell now"[s:e].lower() == text for s, e in spans)}
+        self.assertEqual(covered, {"alpha beta", "beta hell"})
+        text, censored = cf.filter_text("say alpha beta hell now")
+        self.assertEqual(text, "say alpha beta hell now")
+        self.assertFalse(censored)
+
     def test_church_mode_exempts_theological_terms(self):
         cf = ContentFilter(CensorConfig(enabled=True, mode="asterisk"), church_mode=True)
         for phrase in ("hell is real", "you shall not be damned", "jesus descended into hell"):

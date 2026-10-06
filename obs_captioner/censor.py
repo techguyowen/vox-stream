@@ -141,7 +141,7 @@ class ContentFilter:
         ]
         if sorted_whitelist:
             self._combined_whitelist_pattern = re.compile(
-                rf"\b({'|'.join(re.escape(w) for w in sorted_whitelist)})\b",
+                rf"(?=\b({'|'.join(re.escape(w) for w in sorted_whitelist)})\b)",
                 re.IGNORECASE,
             )
         else:
@@ -212,7 +212,7 @@ class ContentFilter:
         """
         if not self._combined_whitelist_pattern:
             return []
-        return [m.span() for m in self._combined_whitelist_pattern.finditer(text)]
+        return [m.span(1) for m in self._combined_whitelist_pattern.finditer(text)]
 
     def filter_text(self, text: str) -> Tuple[str, bool]:
         """
