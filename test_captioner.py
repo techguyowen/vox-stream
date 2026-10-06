@@ -6310,8 +6310,348 @@ class TestCumulativeInterimNoDuplication(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(sink.history.entries), 2)
 
 
+class TestGeminiLiveProactiveRotationAndInterimPreservation(unittest.IsolatedAsyncioTestCase):
+    """Unit tests for Gemini Live proactive session rotation, zero-delay reconnect, and interim preservation."""
+
+    async def test_proactive_session_rotation_sends_audio_stream_end(self):
+        import aiohttp
+        from unittest.mock import patch
+        from obs_captioner.config import AppConfig
+        from obs_captioner.engines import gemini_live as gl
+
+        cfg = AppConfig()
+        cfg.gemini_live.api_key = "test-key"
+        cfg.gemini_live.enable_hybrid_vad = True
+        cfg.audio.suppress_music = False
+        engine = gl.GeminiLiveEngine(cfg)
+        engine.vad.is_music = lambda *a, **k: False
+        engine.vad.is_speech = lambda *a, **k: False
+
+        connections = []
+
+        class FakeMsg:
+            def __init__(self, type_, data=None):
+                self.type = type_
+                self.data = data
+                self.extra = ""
+
+        class FakeWs:
+            def __init__(self, idx):
+                self.idx = idx
+                self.closed = False
+                self.close_code = None
+                self.sent = []
+                self._incoming = asyncio.Queue()
+
+            async def send_str(self, s):
+                if self.closed:
+                    raise ConnectionResetError("closed")
+                payload = json.loads(s)
+                self.sent.append(payload)
+                if payload.get("realtimeInput", {}).get("audioStreamEnd"):
+                    self._incoming.put_nowait(
+                        FakeMsg(aiohttp.WSMsgType.TEXT, json.dumps({
+                            "serverContent": {"inputTranscription": {"text": "Clean rotation finalized."}}
+                        }))
+                    )
+
+            async def receive(self, timeout=None):
+                return FakeMsg(aiohttp.WSMsgType.TEXT, json.dumps({"setupComplete": {}}))
+
+            def __aiter__(self):
+                return self._iter()
+
+            async def _iter(self):
+                while not self.closed:
+                    try:
+                        msg = await asyncio.wait_for(self._incoming.get(), timeout=0.05)
+                        yield msg
+                    except (asyncio.TimeoutError, asyncio.CancelledError):
+                        pass
+                yield FakeMsg(aiohttp.WSMsgType.CLOSED)
+
+            async def close(self, code=1000):
+                self.closed = True
+                self.close_code = code
+
+        class FakeCtx:
+            def __init__(self, ws):
+                self.ws = ws
+            async def __aenter__(self):
+                return self.ws
+            async def __aexit__(self, *a):
+                return False
+
+        class FakeSession:
+            def __init__(self, *a, **k):
+                pass
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *a):
+                return False
+            def ws_connect(self, *a, **k):
+                ws = FakeWs(len(connections))
+                connections.append(ws)
+                return FakeCtx(ws)
+
+        async def audio():
+            while engine.is_running:
+                yield b"\x00\x00" * 160
+                await asyncio.sleep(0.02)
+
+        with patch.object(gl.aiohttp, "ClientSession", FakeSession), \
+             patch.object(gl, "SESSION_ROTATION_THRESHOLD_SEC", 0.15), \
+             patch.object(gl, "SESSION_HARD_ROTATION_SEC", 0.30):
+            task = asyncio.ensure_future(engine.start_streaming(audio(), lambda ev: None))
+            await asyncio.sleep(0.6)
+            engine.is_running = False
+            if connections:
+                for c in connections:
+                    c.closed = True
+            await asyncio.wait_for(task, timeout=5)
+
+        self.assertGreaterEqual(len(connections), 2, "Proactive session rotation must open a second session")
+        first_ws = connections[0]
+        has_stream_end = any(
+            m.get("realtimeInput", {}).get("audioStreamEnd") is True
+            for m in first_ws.sent
+        )
+        self.assertTrue(has_stream_end, "audioStreamEnd must be sent prior to session rotation")
+
+    async def test_zero_delay_reconnect_on_clean_rotation_or_normal_close(self):
+        import aiohttp
+        from unittest.mock import patch
+        from obs_captioner.config import AppConfig
+        from obs_captioner.engines import gemini_live as gl
+
+        cfg = AppConfig()
+        cfg.gemini_live.api_key = "test-key"
+        engine = gl.GeminiLiveEngine(cfg)
+
+        connections = []
+        sleep_durations = []
+
+        class FakeMsg:
+            def __init__(self, type_, data=None):
+                self.type = type_
+                self.data = data
+                self.extra = ""
+
+        class FakeWs:
+            def __init__(self, idx):
+                self.idx = idx
+                self.closed = False
+                self.close_code = 1000
+
+            async def send_str(self, s):
+                pass
+
+            async def receive(self, timeout=None):
+                return FakeMsg(aiohttp.WSMsgType.TEXT, json.dumps({"setupComplete": {}}))
+
+            def __aiter__(self):
+                return self._iter()
+
+            async def _iter(self):
+                if self.idx == 0:
+                    await asyncio.sleep(0.05)
+                    self.closed = True
+                    self.close_code = 1000
+                    yield FakeMsg(aiohttp.WSMsgType.CLOSED, data=1000)
+                else:
+                    while not self.closed:
+                        await asyncio.sleep(0.05)
+                    yield FakeMsg(aiohttp.WSMsgType.CLOSED)
+
+            async def close(self, code=1000):
+                self.closed = True
+                self.close_code = code
+
+        class FakeCtx:
+            def __init__(self, ws):
+                self.ws = ws
+            async def __aenter__(self):
+                return self.ws
+            async def __aexit__(self, *a):
+                return False
+
+        class FakeSession:
+            def __init__(self, *a, **k):
+                pass
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *a):
+                return False
+            def ws_connect(self, *a, **k):
+                ws = FakeWs(len(connections))
+                connections.append(ws)
+                return FakeCtx(ws)
+
+        async def audio():
+            while engine.is_running:
+                yield b"\x00\x00" * 160
+                await asyncio.sleep(0.02)
+
+        orig_sleep = asyncio.sleep
+
+        async def tracking_sleep(d, *args, **kwargs):
+            sleep_durations.append(d)
+            return await orig_sleep(min(d, 0.05), *args, **kwargs)
+
+        with patch.object(gl.aiohttp, "ClientSession", FakeSession), \
+             patch("asyncio.sleep", side_effect=tracking_sleep):
+            task = asyncio.ensure_future(engine.start_streaming(audio(), lambda ev: None))
+            await orig_sleep(0.3)
+            engine.is_running = False
+            if connections:
+                for c in connections:
+                    c.closed = True
+            await asyncio.wait_for(task, timeout=5)
+
+        self.assertGreaterEqual(len(connections), 2)
+        self.assertNotIn(2.0, sleep_durations, "Clean close must reconnect immediately without 2.0s delay")
+
+    async def test_inflight_interim_finalized_on_unexpected_socket_closure(self):
+        import aiohttp
+        from unittest.mock import patch
+        from obs_captioner.config import AppConfig
+        from obs_captioner.engines import gemini_live as gl
+
+        cfg = AppConfig()
+        cfg.gemini_live.api_key = "test-key"
+        engine = gl.GeminiLiveEngine(cfg)
+
+        connections = []
+
+        class FakeMsg:
+            def __init__(self, type_, data=None):
+                self.type = type_
+                self.data = data
+                self.extra = ""
+
+        class FakeWs:
+            def __init__(self, idx):
+                self.idx = idx
+                self.closed = False
+                self.close_code = 1006
+
+            async def send_str(self, s):
+                pass
+
+            async def receive(self, timeout=None):
+                return FakeMsg(aiohttp.WSMsgType.TEXT, json.dumps({"setupComplete": {}}))
+
+            def __aiter__(self):
+                return self._iter()
+
+            async def _iter(self):
+                if self.idx == 0:
+                    interim_payload = json.dumps({
+                        "serverContent": {
+                            "interimInputTranscription": {
+                                "text": "The Lord is my shepherd I shall not want"
+                            }
+                        }
+                    })
+                    yield FakeMsg(aiohttp.WSMsgType.TEXT, interim_payload)
+                    await asyncio.sleep(0.05)
+                    self.closed = True
+                    yield FakeMsg(aiohttp.WSMsgType.CLOSED, data=1006)
+                else:
+                    while not self.closed:
+                        await asyncio.sleep(0.05)
+                    yield FakeMsg(aiohttp.WSMsgType.CLOSED)
+
+            async def close(self, code=1006):
+                self.closed = True
+                self.close_code = code
+
+        class FakeCtx:
+            def __init__(self, ws):
+                self.ws = ws
+            async def __aenter__(self):
+                return self.ws
+            async def __aexit__(self, *a):
+                return False
+
+        class FakeSession:
+            def __init__(self, *a, **k):
+                pass
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *a):
+                return False
+            def ws_connect(self, *a, **k):
+                ws = FakeWs(len(connections))
+                connections.append(ws)
+                return FakeCtx(ws)
+
+        async def audio():
+            while engine.is_running:
+                yield b"\x00\x00" * 160
+                await asyncio.sleep(0.02)
+
+        received_events = []
+
+        async def on_transcript(ev):
+            received_events.append(ev)
+
+        with patch.object(gl.aiohttp, "ClientSession", FakeSession), \
+             patch.object(gl, "STREAM_RECONNECT_INITIAL_DELAY", 0.05):
+            task = asyncio.ensure_future(engine.start_streaming(audio(), on_transcript))
+            await asyncio.sleep(0.25)
+            engine.is_running = False
+            if connections:
+                for c in connections:
+                    c.closed = True
+            await asyncio.wait_for(task, timeout=5)
+
+        finals = [e for e in received_events if e.is_final]
+        self.assertEqual(len(finals), 1, "In-flight interim must be promoted to final on unexpected disconnect")
+        self.assertEqual(finals[0].text, "The Lord is my shepherd I shall not want")
+
+    async def test_caption_sink_auto_finalizes_disjoint_interim_across_drop(self):
+        from unittest.mock import AsyncMock, MagicMock
+        from obs_captioner.config import AppConfig
+        from obs_captioner.obs.caption_sink import CaptionSink
+        from obs_captioner.engines.base import TranscriptEvent
+
+        cfg = AppConfig()
+        cfg.overlay.auto_hide_seconds = 0
+        if hasattr(cfg, "bible") and cfg.bible:
+            cfg.bible.enabled = False
+        cfg.translation.enabled = False
+        sink = CaptionSink(cfg)
+        mock_web = MagicMock()
+        mock_web.broadcast_caption = AsyncMock()
+        mock_web.trigger_scripture_lookup = AsyncMock()
+        sink.web_server = mock_web
+
+        # 1. Substantial in-flight interim
+        await sink.handle_transcript(
+            TranscriptEvent(text="We are gathering together this morning", is_final=False)
+        )
+        self.assertEqual(len(sink.history.entries), 0)
+
+        # 2. Simulate time elapsed across drop (> 1.5s)
+        sink._last_partial_time = time.time() - 2.0
+
+        # 3. New connection starts with completely disjoint interim
+        await sink.handle_transcript(
+            TranscriptEvent(text="Let everyone rejoice in the sanctuary today", is_final=False)
+        )
+
+        # 4. First partial must be auto-finalized into history
+        self.assertEqual(len(sink.history.entries), 1)
+        self.assertIn("gathering together this morning", sink.history.entries[0].text.casefold())
+
+        # 5. New partial active
+        self.assertEqual(sink._last_partial_text, "Let everyone rejoice in the sanctuary today")
+
+
 if __name__ == "__main__":
     unittest.main()
+
 
 
 

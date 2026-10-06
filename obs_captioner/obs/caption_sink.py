@@ -238,6 +238,39 @@ class CaptionSink:
                 logger.debug(f"Interim hallucination suppressed in caption sink: {raw_text}")
             return
 
+        # In-Flight Interim Preservation across abrupt engine reconnects / drops:
+        # If this is an interim event, and the previous partial text was substantial
+        # (>= 3 words and >= 12 chars), and the incoming interim text is completely
+        # disjoint (not a prefix/continuation/extension, 0 content word overlap, > 1.5s elapsed):
+        # auto-finalize the previous partial so the room never loses sentences.
+        if not event.is_final and self._last_partial_text:
+            prev_partial = self._last_partial_text.strip()
+            prev_words = prev_partial.split()
+            elapsed_partial = time.time() - (self._last_partial_time or 0.0)
+            if len(prev_words) >= 3 and len(prev_partial) >= 12 and elapsed_partial > 1.5:
+                p_norm = prev_partial.casefold()
+                new_norm = raw_text.casefold()
+                is_prefix_or_ext = (
+                    new_norm.startswith(p_norm)
+                    or p_norm.startswith(new_norm)
+                    or p_norm in new_norm
+                    or new_norm in p_norm
+                )
+                if not is_prefix_or_ext:
+                    w_prev = set(re.findall(r"\b\w+\b", p_norm))
+                    w_new = set(re.findall(r"\b\w+\b", new_norm))
+                    content_stop = {"a", "an", "the", "and", "or", "in", "on", "at", "to", "of", "is", "it", "as", "by", "for", "with"}
+                    overlap = (w_prev & w_new) - content_stop
+                    if not (w_prev & w_new) or not overlap:
+                        logger.info(
+                            f"Auto-finalizing disjoint in-flight interim before adopting new interim: '{prev_partial}'"
+                        )
+                        text_to_finalize = self._last_partial_text
+                        self._last_partial_text = None
+                        await self._handle_transcript_locked(
+                            TranscriptEvent(text=text_to_finalize, is_final=True, timestamp=event.timestamp)
+                        )
+
         # Whether fresh interim hypotheses arrived since the previous final
         # (captured per final below; defaults permissive so an untracked
         # final is never mistaken for an engine double-emit).

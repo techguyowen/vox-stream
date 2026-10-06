@@ -54,6 +54,11 @@ INIT_RECEIVE_TIMEOUT = 10.0
 STREAM_RECONNECT_INITIAL_DELAY = 2.0
 STREAM_RECONNECT_MAX_DELAY = 15.0
 
+# Session duration thresholds for proactive graceful rotation (Google 600s ceiling)
+SESSION_ROTATION_THRESHOLD_SEC = 510.0  # (~8.5 minutes) natural pause rotation threshold
+SESSION_HARD_ROTATION_SEC = 550.0       # (~9.16 minutes) forced rotation threshold
+
+
 
 def _is_duplicate_of_events(text: str, events: List[Tuple[str, bool]]) -> bool:
     """Return True when an interim hypothesis merely restates an event's text.
@@ -653,6 +658,11 @@ class GeminiLiveEngine(BaseSTTEngine):
         pending_turn_cap = int(sample_rate * 2 * 12)
         stream_state = {"finished": False}
 
+        def _turn_ended() -> None:
+            nonlocal pending_turn_bytes
+            pending_turn_audio.clear()
+            pending_turn_bytes = 0
+
         while self.is_running:
             self.api_key = self._get_api_key()
             if not self.api_key:
@@ -669,6 +679,10 @@ class GeminiLiveEngine(BaseSTTEngine):
                     self._active_session = session
                     async with session.ws_connect(ws_url, heartbeat=20.0, ssl=ssl_context) as ws:
                         self._active_ws = ws
+                        session_start_time = 0.0
+                        rotation_requested = False
+                        _latest_interim_text: Optional[str] = None
+                        final_received_event = asyncio.Event()
 
                         # 1. Send official setup payload
                         setup_payload = self.build_setup_payload()
@@ -682,6 +696,10 @@ class GeminiLiveEngine(BaseSTTEngine):
                             try:
                                 init_data = json.loads(raw)
                                 if "setupComplete" in init_data:
+                                    session_start_time = time.monotonic()
+                                    rotation_requested = False
+                                    _latest_interim_text = None
+                                    final_received_event.clear()
                                     handshake_ms = round((time.perf_counter() - setup_t0) * 1000.0, 1)
                                     self.current_ping_ms = handshake_ms
                                     if self.on_ping:
@@ -726,7 +744,7 @@ class GeminiLiveEngine(BaseSTTEngine):
 
                         # 2. Worker: stream audio chunks & signal Hybrid VAD end-of-speech
                         async def send_audio():
-                            nonlocal pending_turn_bytes
+                            nonlocal pending_turn_bytes, rotation_requested
                             speech_active = False
                             speech_start_time = 0.0
                             last_speech_time = 0.0
@@ -738,11 +756,6 @@ class GeminiLiveEngine(BaseSTTEngine):
                                 while pending_turn_bytes > pending_turn_cap and pending_turn_audio:
                                     pending_turn_bytes -= len(pending_turn_audio.pop(0))
 
-                            def _turn_ended() -> None:
-                                nonlocal pending_turn_bytes
-                                pending_turn_audio.clear()
-                                pending_turn_bytes = 0
-
                             eof = False
                             while True:
                                 chunk = await audio_q.get()
@@ -750,9 +763,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                                     eof = True
                                     break
                                 if not self.is_running or ws.closed:
-                                    # Keep the chunk we already pulled so it can be replayed
-                                    # on the next connection instead of vanishing.
-                                    if chunk and self.is_running:
+                                    if chunk and self.is_running and not rotation_requested:
                                         _remember(chunk[: len(chunk) & ~1])
                                     break
                                 if not chunk:
@@ -797,8 +808,8 @@ class GeminiLiveEngine(BaseSTTEngine):
                                 await ws.send_str(json.dumps(audio_payload))
 
                                 # Hybrid VAD detection & breath-boundary turn finalization
+                                now = time.time()
                                 if enable_hybrid_vad:
-                                    now = time.time()
                                     is_voice = self.vad.is_speech(pcm_chunk)
                                     if is_voice:
                                         if not speech_active:
@@ -829,6 +840,37 @@ class GeminiLiveEngine(BaseSTTEngine):
                                             _turn_ended()
                                             logger.debug(f"Gemini Live Hybrid VAD turn end after {silence_duration:.2f}s silence")
 
+                                # Proactive Session Rotation Check (prevent Google 10m ceiling drops)
+                                elapsed_session = time.monotonic() - session_start_time
+                                if session_start_time > 0.0 and elapsed_session >= SESSION_ROTATION_THRESHOLD_SEC:
+                                    current_silence = (now - last_speech_time) if last_speech_time > 0.0 else elapsed_session
+                                    should_rotate = (not speech_active) or (
+                                        elapsed_session >= SESSION_HARD_ROTATION_SEC and current_silence >= 0.25
+                                    )
+                                    if should_rotate:
+                                        logger.info(
+                                            f"Gemini Live proactive session rotation triggered at {elapsed_session:.1f}s "
+                                            f"(speech_active={speech_active}, silence={current_silence:.2f}s)."
+                                        )
+                                        rotation_requested = True
+                                        try:
+                                            await ws.send_str(json.dumps({"realtimeInput": {"audioStreamEnd": True}}))
+                                        except Exception:
+                                            pass
+                                        _turn_ended()
+
+                                        try:
+                                            await asyncio.wait_for(final_received_event.wait(), timeout=0.50)
+                                        except (asyncio.TimeoutError, asyncio.CancelledError):
+                                            pass
+
+                                        if not ws.closed:
+                                            try:
+                                                await ws.close()
+                                            except Exception:
+                                                pass
+                                        break
+
                             # Generator exhausted (or stopped) without the socket failing:
                             # a genuine end of stream, not a connection drop.
                             stream_state["finished"] = (eof or not self.is_running) and not ws.closed
@@ -842,37 +884,71 @@ class GeminiLiveEngine(BaseSTTEngine):
 
                         # 3. Worker: receive and dispatch interim and finalized transcripts
                         async def receive_transcripts():
-                            async for msg in ws:
-                                if not self.is_running:
-                                    break
+                            nonlocal _latest_interim_text
+                            try:
+                                async for msg in ws:
+                                    if not self.is_running:
+                                        break
 
-                                if msg.type in (aiohttp.WSMsgType.TEXT, aiohttp.WSMsgType.BINARY):
-                                    raw_text = msg.data if isinstance(msg.data, str) else msg.data.decode("utf-8")
-                                    try:
-                                        data = json.loads(raw_text)
-                                    except Exception:
-                                        continue
+                                    if msg.type in (aiohttp.WSMsgType.TEXT, aiohttp.WSMsgType.BINARY):
+                                        raw_text = msg.data if isinstance(msg.data, str) else msg.data.decode("utf-8")
+                                        try:
+                                            data = json.loads(raw_text)
+                                        except Exception:
+                                            continue
 
-                                    events = self.parse_server_message(data)
-                                    is_trans_model = "translate" in getattr(self.config.gemini_live, "model", "").lower()
-                                    suppress_music = getattr(self.config.audio, "suppress_music", True)
-                                    strict_music = getattr(self.config.audio, "suppress_music_strict", False)
-                                    for text, is_final in events:
-                                        if suppress_music:
-                                            if (strict_music and self.vad.music_detector.music_detected) or is_music_text(text, strict=strict_music):
-                                                logger.debug(f"Gemini Live suppressed singing/music text: {text}")
-                                                continue
-                                        await on_transcript(
-                                            TranscriptEvent(
-                                                text=text,
-                                                is_final=is_final,
-                                                translated_text=text if is_trans_model else None,
+                                        events = self.parse_server_message(data)
+                                        is_trans_model = "translate" in getattr(self.config.gemini_live, "model", "").lower()
+                                        suppress_music = getattr(self.config.audio, "suppress_music", True)
+                                        strict_music = getattr(self.config.audio, "suppress_music_strict", False)
+                                        for text, is_final in events:
+                                            if suppress_music:
+                                                if (strict_music and self.vad.music_detector.music_detected) or is_music_text(text, strict=strict_music):
+                                                    logger.debug(f"Gemini Live suppressed singing/music text: {text}")
+                                                    continue
+
+                                            if is_final:
+                                                _latest_interim_text = None
+                                                final_received_event.set()
+                                                _turn_ended()
+                                            else:
+                                                _latest_interim_text = text
+                                                final_received_event.clear()
+
+                                            await on_transcript(
+                                                TranscriptEvent(
+                                                    text=text,
+                                                    is_final=is_final,
+                                                    translated_text=text if is_trans_model else None,
+                                                )
                                             )
-                                        )
 
-                                elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.ERROR):
-                                    logger.warning("Gemini Live WebSocket closed by remote server.")
-                                    break
+                                    elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.ERROR):
+                                        logger.warning("Gemini Live WebSocket closed by remote server.")
+                                        break
+                            finally:
+                                # In-Flight Interim Preservation on Unexpected Disconnect:
+                                if not rotation_requested and _latest_interim_text:
+                                    words = _latest_interim_text.strip().split()
+                                    if len(words) >= 2:
+                                        logger.info(
+                                            f"Gemini Live finalizing in-flight interim on unexpected disconnect: {_latest_interim_text}"
+                                        )
+                                        text_to_finalize = _latest_interim_text
+                                        _latest_interim_text = None
+                                        _turn_ended()
+                                        is_trans_model = "translate" in getattr(self.config.gemini_live, "model", "").lower()
+                                        try:
+                                            await on_transcript(
+                                                TranscriptEvent(
+                                                    text=text_to_finalize,
+                                                    is_final=True,
+                                                    translated_text=text_to_finalize if is_trans_model else None,
+                                                )
+                                            )
+                                        except Exception as ex:
+                                            logger.warning(f"Error finalizing in-flight interim: {ex}")
+                                _latest_interim_text = None
 
                         # 4. Worker: periodic network latency probe
                         async def ping_probe_loop():
@@ -910,7 +986,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                                     t.cancel()
                             break
                         else:
-                            # Remote connection closed or errored (or the sender failed mid-send)
+                            # Remote connection closed, errored, or planned session rotation
                             if send_task in done and not send_task.cancelled():
                                 send_exc = send_task.exception()
                                 if send_exc is not None:
@@ -920,9 +996,21 @@ class GeminiLiveEngine(BaseSTTEngine):
                                     t.cancel()
                             if not self.is_running:
                                 break
-                            delay = _next_backoff()
-                            logger.warning(f"Gemini Live connection dropped; reconnecting in {delay:.0f}s...")
-                            await asyncio.sleep(delay)
+
+                            close_code = getattr(ws, "close_code", None)
+                            is_clean = rotation_requested or (close_code in (1000, 1001, aiohttp.WSCloseCode.OK, aiohttp.WSCloseCode.GOING_AWAY))
+                            if is_clean:
+                                delay = 0.0
+                                reconnect_delay = STREAM_RECONNECT_INITIAL_DELAY
+                                logger.info(
+                                    f"Gemini Live session finished cleanly (rotation={rotation_requested}, code={close_code}); reconnecting immediately (0s delay)..."
+                                )
+                            else:
+                                delay = _next_backoff()
+                                logger.warning(f"Gemini Live connection dropped (code={close_code}); reconnecting in {delay:.0f}s...")
+
+                            if delay > 0:
+                                await asyncio.sleep(delay)
 
             except asyncio.CancelledError:
                 break
