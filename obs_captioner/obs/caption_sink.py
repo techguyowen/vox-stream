@@ -364,14 +364,13 @@ class CaptionSink:
                 and (time.time() - self._last_final_time) < self._duplicate_final_window
             ):
                 logger.info(f"✓ [FINAL]   [DUPLICATE SUPPRESSED] {clean_text}")
-                if not self._utterance_active:
-                    self._utterance_active = False
-                else:
+                if self._utterance_active:
                     # Active new utterance in progress: keep it active and
-                    # restore its interim hypothesis wiped above.
+                    # restore its interim hypothesis wiped above. Clients keep
+                    # showing the live interim, so no clearing broadcast.
                     self._last_partial_text = saved_partial_text
                     self._last_partial_time = saved_partial_time
-                if self.web_server:
+                elif self.web_server:
                     await self.web_server.broadcast_caption(
                         self._stamp_payload(
                             {"text": "", "is_final": False, "is_censored": False, "timestamp": event.timestamp},
@@ -598,10 +597,16 @@ class CaptionSink:
                 if len(prev_words) >= 3 and len(prev_text) >= 10:
                     if (time.time() - self._last_partial_time) < (sleep_duration + 2.0):
                         logger.info(f"⚡ [AUTO-PROMOTION] Silence timeout detected: promoting terminal speech \"{prev_text}\" to final")
+                        prev_time = self._last_partial_time
                         self._last_partial_text = None
-                        await self._handle_transcript_locked(
-                            TranscriptEvent(text=prev_text, is_final=True, timestamp=self._last_partial_time)
+                        # Detach so the final's timer reset doesn't cancel this
+                        # task; that new timer clears the display after the
+                        # promoted final has been shown.
+                        self._auto_clear_task = None
+                        await self.handle_transcript(
+                            TranscriptEvent(text=prev_text, is_final=True, timestamp=prev_time)
                         )
+                        return
             self._last_partial_text = None
             # Clear OBS text source
             if self.obs_client and self.obs_client.is_connected:

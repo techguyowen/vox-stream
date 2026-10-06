@@ -5881,6 +5881,10 @@ class TestDroppedTextSinkPaths(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(sink.history.get_history()), 1)
         self.assertTrue(sink._utterance_active)
         self.assertEqual(sink._last_partial_text, "Praise the")
+        # Clients must keep the live interim: no clearing payload broadcast.
+        self.assertFalse(
+            [p for p in payloads if not p.get("is_final") and not (p.get("text") or "").strip()]
+        )
 
     async def test_back_to_back_double_emit_still_suppressed(self):
         sink, mock_web = self._make_sink()
