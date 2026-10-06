@@ -106,100 +106,6 @@ class CaptionSink:
             ),
         )
 
-    @staticmethod
-    def _is_interim_continuation(old_text: str, new_text: str) -> bool:
-        """Check whether new_text continues, extends, or refines old_text.
-
-        Returns True if new_text is an extension, prefix/suffix match,
-        multi-word restatement, shared 3-gram, word overlap >= 40%, or
-        rolling suffix overlap of old_text.
-        Returns False when new_text is a discontinuous, distinct new utterance.
-        """
-        if not old_text or not new_text:
-            return False
-
-        # Strip punctuation to spaces (never glue words: "lists.and" -> "lists and").
-        clean_old = re.sub(r"\s+", " ", re.sub(r"[^\w\s]+", " ", old_text)).strip().lower()
-        clean_new = re.sub(r"\s+", " ", re.sub(r"[^\w\s]+", " ", new_text)).strip().lower()
-
-        if not clean_old or not clean_new:
-            return False
-
-        # 1. Exact match
-        if clean_old == clean_new:
-            return True
-
-        old_words = clean_old.split()
-        new_words = clean_new.split()
-        if not old_words or not new_words:
-            return False
-
-        # 2. Suffix match in either direction (Gemini cumulative interim: the
-        # final often arrives as just the trailing phrase of the interim).
-        if clean_old.endswith(clean_new) or clean_new.endswith(clean_old):
-            return True
-
-        # 3. Multi-word substring: the new hypothesis restates part of the old.
-        if len(new_words) >= 3 and clean_new in clean_old:
-            return True
-
-        # 4. Shared 3+ consecutive words anywhere (refined trailing phrase).
-        old_3grams = set(tuple(old_words[i:i+3]) for i in range(len(old_words) - 2))
-        new_3grams = set(tuple(new_words[i:i+3]) for i in range(len(new_words) - 2))
-        if old_3grams and new_3grams and (old_3grams & new_3grams):
-            return True
-
-        # 5. Rolling suffix-to-prefix overlap (for streaming chunk ASR)
-        min_len = min(len(old_words), len(new_words))
-        for n in range(2, min_len + 1):
-            if old_words[-n:] == new_words[:n]:
-                return True
-
-        # 6. Direct prefix / extension match
-        if clean_new.startswith(clean_old):
-            return True
-        if clean_old.startswith(clean_new) and len(new_words) >= 3 and len(clean_new) >= 12:
-            return True
-
-        # 7. Content word overlap >= 40% of old content words (stop-word filtered)
-        STOP_WORDS = {"the", "and", "a", "an", "in", "to", "of", "is", "it", "was", "we", "i", "that", "for", "with", "you", "on", "as", "at", "by", "this", "be", "are", "from", "or", "have", "so", "but"}
-        old_content = [w for w in old_words if w not in STOP_WORDS]
-        new_content = [w for w in new_words if w not in STOP_WORDS]
-        if old_content and new_content:
-            content_overlap = set(old_content) & set(new_content)
-            if len(content_overlap) >= 2 and (len(content_overlap) / len(set(old_content))) >= 0.40:
-                return True
-
-        return False
-
-    def _strip_finalized_prefix(self, prev_text: str) -> Optional[str]:
-        """Drop (or trim) a promotion candidate restating the last final.
-
-        Returns None when nothing new remains to promote, otherwise the
-        (possibly prefix-stripped) text to promote.
-        """
-        if not self._last_final_text:
-            return prev_text
-        clean_prev = re.sub(r"\s+", " ", re.sub(r"[^\w\s]+", " ", prev_text)).strip().casefold()
-        clean_last_final = re.sub(r"\s+", " ", re.sub(r"[^\w\s]+", " ", self._last_final_text)).strip().casefold()
-        if not clean_prev or not clean_last_final:
-            return prev_text
-        if clean_prev == clean_last_final:
-            return None
-        if not clean_prev.startswith(clean_last_final):
-            return prev_text
-        # Verify the match lands on a word boundary, then strip the
-        # already-finalized prefix while preserving original casing.
-        prev_norm_words = clean_prev.split()
-        final_norm_words = clean_last_final.split()
-        if prev_norm_words[:len(final_norm_words)] != final_norm_words:
-            return prev_text  # mid-word coincidence: genuinely new speech
-        stripped = " ".join(prev_text.split()[len(final_norm_words):])
-        stripped = re.sub(r"^[.,!?:;\-_\s]+", "", stripped).strip()
-        if len(stripped.split()) < 3 or len(stripped) < 10:
-            return None
-        return stripped
-
     def _attempt_boundary_stitch(self, clean_text: str) -> Tuple[str, bool]:
         """Stitch mid-word chunk boundary splits and continuing clauses between consecutive utterances."""
         now = time.time()
@@ -336,29 +242,6 @@ class CaptionSink:
         # (captured per final below; defaults permissive so an untracked
         # final is never mistaken for an engine double-emit).
         had_fresh_interim = True
-
-        # Orphaned interim auto-promotion on semantic discontinuity.
-        # Interim arrivals only: an incoming final IS the authoritative
-        # close of in-flight speech, never a trigger to finalize the stale
-        # hypothesis alongside it (that resurrects already-finalized
-        # sentences from cumulative interim context).
-        if not event.is_final and self._last_partial_text:
-            prev_text = self._last_partial_text.strip()
-            prev_words = prev_text.split()
-            if len(prev_words) >= 3 and len(prev_text) >= 10:
-                if not self._is_interim_continuation(prev_text, raw_text):
-                    promote_text = self._strip_finalized_prefix(prev_text)
-                    if promote_text is None:
-                        logger.debug(
-                            f"Auto-promotion skipped: interim restates finalized text: \"{prev_text}\""
-                        )
-                    else:
-                        logger.info(f"⚡ [AUTO-PROMOTION] Discontinuous utterance detected: promoting orphaned interim \"{promote_text}\" to final")
-                        self._last_partial_text = None
-                        prev_time = self._last_partial_time or event.timestamp
-                        await self._handle_transcript_locked(
-                            TranscriptEvent(text=promote_text, is_final=True, timestamp=prev_time)
-                        )
 
         if event.is_final:
             # Capture whether this final was preceded by fresh hypotheses
@@ -736,22 +619,6 @@ class CaptionSink:
             if sleep_duration <= 0:
                 return
             await asyncio.sleep(sleep_duration)
-            if self._last_partial_text:
-                prev_text = self._last_partial_text.strip()
-                prev_words = prev_text.split()
-                if len(prev_words) >= 3 and len(prev_text) >= 10:
-                    if (time.time() - self._last_partial_time) < (sleep_duration + 2.0):
-                        logger.info(f"⚡ [AUTO-PROMOTION] Silence timeout detected: promoting terminal speech \"{prev_text}\" to final")
-                        prev_time = self._last_partial_time
-                        self._last_partial_text = None
-                        # Detach so the final's timer reset doesn't cancel this
-                        # task; that new timer clears the display after the
-                        # promoted final has been shown.
-                        self._auto_clear_task = None
-                        await self.handle_transcript(
-                            TranscriptEvent(text=prev_text, is_final=True, timestamp=prev_time)
-                        )
-                        return
             self._last_partial_text = None
             # Clear OBS text source
             if self.obs_client and self.obs_client.is_connected:
