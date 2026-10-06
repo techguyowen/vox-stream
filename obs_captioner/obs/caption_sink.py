@@ -82,6 +82,8 @@ class CaptionSink:
         self._last_final_utterance_id = 0
         self._last_final_text: Optional[str] = None
         self._duplicate_final_window = 0.75
+        self._saw_interim_since_final = False
+        self._history_dedup_window = 5.0
 
     def update_config(self, new_config: AppConfig):
         """Live update configuration, filter dictionary, and translation rules."""
@@ -108,15 +110,17 @@ class CaptionSink:
     def _is_interim_continuation(old_text: str, new_text: str) -> bool:
         """Check whether new_text continues, extends, or refines old_text.
 
-        Returns True if new_text is an extension, prefix match, word overlap >= 40%,
-        or rolling suffix overlap of old_text.
+        Returns True if new_text is an extension, prefix/suffix match,
+        multi-word restatement, shared 3-gram, word overlap >= 40%, or
+        rolling suffix overlap of old_text.
         Returns False when new_text is a discontinuous, distinct new utterance.
         """
         if not old_text or not new_text:
             return False
 
-        clean_old = re.sub(r"[^\w\s]", "", old_text).strip().lower()
-        clean_new = re.sub(r"[^\w\s]", "", new_text).strip().lower()
+        # Strip punctuation to spaces (never glue words: "lists.and" -> "lists and").
+        clean_old = re.sub(r"\s+", " ", re.sub(r"[^\w\s]+", " ", old_text)).strip().lower()
+        clean_new = re.sub(r"\s+", " ", re.sub(r"[^\w\s]+", " ", new_text)).strip().lower()
 
         if not clean_old or not clean_new:
             return False
@@ -130,19 +134,34 @@ class CaptionSink:
         if not old_words or not new_words:
             return False
 
-        # 2. Rolling suffix-to-prefix overlap (for streaming chunk ASR)
+        # 2. Suffix match in either direction (Gemini cumulative interim: the
+        # final often arrives as just the trailing phrase of the interim).
+        if clean_old.endswith(clean_new) or clean_new.endswith(clean_old):
+            return True
+
+        # 3. Multi-word substring: the new hypothesis restates part of the old.
+        if len(new_words) >= 3 and clean_new in clean_old:
+            return True
+
+        # 4. Shared 3+ consecutive words anywhere (refined trailing phrase).
+        old_3grams = set(tuple(old_words[i:i+3]) for i in range(len(old_words) - 2))
+        new_3grams = set(tuple(new_words[i:i+3]) for i in range(len(new_words) - 2))
+        if old_3grams and new_3grams and (old_3grams & new_3grams):
+            return True
+
+        # 5. Rolling suffix-to-prefix overlap (for streaming chunk ASR)
         min_len = min(len(old_words), len(new_words))
         for n in range(2, min_len + 1):
             if old_words[-n:] == new_words[:n]:
                 return True
 
-        # 3. Direct prefix / extension match
+        # 6. Direct prefix / extension match
         if clean_new.startswith(clean_old):
             return True
         if clean_old.startswith(clean_new) and len(new_words) >= 3 and len(clean_new) >= 12:
             return True
 
-        # 4. Content word overlap >= 40% of old content words (stop-word filtered)
+        # 7. Content word overlap >= 40% of old content words (stop-word filtered)
         STOP_WORDS = {"the", "and", "a", "an", "in", "to", "of", "is", "it", "was", "we", "i", "that", "for", "with", "you", "on", "as", "at", "by", "this", "be", "are", "from", "or", "have", "so", "but"}
         old_content = [w for w in old_words if w not in STOP_WORDS]
         new_content = [w for w in new_words if w not in STOP_WORDS]
@@ -152,6 +171,34 @@ class CaptionSink:
                 return True
 
         return False
+
+    def _strip_finalized_prefix(self, prev_text: str) -> Optional[str]:
+        """Drop (or trim) a promotion candidate restating the last final.
+
+        Returns None when nothing new remains to promote, otherwise the
+        (possibly prefix-stripped) text to promote.
+        """
+        if not self._last_final_text:
+            return prev_text
+        clean_prev = re.sub(r"\s+", " ", re.sub(r"[^\w\s]+", " ", prev_text)).strip().casefold()
+        clean_last_final = re.sub(r"\s+", " ", re.sub(r"[^\w\s]+", " ", self._last_final_text)).strip().casefold()
+        if not clean_prev or not clean_last_final:
+            return prev_text
+        if clean_prev == clean_last_final:
+            return None
+        if not clean_prev.startswith(clean_last_final):
+            return prev_text
+        # Verify the match lands on a word boundary, then strip the
+        # already-finalized prefix while preserving original casing.
+        prev_norm_words = clean_prev.split()
+        final_norm_words = clean_last_final.split()
+        if prev_norm_words[:len(final_norm_words)] != final_norm_words:
+            return prev_text  # mid-word coincidence: genuinely new speech
+        stripped = " ".join(prev_text.split()[len(final_norm_words):])
+        stripped = re.sub(r"^[.,!?:;\-_\s]+", "", stripped).strip()
+        if len(stripped.split()) < 3 or len(stripped) < 10:
+            return None
+        return stripped
 
     def _attempt_boundary_stitch(self, clean_text: str) -> Tuple[str, bool]:
         """Stitch mid-word chunk boundary splits and continuing clauses between consecutive utterances."""
@@ -285,20 +332,40 @@ class CaptionSink:
                 logger.debug(f"Interim hallucination suppressed in caption sink: {raw_text}")
             return
 
-        # Orphaned interim auto-promotion on semantic discontinuity
-        if self._last_partial_text:
+        # Whether fresh interim hypotheses arrived since the previous final
+        # (captured per final below; defaults permissive so an untracked
+        # final is never mistaken for an engine double-emit).
+        had_fresh_interim = True
+
+        # Orphaned interim auto-promotion on semantic discontinuity.
+        # Interim arrivals only: an incoming final IS the authoritative
+        # close of in-flight speech, never a trigger to finalize the stale
+        # hypothesis alongside it (that resurrects already-finalized
+        # sentences from cumulative interim context).
+        if not event.is_final and self._last_partial_text:
             prev_text = self._last_partial_text.strip()
             prev_words = prev_text.split()
             if len(prev_words) >= 3 and len(prev_text) >= 10:
                 if not self._is_interim_continuation(prev_text, raw_text):
-                    logger.info(f"⚡ [AUTO-PROMOTION] Discontinuous utterance detected: promoting orphaned interim \"{prev_text}\" to final")
-                    self._last_partial_text = None
-                    prev_time = self._last_partial_time or event.timestamp
-                    await self._handle_transcript_locked(
-                        TranscriptEvent(text=prev_text, is_final=True, timestamp=prev_time)
-                    )
+                    promote_text = self._strip_finalized_prefix(prev_text)
+                    if promote_text is None:
+                        logger.debug(
+                            f"Auto-promotion skipped: interim restates finalized text: \"{prev_text}\""
+                        )
+                    else:
+                        logger.info(f"⚡ [AUTO-PROMOTION] Discontinuous utterance detected: promoting orphaned interim \"{promote_text}\" to final")
+                        self._last_partial_text = None
+                        prev_time = self._last_partial_time or event.timestamp
+                        await self._handle_transcript_locked(
+                            TranscriptEvent(text=promote_text, is_final=True, timestamp=prev_time)
+                        )
 
         if event.is_final:
+            # Capture whether this final was preceded by fresh hypotheses
+            # for its utterance (genuine speech) or arrived back-to-back
+            # (engine double-emit), then reset for the next utterance.
+            had_fresh_interim = self._saw_interim_since_final
+            self._saw_interim_since_final = False
             # Stash the live interim hypothesis: a duplicate final arriving
             # mid-utterance must not destroy the new utterance's partial.
             saved_partial_text = self._last_partial_text
@@ -319,6 +386,7 @@ class CaptionSink:
                 return
             self._last_partial_text = raw_text
             self._last_partial_time = time.time()
+            self._saw_interim_since_final = True
             # First partial after a final marks the start of a new utterance
             if not self._utterance_active:
                 self._utterance_active = True
@@ -370,6 +438,7 @@ class CaptionSink:
                     # showing the live interim, so no clearing broadcast.
                     self._last_partial_text = saved_partial_text
                     self._last_partial_time = saved_partial_time
+                    self._saw_interim_since_final = True
                 elif self.web_server:
                     await self.web_server.broadcast_caption(
                         self._stamp_payload(
@@ -480,6 +549,82 @@ class CaptionSink:
         if event.is_final and clean_text:
             sentence_start = self._sentence_start_time
             sentence_end = time.time()
+
+            # Back-to-back duplicate guard: a final arriving with no fresh
+            # interim since the previous final is an engine re-emission, not
+            # new speech. Genuine verbatim repeats always carry fresh interim
+            # hypotheses for the new utterance and bypass this guard, as do
+            # finals outside the recency window (finals-only engines).
+            # Punctuation- and translation-insensitive.
+            if (
+                self.history.entries
+                and not had_fresh_interim
+                and (sentence_end - self._last_final_time) < self._history_dedup_window
+            ):
+                norm_new = re.sub(r"\s+", " ", re.sub(r"[^\w\s]+", " ", clean_text)).strip().casefold()
+                last_base = re.sub(r"\s*\([^)]*\)$", "", self.history.entries[-1].text).strip()
+                norm_last = re.sub(r"\s+", " ", re.sub(r"[^\w\s]+", " ", last_base)).strip().casefold()
+                if norm_new and (norm_new == norm_last or norm_new in norm_last):
+                    logger.info(f"✓ [FINAL]   [HISTORY DUPLICATE SUPPRESSED] {clean_text}")
+                    self._last_final_time = sentence_end
+                    self._utterance_active = False
+                    self._sentence_start_time = sentence_end
+                    if self.web_server and not self._utterance_active:
+                        await self.web_server.broadcast_caption(
+                            self._stamp_payload(
+                                {"text": "", "is_final": False, "is_censored": False, "timestamp": event.timestamp},
+                                utterance_id,
+                            )
+                        )
+                    return
+                if norm_new and norm_last and norm_new.startswith(norm_last):
+                    # The new final refines the previous entry: update it in
+                    # place instead of appending a near-duplicate.
+                    recorded_extend = clean_text
+                    if translated_text:
+                        dual_fmt = getattr(self.config.translation, "dual_subtitle_format", "clean")
+                        if dual_fmt == "parentheses":
+                            recorded_extend = f"{clean_text} ({translated_text})"
+                        else:
+                            recorded_extend = f"{clean_text} / {translated_text}"
+                    logger.info(f"✓ [FINAL EXTENDED] '{self.history.entries[-1].text}' -> '{recorded_extend}'")
+                    last_entry = self.history.entries[-1]
+                    last_entry.text = recorded_extend
+                    last_entry.end_time = sentence_end
+                    last_entry.is_censored = last_entry.is_censored or was_censored
+                    self._last_final_time = sentence_end
+                    self._last_final_text = re.sub(r"\s+", " ", clean_text).strip().casefold()
+                    self._utterance_active = False
+                    self._sentence_start_time = sentence_end
+
+                    if self.web_server:
+                        await self.web_server.broadcast_caption(
+                            self._stamp_payload(
+                                {
+                                    "text": recorded_extend,
+                                    "translated_text": None,
+                                    "is_final": True,
+                                    "is_censored": last_entry.is_censored,
+                                    "timestamp": event.timestamp,
+                                    "replace_last": True,
+                                },
+                                utterance_id,
+                            )
+                        )
+                    if self.obs_client and self.obs_client.is_connected:
+                        if self.config.obs.update_text_source and self.config.obs.text_source_name:
+                            await self.obs_client.update_text_source(
+                                self.config.obs.text_source_name,
+                                recorded_extend,
+                            )
+                    if self.subtitle_recorder and getattr(self.subtitle_recorder, "is_recording", False):
+                        self.subtitle_recorder.update_last_caption(recorded_extend, end_time=time.time())
+                    if self.config.overlay.auto_hide_seconds > 0:
+                        if self._auto_clear_task:
+                            self._auto_clear_task.cancel()
+                        self._auto_clear_task = asyncio.create_task(self._auto_clear_worker())
+                    return
+
             self._last_final_time = sentence_end
             self._last_final_text = re.sub(r"\s+", " ", clean_text).strip().casefold()
             recorded_text = clean_text

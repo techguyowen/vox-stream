@@ -5507,9 +5507,10 @@ class TestInterimFinalOrderingAsync(unittest.IsolatedAsyncioTestCase):
             return (text, None)
 
         sink.translator.translate_text = fake_translate
-        # The final continues the interim so orphan auto-promotion (which also
-        # runs for finals) does not add a third payload; this test is about
-        # serialization order, promotion is covered by TestOrphanedInterimAutoPromotion.
+        # The final continues the interim; orphan auto-promotion runs only for
+        # discontinuous interim arrivals, never for finals, so no third
+        # payload appears. This test is about serialization order; promotion
+        # is covered by TestOrphanedInterimAutoPromotion.
         interim = TranscriptEvent(text="Interim hello there friends", is_final=False)
         final = TranscriptEvent(text="Interim hello there friends.", is_final=True)
         await asyncio.gather(sink.handle_transcript(interim), sink.handle_transcript(final))
@@ -6063,7 +6064,11 @@ class TestOrphanedInterimAutoPromotion(unittest.IsolatedAsyncioTestCase):
         call_kwargs = mock_recorder.add_caption.call_args[1]
         self.assertEqual(call_kwargs["text"], "The Lord is my shepherd I shall not want.")
 
-    async def test_orphaned_interim_followed_by_immediate_final_auto_promotes(self):
+    async def test_final_does_not_auto_promote_orphaned_interim(self):
+        # An incoming final IS the authoritative close of in-flight speech:
+        # it must never trigger promotion of the stale interim alongside it
+        # (that resurrects already-finalized sentences from cumulative
+        # interim context). Only a discontinuous INTERIM promotes orphans.
         sink, mock_web = self._make_sink()
         evt_interim = TranscriptEvent(text="The Lord is my shepherd I shall not want", is_final=False)
         evt_final = TranscriptEvent(text="Amen.", is_final=True)
@@ -6072,10 +6077,9 @@ class TestOrphanedInterimAutoPromotion(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(sink.history.entries), 0)
 
         await sink.handle_transcript(evt_final)
-        # BOTH sentences should be finalized into history
-        self.assertEqual(len(sink.history.entries), 2)
-        self.assertEqual(sink.history.entries[0].text, "The Lord is my shepherd I shall not want.")
-        self.assertEqual(sink.history.entries[1].text, "Amen.")
+        # Only the authoritative final is recorded.
+        self.assertEqual(len(sink.history.entries), 1)
+        self.assertEqual(sink.history.entries[0].text, "Amen.")
 
     async def test_common_two_word_openings_auto_promote(self):
         sink, mock_web = self._make_sink()
@@ -6444,6 +6448,171 @@ class TestGeminiReconnectKeepsAudio(unittest.IsolatedAsyncioTestCase):
             first_audio[0]["realtimeInput"]["audio"]["data"],
             audio_on_second[0]["realtimeInput"]["audio"]["data"],
         )
+
+
+class TestCumulativeInterimNoDuplication(unittest.IsolatedAsyncioTestCase):
+    """Gemini Live cumulative-interim regressions: no reappearing finals.
+
+    The interim stream often repeats already-finalized context
+    ("[Sentence A]. [Sentence B interim]") while the final arrives as just
+    "[Sentence B final]". Auto-promoting that interim re-records Sentence A.
+    """
+
+    def _make_sink(self):
+        from unittest.mock import AsyncMock, MagicMock
+        from obs_captioner.obs.caption_sink import CaptionSink
+
+        cfg = AppConfig()
+        cfg.overlay.auto_hide_seconds = 0
+        if hasattr(cfg, "bible") and cfg.bible:
+            cfg.bible.enabled = False
+        cfg.translation.enabled = False
+        sink = CaptionSink(cfg)
+        mock_web = MagicMock()
+        mock_web.broadcast_caption = AsyncMock()
+        sink.web_server = mock_web
+        return sink, mock_web
+
+    async def test_cumulative_interim_then_final_records_final_only(self):
+        sink, _ = self._make_sink()
+        await sink.handle_transcript(TranscriptEvent(
+            text="So at least once daily Raleigh should be spelling words. You can write them down. And help him",
+            is_final=False,
+        ))
+        await sink.handle_transcript(TranscriptEvent(
+            text="And help him to spell these words.",
+            is_final=True,
+        ))
+        self.assertEqual(len(sink.history.entries), 1)
+        self.assertEqual(sink.history.entries[0].text, "And help him to spell these words.")
+        for entry in sink.history.entries:
+            self.assertNotIn("so at least once", entry.text.casefold())
+
+    async def test_refined_final_head_does_not_resurrect_interim(self):
+        # The final refines the interim tail ("Please ..." prefix), so plain
+        # prefix/overlap heuristics miss the continuation. The final must
+        # still supersede the interim instead of promoting it alongside.
+        sink, _ = self._make_sink()
+        await sink.handle_transcript(TranscriptEvent(
+            text="So at least once daily Raleigh should be spelling words. You can write them down. And help him",
+            is_final=False,
+        ))
+        await sink.handle_transcript(TranscriptEvent(
+            text="Please and help him to spell these words today folks",
+            is_final=True,
+        ))
+        self.assertEqual(len(sink.history.entries), 1)
+        for entry in sink.history.entries:
+            self.assertNotIn("so at least once", entry.text.casefold())
+
+    async def test_shared_trailing_phrase_interim_is_continuation(self):
+        # Same refined pair on the interim path (where auto-promotion still
+        # applies): the shared "and help him" tail must read as a
+        # continuation so the long interim is never promoted.
+        sink, _ = self._make_sink()
+        await sink.handle_transcript(TranscriptEvent(
+            text="So at least once daily Raleigh should be spelling words. You can write them down. And help him",
+            is_final=False,
+        ))
+        await sink.handle_transcript(TranscriptEvent(
+            text="Please and help him to spell these words today folks",
+            is_final=False,
+        ))
+        self.assertEqual(len(sink.history.entries), 0)
+
+    def test_is_interim_continuation_suffix_overlap(self):
+        from obs_captioner.obs.caption_sink import CaptionSink
+
+        cont = CaptionSink._is_interim_continuation
+        # Trailing-phrase continuation is not a new utterance.
+        self.assertTrue(cont(
+            "so at least once daily as he is making lists and help him to spell these",
+            "and help him to spell these words",
+        ))
+        # Suffix match in either direction.
+        self.assertTrue(cont("alpha beta", "beta"))
+        self.assertTrue(cont("beta", "alpha beta"))
+        # Multi-word substring of the old interim.
+        self.assertTrue(cont(
+            "alpha beta gamma delta epsilon zeta eta theta iota kappa",
+            "oh and gamma delta epsilon too",
+        ))
+        # Punctuation must separate words, never glue them together.
+        self.assertTrue(cont("making lists. And help", "making lists and help"))
+        # Truly disjoint speech is still discontinuous.
+        self.assertFalse(cont("the worship team sings", "completely different topic here"))
+        self.assertFalse(cont(
+            "The Lord is my shepherd I shall not want",
+            "He makes me lie down in green pastures",
+        ))
+
+    async def test_promotion_only_on_disjoint_interim_not_on_final(self):
+        # Disjoint interim DOES promote the orphaned interim.
+        sink, _ = self._make_sink()
+        await sink.handle_transcript(TranscriptEvent(
+            text="The Lord is my shepherd I shall not want", is_final=False
+        ))
+        await sink.handle_transcript(TranscriptEvent(
+            text="He makes me lie down in green pastures", is_final=False
+        ))
+        self.assertEqual(len(sink.history.entries), 1)
+        self.assertEqual(
+            sink.history.entries[0].text, "The Lord is my shepherd I shall not want."
+        )
+
+        # A disjoint final does NOT promote the in-flight interim: the
+        # incoming final is itself the authoritative close of speech.
+        sink2, _ = self._make_sink()
+        await sink2.handle_transcript(TranscriptEvent(
+            text="The Lord is my shepherd I shall not want", is_final=False
+        ))
+        await sink2.handle_transcript(TranscriptEvent(text="Amen.", is_final=True))
+        self.assertEqual(len(sink2.history.entries), 1)
+        self.assertEqual(sink2.history.entries[0].text, "Amen.")
+
+    async def test_already_finalized_interim_is_not_promoted(self):
+        # A stale interim restating the just-finalized sentence must not be
+        # promoted when the next disjoint interim arrives.
+        sink, _ = self._make_sink()
+        await sink.handle_transcript(TranscriptEvent(
+            text="The Lord is my shepherd", is_final=True
+        ))
+        sink._last_final_time -= 10.0  # escape the sub-second double-emit window
+        await sink.handle_transcript(TranscriptEvent(
+            text="The Lord is my shepherd", is_final=False
+        ))
+        await sink.handle_transcript(TranscriptEvent(
+            text="He makes me lie down in green pastures", is_final=False
+        ))
+        self.assertEqual(len(sink.history.entries), 1)
+        self.assertEqual(sink.history.entries[0].text, "The Lord is my shepherd.")
+
+    async def test_back_to_back_punct_variant_final_is_suppressed(self):
+        # Same sentence re-finalized with different terminal punctuation and
+        # no fresh interim in between is an engine double-emit, not speech.
+        sink, _ = self._make_sink()
+        await sink.handle_transcript(TranscriptEvent(text="Praise the Lord.", is_final=True))
+        await sink.handle_transcript(TranscriptEvent(text="Praise the Lord!", is_final=True))
+        self.assertEqual(len(sink.history.entries), 1)
+
+    async def test_back_to_back_extending_final_replaces_last_entry(self):
+        # A back-to-back final that extends the previous entry refines it in
+        # place instead of appending a near-duplicate.
+        sink, _ = self._make_sink()
+        await sink.handle_transcript(TranscriptEvent(text="Hello world", is_final=True))
+        await sink.handle_transcript(TranscriptEvent(text="Hello world today", is_final=True))
+        self.assertEqual(len(sink.history.entries), 1)
+        self.assertEqual(sink.history.entries[0].text, "Hello world today.")
+
+    async def test_genuine_repeat_with_fresh_interim_is_preserved(self):
+        # A verbatim repeat preceded by fresh interim hypotheses is genuine
+        # new speech and must be recorded, not deduped.
+        sink, _ = self._make_sink()
+        await sink.handle_transcript(TranscriptEvent(text="Praise the Lord", is_final=True))
+        await sink.handle_transcript(TranscriptEvent(text="Praise the", is_final=False))
+        sink._last_final_time -= 10.0  # escape the sub-second double-emit window
+        await sink.handle_transcript(TranscriptEvent(text="Praise the Lord", is_final=True))
+        self.assertEqual(len(sink.history.entries), 2)
 
 
 if __name__ == "__main__":

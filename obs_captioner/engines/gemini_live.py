@@ -634,7 +634,7 @@ class GeminiLiveEngine(BaseSTTEngine):
         model = self.config.gemini_live.model or "gemini-3.5-transcribe-live"
         sample_rate = self.config.audio.sample_rate or 16000
         enable_hybrid_vad = getattr(self.config.gemini_live, "enable_hybrid_vad", True)
-        pause_threshold = (getattr(self.config.audio, "sentence_break_ms", 600) or 600) / 1000.0
+        pause_threshold = max(0.60, (getattr(self.config.audio, "sentence_break_ms", 600) or 600) / 1000.0)
         max_sentence_duration = float(getattr(self.config.audio, "max_sentence_duration_seconds", 7.0) or 7.0)
         reconnect_delay = STREAM_RECONNECT_INITIAL_DELAY
 
@@ -812,8 +812,9 @@ class GeminiLiveEngine(BaseSTTEngine):
                                         # Only finalize turns during actual non-voice pauses/breaths:
                                         # - During prolonged speech (>= max_sentence_duration), a natural breath (>= 200ms of non-voice)
                                         #   cleanly closes the turn at a clause boundary without clipping speech.
-                                        # - Otherwise, wait for the full conversational pause_threshold (default 600ms).
-                                        effective_pause = min(0.20, pause_threshold) if (max_sentence_duration > 0 and speech_duration >= max_sentence_duration) else pause_threshold
+                                        # - Otherwise, wait for the full conversational pause (floored at
+                                        #   600ms so brief hesitation pauses never seal a turn mid-sentence).
+                                        effective_pause = min(0.20, pause_threshold) if (max_sentence_duration > 0 and speech_duration >= max_sentence_duration) else max(0.60, pause_threshold)
 
                                         if silence_duration >= effective_pause:
                                             speech_active = False
@@ -826,6 +827,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                                             }
                                             await ws.send_str(json.dumps(end_signal))
                                             _turn_ended()
+                                            logger.debug(f"Gemini Live Hybrid VAD turn end after {silence_duration:.2f}s silence")
 
                             # Generator exhausted (or stopped) without the socket failing:
                             # a genuine end of stream, not a connection drop.
