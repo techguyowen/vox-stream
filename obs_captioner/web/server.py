@@ -68,6 +68,7 @@ class WebOverlayServer:
         updater: Optional[Any] = None,
         subtitle_recorder: Optional[Any] = None,
         on_trim_memory: Optional[Callable[[], float]] = None,
+        engine: Optional[Any] = None,
     ):
         self.config = config
         self.history = history or TranscriptHistory()
@@ -82,6 +83,7 @@ class WebOverlayServer:
         self.audio_capture = audio_capture
         self.updater = updater
         self.subtitle_recorder = subtitle_recorder
+        self.engine = engine  # Active STT engine ref, set by main.py (enables session telemetry)
         self.scheduler = None  # Set by main.py after scheduler is instantiated
         self._updater_task: Optional[asyncio.Task] = None
         self.translator = SubtitleTranslator(
@@ -419,6 +421,13 @@ class WebOverlayServer:
                 status_info.update(self.get_app_status())
             except Exception:
                 logger.warning("get_app_status hook failed", exc_info=True)
+        if hasattr(self.engine, "get_session_stats"):
+            try:
+                s_stats = self.engine.get_session_stats()
+                status_info["gemini_session_uptime"] = s_stats.get("uptime_seconds")
+                status_info["gemini_rotations"] = s_stats.get("rotations")
+            except Exception:
+                pass
         # Never report "running" unless the app-status hook confirmed it
         status_info.setdefault("is_running", False)
         return web.json_response(status_info)

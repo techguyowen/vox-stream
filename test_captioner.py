@@ -6584,6 +6584,254 @@ class TestGeminiLiveProactiveRotationAndInterimPreservation(unittest.IsolatedAsy
         self.assertEqual(len(finals), 1, "In-flight interim must be promoted to final on unexpected disconnect")
         self.assertEqual(finals[0].text, "The Lord is my shepherd I shall not want")
 
+    async def test_goaway_message_triggers_graceful_rotation(self):
+        import aiohttp
+        from unittest.mock import patch
+        from obs_captioner.config import AppConfig
+        from obs_captioner.engines import gemini_live as gl
+
+        cfg = AppConfig()
+        cfg.gemini_live.api_key = "test-key"
+        cfg.audio.suppress_music = False
+        engine = gl.GeminiLiveEngine(cfg)
+        engine.vad.is_music = lambda *a, **k: False
+        engine.vad.is_speech = lambda *a, **k: False
+
+        connections = []
+
+        class FakeMsg:
+            def __init__(self, type_, data=None):
+                self.type = type_
+                self.data = data
+                self.extra = ""
+
+        class FakeWs:
+            def __init__(self, idx):
+                self.idx = idx
+                self.closed = False
+                self.close_code = None
+                self.sent = []
+                self._incoming = asyncio.Queue()
+
+            async def send_str(self, s):
+                if self.closed:
+                    raise ConnectionResetError("closed")
+                payload = json.loads(s)
+                self.sent.append(payload)
+                if payload.get("realtimeInput", {}).get("audioStreamEnd"):
+                    self._incoming.put_nowait(
+                        FakeMsg(aiohttp.WSMsgType.TEXT, json.dumps({
+                            "serverContent": {"inputTranscription": {"text": "GoAway rotation finalized."}}
+                        }))
+                    )
+
+            async def receive(self, timeout=None):
+                return FakeMsg(aiohttp.WSMsgType.TEXT, json.dumps({"setupComplete": {}}))
+
+            def __aiter__(self):
+                return self._iter()
+
+            async def _iter(self):
+                if self.idx == 0:
+                    yield FakeMsg(aiohttp.WSMsgType.TEXT, json.dumps({"goAway": {"timeLeft": "10s"}}))
+                    await asyncio.sleep(0.05)
+                    yield FakeMsg(aiohttp.WSMsgType.TEXT, json.dumps({
+                        "serverContent": {"inputTranscription": {"text": "Speech before goAway rotation."}}
+                    }))
+                    # Wait for the sender to rotate (close) us; never self-close,
+                    # so a reconnect can only come from a goAway-driven rotation.
+                    for _ in range(150):
+                        if self.closed:
+                            break
+                        try:
+                            msg = await asyncio.wait_for(self._incoming.get(), timeout=0.02)
+                            yield msg
+                        except (asyncio.TimeoutError, asyncio.CancelledError):
+                            pass
+                    yield FakeMsg(aiohttp.WSMsgType.CLOSED)
+                else:
+                    while not self.closed:
+                        await asyncio.sleep(0.05)
+                    yield FakeMsg(aiohttp.WSMsgType.CLOSED)
+
+            async def close(self, code=1000):
+                self.closed = True
+                self.close_code = code
+
+        class FakeCtx:
+            def __init__(self, ws):
+                self.ws = ws
+            async def __aenter__(self):
+                return self.ws
+            async def __aexit__(self, *a):
+                return False
+
+        class FakeSession:
+            def __init__(self, *a, **k):
+                pass
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *a):
+                return False
+            def ws_connect(self, *a, **k):
+                ws = FakeWs(len(connections))
+                connections.append(ws)
+                return FakeCtx(ws)
+
+        async def audio():
+            while engine.is_running:
+                yield b"\x00\x00" * 160
+                await asyncio.sleep(0.02)
+
+        # NOTE: default rotation thresholds (510s/550s) are kept, so only the
+        # goAway notice can trigger a rotation within the test window.
+        with patch.object(gl.aiohttp, "ClientSession", FakeSession):
+            task = asyncio.ensure_future(engine.start_streaming(audio(), lambda ev: None))
+            for _ in range(100):
+                if engine.rotation_count >= 1 and len(connections) >= 2:
+                    break
+                await asyncio.sleep(0.05)
+            engine.is_running = False
+            if connections:
+                for c in connections:
+                    c.closed = True
+            await asyncio.wait_for(task, timeout=5)
+
+        self.assertGreaterEqual(engine.rotation_count, 1, "goAway notice must trigger a session rotation")
+        self.assertGreater(engine.last_rotation_time, 0.0, "Rotation must record last_rotation_time")
+        self.assertFalse(engine._go_away_received, "goAway flag must be consumed by the rotation")
+        self.assertGreaterEqual(len(connections), 2, "goAway rotation must open a second session")
+        has_stream_end = any(
+            m.get("realtimeInput", {}).get("audioStreamEnd") is True
+            for m in connections[0].sent
+        )
+        self.assertTrue(has_stream_end, "audioStreamEnd must be sent prior to goAway rotation")
+
+    async def test_session_resumption_token_saved_and_sent(self):
+        import aiohttp
+        from unittest.mock import patch
+        from obs_captioner.config import AppConfig
+        from obs_captioner.engines import gemini_live as gl
+
+        cfg = AppConfig()
+        cfg.gemini_live.api_key = "test-key"
+        cfg.audio.suppress_music = False
+        engine = gl.GeminiLiveEngine(cfg)
+        engine.vad.is_music = lambda *a, **k: False
+        engine.vad.is_speech = lambda *a, **k: False
+
+        # A fresh engine with no token advertises an empty sessionResumption object.
+        fresh_payload = engine.build_setup_payload()
+        self.assertEqual(fresh_payload["setup"]["sessionResumption"], {})
+
+        connections = []
+
+        class FakeMsg:
+            def __init__(self, type_, data=None):
+                self.type = type_
+                self.data = data
+                self.extra = ""
+
+        class FakeWs:
+            def __init__(self, idx):
+                self.idx = idx
+                self.closed = False
+                self.close_code = None
+                self._sent_update = False
+
+            async def send_str(self, s):
+                pass
+
+            async def receive(self, timeout=None):
+                return FakeMsg(aiohttp.WSMsgType.TEXT, json.dumps({"setupComplete": {}}))
+
+            def __aiter__(self):
+                return self._iter()
+
+            async def _iter(self):
+                if not self._sent_update:
+                    self._sent_update = True
+                    yield FakeMsg(aiohttp.WSMsgType.TEXT, json.dumps({
+                        "sessionResumptionUpdate": {"resumable": True, "newHandle": "test-token-xyz"}
+                    }))
+                while not self.closed:
+                    await asyncio.sleep(0.05)
+                yield FakeMsg(aiohttp.WSMsgType.CLOSED)
+
+            async def close(self, code=1000):
+                self.closed = True
+                self.close_code = code
+
+        class FakeCtx:
+            def __init__(self, ws):
+                self.ws = ws
+            async def __aenter__(self):
+                return self.ws
+            async def __aexit__(self, *a):
+                return False
+
+        class FakeSession:
+            def __init__(self, *a, **k):
+                pass
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *a):
+                return False
+            def ws_connect(self, *a, **k):
+                ws = FakeWs(len(connections))
+                connections.append(ws)
+                return FakeCtx(ws)
+
+        async def audio():
+            while engine.is_running:
+                yield b"\x00\x00" * 160
+                await asyncio.sleep(0.02)
+
+        with patch.object(gl.aiohttp, "ClientSession", FakeSession):
+            task = asyncio.ensure_future(engine.start_streaming(audio(), lambda ev: None))
+            for _ in range(100):
+                if engine._resumption_handle == "test-token-xyz":
+                    break
+                await asyncio.sleep(0.05)
+            engine.is_running = False
+            if connections:
+                for c in connections:
+                    c.closed = True
+            await asyncio.wait_for(task, timeout=5)
+
+        self.assertEqual(engine._resumption_handle, "test-token-xyz")
+        resumed_payload = engine.build_setup_payload()
+        self.assertEqual(resumed_payload["setup"]["sessionResumption"]["handle"], "test-token-xyz")
+        self.assertEqual(engine.rotation_count, 0, "Resumption update alone must not trigger rotation")
+
+    async def test_gemini_session_stats_reporting(self):
+        from obs_captioner.config import AppConfig
+        from obs_captioner.engines import gemini_live as gl
+
+        cfg = AppConfig()
+        cfg.gemini_live.api_key = "test-key"
+        engine = gl.GeminiLiveEngine(cfg)
+
+        stats = engine.get_session_stats()
+        self.assertIsInstance(stats, dict)
+        self.assertIn("uptime_seconds", stats)
+        self.assertIn("rotations", stats)
+        self.assertIn("last_rotation_time", stats)
+        self.assertEqual(stats["uptime_seconds"], 0.0)
+        self.assertEqual(stats["rotations"], 0)
+        self.assertEqual(stats["last_rotation_time"], 0.0)
+        self.assertFalse(stats["resumption_handle_active"])
+
+        engine.session_start_monotonic = time.monotonic() - 12.5
+        engine.rotation_count = 2
+        engine.last_rotation_time = 1234.5
+        engine._resumption_handle = "test-token-xyz"
+        stats = engine.get_session_stats()
+        self.assertGreater(stats["uptime_seconds"], 0.0)
+        self.assertEqual(stats["rotations"], 2)
+        self.assertEqual(stats["last_rotation_time"], 1234.5)
+        self.assertTrue(stats["resumption_handle_active"])
+
 
 if __name__ == "__main__":
     unittest.main()

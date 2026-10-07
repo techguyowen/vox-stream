@@ -90,6 +90,11 @@ class GeminiLiveEngine(BaseSTTEngine):
         self.current_ping_ms: Optional[float] = None
         self.on_ping: Optional[Callable[[float], None]] = None
         self._ping_task: Optional[asyncio.Task] = None
+        self.rotation_count: int = 0
+        self.session_start_monotonic: float = 0.0
+        self._resumption_handle: Optional[str] = None
+        self._go_away_received: bool = False
+        self.last_rotation_time: float = 0.0
 
         # Client-side VAD for zero-latency Hybrid VAD turn finalization
         self.vad = VoiceActivityDetector(
@@ -344,6 +349,10 @@ class GeminiLiveEngine(BaseSTTEngine):
                 "inputAudioTranscription": input_audio_transcription,
             }
         }
+        if self._resumption_handle:
+            setup_dict["setup"]["sessionResumption"] = {"handle": self._resumption_handle}
+        else:
+            setup_dict["setup"]["sessionResumption"] = {}
 
         # Optional system instructions (supported on standard transcribe / agent models, not live-translate)
         instruction = self._build_system_instruction()
@@ -417,6 +426,16 @@ class GeminiLiveEngine(BaseSTTEngine):
                     logger.debug(f"Suppressed hallucinated modelTurn from Gemini Live: {full_part_text}")
 
         return events
+
+    def get_session_stats(self) -> Dict[str, Any]:
+        """Return live session duration and rotation telemetry."""
+        uptime = (time.monotonic() - self.session_start_monotonic) if self.session_start_monotonic > 0 else 0.0
+        return {
+            "uptime_seconds": round(uptime, 1),
+            "rotations": self.rotation_count,
+            "last_rotation_time": self.last_rotation_time,
+            "resumption_handle_active": bool(self._resumption_handle),
+        }
 
     @staticmethod
     def _build_ssl_context() -> "ssl.SSLContext":
@@ -685,6 +704,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                                 init_data = json.loads(raw)
                                 if "setupComplete" in init_data:
                                     session_start_time = time.monotonic()
+                                    self.session_start_monotonic = session_start_time
                                     rotation_requested = False
                                     _latest_interim_text = None
                                     final_received_event.clear()
@@ -782,17 +802,22 @@ class GeminiLiveEngine(BaseSTTEngine):
 
                                 # Proactive Session Rotation Check (prevent Google 10m ceiling drops)
                                 elapsed_session = time.monotonic() - session_start_time
-                                if session_start_time > 0.0 and elapsed_session >= SESSION_ROTATION_THRESHOLD_SEC:
+                                if session_start_time > 0.0 and (elapsed_session >= SESSION_ROTATION_THRESHOLD_SEC or self._go_away_received):
                                     current_silence = (now - last_speech_time) if last_speech_time > 0.0 else elapsed_session
-                                    should_rotate = (not speech_active) or (
-                                        elapsed_session >= SESSION_HARD_ROTATION_SEC and current_silence >= 0.25
+                                    should_rotate = (
+                                        self._go_away_received
+                                        or (not speech_active)
+                                        or (elapsed_session >= SESSION_HARD_ROTATION_SEC and current_silence >= 0.25)
                                     )
                                     if should_rotate:
                                         logger.info(
                                             f"Gemini Live proactive session rotation triggered at {elapsed_session:.1f}s "
-                                            f"(speech_active={speech_active}, silence={current_silence:.2f}s)."
+                                            f"(speech_active={speech_active}, silence={current_silence:.2f}s, goAway={self._go_away_received})."
                                         )
                                         rotation_requested = True
+                                        self.rotation_count += 1
+                                        self.last_rotation_time = time.time()
+                                        self._go_away_received = False
                                         try:
                                             await ws.send_str(json.dumps({"realtimeInput": {"audioStreamEnd": True}}))
                                         except Exception:
@@ -835,6 +860,23 @@ class GeminiLiveEngine(BaseSTTEngine):
                                             data = json.loads(raw_text)
                                         except Exception:
                                             continue
+
+                                        if "goAway" in data:
+                                            go_away = data.get("goAway") or {}
+                                            time_left = go_away.get("timeLeft", "unknown")
+                                            logger.warning(
+                                                f"Google Gemini Live sent goAway notice (timeLeft={time_left}); rotating preemptively."
+                                            )
+                                            self._go_away_received = True
+                                            final_received_event.set()
+
+                                        if "sessionResumptionUpdate" in data:
+                                            update = data.get("sessionResumptionUpdate") or {}
+                                            if update.get("resumable") and update.get("newHandle"):
+                                                self._resumption_handle = update["newHandle"]
+                                                logger.debug(
+                                                    f"Received Gemini session resumption token: {self._resumption_handle[:16]}..."
+                                                )
 
                                         events = self.parse_server_message(data)
                                         is_trans_model = "translate" in getattr(self.config.gemini_live, "model", "").lower()

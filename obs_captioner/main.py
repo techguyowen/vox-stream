@@ -155,6 +155,8 @@ async def main_async(args):
     fallback_active = False
 
     def wire_engine_callbacks(eng):
+        if web_server is not None:
+            web_server.engine = eng
         if eng and hasattr(eng, "on_ping"):
             def _on_gemini_ping(ping_ms: float):
                 if web_server:
@@ -292,6 +294,7 @@ async def main_async(args):
                         fallback_eng = create_engine(config)
                         if await fallback_eng.initialize():
                             engine = fallback_eng
+                            wire_engine_callbacks(engine)
                             initialized = True
                             logger.info(f"Restored previous engine: {engine.name}")
                     except Exception as fe:
@@ -584,6 +587,7 @@ async def main_async(args):
                 fallback_eng = create_engine(config, override_engine=fallback_target)
                 if await fallback_eng.initialize():
                     engine = fallback_eng
+                    wire_engine_callbacks(engine)
                     initialized = True
                     fallback_active = True
                     engine_switch_status = f"⚠️ Emergency offline engine active: {engine.name} (Primary offline)"
@@ -780,6 +784,7 @@ async def main_async(args):
                                 if engine:
                                     await engine.stop()
                                 engine = probe_eng
+                                wire_engine_callbacks(engine)
                                 fallback_active = False
                                 engine_switch_status = f"✅ {engine.name} restored and ready!"
                                 logger.info(f"STT primary restored: {engine.name}")
@@ -828,6 +833,7 @@ async def main_async(args):
                                     fallback_eng = create_engine(config, override_engine=fallback_target)
                                     if await fallback_eng.initialize():
                                         engine = fallback_eng
+                                        wire_engine_callbacks(engine)
                                         initialized = True
                                         fallback_active = True
                                         engine_switch_status = f"⚠️ Emergency offline engine active: {engine.name}"
@@ -879,6 +885,7 @@ async def main_async(args):
                             fallback_eng = create_engine(config, override_engine=fallback_target)
                             if await fallback_eng.initialize():
                                 engine = fallback_eng
+                                wire_engine_callbacks(engine)
                                 fallback_active = True
                                 engine_switch_status = f"⚠️ Emergency offline engine active: {engine.name}"
                                 if web_server:
