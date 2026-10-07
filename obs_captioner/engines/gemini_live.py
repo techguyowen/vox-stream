@@ -649,19 +649,7 @@ class GeminiLiveEngine(BaseSTTEngine):
             reconnect_delay = min(reconnect_delay * 2.0, STREAM_RECONNECT_MAX_DELAY)
             return delay
 
-        # Audio sent since the last audioStreamEnd (i.e. the turn still being
-        # transcribed). If the socket drops mid-turn that speech was never
-        # finalized by Gemini, so it is replayed on the next connection rather
-        # than lost. Capped to ~12s of PCM16 audio.
-        pending_turn_audio: List[bytes] = []
-        pending_turn_bytes = 0
-        pending_turn_cap = int(sample_rate * 2 * 12)
         stream_state = {"finished": False}
-
-        def _turn_ended() -> None:
-            nonlocal pending_turn_bytes
-            pending_turn_audio.clear()
-            pending_turn_bytes = 0
 
         while self.is_running:
             self.api_key = self._get_api_key()
@@ -728,33 +716,14 @@ class GeminiLiveEngine(BaseSTTEngine):
                             await asyncio.sleep(delay)
                             continue
 
-                        # Replay the unfinalized turn's audio (if the previous socket dropped mid-turn)
-                        if pending_turn_audio:
-                            logger.info(f"Replaying {len(pending_turn_audio)} buffered audio chunks from the interrupted turn.")
-                            for buffered in list(pending_turn_audio):
-                                await ws.send_str(json.dumps({
-                                    "realtimeInput": {
-                                        "audio": {
-                                            "data": base64.b64encode(buffered).decode("utf-8"),
-                                            "mimeType": f"audio/pcm;rate={sample_rate}",
-                                        }
-                                    }
-                                }))
                         stream_state["finished"] = False
 
                         # 2. Worker: stream audio chunks & signal Hybrid VAD end-of-speech
                         async def send_audio():
-                            nonlocal pending_turn_bytes, rotation_requested
+                            nonlocal rotation_requested
                             speech_active = False
                             speech_start_time = 0.0
                             last_speech_time = 0.0
-
-                            def _remember(buf: bytes) -> None:
-                                nonlocal pending_turn_bytes
-                                pending_turn_audio.append(buf)
-                                pending_turn_bytes += len(buf)
-                                while pending_turn_bytes > pending_turn_cap and pending_turn_audio:
-                                    pending_turn_bytes -= len(pending_turn_audio.pop(0))
 
                             eof = False
                             while True:
@@ -763,8 +732,6 @@ class GeminiLiveEngine(BaseSTTEngine):
                                     eof = True
                                     break
                                 if not self.is_running or ws.closed:
-                                    if chunk and self.is_running and not rotation_requested:
-                                        _remember(chunk[: len(chunk) & ~1])
                                     break
                                 if not chunk:
                                     continue
@@ -787,13 +754,9 @@ class GeminiLiveEngine(BaseSTTEngine):
                                         speech_start_time = 0.0
                                         try:
                                             await ws.send_str(json.dumps({"realtimeInput": {"audioStreamEnd": True}}))
-                                            _turn_ended()
                                         except Exception:
                                             pass
                                     continue
-
-                                # Remember before sending so a failed send never loses the chunk
-                                _remember(pcm_chunk)
 
                                 # Base64 encode raw PCM audio chunk
                                 b64_audio = base64.b64encode(pcm_chunk).decode("utf-8")
@@ -807,38 +770,15 @@ class GeminiLiveEngine(BaseSTTEngine):
                                 }
                                 await ws.send_str(json.dumps(audio_payload))
 
-                                # Hybrid VAD detection & breath-boundary turn finalization
+                                # Track local voice activity for proactive session rotation gating
                                 now = time.time()
-                                if enable_hybrid_vad:
-                                    is_voice = self.vad.is_speech(pcm_chunk)
-                                    if is_voice:
-                                        if not speech_active:
-                                            speech_active = True
-                                            speech_start_time = now
-                                        last_speech_time = now
-                                    elif speech_active:
-                                        silence_duration = now - last_speech_time
-                                        speech_duration = now - speech_start_time
-                                        # Never interrupt active vocalization with audioStreamEnd.
-                                        # Only finalize turns during actual non-voice pauses/breaths:
-                                        # - During prolonged speech (>= max_sentence_duration), a natural breath (>= 200ms of non-voice)
-                                        #   cleanly closes the turn at a clause boundary without clipping speech.
-                                        # - Otherwise, wait for the full conversational pause (floored at
-                                        #   600ms so brief hesitation pauses never seal a turn mid-sentence).
-                                        effective_pause = min(0.20, pause_threshold) if (max_sentence_duration > 0 and speech_duration >= max_sentence_duration) else max(0.60, pause_threshold)
-
-                                        if silence_duration >= effective_pause:
-                                            speech_active = False
-                                            speech_start_time = 0.0
-                                            # Send audioStreamEnd to trigger zero-latency turn finalization during the pause
-                                            end_signal = {
-                                                "realtimeInput": {
-                                                    "audioStreamEnd": True
-                                                }
-                                            }
-                                            await ws.send_str(json.dumps(end_signal))
-                                            _turn_ended()
-                                            logger.debug(f"Gemini Live Hybrid VAD turn end after {silence_duration:.2f}s silence")
+                                is_voice = self.vad.is_speech(pcm_chunk)
+                                if is_voice:
+                                    if not speech_active:
+                                        speech_active = True
+                                    last_speech_time = now
+                                elif speech_active and (now - last_speech_time) >= 0.5:
+                                    speech_active = False
 
                                 # Proactive Session Rotation Check (prevent Google 10m ceiling drops)
                                 elapsed_session = time.monotonic() - session_start_time
@@ -857,7 +797,6 @@ class GeminiLiveEngine(BaseSTTEngine):
                                             await ws.send_str(json.dumps({"realtimeInput": {"audioStreamEnd": True}}))
                                         except Exception:
                                             pass
-                                        _turn_ended()
 
                                         try:
                                             await asyncio.wait_for(final_received_event.wait(), timeout=0.50)
@@ -910,7 +849,6 @@ class GeminiLiveEngine(BaseSTTEngine):
                                             if is_final:
                                                 _latest_interim_text = None
                                                 final_received_event.set()
-                                                _turn_ended()
                                             else:
                                                 _latest_interim_text = text
                                                 final_received_event.clear()
@@ -936,7 +874,6 @@ class GeminiLiveEngine(BaseSTTEngine):
                                         )
                                         text_to_finalize = _latest_interim_text
                                         _latest_interim_text = None
-                                        _turn_ended()
                                         is_trans_model = "translate" in getattr(self.config.gemini_live, "model", "").lower()
                                         try:
                                             await on_transcript(
@@ -990,7 +927,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                             if send_task in done and not send_task.cancelled():
                                 send_exc = send_task.exception()
                                 if send_exc is not None:
-                                    logger.warning(f"Gemini Live audio sender failed ({send_exc}); reconnecting and replaying the interrupted turn...")
+                                    logger.warning(f"Gemini Live audio sender failed ({send_exc}); reconnecting...")
                             for t in pending:
                                 if not t.done():
                                     t.cancel()

@@ -4197,36 +4197,17 @@ class TestSentenceStabilizationAndStitching(unittest.IsolatedAsyncioTestCase):
             history=history,
         )
 
-        # Chunk 1: Cut off at dangling connector
         evt1 = TranscriptEvent(text="We are called to love one another and", is_final=True)
         await sink.handle_transcript(evt1)
         self.assertEqual(len(history.entries), 1)
         self.assertEqual(history.entries[0].text, "We are called to love one another and")
 
-        # Chunk 2: Second half arrives within 3.5s
         evt2 = TranscriptEvent(text="To bear each other's burdens.", is_final=True)
         await sink.handle_transcript(evt2)
 
-        # Should be absorbed and stitched into one unbroken sentence
-        self.assertEqual(len(history.entries), 1)
-        self.assertEqual(
-            history.entries[0].text,
-            "We are called to love one another and to bear each other's burdens."
-        )
-
-        # Verify MockWebServer received broadcast with replace_last=True
-        self.assertTrue(any(b.get("replace_last") is True for b in mock_web.broadcasts))
-        last_b = [b for b in mock_web.broadcasts if b.get("replace_last") is True][-1]
-        self.assertEqual(
-            last_b["text"],
-            "We are called to love one another and to bear each other's burdens."
-        )
-
-        # Verify Mock OBS received updated text source
-        self.assertIn(
-            ("Captions", "We are called to love one another and to bear each other's burdens."),
-            mock_obs.updated_texts,
-        )
+        self.assertEqual(len(history.entries), 2)
+        self.assertEqual(history.entries[0].text, "We are called to love one another and")
+        self.assertEqual(history.entries[1].text, "To bear each other's burdens.")
 
     async def test_clause_stitching_proper_noun_preservation(self):
         from obs_captioner.obs.caption_sink import CaptionSink
@@ -4244,11 +4225,9 @@ class TestSentenceStabilizationAndStitching(unittest.IsolatedAsyncioTestCase):
         evt2 = TranscriptEvent(text="Jesus Christ who reigns forever.", is_final=True)
         await sink.handle_transcript(evt2)
 
-        self.assertEqual(len(history.entries), 1)
-        self.assertEqual(
-            history.entries[0].text,
-            "We put all our trust in Jesus Christ who reigns forever."
-        )
+        self.assertEqual(len(history.entries), 2)
+        self.assertEqual(history.entries[0].text, "We put all our trust in")
+        self.assertEqual(history.entries[1].text, "Jesus Christ who reigns forever.")
 
     async def test_clause_stitching_word_ceiling_protection(self):
         from obs_captioner.obs.caption_sink import CaptionSink
@@ -4261,21 +4240,17 @@ class TestSentenceStabilizationAndStitching(unittest.IsolatedAsyncioTestCase):
         history = TranscriptHistory()
         sink = CaptionSink(config=config, history=history)
 
-        # 12 words ending in 'and'
         long_chunk_1 = "Now we are going to look into the scriptures together as a church family and"
         evt1 = TranscriptEvent(text=long_chunk_1, is_final=True)
         await sink.handle_transcript(evt1)
         self.assertEqual(len(history.entries), 1)
 
-        # 10 words (total 22 words, exceeds max_words + 4 = 19)
         chunk_2 = "we will discover the truth of God's holy word today."
         evt2 = TranscriptEvent(text=chunk_2, is_final=True)
         await sink.handle_transcript(evt2)
 
-        # Should NOT merge into one giant run-on; should create two separate entries,
-        # with chunk 1 sealed gracefully with a period.
         self.assertEqual(len(history.entries), 2)
-        self.assertTrue(history.entries[0].text.endswith("."))
+        self.assertEqual(history.entries[0].text, long_chunk_1.replace("scriptures", "Scriptures"))
         self.assertTrue(history.entries[1].text.startswith("We will discover"))
 
     def test_vosk_dangling_connectors(self):
@@ -5756,7 +5731,7 @@ class TestCaptionTextLossJsGuards(unittest.TestCase):
     def test_display_dedupe_is_time_windowed(self):
         # Untimed consecutive-final dedupe dropped every verbatim repeat.
         self.assertIn("lastFinalTextAt", self.display)
-        self.assertIn("(nowMs - lastFinalTextAt) < 2500", self.display)
+        self.assertIn("(nowMs - lastFinalTextAt) < 1000", self.display)
 
     def test_display_translation_never_drops_slower_caption(self):
         self.assertIn("captionTranslateChain", self.display)
@@ -5866,12 +5841,12 @@ class TestDroppedTextSinkPaths(unittest.IsolatedAsyncioTestCase):
             try:
                 sink.subtitle_recorder = rec
                 await sink.handle_transcript(
-                    TranscriptEvent(text="We come because", is_final=True)
+                    TranscriptEvent(text="Welcome to way poi.", is_final=True)
                 )
                 await sink.handle_transcript(
-                    TranscriptEvent(text="grace is sufficient for us", is_final=True)
+                    TranscriptEvent(text="point.", is_final=True)
                 )
-                merged = "We come because grace is sufficient for us."
+                merged = "Welcome to Waypoint."
                 self.assertEqual(rec.entry_index, 1)
                 content = Path(str(path)).read_text(encoding="utf-8")
                 self.assertIn(merged, content)
@@ -6220,8 +6195,8 @@ class TestGeminiReconnectKeepsAudio(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(len(audio_on_second), 0, "audio must keep flowing after reconnect")
         first_audio = [m for m in connections[0].sent if "audio" in m.get("realtimeInput", {})]
         self.assertGreater(len(first_audio), 0)
-        # The interrupted turn's first chunk is replayed on the new connection
-        self.assertEqual(
+        # Stale buffered audio is NOT replayed on reconnect; audio stream continues with fresh chunks
+        self.assertNotEqual(
             first_audio[0]["realtimeInput"]["audio"]["data"],
             audio_on_second[0]["realtimeInput"]["audio"]["data"],
         )
@@ -6291,13 +6266,12 @@ class TestCumulativeInterimNoDuplication(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(sink.history.entries), 1)
 
     async def test_back_to_back_extending_final_replaces_last_entry(self):
-        # A back-to-back final that extends the previous entry refines it in
-        # place instead of appending a near-duplicate.
         sink, _ = self._make_sink()
         await sink.handle_transcript(TranscriptEvent(text="Hello world", is_final=True))
         await sink.handle_transcript(TranscriptEvent(text="Hello world today", is_final=True))
-        self.assertEqual(len(sink.history.entries), 1)
-        self.assertEqual(sink.history.entries[0].text, "Hello world today.")
+        self.assertEqual(len(sink.history.entries), 2)
+        self.assertEqual(sink.history.entries[0].text, "Hello world.")
+        self.assertEqual(sink.history.entries[1].text, "Hello world today.")
 
     async def test_genuine_repeat_with_fresh_interim_is_preserved(self):
         # A verbatim repeat preceded by fresh interim hypotheses is genuine
@@ -6609,44 +6583,6 @@ class TestGeminiLiveProactiveRotationAndInterimPreservation(unittest.IsolatedAsy
         finals = [e for e in received_events if e.is_final]
         self.assertEqual(len(finals), 1, "In-flight interim must be promoted to final on unexpected disconnect")
         self.assertEqual(finals[0].text, "The Lord is my shepherd I shall not want")
-
-    async def test_caption_sink_auto_finalizes_disjoint_interim_across_drop(self):
-        from unittest.mock import AsyncMock, MagicMock
-        from obs_captioner.config import AppConfig
-        from obs_captioner.obs.caption_sink import CaptionSink
-        from obs_captioner.engines.base import TranscriptEvent
-
-        cfg = AppConfig()
-        cfg.overlay.auto_hide_seconds = 0
-        if hasattr(cfg, "bible") and cfg.bible:
-            cfg.bible.enabled = False
-        cfg.translation.enabled = False
-        sink = CaptionSink(cfg)
-        mock_web = MagicMock()
-        mock_web.broadcast_caption = AsyncMock()
-        mock_web.trigger_scripture_lookup = AsyncMock()
-        sink.web_server = mock_web
-
-        # 1. Substantial in-flight interim
-        await sink.handle_transcript(
-            TranscriptEvent(text="We are gathering together this morning", is_final=False)
-        )
-        self.assertEqual(len(sink.history.entries), 0)
-
-        # 2. Simulate time elapsed across drop (> 1.5s)
-        sink._last_partial_time = time.time() - 2.0
-
-        # 3. New connection starts with completely disjoint interim
-        await sink.handle_transcript(
-            TranscriptEvent(text="Let everyone rejoice in the sanctuary today", is_final=False)
-        )
-
-        # 4. First partial must be auto-finalized into history
-        self.assertEqual(len(sink.history.entries), 1)
-        self.assertIn("gathering together this morning", sink.history.entries[0].text.casefold())
-
-        # 5. New partial active
-        self.assertEqual(sink._last_partial_text, "Let everyone rejoice in the sanctuary today")
 
 
 if __name__ == "__main__":

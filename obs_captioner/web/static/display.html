@@ -2679,12 +2679,9 @@
                                 // and must be kept.
                                 const nowMs = Date.now();
                                 const norm = (s) => (s || "").replace(/[^\w\s]/g, "").trim().toLowerCase();
-                                if (norm(prevFinal) === norm(text) && (nowMs - lastFinalTextAt) < 2500) {
-                                    replaceLastFinalSentence(text);
+                                if (norm(prevFinal) === norm(text) && (nowMs - lastFinalTextAt) < 1000) {
                                     return;
                                 }
-                                if (prevFinal.trim().toLowerCase() === text.trim().toLowerCase()
-                                    && (nowMs - lastFinalTextAt) < 2500) return;
                                 lastFinalTextAt = nowMs;
                                 appendFinalSentence(text);
                             }

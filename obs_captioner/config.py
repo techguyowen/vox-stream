@@ -70,7 +70,7 @@ class GeminiLiveConfig:
     custom_vocabulary: List[str] = field(default_factory=lambda: ["OBS Studio", "Twitch", "Discord", "YouTube", "Jesus Christ"])
     language_codes: List[str] = field(default_factory=list)  # [] for auto-detect, or e.g. ["en-US"]
     smart_transcription: bool = True  # Backward-compatible toggle for SMART vs VERBATIM
-    enable_hybrid_vad: bool = True  # Client-side Silero VAD triggers instant audioStreamEnd finalization
+    enable_hybrid_vad: bool = False  # Rely on native Gemini turn endpointing by default
     transport: str = "websocket"  # "websocket" (direct raw BidiGenerateContent WS), "sdk", or "auto"
     system_instruction: str = (
         "You are Gemini 3.5 Transcribe, a real-time speech transcriber. Transcribe the incoming audio accurately into text verbatim. "

@@ -143,43 +143,6 @@ class CaptionSink:
                 return remainder, False
             else:
                 return "", True
-
-        # 2. Syntactic clause stitching for dangling connectors or unclosed clauses
-        # Strip potential translation parenthetical from last_text before checking English base
-        last_clean_text = re.sub(r"\s*\([^)]*\)$", "", last_text).strip()
-        last_words = last_clean_text.split()
-        if last_words:
-            last_word_clean = last_words[-1].lower().rstrip(".,?!;:…")
-            is_dangling = last_word_clean in TextFormatter.DANGLING_CONNECTORS
-            has_no_terminal = last_clean_text[-1] not in ".?!"
-
-            if is_dangling or has_no_terminal:
-                max_words = getattr(self.config.audio, "max_sentence_words", 24) or 24
-                new_words = clean_new.split()
-                # If combined length fits comfortably within sentence length ceiling
-                if len(last_words) + len(new_words) <= max_words + 4:
-                    # Prepare continuation text: lowercase first word unless it's a proper noun or 'I'
-                    continuation = clean_new
-                    first_word = new_words[0].rstrip(".,?!;:…")
-                    if (
-                        first_word != "I"
-                        and first_word.lower() not in self.formatter.PROPER_NOUNS
-                        and not any(c.isupper() for c in first_word[1:])  # not acronym like OBS
-                    ):
-                        continuation = continuation[0].lower() + continuation[1:]
-
-                    # Remove any trailing punctuation from last_text before attaching
-                    base_text = last_clean_text.rstrip(".,;:… ")
-                    combined = f"{base_text} {continuation}"
-                    # Re-apply formatting and punctuation to the stitched complete sentence
-                    stitched = self.formatter.format_text(combined, is_final=True)
-                    last_entry.text = stitched
-                    last_entry.end_time = now
-                    return "", True
-                elif has_no_terminal:
-                    # If sentence is too long to absorb, gracefully seal the previous entry with a period
-                    last_entry.text = last_clean_text.rstrip(".,;:… ") + "."
-
         return clean_text, False
 
     def _stamp_payload(self, payload: dict, utterance_id: int) -> dict:
@@ -237,39 +200,6 @@ class CaptionSink:
             else:
                 logger.debug(f"Interim hallucination suppressed in caption sink: {raw_text}")
             return
-
-        # In-Flight Interim Preservation across abrupt engine reconnects / drops:
-        # If this is an interim event, and the previous partial text was substantial
-        # (>= 3 words and >= 12 chars), and the incoming interim text is completely
-        # disjoint (not a prefix/continuation/extension, 0 content word overlap, > 1.5s elapsed):
-        # auto-finalize the previous partial so the room never loses sentences.
-        if not event.is_final and self._last_partial_text:
-            prev_partial = self._last_partial_text.strip()
-            prev_words = prev_partial.split()
-            elapsed_partial = time.time() - (self._last_partial_time or 0.0)
-            if len(prev_words) >= 3 and len(prev_partial) >= 12 and elapsed_partial > 1.5:
-                p_norm = prev_partial.casefold()
-                new_norm = raw_text.casefold()
-                is_prefix_or_ext = (
-                    new_norm.startswith(p_norm)
-                    or p_norm.startswith(new_norm)
-                    or p_norm in new_norm
-                    or new_norm in p_norm
-                )
-                if not is_prefix_or_ext:
-                    w_prev = set(re.findall(r"\b\w+\b", p_norm))
-                    w_new = set(re.findall(r"\b\w+\b", new_norm))
-                    content_stop = {"a", "an", "the", "and", "or", "in", "on", "at", "to", "of", "is", "it", "as", "by", "for", "with"}
-                    overlap = (w_prev & w_new) - content_stop
-                    if not (w_prev & w_new) or not overlap:
-                        logger.info(
-                            f"Auto-finalizing disjoint in-flight interim before adopting new interim: '{prev_partial}'"
-                        )
-                        text_to_finalize = self._last_partial_text
-                        self._last_partial_text = None
-                        await self._handle_transcript_locked(
-                            TranscriptEvent(text=text_to_finalize, is_final=True, timestamp=event.timestamp)
-                        )
 
         # Whether fresh interim hypotheses arrived since the previous final
         # (captured per final below; defaults permissive so an untracked
@@ -475,12 +405,12 @@ class CaptionSink:
             if (
                 self.history.entries
                 and not had_fresh_interim
-                and (sentence_end - self._last_final_time) < self._history_dedup_window
+                and (sentence_end - self._last_final_time) < self._duplicate_final_window
             ):
                 norm_new = re.sub(r"\s+", " ", re.sub(r"[^\w\s]+", " ", clean_text)).strip().casefold()
                 last_base = re.sub(r"\s*\([^)]*\)$", "", self.history.entries[-1].text).strip()
                 norm_last = re.sub(r"\s+", " ", re.sub(r"[^\w\s]+", " ", last_base)).strip().casefold()
-                if norm_new and (norm_new == norm_last or norm_new in norm_last):
+                if norm_new and norm_new == norm_last:
                     logger.info(f"✓ [FINAL]   [HISTORY DUPLICATE SUPPRESSED] {clean_text}")
                     self._last_final_time = sentence_end
                     self._utterance_active = False
@@ -492,53 +422,6 @@ class CaptionSink:
                                 utterance_id,
                             )
                         )
-                    return
-                if norm_new and norm_last and norm_new.startswith(norm_last):
-                    # The new final refines the previous entry: update it in
-                    # place instead of appending a near-duplicate.
-                    recorded_extend = clean_text
-                    if translated_text:
-                        dual_fmt = getattr(self.config.translation, "dual_subtitle_format", "clean")
-                        if dual_fmt == "parentheses":
-                            recorded_extend = f"{clean_text} ({translated_text})"
-                        else:
-                            recorded_extend = f"{clean_text} / {translated_text}"
-                    logger.info(f"✓ [FINAL EXTENDED] '{self.history.entries[-1].text}' -> '{recorded_extend}'")
-                    last_entry = self.history.entries[-1]
-                    last_entry.text = recorded_extend
-                    last_entry.end_time = sentence_end
-                    last_entry.is_censored = last_entry.is_censored or was_censored
-                    self._last_final_time = sentence_end
-                    self._last_final_text = re.sub(r"\s+", " ", clean_text).strip().casefold()
-                    self._utterance_active = False
-                    self._sentence_start_time = sentence_end
-
-                    if self.web_server:
-                        await self.web_server.broadcast_caption(
-                            self._stamp_payload(
-                                {
-                                    "text": recorded_extend,
-                                    "translated_text": None,
-                                    "is_final": True,
-                                    "is_censored": last_entry.is_censored,
-                                    "timestamp": event.timestamp,
-                                    "replace_last": True,
-                                },
-                                utterance_id,
-                            )
-                        )
-                    if self.obs_client and self.obs_client.is_connected:
-                        if self.config.obs.update_text_source and self.config.obs.text_source_name:
-                            await self.obs_client.update_text_source(
-                                self.config.obs.text_source_name,
-                                recorded_extend,
-                            )
-                    if self.subtitle_recorder and getattr(self.subtitle_recorder, "is_recording", False):
-                        self.subtitle_recorder.update_last_caption(recorded_extend, end_time=time.time())
-                    if self.config.overlay.auto_hide_seconds > 0:
-                        if self._auto_clear_task:
-                            self._auto_clear_task.cancel()
-                        self._auto_clear_task = asyncio.create_task(self._auto_clear_worker())
                     return
 
             self._last_final_time = sentence_end
