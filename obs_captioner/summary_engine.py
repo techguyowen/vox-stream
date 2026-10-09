@@ -358,7 +358,7 @@ class SermonSummaryEngine:
         summary_json = self._extract_json_object(response_text)
         return summary_json
 
-    async def _call_gemini_api(self, prompt: str, api_key: str, model: str = "gemini-2.0-flash") -> Optional[str]:
+    async def _call_gemini_api(self, prompt: str, api_key: str, model: str = "gemini-3.8-flash") -> Optional[str]:
         """Execute Gemini completion with google.genai or direct HTTPS fallback."""
         loop = asyncio.get_event_loop()
 

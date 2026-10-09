@@ -99,6 +99,7 @@ class CensorConfig:
     filter_standard_profanity: bool = True
     filter_church_blasphemy: bool = True
     filter_crude_terms: bool = True
+    filter_custom_blacklist: bool = True
     custom_blacklist: List[str] = field(default_factory=list)
     custom_whitelist: List[str] = field(default_factory=list)
     custom_replacements: Dict[str, str] = field(default_factory=dict)
@@ -166,7 +167,7 @@ class ContentFilter:
             terms.update(tier2)
         if self.config.filter_crude_terms:
             terms.update(DEFAULT_CRUDE_TERMS)
-        if self.config.custom_blacklist:
+        if getattr(self.config, "filter_custom_blacklist", True) and self.config.custom_blacklist:
             for w in self.config.custom_blacklist:
                 if w.strip():
                     terms.add(w.lower().strip())
@@ -350,6 +351,7 @@ class ContentFilter:
                 "standard_profanity": self.config.filter_standard_profanity,
                 "church_blasphemy": self.config.filter_church_blasphemy,
                 "crude_terms": self.config.filter_crude_terms,
+                "custom_blacklist": getattr(self.config, "filter_custom_blacklist", True),
             },
             "custom_blacklist": self.config.custom_blacklist,
             "custom_whitelist": self.config.custom_whitelist,

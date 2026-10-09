@@ -823,6 +823,7 @@ function initBibleHandlers() {
                     letter_spacing: (document.getElementById("bible_tab_letter_spacing") && document.getElementById("bible_tab_letter_spacing").checked) ? "0.05em" : "normal",
                     high_contrast_outline: document.getElementById("bible_tab_high_contrast") ? document.getElementById("bible_tab_high_contrast").checked : false,
                     show_on_stream_overlay: document.getElementById("bible_tab_show_on_stream_overlay") ? document.getElementById("bible_tab_show_on_stream_overlay").checked : false,
+                    max_verses_per_slide: parseInt(document.getElementById("bible_tab_max_verses_per_slide")?.value || "2", 10),
                     show_on_stage_display: isStageDisplay,
                 },
                 display: {
@@ -1196,6 +1197,47 @@ function triggerModelTranscribingActivity(text) {
 // DOM Elements
 const vuBar = document.getElementById("vu-meter-bar");
 const vuDbText = document.getElementById("vu-meter-db");
+
+function applyVuMeterLevel(db) {
+    const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
+    if (vuBar) vuBar.style.width = `${pct}%`;
+    const tabVu = document.getElementById("audio-tab-vu-meter");
+    if (tabVu) tabVu.style.width = `${pct}%`;
+
+    const renderDb = (el) => {
+        if (!el) return;
+        if (db <= -58.0) {
+            el.textContent = "-∞ dB";
+            el.style.color = "#64748B";
+        } else {
+            el.textContent = `${db.toFixed(1)} dB`;
+            if (db >= -3.0) {
+                el.style.color = "#EF4444";
+            } else if (db >= -12.0) {
+                el.style.color = "#F59E0B";
+            } else {
+                el.style.color = "#34D399";
+            }
+        }
+    };
+    renderDb(vuDbText);
+    renderDb(document.getElementById("audio-vu-db-text"));
+}
+
+function resetVuMeterLevel() {
+    if (vuBar) vuBar.style.width = "0%";
+    if (vuDbText) {
+        vuDbText.textContent = "-∞ dB";
+        vuDbText.style.color = "#64748B";
+    }
+    const tabVu = document.getElementById("audio-tab-vu-meter");
+    const tabVuDb = document.getElementById("audio-vu-db-text");
+    if (tabVu) tabVu.style.width = "0%";
+    if (tabVuDb) {
+        tabVuDb.textContent = "-∞ dB";
+        tabVuDb.style.color = "#64748B";
+    }
+}
 const statusPill = document.getElementById("status-pill");
 const statusText = document.getElementById("status-text");
 const btnToggleEngine = document.getElementById("btn-toggle-engine");
@@ -2010,6 +2052,8 @@ function populateFormFields(cfg) {
         document.getElementById("filter_standard_profanity").checked = !!c.filter_standard_profanity;
         document.getElementById("filter_church_blasphemy").checked = !!c.filter_church_blasphemy;
         document.getElementById("filter_crude_terms").checked = !!c.filter_crude_terms;
+        const fCustom = document.getElementById("filter_custom_blacklist");
+        if (fCustom) fCustom.checked = c.filter_custom_blacklist !== false;
     }
 
     // Translation tab
@@ -2024,7 +2068,13 @@ function populateFormFields(cfg) {
             transKeyInput.value = cfg.translation.gemini_api_key || "";
         }
         if (transKeyStatus) {
-            transKeyStatus.style.display = (cfg.translation.gemini_api_key && cfg.translation.gemini_api_key.length > 0) ? "inline" : "none";
+            if (cfg.translation.gemini_api_key && cfg.translation.gemini_api_key.length > 0) {
+                const preview = cfg.translation.gemini_api_key_preview ? ` (${cfg.translation.gemini_api_key_preview})` : "";
+                transKeyStatus.textContent = `✓ Key Configured${preview}`;
+                transKeyStatus.style.display = "inline";
+            } else {
+                transKeyStatus.style.display = "none";
+            }
         }
         document.getElementById("translation_target").value = cfg.translation.target_language || "es";
         document.getElementById("translation_mode").value = cfg.translation.display_mode || "dual";
@@ -2060,6 +2110,70 @@ function populateFormFields(cfg) {
         }
     }
 
+function updateChurchModeLabels(isChurchMode) {
+    const cLabel = document.getElementById("church_name_label");
+    const cSubtext = document.getElementById("church_name_subtext");
+    const cSublabel = document.getElementById("church_name_sublabel");
+    const cInput = document.getElementById("church_name");
+    const cBtn = document.getElementById("btn-save-church-name");
+
+    if (isChurchMode) {
+        if (cLabel) cLabel.innerHTML = '<span>⛪ Church Name / Organization</span>';
+        if (cSublabel) cSublabel.textContent = 'Auto-formats your church & ministry names in live captions';
+        if (cSubtext) cSubtext.innerHTML = '✨ <strong>Universal Church Ready:</strong> Any church can enter their name here. VoxStream will automatically recognize and capitalize your church name, kids ministry, and campus references, while keeping all built-in scripture citations ("John 3:16") and sacred terms 100% active.';
+        if (cInput && !cInput.value.trim()) cInput.placeholder = 'e.g. Waypoint Church, Grace Community Church, First Baptist';
+        if (cBtn) cBtn.textContent = 'Save Church Name';
+    } else {
+        if (cLabel) cLabel.innerHTML = '<span>🏢 Organization Name</span>';
+        if (cSublabel) cSublabel.textContent = 'Auto-capitalizes and formats your company, school, or event name';
+        if (cSubtext) cSubtext.innerHTML = '🏢 <strong>General Organization Mode:</strong> Church Mode is turned off. Biblical scripture formatting and sacred terms are disabled, tailoring captions for corporate events, schools, keynote conferences, and municipal meetings.';
+        if (cInput && !cInput.value.trim()) cInput.placeholder = 'e.g. Acme Corporation, Lincoln High School, Tech Summit';
+        if (cBtn) cBtn.textContent = 'Save Organization Name';
+    }
+
+    const vBadge = document.getElementById("vocab-active-org-badge");
+    const vIcon = document.getElementById("vocab-active-org-icon");
+    const vLabel = document.getElementById("vocab-active-org-label");
+    if (isChurchMode) {
+        if (vIcon) vIcon.textContent = "⛪";
+        if (vLabel) vLabel.textContent = "Active Church:";
+        if (vBadge) {
+            vBadge.style.background = "rgba(245, 158, 11, 0.12)";
+            vBadge.style.borderColor = "rgba(245, 158, 11, 0.3)";
+            vBadge.style.color = "#FCD34D";
+        }
+    } else {
+        if (vIcon) vIcon.textContent = "🏢";
+        if (vLabel) vLabel.textContent = "Active Organization:";
+        if (vBadge) {
+            vBadge.style.background = "rgba(59, 130, 246, 0.12)";
+            vBadge.style.borderColor = "rgba(59, 130, 246, 0.3)";
+            vBadge.style.color = "#93C5FD";
+        }
+    }
+
+    const bBadge = document.getElementById("biasing-church-mode-badge");
+    const bDesc = document.getElementById("biasing-church-mode-desc");
+    if (bBadge) {
+        if (isChurchMode) {
+            bBadge.textContent = "✓ Active in Current Profile";
+            bBadge.style.background = "rgba(34, 197, 94, 0.15)";
+            bBadge.style.color = "#4ADE80";
+            bBadge.style.borderColor = "rgba(34, 197, 94, 0.3)";
+        } else {
+            bBadge.textContent = "✕ Disabled (General Profile)";
+            bBadge.style.background = "rgba(100, 116, 139, 0.2)";
+            bBadge.style.color = "#94A3B8";
+            bBadge.style.borderColor = "rgba(100, 116, 139, 0.3)";
+        }
+    }
+    if (bDesc) {
+        bDesc.textContent = isChurchMode
+            ? "When Church Mode is enabled, the following terms are passed directly into Gemini Live before transcription. You do not need to manually re-enter these standard church terms below:"
+            : "Church Mode is turned off for this profile. Standard church terms and scripture names are NOT being automatically biased. Only the custom words you add below will be passed to Gemini Live.";
+    }
+}
+
     // Audio tab
     if (cfg.general) {
         document.getElementById("engine_select").value = cfg.general.engine || "vosk";
@@ -2080,6 +2194,7 @@ function populateFormFields(cfg) {
         if (geminiChurchBadge) {
             geminiChurchBadge.style.display = (cfg.general.church_mode !== false) ? "flex" : "none";
         }
+        updateChurchModeLabels(cfg.general.church_mode !== false);
         const churchName = cfg.general.church_name || "Waypoint Church";
         const cNameEl = document.getElementById("church_name");
         if (cNameEl && document.activeElement !== cNameEl) {
@@ -2155,7 +2270,13 @@ function populateFormFields(cfg) {
             geminiInput.value = cfg.gemini_live.api_key || "";
         }
         if (geminiStatus) {
-            geminiStatus.style.display = (cfg.gemini_live.api_key && cfg.gemini_live.api_key.length > 0) ? "inline" : "none";
+            if (cfg.gemini_live.api_key && cfg.gemini_live.api_key.length > 0) {
+                const preview = cfg.gemini_live.api_key_preview ? ` (${cfg.gemini_live.api_key_preview})` : "";
+                geminiStatus.textContent = `✓ Key Configured${preview}`;
+                geminiStatus.style.display = "inline";
+            } else {
+                geminiStatus.style.display = "none";
+            }
         }
         if (cfg.gemini_live.model) document.getElementById("gemini_model").value = cfg.gemini_live.model;
         if (cfg.gemini_live.fallback_model && document.getElementById("gemini_fallback_model")) {
@@ -2163,6 +2284,14 @@ function populateFormFields(cfg) {
         }
         if (cfg.gemini_live.custom_vocabulary) {
             document.getElementById("gemini_custom_vocab").value = cfg.gemini_live.custom_vocabulary.join(", ");
+            const biasingTextarea = document.getElementById("vocab-biasing-word-list");
+            const biasingCount = document.getElementById("vocab-biasing-count");
+            if (biasingTextarea && document.activeElement !== biasingTextarea) {
+                biasingTextarea.value = cfg.gemini_live.custom_vocabulary.join("\n");
+                if (biasingCount) {
+                    biasingCount.textContent = `${cfg.gemini_live.custom_vocabulary.length} terms configured for speech biasing`;
+                }
+            }
         }
         if (document.getElementById("gemini_mode")) {
             document.getElementById("gemini_mode").value = cfg.gemini_live.mode || (cfg.gemini_live.smart_transcription !== false ? "SMART" : "VERBATIM");
@@ -2184,7 +2313,13 @@ function populateFormFields(cfg) {
             bwInput.value = cfg.bandwidth.api_key || "";
         }
         if (bwStatus) {
-            bwStatus.style.display = (cfg.bandwidth.api_key && cfg.bandwidth.api_key.length > 0) ? "inline" : "none";
+            if (cfg.bandwidth.api_key && cfg.bandwidth.api_key.length > 0) {
+                const preview = cfg.bandwidth.api_key_preview ? ` (${cfg.bandwidth.api_key_preview})` : "";
+                bwStatus.textContent = `✓ Key Configured${preview}`;
+                bwStatus.style.display = "inline";
+            } else {
+                bwStatus.style.display = "none";
+            }
         }
     }
     if (cfg.local_whisper) {
@@ -2244,6 +2379,10 @@ function populateFormFields(cfg) {
         if (obsPwEl && cfg.obs.password) obsPwEl.value = cfg.obs.password;
 
         document.getElementById("obs_auto_projector").checked = !!cfg.obs.auto_open_projector;
+        const ceaEl = document.getElementById("obs_send_cea608_captions");
+        if (ceaEl && cfg.obs.send_cea608_captions !== undefined) {
+            ceaEl.checked = !!cfg.obs.send_cea608_captions;
+        }
         if (cfg.obs.projector_type) {
             document.getElementById("obs_projector_type").value = cfg.obs.projector_type;
             const qpt = document.getElementById("quick_projector_type");
@@ -2342,6 +2481,14 @@ function populateFormFields(cfg) {
             const el = document.getElementById("display_dyslexia_mode");
             if (el) el.checked = !!d.dyslexia_mode;
         }
+        if (d.welcome_banner_text !== undefined) {
+            const el = document.getElementById("display_welcome_banner_text");
+            if (el && document.activeElement !== el) el.value = d.welcome_banner_text || "";
+        }
+        if (d.welcome_banner_url !== undefined) {
+            const el = document.getElementById("display_welcome_banner_url");
+            if (el && document.activeElement !== el) el.value = d.welcome_banner_url || "";
+        }
         if (typeof updateAudienceDisplayPreview === "function") {
             updateAudienceDisplayPreview();
         }
@@ -2373,6 +2520,11 @@ function populateFormFields(cfg) {
 
         const bMode = document.getElementById("bible_tab_display_mode");
         if (bMode && b.display_mode) bMode.value = b.display_mode;
+
+        const bMaxVerses = document.getElementById("bible_tab_max_verses_per_slide");
+        if (bMaxVerses && b.max_verses_per_slide !== undefined) {
+            bMaxVerses.value = String(b.max_verses_per_slide);
+        }
 
         const bDur = document.getElementById("bible_tab_duration_slider");
         const bDurVal = document.getElementById("val-bible-tab-duration");
@@ -2953,6 +3105,65 @@ if (btnRunVocabTest) {
     });
 }
 
+// Suggest terms from recent transcript
+const btnScanTranscript = document.getElementById("btn-scan-transcript-terms");
+if (btnScanTranscript) {
+    btnScanTranscript.addEventListener("click", async () => {
+        const chipsContainer = document.getElementById("suggested-terms-chips");
+        if (!chipsContainer) return;
+        chipsContainer.innerHTML = '<span style="font-size: 11px; color: var(--text-muted);">Scanning recent transcript history...</span>';
+        try {
+            const res = await fetch("/api/transcript/history");
+            if (!res.ok) {
+                chipsContainer.innerHTML = '<span style="font-size: 11px; color: #EF4444;">Failed to fetch transcript history.</span>';
+                return;
+            }
+            const data = await res.json();
+            const history = data.history || [];
+            if (history.length === 0) {
+                chipsContainer.innerHTML = '<span style="font-size: 11px; color: var(--text-muted);">No transcript records found. Start speaking first to scan words.</span>';
+                return;
+            }
+            const fullText = history.map(item => item.text || item.caption || "").join(" ");
+            const commonWords = new Set(["The", "A", "An", "In", "On", "At", "To", "For", "With", "By", "From", "About", "Against", "Between", "Into", "Through", "During", "Before", "After", "Above", "Below", "And", "Or", "But", "So", "If", "Because", "As", "Until", "While", "Of", "Although", "This", "That", "These", "Those", "My", "Your", "His", "Her", "Its", "Our", "Their", "We", "You", "They", "He", "She", "It", "I", "What", "Which", "Who", "Whom", "When", "Where", "Why", "How", "All", "Each", "Every", "Both", "Few", "More", "Most", "Other", "Some", "Such", "No", "Nor", "Not", "Only", "Own", "Same", "Than", "Too", "Very", "Can", "Will", "Just", "Should", "Now", "Amen", "God", "Lord", "Jesus", "Christ"]);
+            const words = fullText.match(/\b[A-Z][a-zA-Z0-9'-]+\b/g) || [];
+            const termCounts = {};
+            for (const w of words) {
+                if (w.length > 2 && !commonWords.has(w)) {
+                    termCounts[w] = (termCounts[w] || 0) + 1;
+                }
+            }
+            const sortedTerms = Object.keys(termCounts).sort((a, b) => termCounts[b] - termCounts[a]).slice(0, 15);
+            if (sortedTerms.length === 0) {
+                chipsContainer.innerHTML = '<span style="font-size: 11px; color: var(--text-muted);">No rare proper nouns found in recent transcript.</span>';
+                return;
+            }
+            chipsContainer.innerHTML = "";
+            sortedTerms.forEach(term => {
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.className = "btn btn-sm";
+                btn.style.cssText = "font-size: 11px; padding: 3px 9px; background: rgba(56, 189, 248, 0.12); color: #38BDF8; border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;";
+                btn.innerHTML = `<span>+ <strong>${escapeHtml(term)}</strong></span> <span style="opacity: 0.6; font-size: 9.5px;">(${termCounts[term]}x)</span>`;
+                btn.title = `Click to prefill '${term}' into Glossary Correct Replacement`;
+                btn.addEventListener("click", () => {
+                    const repInput = document.getElementById("vocab-replacement");
+                    const misInput = document.getElementById("vocab-misheard");
+                    if (repInput) repInput.value = term;
+                    if (misInput) {
+                        misInput.value = term.toLowerCase();
+                        misInput.focus();
+                    }
+                    showToast(`💡 Prefilled '${term}' into Glossary builder! Enter misheard pronunciation and save.`, "info", 3500);
+                });
+                chipsContainer.appendChild(btn);
+            });
+        } catch (e) {
+            chipsContainer.innerHTML = '<span style="font-size: 11px; color: #EF4444;">Error scanning transcript terms.</span>';
+        }
+    });
+}
+
 // Filter CRUD Management
 async function loadFilterState() {
     try {
@@ -3034,6 +3245,12 @@ function renderFilterTables(state) {
             await loadFilterState();
         });
     });
+    // 4. Tier 4 Counter
+    const fTier4Count = document.getElementById("filter-tier4-count");
+    if (fTier4Count) {
+        const count = (state.custom_blacklist || []).length;
+        fTier4Count.textContent = `${count} custom term${count === 1 ? "" : "s"}`;
+    }
 }
 
 // Add Replacement Button
@@ -3052,6 +3269,38 @@ document.getElementById("btn-add-replacement").addEventListener("click", async (
     }
 });
 
+// Load Default Replacements into Table
+const btnLoadDefaultReps = document.getElementById("btn-load-default-replacements");
+if (btnLoadDefaultReps) {
+    btnLoadDefaultReps.addEventListener("click", async () => {
+        const defaultReps = {
+            "fuck": "fudge", "fucking": "flipping", "fucked": "messed up", "fucker": "rascal", "motherfucker": "monster",
+            "shit": "shoot", "shitty": "lousy", "bullshit": "nonsense",
+            "bitch": "complainer", "bitches": "people", "bitching": "grumbling",
+            "ass": "bottom", "asshole": "jerk", "dumbass": "silly person", "jackass": "fool",
+            "bastard": "rogue", "cunt": "scoundrel", "dick": "pest", "dickhead": "fool",
+            "cock": "rooster", "pussy": "wimp", "whore": "traitor", "slut": "wild one",
+            "damn": "darn", "dammit": "drat", "damned": "blasted",
+            "goddamn": "gosh darn", "goddammit": "gosh darn it", "god damn": "gosh darn",
+            "holy shit": "holy cow", "holy fuck": "my word", "holy hell": "my goodness",
+            "hell": "heck", "hellish": "rough"
+        };
+        if (confirm("Load all 35+ built-in wholesome substitutions into the table so you can customize or override them?")) {
+            try {
+                await fetch("/api/filter/import", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ replacements: defaultReps, replace_all: false })
+                });
+                await loadFilterState();
+                showToast("Loaded built-in default substitutions into the table!", "success");
+            } catch (e) {
+                showToast(`Failed to load defaults: ${e.message}`, "error");
+            }
+        }
+    });
+}
+
 // Add Blacklist Word
 document.getElementById("btn-add-blacklist").addEventListener("click", async () => {
     const term = document.getElementById("new-blacklist-term").value.trim();
@@ -3065,6 +3314,30 @@ document.getElementById("btn-add-blacklist").addEventListener("click", async () 
         await loadFilterState();
     }
 });
+
+// Bulk Add Blacklist Words
+const btnBulkAddBlacklist = document.getElementById("btn-bulk-add-blacklist");
+if (btnBulkAddBlacklist) {
+    btnBulkAddBlacklist.addEventListener("click", async () => {
+        const textarea = document.getElementById("blacklist-bulk-textarea");
+        const raw = (textarea ? textarea.value : "").trim();
+        if (!raw) return;
+        const terms = raw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+        if (terms.length === 0) return;
+        try {
+            await fetch("/api/filter/import", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ blacklist: terms, replace_all: false })
+            });
+            if (textarea) textarea.value = "";
+            await loadFilterState();
+            showToast(`Added ${terms.length} terms to Tier 4 Blacklist!`, "success");
+        } catch (e) {
+            showToast(`Failed to add terms: ${e.message}`, "error");
+        }
+    });
+}
 
 // Add Whitelist Word
 document.getElementById("btn-add-whitelist").addEventListener("click", async () => {
@@ -3115,10 +3388,48 @@ document.getElementById("btn-save-filter").addEventListener("click", async () =>
             filter_standard_profanity: document.getElementById("filter_standard_profanity").checked,
             filter_church_blasphemy: document.getElementById("filter_church_blasphemy").checked,
             filter_crude_terms: document.getElementById("filter_crude_terms").checked,
+            filter_custom_blacklist: document.getElementById("filter_custom_blacklist") ? document.getElementById("filter_custom_blacklist").checked : true,
         }
     };
     await saveConfigPayload(payload, "Filter categories saved successfully!");
 });
+
+// Import Filter Rules from JSON (asks whether to replace or merge)
+const inputImportFilters = document.getElementById("input-import-filters");
+if (inputImportFilters) {
+    inputImportFilters.addEventListener("change", () => {
+        const file = inputImportFilters.files && inputImportFilters.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async () => {
+            try {
+                const parsed = JSON.parse(String(reader.result || "{}"));
+                const replaceAll = confirm("Replace ALL existing filter rules with the imported file?\n\nOK = Replace everything\nCancel = Merge with existing rules");
+                const res = await fetch("/api/filter/import", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ ...parsed, replace_all: replaceAll }),
+                });
+                if (res.ok) {
+                    await loadFilterState();
+                    showToast(replaceAll ? "Filter rules replaced from import!" : "Filter rules merged from import!", "success");
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    showToast(`Filter import failed: ${err.message || err.error || "Unknown error"}`, "error");
+                }
+            } catch (e) {
+                showToast(`Filter import failed: ${e.message}`, "error");
+            } finally {
+                inputImportFilters.value = "";
+            }
+        };
+        reader.onerror = () => {
+            showToast("Could not read the selected filter file.", "error");
+            inputImportFilters.value = "";
+        };
+        reader.readAsText(file);
+    });
+}
 
 document.getElementById("btn-save-translation").addEventListener("click", async () => {
     const payload = {
@@ -3404,10 +3715,24 @@ document.getElementById("btn-save-projector").addEventListener("click", async ()
                 return isNaN(p) ? 0 : p;
             })(),
             projector_source_name: document.getElementById("obs_projector_source_name").value.trim(),
+            send_cea608_captions: document.getElementById("obs_send_cea608_captions") ? document.getElementById("obs_send_cea608_captions").checked : true,
         }
     };
     await saveConfigPayload(payload, "Projector & Display automation settings saved!");
 });
+
+const ceaCheckbox = document.getElementById("obs_send_cea608_captions");
+if (ceaCheckbox) {
+    ceaCheckbox.addEventListener("change", async () => {
+        const payload = {
+            obs: {
+                send_cea608_captions: ceaCheckbox.checked
+            }
+        };
+        const statusMsg = ceaCheckbox.checked ? "🔴 CEA-608 Stream Captions enabled (YouTube/Twitch [CC])." : "⚪ CEA-608 Stream Captions disabled.";
+        await saveConfigPayload(payload, statusMsg);
+    });
+}
 
 // --- Audience Caption Display (/display) Studio & Defaults ---
 
@@ -3584,6 +3909,8 @@ function initAudienceDisplayTab() {
                     show_interim: document.getElementById("display_show_interim") ? document.getElementById("display_show_interim").checked : true,
                     show_scripture: document.getElementById("display_show_scripture") ? document.getElementById("display_show_scripture").checked : true,
                     dyslexia_mode: document.getElementById("display_dyslexia_mode") ? document.getElementById("display_dyslexia_mode").checked : false,
+                    welcome_banner_text: document.getElementById("display_welcome_banner_text")?.value.trim() || "",
+                    welcome_banner_url: document.getElementById("display_welcome_banner_url")?.value.trim() || "",
                 },
                 bible: {
                     show_on_stage_display: document.getElementById("display_show_scripture") ? document.getElementById("display_show_scripture").checked : true,
@@ -3667,6 +3994,31 @@ async function refreshObsScenesList() {
                 });
                 activeChips.appendChild(btn);
             });
+        }
+        const availBox = document.getElementById("obs-available-scenes-box");
+        const availChips = document.getElementById("obs-available-scenes-chips");
+        if (availChips) {
+            availChips.innerHTML = "";
+            scenes.forEach(s => {
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.className = "btn btn-sm";
+                btn.style.cssText = "font-size: 11px; padding: 2px 8px; background: rgba(56, 189, 248, 0.12); color: #38BDF8; border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 4px; cursor: pointer;";
+                btn.textContent = `+ ${s}`;
+                btn.title = `Click to add '${s}' to Speaking Scenes`;
+                btn.addEventListener("click", () => {
+                    const input = document.getElementById("obs_scene_active_names");
+                    if (!input) return;
+                    let list = input.value.split(",").map(x => x.trim()).filter(Boolean);
+                    if (!list.includes(s)) {
+                        list.push(s);
+                        input.value = list.join(", ");
+                        showToast(`Added '${s}' to Speaking Scenes`, "info", 1500);
+                    }
+                });
+                availChips.appendChild(btn);
+            });
+            if (availBox) availBox.style.display = (scenes.length > 0) ? "block" : "none";
         }
         if (scenes.length > 0) {
             showToast(`✅ Loaded ${scenes.length} OBS scenes! Click chips to add.`, "success");
@@ -4139,11 +4491,7 @@ function updateStatusUI() {
         statusText.textContent = "Stopped";
         btnToggleEngine.textContent = "▶ Start Captions";
         btnToggleEngine.className = "btn btn-primary";
-        if (vuBar) vuBar.style.width = "0%";
-        if (vuDbText) {
-            vuDbText.textContent = "-∞ dB";
-            vuDbText.style.color = "#64748B";
-        }
+        resetVuMeterLevel();
     }
 }
 
@@ -4380,30 +4728,9 @@ async function refreshEngineStatus() {
 
             if (!controlWs || controlWs.readyState !== WebSocket.OPEN) {
                 if (!isRunning) {
-                    if (vuBar) vuBar.style.width = "0%";
-                    if (vuDbText) {
-                        vuDbText.textContent = "-∞ dB";
-                        vuDbText.style.color = "#64748B";
-                    }
+                    resetVuMeterLevel();
                 } else if (typeof data.audio_level_db === "number") {
-                    const db = data.audio_level_db;
-                    const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
-                    if (vuBar) vuBar.style.width = `${pct}%`;
-                    if (vuDbText) {
-                        if (db <= -58.0) {
-                            vuDbText.textContent = "-∞ dB";
-                            vuDbText.style.color = "#64748B";
-                        } else {
-                            vuDbText.textContent = `${db.toFixed(1)} dB`;
-                            if (db >= -3.0) {
-                                vuDbText.style.color = "#EF4444";
-                            } else if (db >= -12.0) {
-                                vuDbText.style.color = "#F59E0B";
-                            } else {
-                                vuDbText.style.color = "#34D399";
-                            }
-                        }
-                    }
+                    applyVuMeterLevel(data.audio_level_db);
                 }
             }
 
@@ -4684,24 +5011,7 @@ function connectControlWs() {
             if (msg.type === "vu_meter") {
                 // 0 dB (full scale) is falsy — must not collapse to -100
                 const db = (typeof msg.level_db === "number") ? msg.level_db : -100;
-                const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
-                if (vuBar) vuBar.style.width = `${pct}%`;
-
-                if (vuDbText) {
-                    if (db <= -58.0) {
-                        vuDbText.textContent = "-∞ dB";
-                        vuDbText.style.color = "#64748B";
-                    } else {
-                        vuDbText.textContent = `${db.toFixed(1)} dB`;
-                        if (db >= -3.0) {
-                            vuDbText.style.color = "#EF4444";
-                        } else if (db >= -12.0) {
-                            vuDbText.style.color = "#F59E0B";
-                        } else {
-                            vuDbText.style.color = "#34D399";
-                        }
-                    }
-                }
+                applyVuMeterLevel(db);
 
                 const previewMic = document.getElementById("preview-mic-indicator");
                 if (previewMic) {
@@ -4801,11 +5111,7 @@ function connectControlWs() {
     };
 
     controlWs.onclose = () => {
-        if (vuBar) vuBar.style.width = "0%";
-        if (vuDbText) {
-            vuDbText.textContent = "-∞ dB";
-            vuDbText.style.color = "#64748B";
-        }
+        resetVuMeterLevel();
         setTimeout(connectControlWs, Math.min(10000, (++controlReconnectAttempts) * 3000));
     };
 }
@@ -5038,7 +5344,7 @@ try {
 // Restore saved summary/chapter Gemini model preference if available
 try {
     let savedSummaryModel = localStorage.getItem("voxstream_summary_model");
-    if (savedSummaryModel === "gemini-2.0-flash" || savedSummaryModel === "gemini-1.5-flash") {
+    if (["gemini-2.0-flash", "gemini-2.0-flash-001", "gemini-1.5-flash", "gemini-2.5-flash", "gemini-3.6-flash"].includes(savedSummaryModel)) {
         savedSummaryModel = "gemini-3.8-flash";
         localStorage.setItem("voxstream_summary_model", "gemini-3.8-flash");
     }
@@ -5329,8 +5635,12 @@ if (btnGenerateSummary) {
                 previewEl.innerHTML = html;
             }
 
-            if (actionBarEl) actionBarEl.style.display = "flex";
-            showToast(`📖 Sermon recap generated via ${(data.provider_used || "engine").toUpperCase()}!`, "success", 3000);
+            if (actionBarEl) actionBarEl.style.display = data.provider_used === "none" ? "none" : "flex";
+            if (data.provider_used === "none") {
+                showToast("ℹ️ No spoken transcript recorded yet. Speak into your mic or record audio to generate a summary.", "warning", 3500);
+            } else {
+                showToast(`📖 Sermon recap generated via ${(data.provider_used || "engine").toUpperCase()}!`, "success", 3000);
+            }
         } catch (err) {
             console.error("Sermon summary generation failed:", err);
             showToast("Failed to generate sermon summary. Please check speech transcript.", "error", 3000);
@@ -5370,6 +5680,60 @@ document.getElementById("btn-copy-summary-youtube")?.addEventListener("click", (
 
 document.getElementById("btn-copy-summary-bulletin")?.addEventListener("click", () => {
     if (currentSummaryData) copyHelper(currentSummaryData.bulletin_text, "📋 Bulletin outline copied to clipboard!");
+});
+
+document.getElementById("btn-print-bulletin-summary")?.addEventListener("click", () => {
+    if (!currentSummaryData) {
+        showToast("No summary generated yet. Click 'Generate AI Summary' first.", "warning", 3000);
+        return;
+    }
+    const title = currentSummaryData.title || "Sermon Summary & Bulletin Outline";
+    const keyTakeaways = currentSummaryData.key_takeaways || [];
+    const scriptures = currentSummaryData.scriptures_referenced || [];
+    const outline = currentSummaryData.bulletin_text || currentSummaryData.markdown || "";
+
+    const printWindow = window.open("", "_blank", "width=800,height=900");
+    if (!printWindow) {
+        showToast("Popup blocked. Please allow popups to print bulletin.", "error");
+        return;
+    }
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>${escapeHtml(title)}</title>
+            <style>
+                body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; padding: 40px; color: #1e293b; line-height: 1.6; max-width: 720px; margin: 0 auto; }
+                h1 { font-size: 24px; color: #0f172a; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 16px; }
+                h2 { font-size: 16px; color: #334155; margin-top: 24px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+                p { margin: 0 0 12px 0; }
+                ul { margin: 0 0 16px 0; padding-left: 20px; }
+                li { margin-bottom: 6px; }
+                .meta { color: #64748b; font-size: 13px; margin-bottom: 24px; }
+                .scriptures { background: #f8fafc; border-left: 4px solid #f59e0b; padding: 10px 14px; border-radius: 4px; font-weight: 500; }
+                .outline { white-space: pre-wrap; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; font-size: 14px; }
+                @media print {
+                    body { padding: 0; }
+                    .no-print { display: none; }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="no-print" style="margin-bottom: 20px; text-align: right;">
+                <button onclick="window.print()" style="padding: 8px 18px; font-size: 14px; font-weight: 600; background: #3b82f6; color: #fff; border: none; border-radius: 6px; cursor: pointer;">🖨️ Print Now</button>
+            </div>
+            <h1>${escapeHtml(title)}</h1>
+            <div class="meta">Generated by VoxStream Live Captions • ${new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+            ${scriptures.length > 0 ? `<h2>📖 Scripture References</h2><div class="scriptures">${scriptures.map(s => escapeHtml(s)).join(' • ')}</div>` : ''}
+            ${keyTakeaways.length > 0 ? `<h2>✨ Key Takeaways</h2><ul>${keyTakeaways.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>` : ''}
+            <h2>📋 Bulletin Outline & Notes</h2>
+            <div class="outline">${escapeHtml(outline)}</div>
+        </body>
+        </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
 });
 
 document.getElementById("btn-download-summary")?.addEventListener("click", () => {
@@ -6111,6 +6475,307 @@ function initGeminiModelScanner() {
     fetchGeminiModels(false);
 }
 
+// --- Modular Organization Profiles Management ---
+let cachedProfilesMeta = [];
+let activeProfileSlug = "";
+
+function updateProfileExportHref() {
+    const select = document.getElementById("profile_select");
+    const btnExport = document.getElementById("btn-export-profile");
+    if (btnExport && select && select.value) {
+        btnExport.href = `/api/profiles/export?slug=${encodeURIComponent(select.value)}`;
+    }
+}
+
+async function loadProfiles() {
+    try {
+        const res = await fetch("/api/profiles");
+        if (!res.ok) return;
+        const data = await res.json();
+        const select = document.getElementById("profile_select");
+        const btnDelete = document.getElementById("btn-delete-profile");
+        const churchInput = document.getElementById("church_name");
+
+        if (!select) return;
+
+        cachedProfilesMeta = data.profiles || [];
+        activeProfileSlug = data.active_profile || "";
+
+        select.innerHTML = "";
+        cachedProfilesMeta.forEach(p => {
+            const opt = document.createElement("option");
+            opt.value = p.id;
+            const icon = p.church_mode ? "⛪" : "🏢";
+            opt.textContent = `${icon} ${p.name}`;
+            if (p.id === activeProfileSlug) {
+                opt.selected = true;
+            }
+            select.appendChild(opt);
+        });
+
+        if (!select.value && select.options.length > 0) {
+            select.selectedIndex = 0;
+            activeProfileSlug = select.value;
+        }
+
+        const currentProfile = cachedProfilesMeta.find(p => p.id === select.value);
+        if (btnDelete) {
+            btnDelete.style.display = (currentProfile && !currentProfile.is_builtin) ? "inline-block" : "none";
+        }
+
+        if (data.profile && data.profile.name && churchInput && document.activeElement !== churchInput) {
+            churchInput.value = data.profile.name;
+        }
+
+        updateChurchModeLabels(data.profile ? data.profile.church_mode : true);
+
+        const brandEl = document.getElementById("brand-church-title");
+        if (brandEl && data.profile && data.profile.name) {
+            const shortName = data.profile.name.replace(/\s+church$/i, "").trim();
+            brandEl.textContent = shortName ? `${shortName} VoxStream` : "VoxStream";
+        }
+        const vBadgeEl = document.getElementById("vocab-active-church-name");
+        if (vBadgeEl && data.profile && data.profile.name) {
+            vBadgeEl.textContent = data.profile.name;
+        }
+        if (data.profile) {
+            const words = data.profile.speech_biasing_words || [];
+            const biasingTextarea = document.getElementById("vocab-biasing-word-list");
+            if (biasingTextarea && document.activeElement !== biasingTextarea) {
+                biasingTextarea.value = words.join("\n");
+            }
+            const countEl = document.getElementById("vocab-biasing-count");
+            if (countEl) countEl.textContent = `${words.length} terms configured for speech biasing`;
+            const geminiVocabInput = document.getElementById("gemini_custom_vocab");
+            if (geminiVocabInput && document.activeElement !== geminiVocabInput) {
+                geminiVocabInput.value = words.join(", ");
+            }
+        }
+        updateProfileExportHref();
+        await loadVocabularyState();
+    } catch (e) {
+        console.error("Error loading profiles:", e);
+    }
+}
+
+function initProfileHandlers() {
+    const select = document.getElementById("profile_select");
+    const btnOpenModal = document.getElementById("btn-open-new-profile-modal");
+    const modal = document.getElementById("modal-new-profile");
+    const btnCloseModal = document.getElementById("btn-close-new-profile-modal");
+    const btnCancel = document.getElementById("btn-cancel-new-profile");
+    const btnCreate = document.getElementById("btn-create-new-profile");
+    const btnDelete = document.getElementById("btn-delete-profile");
+    const nameInput = document.getElementById("new_profile_name");
+    const churchModeCheckbox = document.getElementById("new_profile_church_mode");
+    const templateSelect = document.getElementById("new_profile_template");
+
+    if (select) {
+        select.addEventListener("change", async () => {
+            const selectedSlug = select.value;
+            updateProfileExportHref();
+            try {
+                const res = await fetch("/api/profiles", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action: "select", name: selectedSlug }),
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    activeProfileSlug = data.active_profile;
+                    await loadProfiles();
+                    await loadVocabularyState();
+                    showToast(`Switched profile to "${data.profile ? data.profile.name : selectedSlug}"!`, "success");
+                }
+            } catch (e) {
+                showToast(`Failed to switch profile: ${e.message}`, "error");
+            }
+        });
+    }
+
+    if (btnOpenModal && modal) {
+        btnOpenModal.addEventListener("click", () => {
+            if (nameInput) nameInput.value = "";
+            if (churchModeCheckbox) churchModeCheckbox.checked = true;
+            if (templateSelect) templateSelect.value = "waypoint";
+            modal.style.display = "flex";
+            if (nameInput) setTimeout(() => nameInput.focus(), 50);
+        });
+    }
+
+    const hideModal = () => {
+        if (modal) modal.style.display = "none";
+    };
+
+    if (btnCloseModal) btnCloseModal.addEventListener("click", hideModal);
+    if (btnCancel) btnCancel.addEventListener("click", hideModal);
+    if (modal) {
+        modal.addEventListener("click", (e) => {
+            if (e.target === modal) hideModal();
+        });
+    }
+
+    if (btnCreate) {
+        btnCreate.addEventListener("click", async () => {
+            const name = nameInput ? nameInput.value.trim() : "";
+            if (!name) {
+                showToast("Please enter a profile name.", "warning");
+                if (nameInput) nameInput.focus();
+                return;
+            }
+            const isChurch = churchModeCheckbox ? churchModeCheckbox.checked : true;
+            const templateVal = templateSelect ? templateSelect.value : "waypoint";
+
+            btnCreate.disabled = true;
+            btnCreate.textContent = "Creating...";
+
+            try {
+                const res = await fetch("/api/profiles", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        action: "create",
+                        name: name,
+                        church_mode: isChurch,
+                        copy_from: templateVal,
+                    }),
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    hideModal();
+                    await loadProfiles();
+                    showToast(`Created profile "${name}" successfully!`, "success");
+                } else {
+                    const err = await res.json();
+                    showToast(`Error creating profile: ${err.message || "Unknown error"}`, "error");
+                }
+            } catch (e) {
+                showToast(`Failed to create profile: ${e.message}`, "error");
+            } finally {
+                btnCreate.disabled = false;
+                btnCreate.textContent = "Create Profile";
+            }
+        });
+    }
+
+    if (btnDelete) {
+        btnDelete.addEventListener("click", async () => {
+            const currentSlug = select ? select.value : activeProfileSlug;
+            const currentMeta = cachedProfilesMeta.find(p => p.id === currentSlug);
+            const profName = currentMeta ? currentMeta.name : currentSlug;
+
+            if (confirm(`Are you sure you want to delete the custom profile "${profName}"?`)) {
+                btnDelete.disabled = true;
+                try {
+                    const res = await fetch("/api/profiles", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ action: "delete", slug: currentSlug }),
+                    });
+                    if (res.ok) {
+                        await loadProfiles();
+                        showToast(`Deleted custom profile "${profName}".`, "info");
+                    } else {
+                        const err = await res.json();
+                        showToast(`Failed to delete profile: ${err.message || "Unknown error"}`, "error");
+                    }
+                } catch (e) {
+                    showToast(`Error deleting profile: ${e.message}`, "error");
+                } finally {
+                    btnDelete.disabled = false;
+                }
+            }
+        });
+    }
+
+    const inputImportProfile = document.getElementById("input-import-profile");
+    if (inputImportProfile) {
+        inputImportProfile.addEventListener("change", () => {
+            const file = inputImportProfile.files && inputImportProfile.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async () => {
+                try {
+                    const parsed = JSON.parse(String(reader.result || "{}"));
+                    const res = await fetch("/api/profiles/import", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(parsed),
+                    });
+                    if (res.ok) {
+                        await loadProfiles();
+                        await loadVocabularyState();
+                        showToast("Profile imported successfully!", "success");
+                    } else {
+                        const err = await res.json().catch(() => ({}));
+                        showToast(`Profile import failed: ${err.message || err.error || "Unknown error"}`, "error");
+                    }
+                } catch (e) {
+                    showToast(`Profile import failed: ${e.message}`, "error");
+                } finally {
+                    inputImportProfile.value = "";
+                }
+            };
+            reader.onerror = () => {
+                showToast("Could not read the selected profile file.", "error");
+                inputImportProfile.value = "";
+            };
+            reader.readAsText(file);
+        });
+    }
+}
+
+function initSystemBackupHandlers() {
+    const fileInputs = document.querySelectorAll(".input-import-system-backup, #input-import-system-backup, #input-import-system-backup-tab");
+    fileInputs.forEach(input => {
+        input.addEventListener("change", () => {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = async () => {
+                try {
+                    const parsed = JSON.parse(String(reader.result || "{}"));
+                    if (!parsed.voxstream_backup && !parsed.config && !parsed.profiles) {
+                        showToast("❌ Invalid VoxStream backup file format.", "error", 4000);
+                        return;
+                    }
+                    const confirmed = confirm("⚠️ Restore Full System Backup?\n\nThis will restore all organization profiles, vocabulary glossaries, speech biasing lists, API keys, and settings. Current settings will be replaced.\n\nDo you want to proceed?");
+                    if (!confirmed) return;
+
+                    showToast("Restoring system backup...", "info", 3000);
+                    const res = await fetch("/api/system/backup/import", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(parsed),
+                    });
+                    if (res.ok) {
+                        showToast("✅ Full system backup restored successfully! Reloading...", "success", 4000);
+                        await loadProfiles();
+                        await loadConfig();
+                        await loadFilterState();
+                        await loadVocabularyState();
+                        const featModal = document.getElementById("modal-feature-settings");
+                        if (featModal) featModal.style.display = "none";
+                    } else {
+                        const err = await res.json().catch(() => ({}));
+                        showToast(`❌ Failed to restore backup: ${err.message || err.error || "Server error"}`, "error", 5000);
+                    }
+                } catch (e) {
+                    showToast(`❌ Failed to restore backup: ${e.message}`, "error", 5000);
+                } finally {
+                    input.value = "";
+                }
+            };
+            reader.onerror = () => {
+                showToast("❌ Could not read the selected backup file.", "error", 4000);
+                input.value = "";
+            };
+            reader.readAsText(file);
+        });
+    });
+}
+
+
 function initChurchNameHandlers() {
     const btnSaveChurch = document.getElementById("btn-save-church-name");
     const churchInput = document.getElementById("church_name");
@@ -6143,6 +6808,8 @@ function initChurchNameHandlers() {
             },
             `⛪ Church name set to "${churchName}"! Auto-corrections updated.`
         );
+        await loadProfiles();
+        await loadVocabularyState();
     }
 
     if (btnSaveChurch) {
@@ -6168,8 +6835,124 @@ window.addEventListener("DOMContentLoaded", async () => {
             if (geminiChurchBadge) {
                 geminiChurchBadge.style.display = e.target.checked ? "flex" : "none";
             }
+            updateChurchModeLabels(e.target.checked);
         });
     }
+
+    // Save Biased Word List for Gemini Live & STT via active profile biasing endpoint
+    const btnSaveVocabBiasing = document.getElementById("btn-save-vocab-biasing");
+    if (btnSaveVocabBiasing) {
+        btnSaveVocabBiasing.addEventListener("click", async () => {
+            const text = (document.getElementById("vocab-biasing-word-list")?.value || "").trim();
+            const terms = text.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+            try {
+                const res = await fetch("/api/profiles/biasing", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ words: terms }),
+                });
+                if (res.ok) {
+                    const countEl = document.getElementById("vocab-biasing-count");
+                    if (countEl) countEl.textContent = `${terms.length} terms configured for speech biasing`;
+                    const geminiVocabInput = document.getElementById("gemini_custom_vocab");
+                    if (geminiVocabInput) geminiVocabInput.value = terms.join(", ");
+                    if (currentConfig && currentConfig.gemini_live) {
+                        currentConfig.gemini_live.custom_vocabulary = terms;
+                    }
+                    showToast(`✅ Saved ${terms.length} terms to active profile speech biasing!`, "success");
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    showToast(`Failed to save speech biasing words: ${err.error || err.message || "Server error"}`, "error");
+                }
+            } catch (e) {
+                showToast(`Failed to save speech biasing words: ${e.message}`, "error");
+            }
+        });
+    }
+
+    // Export Biased Word List as a portable .txt file
+    const btnExportVocabBiasing = document.getElementById("btn-export-vocab-biasing");
+    if (btnExportVocabBiasing) {
+        btnExportVocabBiasing.addEventListener("click", () => {
+            const text = (document.getElementById("vocab-biasing-word-list")?.value || "").trim();
+            const blob = new Blob([text], { type: "text/plain" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${(activeProfileSlug || 'profile')}_speech_biasing.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast("Biased word list exported!", "success");
+        });
+    }
+
+    // Import Biased Word List from .txt/.csv (merges into the textarea)
+    const inputImportBiasing = document.getElementById("input-import-biasing");
+    if (inputImportBiasing) {
+        inputImportBiasing.addEventListener("change", () => {
+            const file = inputImportBiasing.files && inputImportBiasing.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                try {
+                    const incoming = String(reader.result || "").split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+                    const textarea = document.getElementById("vocab-biasing-word-list");
+                    const existing = ((textarea && textarea.value) || "").split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+                    const merged = [...existing];
+                    let added = 0;
+                    incoming.forEach(t => {
+                        if (!merged.some(e => e.toLowerCase() === t.toLowerCase())) {
+                            merged.push(t);
+                            added++;
+                        }
+                    });
+                    if (textarea) textarea.value = merged.join("\n");
+                    const countEl = document.getElementById("vocab-biasing-count");
+                    if (countEl) countEl.textContent = `${merged.length} terms configured for speech biasing`;
+                    showToast(`Imported ${added} new term${added === 1 ? "" : "s"} into the biased word list! Remember to Save.`, "success");
+                } catch (e) {
+                    showToast(`Biasing list import failed: ${e.message}`, "error");
+                } finally {
+                    inputImportBiasing.value = "";
+                }
+            };
+            reader.onerror = () => {
+                showToast("Could not read the selected biasing file.", "error");
+                inputImportBiasing.value = "";
+            };
+            reader.readAsText(file);
+        });
+    }
+
+    // Render Church Mode built-in terms list in the inspector
+    const builtInListEl = document.getElementById("biasing-built-in-terms-list");
+    if (builtInListEl) {
+        builtInListEl.innerHTML = `<strong>[📖 Books of the Bible (66)]</strong><br>Genesis, Exodus, Leviticus, Numbers, Deuteronomy, Joshua, Judges, Ruth, 1 Samuel, 2 Samuel, 1 Kings, 2 Kings, 1 Chronicles, 2 Chronicles, Ezra, Nehemiah, Esther, Job, Psalms, Proverbs, Ecclesiastes, Song of Solomon, Isaiah, Jeremiah, Lamentations, Ezekiel, Daniel, Hosea, Joel, Amos, Obadiah, Jonah, Micah, Nahum, Habakkuk, Zephaniah, Haggai, Zechariah, Malachi, Matthew, Mark, Luke, John, Acts, Romans, 1 Corinthians, 2 Corinthians, Galatians, Ephesians, Philippians, Colossians, 1 Thessalonians, 2 Thessalonians, 1 Timothy, 2 Timothy, Titus, Philemon, Hebrews, James, 1 Peter, 2 Peter, 1 John, 2 John, 3 John, Jude, Revelation<br><br><strong>[👑 Sacred Titles & Deity]</strong><br>King of Kings, Lord of Lords, Lord Jesus Christ, Jesus Christ, Christ Jesus, Holy Spirit, Holy Ghost, Heavenly Father, Almighty God, Son of God, Son of Man, Lamb of God, Prince of Peace, Light of the World, Bread of Life, Good Shepherd, Alpha and Omega, Yahweh, Jehovah, Emmanuel, Immanuel, Messiah, Savior, Triune God, the Great I Am, the Most High, the Father, the Son, the Godhead<br><br><strong>[📜 Biblical People]</strong><br>Abraham, Moses, Noah, Elijah, Elisha, David, Solomon, Joseph, Paul, Peter, Stephen, Barnabas, Timothy, Titus, Lazarus, Mary, Mary Magdalene, the Virgin Mary, the Apostle Paul, the Apostle Peter<br><br><strong>[🗺️ Holy Places & Biblical Geography]</strong><br>Jerusalem, Nazareth, Bethlehem, Galilee, Zion, Mount Zion, Sinai, Mount Sinai, Bethany, Jericho, Canaan, Jordan, River Jordan, Mount of Olives, Garden of Eden, Calvary, Golgotha, Gethsemane, Road to Emmaus<br><br><strong>[🕊️ Doctrines, Liturgy & Phrases]</strong><br>Justification, Sanctification, Propitiation, Righteousness, Atonement, Regeneration, Predestination, Eschatology, Hermeneutics, Exegesis, Soteriology, Dispensationalism, Premillennial, Postmillennial, Rapture, Tribulation, Millennium, Second Coming, Incarnation, Trinity, Ark of the Covenant, Holy of Holies, Sermon on the Mount, Ten Commandments, the Lord's Supper, the Lord's Prayer, Apostles' Creed, Old Testament, New Testament, Gospel, Scripture, Bible, Communion, Eucharist, Baptism, Pentecost, Benediction, Doxology, Agnus Dei, Way Maker, born again, Great Commission, Great Commandment, fear of the Lord, grace of God, mercy of God, love of God, peace of God, fruits of the Spirit, armor of God`;
+    }
+
+    // Render Built-in Filter Category Word Lists
+    const fTier1 = document.getElementById("filter-tier1-terms-list");
+    if (fTier1) {
+        fTier1.textContent = "fuck, fucking, fucked, fucker, fuckers, motherfucker, motherfucking, shit, shitty, shitting, bullshit, horseshit, bitch, bitches, bitching, bitchy, ass, asshole, assholes, dumbass, jackass, badass, bastard, bastards, cunt, cunts, dick, dicks, dickhead, cock, cocks, cocksucker, pussy, pussies, slut, sluts, whore, whores, prick, pricks, twat, twats, wanker, wankers";
+    }
+
+    const fTier2 = document.getElementById("filter-tier2-terms-list");
+    if (fTier2) {
+        fTier2.textContent = "goddamn, goddammit, god damn, god dammit, god damned, holy shit, holy fuck, holy hell, damn, dammit, damned, damning, hell, hellish (Note: in Church Mode, 'hell' and 'damned' are permitted in sermon context)";
+    }
+
+    const fTier3 = document.getElementById("filter-tier3-terms-list");
+    if (fTier3) {
+        fTier3.textContent = "tits, boobs, boner, dildo, blowjob, handjob, cum, cumming, orgasm, masturbate, masturbation, horny, retard, retarded, nigger, nigga, faggot, fag, dyke, kike, chink, spic";
+    }
+
+    const fDefaultReps = document.getElementById("filter-default-replacements-list");
+    if (fDefaultReps) {
+        fDefaultReps.textContent = "fuck -> fudge, fucking -> flipping, fucked -> messed up, fucker -> rascal, motherfucker -> monster, shit -> shoot, shitty -> lousy, bullshit -> nonsense, bitch -> complainer, bitches -> people, bitching -> grumbling, ass -> bottom, asshole -> jerk, dumbass -> silly person, jackass -> fool, bastard -> rogue, cunt -> scoundrel, dick -> pest, dickhead -> fool, cock -> rooster, pussy -> wimp, whore -> traitor, slut -> wild one, damn -> darn, dammit -> drat, damned -> blasted, goddamn -> gosh darn, goddammit -> gosh darn it, holy shit -> holy cow, holy fuck -> my word, holy hell -> my goodness, hell -> heck, hellish -> rough";
+    }
+
 
     // Initialize Models Status
     const btnDeleteAll = document.getElementById("btn-delete-all-models");
@@ -6232,6 +7015,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     setupA11yPresets();
     initSecretClearHandlers();
     initChurchNameHandlers();
+    initProfileHandlers();
+    initSystemBackupHandlers();
+    await loadProfiles();
     await loadAudioDevices();
     await loadAvailableGpus();
     initGpuSelector();

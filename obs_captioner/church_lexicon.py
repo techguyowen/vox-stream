@@ -347,63 +347,11 @@ class ChurchLexiconFormatter:
         "gifts of the spirit": "gifts of the Spirit",
         "armor of god": "armor of God",
         "full armor of god": "full armor of God",
-        # ── Sermon Specific Phonetic Corrections & Local Names ────────────────
-        # Pastoral & Leadership
-        "pastor lawrence": "Pastor Lawrence",
-        "pastor ben luthi": "Pastor Ben Luthi",
-        "pastor ben": "Pastor Ben",
-        "ben uthe": "Ben Luthi",
-        "ben lut": "Ben Luthi",
-        "ben luthi": "Ben Luthi",
-        "ben luther": "Ben Luthi",
-        "ben loothi": "Ben Luthi",
-        "luthi": "Luthi",
-        "loothi": "Luthi",
-        "peyton west": "Peyton West",
-        # Church Campuses & Community
-        "way point kids": "Waypoint Kids",
-        "way point church": "Waypoint Church",
-        "way point": "Waypoint",
-        "way poi": "Waypoint",
-        "wave once": "Waypoint",
-        "way pope": "Waypoint",
-        "waypoint church": "Waypoint Church",
-        "waypoint kids": "Waypoint Kids",
-        "the journey church": "The Journey Church",
-        "journey church": "Journey Church",
-        "church centre": "Church Center",
-        "church center": "Church Center",
-        "jim conna": "Gymkhana",
-        "jim conner": "Gymkhana",
-        "jim connaught": "Gymkhana",
-        "gymkhana": "Gymkhana",
-        # Regional Geography
-        "the triangle": "the Triangle",
-        "rtp": "RTP",
-        "research triangle park": "Research Triangle Park",
-        "raleigh": "Raleigh",
-        "raleigh and waypoint": "Raleigh and Waypoint",
-        "raleigh-durham": "Raleigh-Durham",
-        "south durham": "South Durham",
-        "east chapel hill": "East Chapel Hill",
-        "chapel hill": "Chapel Hill",
-        # Sacred & Liturgical Corrections
+        # ── Sacred & Liturgical Phonetic Corrections ────────────────
         "agnes day": "Agnus Dei",
         "agnus dei": "Agnus Dei",
         "waymaker": "Way Maker",
         "way maker": "Way Maker",
-        "headphones and pigeons": "headphones and fidgets",
-        "headphones and pigeon": "headphones and fidgets",
-        "noise-canceling headphones and pigeons": "noise-canceling headphones and fidgets",
-        "fidget toys": "fidget toys",
-        "chetha chicken": "Chet the Chicken",
-        "chatter the chicken": "Chet the Chicken",
-        "chick-fil-a's chicken": "Chet the Chicken",
-        "chet the chicken": "Chet the Chicken",
-        "bert the blobfish": "Bert the Blobfish",
-        "bertha the blowfish": "Bert the Blobfish",
-        "bertha blawfish": "Bert the Blobfish",
-        "story power party": "Story Power Party",
         "dog solid g": "Doxology",
         "dog. solid g": "Doxology",
         "solid g": "Doxology",
@@ -480,10 +428,29 @@ class ChurchLexiconFormatter:
 
         return terms
 
-    def __init__(self, enabled: bool = True, church_name: str = "Waypoint Church"):
+    def __init__(
+        self,
+        enabled: bool = True,
+        church_name: str = "Waypoint Church",
+        extra_terms: Optional[Dict[str, str]] = None,
+    ):
         self.enabled = enabled
         self.church_name = (church_name or "Waypoint Church").strip()
-        cache_key = self.church_name
+        self.extra_terms: Dict[str, str] = dict(extra_terms or {})
+
+        # If church_name matches a profile or waypoint, merge profile terms automatically
+        try:
+            from .profiles import get_profile_manager
+            pm = get_profile_manager()
+            prof = pm.get_profile(self.church_name)
+            if prof and prof.get("terms"):
+                for k, v in prof["terms"].items():
+                    if k not in self.extra_terms:
+                        self.extra_terms[k] = v
+        except Exception:
+            pass
+
+        cache_key = (self.church_name, tuple(sorted(self.extra_terms.items())))
         if cache_key in _PATTERN_CACHE:
             self._citation_trigger_pattern, self._compiled_church_patterns = _PATTERN_CACHE[cache_key]
         else:
@@ -496,10 +463,11 @@ class ChurchLexiconFormatter:
             self._build_patterns()
             _PATTERN_CACHE[cache_key] = (self._citation_trigger_pattern, self._compiled_church_patterns)
 
-
     def get_all_church_terms(self) -> Dict[str, str]:
         """Return combined church terms including built-in autocorrects and configured church name variations."""
         terms = dict(self.CHURCH_TERMS)
+        if getattr(self, "extra_terms", None):
+            terms.update(self.extra_terms)
         if self.church_name:
             terms.update(self.generate_church_name_terms(self.church_name))
         return terms

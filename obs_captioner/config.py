@@ -263,6 +263,7 @@ class BibleConfig:
     high_contrast_outline: bool = False  # Accessibility: False = normal, True = heavy high-contrast outline
     show_on_stream_overlay: bool = False
     show_on_stage_display: bool = True
+    bible_max_verses_per_slide: int = 2  # Max verses displayed per card before paginating (1..6, 0=all)
 
 
 @dataclass
@@ -333,6 +334,8 @@ class DisplayConfig:
     show_scripture: bool = True
     dyslexia_mode: bool = False
     custom_title: str = "Live Audience Captions"
+    welcome_banner_text: str = ""
+    welcome_banner_url: str = ""
 
 
 @dataclass

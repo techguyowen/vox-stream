@@ -28,7 +28,7 @@ mimetypes.add_type("font/woff2", ".woff2")
 mimetypes.add_type("font/ttf", ".ttf")
 mimetypes.add_type("application/manifest+json", ".webmanifest")
 
-from ..config import AppConfig, save_config
+from ..config import AppConfig, VocabularyConfig, save_config
 from ..audio_capture import list_audio_devices
 from ..censor import ContentFilter
 from ..history import TranscriptHistory
@@ -48,6 +48,16 @@ from ..security import (
 )
 
 logger = logging.getLogger("obs_captioner.web")
+
+
+def is_secret_placeholder(val: Any) -> bool:
+    """Returns True if val is a string and represents a secret sentinel or bullet placeholder."""
+    if not isinstance(val, str):
+        return False
+    s = val.strip()
+    if not s:
+        return False
+    return s == "•••" or s in ("•••", "••", "•", "••••", "••••••••", "••••••••••••", "***") or all(c in "•*· " for c in s)
 
 
 class WebOverlayServer:
@@ -253,6 +263,8 @@ class WebOverlayServer:
         self.app.router.add_post("/api/filter/whitelist/remove", self._handle_remove_whitelist)
         self.app.router.add_post("/api/filter/replacements/set", self._handle_set_replacement)
         self.app.router.add_post("/api/filter/replacements/remove", self._handle_remove_replacement)
+        self.app.router.add_get("/api/filter/export", self._handle_export_filter)
+        self.app.router.add_post("/api/filter/import", self._handle_import_filter)
 
         # Custom Vocabulary & Glossary CRUD
         self.app.router.add_get("/api/vocabulary", self._handle_get_vocabulary)
@@ -262,6 +274,19 @@ class WebOverlayServer:
         self.app.router.add_post("/api/vocabulary/bulk", self._handle_bulk_vocabulary)
         self.app.router.add_get("/api/vocabulary/export", self._handle_export_vocabulary)
         self.app.router.add_post("/api/vocabulary/clear", self._handle_clear_vocabulary)
+
+        # Modular Organization Profiles
+        self.app.router.add_get("/api/profiles", self._handle_get_profiles)
+        self.app.router.add_post("/api/profiles", self._handle_post_profiles)
+        self.app.router.add_get("/api/profiles/export", self._handle_export_profile)
+        self.app.router.add_post("/api/profiles/import", self._handle_import_profile)
+        self.app.router.add_post("/api/profiles/biasing", self._handle_post_profile_biasing)
+
+        # Full System Backup & Migration (Move to New Machine)
+        self.app.router.add_get("/api/system/backup/export", self._handle_export_system_backup)
+        self.app.router.add_post("/api/system/backup/import", self._handle_import_system_backup)
+        self.app.router.add_get("/api/export/streamdeck_profile", self._handle_export_streamdeck_profile)
+
 
         # Model Downloader & Cache Manager
         self.app.router.add_get("/api/models/status", self._handle_get_models_status)
@@ -675,6 +700,12 @@ class WebOverlayServer:
             for f in fields:
                 if data.get(section, {}).get(f):
                     data[section][f] = self.SECRET_SENTINEL
+                    if f in ("api_key", "gemini_api_key", "oauth_token"):
+                        raw_val = str(self.config.__dict__.get(section, {}).__dict__.get(f, "") if hasattr(self.config, section) and hasattr(getattr(self.config, section), f) else getattr(getattr(self.config, section, None), f, "") or "")
+                        if len(raw_val) >= 12:
+                            data[section][f"{f}_preview"] = f"{raw_val[:4]}...{raw_val[-4:]}"
+                        elif raw_val:
+                            data[section][f"{f}_preview"] = "••••"
         return data
 
     async def _handle_get_config(self, request: web.Request) -> web.Response:
@@ -696,8 +727,8 @@ class WebOverlayServer:
                             continue
                         # Handle secret / credential fields
                         if sec_k in secret_fields:
-                            # 1) If masked sentinel ("•••"), leave existing secret unchanged
-                            if sec_v == self.SECRET_SENTINEL:
+                            # 1) If masked sentinel or bullet placeholder, leave existing secret unchanged
+                            if is_secret_placeholder(sec_v):
                                 continue
                             # 2) If explicit clear command, wipe the key
                             if sec_v == "__CLEAR__":
@@ -713,6 +744,8 @@ class WebOverlayServer:
                             elif isinstance(sec_v, str) and ("api_key" in sec_k or "key" in sec_k):
                                 from ..gemini_models import sanitize_gemini_api_key
                                 sec_v = sanitize_gemini_api_key(sec_v)
+                                if is_secret_placeholder(sec_v):
+                                    continue
 
                         setattr(section, sec_k, sec_v)
 
@@ -1645,12 +1678,86 @@ class WebOverlayServer:
         except Exception as e:
             return web.json_response({"error": str(e)}, status=400)
 
+    async def _handle_export_filter(self, request: web.Request) -> web.Response:
+        """Export custom blacklist, whitelist, and replacements as a portable JSON file."""
+        payload = {
+            "blacklist": self.config.censor.custom_blacklist,
+            "whitelist": self.config.censor.custom_whitelist,
+            "replacements": self.config.censor.custom_replacements,
+        }
+        return web.Response(
+            text=json.dumps(payload, indent=2),
+            content_type="application/json",
+            headers={"Content-Disposition": 'attachment; filename="voxstream_filters.json"'},
+        )
+
+    async def _handle_import_filter(self, request: web.Request) -> web.Response:
+        """Import filter rules from JSON. Merges by default; replaces all when replace_all is true."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        try:
+            body = await request.json()
+            if not isinstance(body, dict):
+                return web.json_response({"error": "Import body must be a JSON object."}, status=400)
+            blacklist = body.get("blacklist") or []
+            whitelist = body.get("whitelist") or []
+            replacements = body.get("replacements") or {}
+            if isinstance(blacklist, str):
+                blacklist = [blacklist]
+            if isinstance(whitelist, str):
+                whitelist = [whitelist]
+            if not isinstance(replacements, dict):
+                return web.json_response({"error": "'replacements' must be a JSON object."}, status=400)
+            replace_all = bool(body.get("replace_all", False))
+
+            if replace_all:
+                self.config.censor.custom_blacklist = list(blacklist)
+                self.config.censor.custom_whitelist = list(whitelist)
+                self.config.censor.custom_replacements = dict(replacements)
+            else:
+                existing_bl = {str(t).strip().lower() for t in self.config.censor.custom_blacklist}
+                for term in blacklist:
+                    key = str(term).strip().lower()
+                    if key and key not in existing_bl:
+                        existing_bl.add(key)
+                        self.config.censor.custom_blacklist.append(term)
+                existing_wl = {str(t).strip().lower() for t in self.config.censor.custom_whitelist}
+                for term in whitelist:
+                    key = str(term).strip().lower()
+                    if key and key not in existing_wl:
+                        existing_wl.add(key)
+                        self.config.censor.custom_whitelist.append(term)
+                self.config.censor.custom_replacements.update(dict(replacements))
+
+            save_config(self.config)
+            content_filter = getattr(self, "content_filter", None)
+            if content_filter is not None:
+                try:
+                    content_filter.rebuild_dictionary()
+                except Exception:
+                    logger.warning("Failed to rebuild content filter dictionary after import", exc_info=True)
+            if self.on_config_updated:
+                self.on_config_updated(self.config)
+            return web.json_response({
+                "status": "success",
+                "message": "Imported filter rules successfully",
+                "blacklist": self.config.censor.custom_blacklist,
+                "whitelist": self.config.censor.custom_whitelist,
+                "replacements": self.config.censor.custom_replacements,
+            })
+        except Exception as e:
+            logger.error(f"Error importing filter rules: {e}")
+            return web.json_response({"error": str(e)}, status=400)
+
     async def _handle_get_vocabulary(self, request: web.Request) -> web.Response:
-        vocab = VocabularyReplacer(self.config.vocabulary)
+        church_name = getattr(self.config.general, "church_name", "")
+        vocab = VocabularyReplacer(self.config.vocabulary, church_name=church_name)
         return web.json_response({
             "enabled": self.config.vocabulary.enabled,
             "terms": vocab.get_terms(),
-            "count": len(self.config.vocabulary.terms),
+            "count": len(vocab.get_terms()),
+            "church_name": church_name,
+            "church_mode": getattr(self.config.general, "church_mode", True),
         })
 
     async def _handle_set_vocabulary(self, request: web.Request) -> web.Response:
@@ -1663,7 +1770,17 @@ class WebOverlayServer:
             if not original or not replacement:
                 return web.json_response({"error": "Both original and replacement are required."}, status=400)
 
-            vocab = VocabularyReplacer(self.config.vocabulary)
+            church_name = getattr(self.config.general, "church_name", "")
+            from ..profiles import get_profile_manager
+            pm = get_profile_manager()
+            prof = pm.get_profile(church_name)
+            prof_terms = dict(prof.get("terms", {}))
+            orig_key = original.lower()
+            prof_terms[orig_key] = replacement
+            pm.update_profile_words(church_name, terms=prof_terms)
+            self.config.vocabulary.terms = prof_terms
+
+            vocab = VocabularyReplacer(self.config.vocabulary, church_name=church_name)
             vocab.add_term(original, replacement)
             save_config(self.config)
             if self.on_config_updated:
@@ -1678,8 +1795,21 @@ class WebOverlayServer:
         try:
             data = await request.json()
             original = sanitize_text(data.get("original", "")).strip()
-            vocab = VocabularyReplacer(self.config.vocabulary)
+            church_name = getattr(self.config.general, "church_name", "")
+            from ..profiles import get_profile_manager
+            pm = get_profile_manager()
+            prof = pm.get_profile(church_name)
+            prof_terms = dict(prof.get("terms", {}))
+            orig_lower = original.lower()
+            if original in prof_terms:
+                del prof_terms[original]
+            if orig_lower in prof_terms:
+                del prof_terms[orig_lower]
+            pm.update_profile_words(church_name, terms=prof_terms)
+
+            vocab = VocabularyReplacer(self.config.vocabulary, church_name=church_name)
             vocab.remove_term(original)
+            self.config.vocabulary.terms = prof_terms
             save_config(self.config)
             if self.on_config_updated:
                 self.on_config_updated(self.config)
@@ -1691,7 +1821,8 @@ class WebOverlayServer:
         try:
             data = await request.json()
             sample_text = data.get("text", "")
-            vocab = VocabularyReplacer(self.config.vocabulary)
+            church_name = getattr(self.config.general, "church_name", "")
+            vocab = VocabularyReplacer(self.config.vocabulary, church_name=church_name)
             modified, was_changed = vocab.replace(sample_text)
             return web.json_response({
                 "original": sample_text,
@@ -1711,22 +1842,35 @@ class WebOverlayServer:
             terms_dict = data.get("terms", {})
             replace_all = bool(data.get("replace_all", False))
 
-            vocab = VocabularyReplacer(self.config.vocabulary)
+            church_name = getattr(self.config.general, "church_name", "")
+            from ..profiles import get_profile_manager
+            pm = get_profile_manager()
+            prof = pm.get_profile(church_name)
+            prof_terms = {} if replace_all else dict(prof.get("terms", {}))
+
             imported = 0
 
             if csv_data:
-                imported = vocab.import_csv(csv_data, replace_all=replace_all)
+                temp_cfg = VocabularyConfig(terms={})
+                temp_replacer = VocabularyReplacer(temp_cfg)
+                imported = temp_replacer.import_csv(csv_data, replace_all=True)
+                for k, v in temp_cfg.terms.items():
+                    prof_terms[k] = v
             elif terms_dict and isinstance(terms_dict, dict):
-                if replace_all:
-                    vocab.clear()
                 for orig, rep in terms_dict.items():
-                    if vocab.add_term(str(orig), str(rep)):
+                    k = str(orig).strip().lower()
+                    v = str(rep).strip()
+                    if k and v:
+                        prof_terms[k] = v
                         imported += 1
 
+            pm.update_profile_words(church_name, terms=prof_terms)
+            self.config.vocabulary.terms = prof_terms
             save_config(self.config)
             if self.on_config_updated:
                 self.on_config_updated(self.config)
 
+            vocab = VocabularyReplacer(self.config.vocabulary, church_name=church_name)
             return web.json_response({
                 "status": "success",
                 "imported_count": imported,
@@ -1738,8 +1882,8 @@ class WebOverlayServer:
             return web.json_response({"error": str(e)}, status=400)
 
     async def _handle_export_vocabulary(self, request: web.Request) -> web.Response:
-        """Export all custom glossary terms as CSV file download."""
-        vocab = VocabularyReplacer(self.config.vocabulary)
+        church_name = getattr(self.config.general, "church_name", "")
+        vocab = VocabularyReplacer(self.config.vocabulary, church_name=church_name)
         csv_text = vocab.export_csv()
         filename = f"voxstream_glossary_{int(time.time())}.csv"
         headers = {
@@ -1751,12 +1895,228 @@ class WebOverlayServer:
         """Clear all custom vocabulary terms."""
         if not self._check_auth(request):
             return web.json_response({"error": "Unauthorized"}, status=401)
+        church_name = getattr(self.config.general, "church_name", "")
+        from ..profiles import get_profile_manager
+        pm = get_profile_manager()
+        pm.update_profile_words(church_name, terms={})
+        self.config.vocabulary.terms = {}
         vocab = VocabularyReplacer(self.config.vocabulary)
         vocab.clear()
         save_config(self.config)
         if self.on_config_updated:
             self.on_config_updated(self.config)
         return web.json_response({"status": "success", "message": "Glossary cleared.", "terms": {}})
+
+    async def _handle_get_profiles(self, request: web.Request) -> web.Response:
+        """List available organization profiles metadata and the active profile data."""
+        from ..profiles import get_profile_manager
+        pm = get_profile_manager()
+        profiles_meta = pm.list_profiles_metadata()
+        church_name = getattr(self.config.general, "church_name", "Waypoint Church")
+        active_data = pm.get_profile(church_name)
+
+        active_slug = "waypoint" if church_name.strip().lower().startswith("waypoint") else "default"
+        c_lower = church_name.strip().lower()
+        for p in profiles_meta:
+            if p["id"].lower() == c_lower or p["name"].strip().lower() == c_lower:
+                active_slug = p["id"]
+                break
+
+        return web.json_response({
+            "profiles": profiles_meta,
+            "active_profile": active_slug,
+            "profile": active_data,
+        })
+
+    async def _handle_post_profiles(self, request: web.Request) -> web.Response:
+        """Create, select, or delete organization profiles."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        try:
+            body = await request.json()
+            from ..profiles import get_profile_manager
+            from ..config import save_config
+            pm = get_profile_manager()
+            action = body.get("action", "").lower().strip()
+
+            active_slug = ""
+            active_data = None
+
+            # a) Create profile
+            if action == "create" or body.get("create"):
+                name = body.get("name", "Custom")
+                church_mode = bool(body.get("church_mode", True))
+                copy_from = body.get("copy_from")
+                slug, prof = pm.create_profile(
+                    name=name,
+                    church_mode=church_mode,
+                    copy_from=copy_from,
+                )
+                self.config.general.church_name = prof.get("name", name)
+                self.config.general.church_mode = bool(prof.get("church_mode", True))
+                self.config.vocabulary.terms = dict(prof.get("terms", {}))
+                self.config.gemini_live.custom_vocabulary = list(prof.get("speech_biasing_words", []))
+                save_config(self.config)
+                if self.on_config_updated:
+                    self.on_config_updated(self.config)
+                active_slug = slug
+                active_data = prof
+
+            # b) Delete profile
+            elif action == "delete" or body.get("delete"):
+                slug = body.get("slug") or body.get("name") or ""
+                deleted = pm.delete_profile(slug)
+                curr_church = getattr(self.config.general, "church_name", "")
+                if deleted:
+                    curr_slug = re.sub(r"[^\w\-]+", "_", curr_church.strip().lower()).strip("_")
+                    if curr_slug == slug or curr_church.strip().lower() == slug.lower():
+                        if getattr(self.config.general, "church_mode", True):
+                            self.config.general.church_name = "Waypoint Church"
+                            self.config.general.church_mode = True
+                            active_slug = "waypoint"
+                        else:
+                            self.config.general.church_name = "General Organization"
+                            self.config.general.church_mode = False
+                            active_slug = "default"
+                        save_config(self.config)
+                        if self.on_config_updated:
+                            self.on_config_updated(self.config)
+                active_data = pm.get_profile(self.config.general.church_name)
+                if not active_slug:
+                    active_slug = "waypoint" if self.config.general.church_name.strip().lower().startswith("waypoint") else "default"
+
+            # c) Select or update profile
+            else:
+                target = (body.get("name") or body.get("select") or body.get("slug") or "").strip()
+                data = body.get("data")
+                if data and target:
+                    pm.save_profile(target, data)
+                if target:
+                    prof = pm.get_profile(target)
+                    self.config.vocabulary.terms = dict(prof.get("terms", {}))
+                    self.config.gemini_live.custom_vocabulary = list(prof.get("speech_biasing_words", []))
+                    self.config.general.church_name = prof.get("name", target)
+                    if "church_mode" in prof:
+                        self.config.general.church_mode = bool(prof["church_mode"])
+                    save_config(self.config)
+                    if self.on_config_updated:
+                        self.on_config_updated(self.config)
+                    active_slug = target
+                    active_data = prof
+                else:
+                    active_data = pm.get_profile(self.config.general.church_name)
+                    active_slug = "waypoint" if self.config.general.church_name.strip().lower().startswith("waypoint") else "default"
+
+            await self.broadcast_control({"type": "config_updated", "config": self.get_masked_config_dict()})
+
+            profiles_meta = pm.list_profiles_metadata()
+            if not active_slug:
+                active_slug = "waypoint" if getattr(self.config.general, "church_mode", True) else "default"
+            if not active_data:
+                active_data = pm.get_profile(self.config.general.church_name)
+
+            return web.json_response({
+                "status": "success",
+                "profiles": profiles_meta,
+                "active_profile": active_slug,
+                "profile": active_data,
+            })
+        except Exception as e:
+            logger.error(f"Error managing profiles: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=400)
+
+    async def _handle_export_profile(self, request: web.Request) -> web.Response:
+        """Export an organization profile as a portable JSON file download."""
+        from ..profiles import get_profile_manager
+        slug = (request.query.get("slug") or "").strip()
+        if not slug:
+            slug = getattr(self.config.general, "church_name", "") or ""
+        pm = get_profile_manager()
+        profile_data = pm.get_profile(slug)
+        safe_slug = re.sub(r"[^\w\-. ]+", "_", slug or "profile").strip() or "profile"
+        filename = f"{safe_slug}.json"
+        return web.Response(
+            text=json.dumps(profile_data, indent=2),
+            content_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    async def _handle_import_profile(self, request: web.Request) -> web.Response:
+        """Import an organization profile from JSON (wrapped or raw form) and activate it."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        try:
+            body = await request.json()
+            if not isinstance(body, dict):
+                return web.json_response({"status": "error", "message": "Import body must be a JSON object."}, status=400)
+            from ..profiles import get_profile_manager
+            pm = get_profile_manager()
+            if isinstance(body.get("data"), dict):
+                data = dict(body["data"])
+                name = (body.get("name") or data.get("name") or "").strip()
+            else:
+                data = dict(body)
+                name = (data.get("name") or "").strip()
+            if not name:
+                return web.json_response({"status": "error", "message": "Imported profile must include a 'name'."}, status=400)
+            data.setdefault("name", name)
+            slug = pm.save_profile(name, data)
+            self.config.general.church_name = data.get("name", name)
+            if "church_mode" in data:
+                self.config.general.church_mode = bool(data["church_mode"])
+            if "terms" in data and isinstance(data["terms"], dict):
+                self.config.vocabulary.terms = dict(data["terms"])
+            if "speech_biasing_words" in data and isinstance(data["speech_biasing_words"], list):
+                self.config.gemini_live.custom_vocabulary = list(data["speech_biasing_words"])
+            save_config(self.config)
+            if self.on_config_updated:
+                self.on_config_updated(self.config)
+            return web.json_response({
+                "status": "success",
+                "message": f"Imported profile '{name}'",
+                "profiles": pm.list_profiles_metadata(),
+                "active_profile": slug,
+                "profile": data,
+            })
+        except Exception as e:
+            logger.error(f"Error importing profile: {e}")
+            return web.json_response({"status": "error", "message": str(e)}, status=400)
+
+    async def _handle_post_profile_biasing(self, request: web.Request) -> web.Response:
+        """Update speech biasing words for the active organization profile."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        try:
+            data = await request.json()
+            raw_words = data.get("words", [])
+            if isinstance(raw_words, str):
+                raw_words = re.split(r"[\n,]+", raw_words)
+            cleaned_words = []
+            seen = set()
+            for w in raw_words:
+                item = sanitize_text(str(w)).strip()
+                if item and item.lower() not in seen:
+                    seen.add(item.lower())
+                    cleaned_words.append(item)
+
+            church_name = getattr(self.config.general, "church_name", "")
+            from ..profiles import get_profile_manager
+            pm = get_profile_manager()
+            pm.update_profile_words(church_name, speech_biasing_words=cleaned_words)
+
+            self.config.gemini_live.custom_vocabulary = cleaned_words
+            save_config(self.config)
+            if self.on_config_updated:
+                self.on_config_updated(self.config)
+
+            return web.json_response({
+                "status": "success",
+                "count": len(cleaned_words),
+                "words": cleaned_words,
+            })
+        except Exception as e:
+            logger.error(f"Error updating profile speech biasing: {e}")
+            return web.json_response({"error": str(e)}, status=400)
 
     async def _handle_caption_ws(self, request: web.Request) -> web.WebSocketResponse:
         ws = web.WebSocketResponse(heartbeat=25.0)
@@ -2410,6 +2770,158 @@ class WebOverlayServer:
             logger.error(f"Error executing update apply: {e}", exc_info=True)
             return web.json_response({"status": "error", "message": str(e)}, status=500)
 
+    async def _handle_export_system_backup(self, request: web.Request) -> web.Response:
+        """Export complete VoxStream backup (all profiles, glossaries, biasing lists, API keys, styles, and settings)."""
+        from datetime import datetime, timezone
+        from dataclasses import asdict
+        from ..profiles import get_profile_manager
+
+        pm = get_profile_manager()
+        profiles_dict = {}
+        if pm.profiles_dir.exists():
+            for p in sorted(pm.profiles_dir.glob("*.json")):
+                try:
+                    profiles_dict[p.stem] = json.loads(p.read_text(encoding="utf-8"))
+                except Exception as err:
+                    logger.warning(f"Could not read profile {p.name} for backup: {err}")
+
+        if not profiles_dict:
+            from ..profiles import DEFAULT_PROFILE_DATA, WAYPOINT_PROFILE_DATA
+            profiles_dict = {
+                "default": DEFAULT_PROFILE_DATA,
+                "waypoint": WAYPOINT_PROFILE_DATA,
+            }
+
+        config_dict = asdict(self.config)
+
+        bundle = {
+            "voxstream_backup": {
+                "version": "1.0",
+                "exported_at": datetime.now(timezone.utc).isoformat(),
+                "app_name": "VoxStream",
+                "app_version": "1.1.0",
+            },
+            "config": config_dict,
+            "profiles": profiles_dict,
+        }
+
+        timestamp_str = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        filename = f"voxstream_full_backup_{timestamp_str}.json"
+        return web.Response(
+            text=json.dumps(bundle, indent=2),
+            content_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    async def _handle_export_streamdeck_profile(self, request: web.Request) -> web.Response:
+        """Export Stream Deck / Bitfocus Companion configuration template with mapped endpoints."""
+        profile = {
+            "name": "VoxStream Captioner Companion Profile",
+            "version": "1.0",
+            "description": "Stream Deck / Bitfocus Companion pre-configured actions for VoxStream Live Captioner",
+            "base_url": "http://127.0.0.1:8765",
+            "actions": [
+                {"name": "Start Captioning", "method": "POST", "endpoint": "/api/control/start", "description": "Starts live speech recognition and overlays."},
+                {"name": "Stop Captioning", "method": "POST", "endpoint": "/api/control/stop", "description": "Stops live speech recognition."},
+                {"name": "Toggle Captioning", "method": "POST", "endpoint": "/api/control/toggle", "description": "1-button Play/Pause for live captions."},
+                {"name": "Emergency Panic Censor", "method": "POST", "endpoint": "/api/control/panic", "description": "Instantly wipes visible captions from OBS and stage displays."},
+                {"name": "Restore Projector", "method": "POST", "endpoint": "/api/control/reopen-screen", "description": "Re-triggers fullscreen preview to external projector / stage screen."},
+                {"name": "Clear History", "method": "POST", "endpoint": "/api/transcript/clear", "description": "Clears current session transcript memory."}
+            ]
+        }
+        return web.Response(
+            text=json.dumps(profile, indent=2),
+            content_type="application/json",
+            headers={"Content-Disposition": 'attachment; filename="voxstream_streamdeck_companion_profile.json"'},
+        )
+
+    async def _handle_import_system_backup(self, request: web.Request) -> web.Response:
+        """Restore complete VoxStream system backup (all profiles, glossaries, biasing lists, API keys, and settings)."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+
+        try:
+            data = None
+            if request.content_type and "multipart" in request.content_type:
+                reader = await request.multipart()
+                while True:
+                    field = await reader.next()
+                    if field is None:
+                        break
+                    if field.name in ("file", "backup", "data"):
+                        content = await field.read()
+                        data = json.loads(content.decode("utf-8"))
+                        break
+            else:
+                data = await request.json()
+
+            if not isinstance(data, dict):
+                return web.json_response(
+                    {"status": "error", "message": "Invalid backup payload format. Expected JSON object."},
+                    status=400,
+                )
+
+            config_dict = data.get("config")
+            profiles_dict = data.get("profiles")
+
+            if not config_dict and not profiles_dict and not data.get("voxstream_backup"):
+                return web.json_response(
+                    {"status": "error", "message": "Invalid backup payload: missing config and profiles data."},
+                    status=400,
+                )
+
+            from ..profiles import get_profile_manager
+            pm = get_profile_manager()
+            pm.profiles_dir.mkdir(parents=True, exist_ok=True)
+            profiles_restored = 0
+
+            # 1. Restore all profiles
+            if isinstance(profiles_dict, dict):
+                for slug, prof_data in profiles_dict.items():
+                    clean_slug = re.sub(r"[^\w\-]+", "_", str(slug).strip().lower()).strip("_") or "profile"
+                    target_path = pm.profiles_dir / f"{clean_slug}.json"
+                    try:
+                        with open(target_path, "w", encoding="utf-8") as f:
+                            json.dump(prof_data, f, indent=2)
+                        profiles_restored += 1
+                    except Exception as err:
+                        logger.warning(f"Could not restore profile {clean_slug}: {err}")
+
+            # 2. Restore Configuration
+            if isinstance(config_dict, dict):
+                for section, sub_dict in config_dict.items():
+                    if hasattr(self.config, section) and isinstance(sub_dict, dict):
+                        target_sec = getattr(self.config, section)
+                        for k, v in sub_dict.items():
+                            if hasattr(target_sec, k):
+                                setattr(target_sec, k, v)
+
+            # 3. Synchronize active profile with config
+            active_name = getattr(self.config.general, "church_name", "") or "Waypoint Church"
+            active_profile_data = pm.get_profile(active_name)
+            if active_profile_data:
+                if "terms" in active_profile_data and isinstance(active_profile_data["terms"], dict):
+                    self.config.vocabulary.terms = dict(active_profile_data["terms"])
+                if "speech_biasing_words" in active_profile_data and isinstance(active_profile_data["speech_biasing_words"], list):
+                    self.config.gemini_live.custom_vocabulary = list(active_profile_data["speech_biasing_words"])
+                if "church_mode" in active_profile_data:
+                    self.config.general.church_mode = bool(active_profile_data["church_mode"])
+
+            save_config(self.config)
+
+            if self.on_config_updated:
+                self.on_config_updated(self.config)
+
+            return web.json_response({
+                "status": "success",
+                "message": "Full system backup restored successfully!",
+                "profiles_restored": profiles_restored,
+                "active_profile": active_name,
+            })
+        except Exception as e:
+            logger.error(f"Error restoring system backup: {e}")
+            return web.json_response({"status": "error", "message": f"Failed to restore backup: {str(e)}"}, status=400)
+
     async def _auto_check_updates_loop(self):
         """Background periodic update checker."""
         try:
@@ -2435,4 +2947,5 @@ class WebOverlayServer:
 
 # Convenience alias
 WebServer = WebOverlayServer
+
 

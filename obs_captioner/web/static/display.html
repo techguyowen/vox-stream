@@ -1161,9 +1161,39 @@
             text-shadow: none !important;
             -webkit-text-stroke: 0 !important;
         }
+
+        /* Venue Welcome / Connection Banner */
+        .welcome-banner {
+            background: linear-gradient(90deg, #1e293b, #0f172a);
+            border-bottom: 1px solid rgba(56, 189, 248, 0.35);
+            padding: 8px 16px;
+            text-align: center;
+            font-size: 13.5px;
+            font-weight: 600;
+            z-index: 999;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            display: none;
+        }
+        .welcome-banner a {
+            color: #38BDF8;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .welcome-banner a:hover {
+            text-decoration: underline;
+            color: #7DD3FC;
+        }
     </style>
 </head>
 <body class="theme-oled">
+
+    <!-- Venue Welcome & Connection Card Banner -->
+    <div id="welcome-banner" class="welcome-banner">
+        <a id="welcome-banner-link" href="#" target="_blank" rel="noopener noreferrer"></a>
+    </div>
 
     <!-- Header Navigation Bar -->
     <header class="header-bar" id="headerBar">
@@ -2751,6 +2781,24 @@
                             document.title = `${d.custom_title} - VoxStream`;
                             const headerTitle = document.querySelector('.header-title') || document.querySelector('h1');
                             if (headerTitle) headerTitle.textContent = d.custom_title;
+                        }
+                        // 8. Welcome / Connection Card Banner Link
+                        if (d.welcome_banner_text) {
+                            const banner = document.getElementById('welcome-banner');
+                            const link = document.getElementById('welcome-banner-link');
+                            if (banner && link) {
+                                link.textContent = d.welcome_banner_text;
+                                if (d.welcome_banner_url) {
+                                    link.href = d.welcome_banner_url;
+                                    link.style.pointerEvents = 'auto';
+                                    link.style.cursor = 'pointer';
+                                } else {
+                                    link.removeAttribute('href');
+                                    link.style.pointerEvents = 'none';
+                                    link.style.cursor = 'default';
+                                }
+                                banner.style.display = 'block';
+                            }
                         }
                     }
                     if (cfg && cfg.overlay && cfg.overlay.final_only !== undefined) {

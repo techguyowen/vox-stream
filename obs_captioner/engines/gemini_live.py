@@ -154,18 +154,23 @@ class GeminiLiveEngine(BaseSTTEngine):
         Gathers in priority order:
           1. Explicit Gemini Live custom vocabulary (config.gemini_live.custom_vocabulary)
           2. Canonical replacement values from user glossary (config.vocabulary.terms.values())
-          3. When church_mode is enabled:
+          3. Active organization profile terms, leaders, programs, and venues (profiles/*.json)
+          4. When church_mode is enabled:
              - Configured church name and campus terms (ChurchLexiconFormatter.generate_church_name_terms)
-             - Canonical sacred titles, biblical figures, holy places, doctrines, pastoral names (ChurchLexiconFormatter.CHURCH_TERMS.values())
+             - Canonical sacred titles, biblical figures, holy places, doctrines (ChurchLexiconFormatter.CHURCH_TERMS.values())
              - Canonical books of the Bible (ChurchLexiconFormatter.BOOKS_OF_BIBLE.values())
              - Custom censor whitelist words (config.censor.custom_whitelist)
+          5. When church_mode is disabled:
+             - ZERO church terms, liturgy, or biblical books are added.
 
         Gemini Neural Biasing Principles:
-          - Canonical target phrases ONLY (never phonetic mishearings or regex keys like 'ben luthi' or 'dog solid g').
+          - Canonical target phrases ONLY (never phonetic mishearings or regex keys).
           - Case-insensitive deduplication that retains the properly capitalized canonical representation.
           - Enforces Gemini Live API limit of 1,000 terms.
         """
         candidates: List[str] = []
+        church_name = (getattr(self.config.general, "church_name", "") or "").strip()
+        church_mode = getattr(self.config.general, "church_mode", True)
 
         # 1. User-specified Gemini custom vocabulary
         raw_vocab = getattr(self.config.gemini_live, "custom_vocabulary", []) or []
@@ -181,25 +186,50 @@ class GeminiLiveEngine(BaseSTTEngine):
                 if isinstance(target_val, str) and target_val.strip():
                     candidates.append(target_val.strip())
 
-        # 3. Church-specific vocabulary (when Church Mode is enabled)
-        if getattr(self.config.general, "church_mode", True):
-            church_name = (getattr(self.config.general, "church_name", "") or "").strip()
+        # 3. Active organization profile terms, leaders, programs, venues (scoped by church_mode)
+        try:
+            from ..profiles import get_profile_manager
+            pm = get_profile_manager()
+            prof = pm.get_profile(church_name)
+            if prof:
+                prof_is_church = prof.get("church_mode", True)
+                if (church_mode and prof_is_church) or (not church_mode and not prof_is_church):
+                    for word in prof.get("speech_biasing_words", []):
+                        if isinstance(word, str) and word.strip():
+                            candidates.append(word.strip())
+                    for target_val in prof.get("terms", {}).values():
+                        if isinstance(target_val, str) and target_val.strip():
+                            candidates.append(target_val.strip())
+                    for leader in prof.get("leaders", []):
+                        if isinstance(leader, str) and leader.strip():
+                            candidates.append(leader.strip())
+                    for program in prof.get("programs", []):
+                        if isinstance(program, str) and program.strip():
+                            candidates.append(program.strip())
+                    for venue in prof.get("venues_and_geography", []):
+                        if isinstance(venue, str) and venue.strip():
+                            candidates.append(venue.strip())
+        except Exception as e:
+            logger.warning(f"Failed to load active profile for Gemini Live vocabulary: {e}")
+
+        # 4. Church-specific vocabulary (ONLY when Church Mode is enabled)
+        if church_mode:
             try:
                 from ..church_lexicon import ChurchLexiconFormatter
 
-                # 3a. Church name variations and campus terms
+                # 4a. Church name variations and campus terms
                 if church_name:
                     name_terms = ChurchLexiconFormatter.generate_church_name_terms(church_name)
                     for val in name_terms.values():
                         if isinstance(val, str) and val.strip():
                             candidates.append(val.strip())
 
-                # 3b. Sacred titles, biblical figures, holy places, doctrines, pastoral names
+                # 4b. Sacred titles, biblical figures, holy places, doctrines
                 for val in ChurchLexiconFormatter.CHURCH_TERMS.values():
                     if isinstance(val, str) and val.strip():
                         candidates.append(val.strip())
 
-                # 3c. Books of the Bible (canonical 66 books)
+                # 4c. Books of the Bible (canonical 66 books)
                 for val in ChurchLexiconFormatter.BOOKS_OF_BIBLE.values():
                     if isinstance(val, str) and val.strip():
                         candidates.append(val.strip())
@@ -207,7 +237,7 @@ class GeminiLiveEngine(BaseSTTEngine):
             except Exception as e:
                 logger.warning(f"Failed to load ChurchLexiconFormatter for Gemini Live vocabulary: {e}")
 
-            # 3d. Censor custom whitelist words
+            # 4d. Censor custom whitelist words
             censor_cfg = getattr(self.config, "censor", None)
             if censor_cfg:
                 whitelist = getattr(censor_cfg, "custom_whitelist", []) or []
@@ -246,8 +276,11 @@ class GeminiLiveEngine(BaseSTTEngine):
                 "and format proper capitalization and punctuation."
             )
 
-        # Domain conditioning for church ministry & biblical preaching
-        if getattr(self.config.general, "church_mode", True):
+        church_name = (getattr(self.config.general, "church_name", "") or "").strip()
+        church_mode = getattr(self.config.general, "church_mode", True)
+
+        # Domain conditioning: church vs general organization
+        if church_mode:
             church_context = (
                 "Domain context: Church worship service, scripture readings, theology, and biblical sermon preaching. "
                 "Accurately transcribe sacred titles, biblical person names, scriptural book citations, and theological terms. "
@@ -256,16 +289,20 @@ class GeminiLiveEngine(BaseSTTEngine):
                 "Never answer rhetorical questions, provide commentary, or engage in conversation with the speaker. "
                 "Ignore background ambient church music, organ pads, or keyboard accompaniment under prayer."
             )
-            church_name = (getattr(self.config.general, "church_name", "") or "").strip()
             if church_name:
                 church_context += f" Local ministry organization: {church_name}."
             extras.append(church_context)
-
-        # User-specified custom vocabulary hints (avoid bracketed arrays/code syntax that models regurgitate)
-        user_vocab = getattr(self.config.gemini_live, "custom_vocabulary", []) or []
-        clean_user_vocab = [v.strip() for v in user_vocab if isinstance(v, str) and v.strip()]
-        if clean_user_vocab:
-            sample_terms = ", ".join(clean_user_vocab[:20])
+        else:
+            secular_context = "Domain context: Live presentation, speech, and discussion."
+            if church_name:
+                religious_words = ["church", "chapel", "ministry", "fellowship", "parish", "cathedral", "synagogue", "temple", "mosque"]
+                if not any(w in church_name.lower() for w in religious_words):
+                    secular_context += f" Organization: {church_name}."
+            extras.append(secular_context)
+        # Custom vocabulary hints sampled from top collected effective custom vocabulary terms
+        effective_vocab = self._get_effective_custom_vocabulary()
+        if effective_vocab:
+            sample_terms = ", ".join(effective_vocab[:20])
             extras.append(f"Adapt accurately to custom specialized vocabulary: {sample_terms}.")
 
         extras.append(
@@ -895,13 +932,15 @@ class GeminiLiveEngine(BaseSTTEngine):
                                                 _latest_interim_text = text
                                                 final_received_event.clear()
 
-                                            await on_transcript(
+                                            res = on_transcript(
                                                 TranscriptEvent(
                                                     text=text,
                                                     is_final=is_final,
                                                     translated_text=text if is_trans_model else None,
                                                 )
                                             )
+                                            if asyncio.iscoroutine(res):
+                                                await res
 
                                     elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.ERROR):
                                         logger.warning("Gemini Live WebSocket closed by remote server.")
@@ -918,13 +957,15 @@ class GeminiLiveEngine(BaseSTTEngine):
                                         _latest_interim_text = None
                                         is_trans_model = "translate" in getattr(self.config.gemini_live, "model", "").lower()
                                         try:
-                                            await on_transcript(
+                                            res = on_transcript(
                                                 TranscriptEvent(
                                                     text=text_to_finalize,
                                                     is_final=True,
                                                     translated_text=text_to_finalize if is_trans_model else None,
                                                 )
                                             )
+                                            if asyncio.iscoroutine(res):
+                                                await res
                                         except Exception as ex:
                                             logger.warning(f"Error finalizing in-flight interim: {ex}")
                                 _latest_interim_text = None

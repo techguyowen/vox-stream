@@ -278,6 +278,41 @@ class TestContentFilterCRUD(unittest.TestCase):
         self.assertIn("custom_blacklist", state)
         self.assertIn("custom_whitelist", state)
 
+    def test_tier4_custom_blacklist_toggle(self):
+        cfg = CensorConfig(enabled=True, mode="asterisk", filter_standard_profanity=True, filter_custom_blacklist=True)
+        cf = ContentFilter(cfg)
+        cf.add_blacklist_term("competitorx")
+
+        # When filter_custom_blacklist is True, both profanities and custom blacklist terms are censored
+        text_with_both, censored = cf.filter_text("Do not mention competitorx or say fuck on stream")
+        self.assertTrue(censored)
+        self.assertNotIn("competitorx", text_with_both)
+        self.assertNotIn("fuck", text_with_both)
+
+        # Toggle filter_custom_blacklist to False
+        cfg.filter_custom_blacklist = False
+        cf.rebuild_dictionary()
+
+        # Custom blacklist term is now allowed through, but Tier 1 profanity remains filtered
+        text_custom_allowed, censored2 = cf.filter_text("Do not mention competitorx or say fuck on stream")
+        self.assertTrue(censored2)
+        self.assertIn("competitorx", text_custom_allowed)
+        self.assertNotIn("fuck", text_custom_allowed)
+
+    def test_custom_wholesome_replacement_override(self):
+        cfg = CensorConfig(enabled=True, mode="replacement")
+        cf = ContentFilter(cfg)
+
+        # Default wholesome replacement for 'damn' is 'darn'
+        res_default, _ = cf.filter_text("Well damn that was fast")
+        self.assertEqual(res_default, "Well darn that was fast")
+
+        # Custom replacement overrides the built-in default
+        cf.set_replacement("damn", "blasted")
+        res_custom, _ = cf.filter_text("Well damn that was fast")
+        self.assertEqual(res_custom, "Well blasted that was fast")
+
+
 
 class TestVocabulary(unittest.TestCase):
 
@@ -883,7 +918,7 @@ class TestConfigAndEngines(unittest.TestCase):
         self.assertIn("Grace Fellowship", vocab)
 
         # 4. Verify canonical church terms and books of the Bible
-        self.assertIn("Ben Luthi", vocab)
+        self.assertIn("Jesus Christ", vocab)
         self.assertIn("Doxology", vocab)
         self.assertIn("1 Thessalonians", vocab)
         self.assertIn("Genesis", vocab)
@@ -1391,6 +1426,30 @@ from aiohttp.test_utils import AioHTTPTestCase
 from obs_captioner.web.server import WebOverlayServer
 
 class TestServerEndpoints(AioHTTPTestCase):
+    def setUp(self):
+        profiles_dir = Path(__file__).resolve().parent / "profiles"
+        self._profiles_backup = {}
+        if profiles_dir.exists():
+            for p in profiles_dir.glob("*.json"):
+                self._profiles_backup[p.name] = p.read_text(encoding="utf-8")
+        super().setUp()
+
+    def tearDown(self):
+        try:
+            profiles_dir = Path(__file__).resolve().parent / "profiles"
+            if profiles_dir.exists():
+                for p in list(profiles_dir.glob("*.json")):
+                    if p.name not in self._profiles_backup:
+                        try:
+                            p.unlink()
+                        except Exception:
+                            pass
+                for name, content in self._profiles_backup.items():
+                    target = profiles_dir / name
+                    target.write_text(content, encoding="utf-8")
+        finally:
+            super().tearDown()
+
     async def get_application(self):
         self.cfg = AppConfig()
         self.overlay_server = WebOverlayServer(self.cfg)
@@ -2077,6 +2136,314 @@ class TestServerEndpoints(AioHTTPTestCase):
         self.assertEqual(resp_qr.status, 200)
         self.assertIn("image/svg+xml", resp_qr.content_type)
 
+    async def test_profiles_api(self):
+        # 1. GET metadata
+        resp = await self.client.request('GET', '/api/profiles')
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertIn('profiles', data)
+        self.assertIn('active_profile', data)
+        self.assertIn('profile', data)
+
+        profile_ids = [p['id'] for p in data['profiles']]
+        self.assertIn('waypoint', profile_ids)
+        self.assertIn('default', profile_ids)
+
+        # 2. POST create custom profile
+        create_resp = await self.client.request('POST', '/api/profiles', json={
+            'action': 'create',
+            'name': 'Cornerstone Chapel',
+            'church_mode': True,
+            'copy_from': 'waypoint'
+        })
+        self.assertEqual(create_resp.status, 200)
+        create_data = await create_resp.json()
+        self.assertEqual(create_data['status'], 'success')
+        self.assertEqual(create_data['active_profile'], 'cornerstone_chapel')
+        self.assertEqual(self.overlay_server.config.general.church_name, 'Cornerstone Chapel')
+
+        # 3. POST select profile
+        select_resp = await self.client.request('POST', '/api/profiles', json={
+            'action': 'select',
+            'name': 'default'
+        })
+        self.assertEqual(select_resp.status, 200)
+        select_data = await select_resp.json()
+        self.assertEqual(select_data['status'], 'success')
+        self.assertEqual(self.overlay_server.config.general.church_name, 'General Organization')
+        self.assertFalse(self.overlay_server.config.general.church_mode)
+
+        # 4. POST delete custom profile
+        del_resp = await self.client.request('POST', '/api/profiles', json={
+            'action': 'delete',
+            'slug': 'cornerstone_chapel'
+        })
+        self.assertEqual(del_resp.status, 200)
+        del_data = await del_resp.json()
+        self.assertEqual(del_data['status'], 'success')
+
+        # 5. POST delete builtin profile is blocked
+        del_wp_resp = await self.client.request('POST', '/api/profiles', json={
+            'action': 'delete',
+            'slug': 'waypoint'
+        })
+        self.assertEqual(del_wp_resp.status, 200)
+        after_get = await self.client.request('GET', '/api/profiles')
+        after_data = await after_get.json()
+        wp_exists = any(p['id'] == 'waypoint' for p in after_data['profiles'])
+        self.assertTrue(wp_exists)
+
+    async def test_profiles_export_and_import(self):
+        # 1. Export an explicit profile slug
+        resp = await self.client.request('GET', '/api/profiles/export?slug=default')
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.content_type, 'application/json')
+        self.assertIn('attachment', resp.headers.get('Content-Disposition', ''))
+        self.assertIn('.json', resp.headers.get('Content-Disposition', ''))
+        exported = await resp.json()
+        self.assertIn('name', exported)
+
+        # 2. Export with no slug defaults to the active profile
+        resp_default = await self.client.request('GET', '/api/profiles/export')
+        self.assertEqual(resp_default.status, 200)
+        exported_default = await resp_default.json()
+        self.assertIn('name', exported_default)
+
+        updated_calls = []
+        self.overlay_server.on_config_updated = lambda cfg: updated_calls.append(cfg)
+
+        # 3. Import a raw profile dict
+        raw_profile = dict(exported_default)
+        raw_profile['name'] = 'Export Import Chapel'
+        raw_profile['church_mode'] = True
+        imp_resp = await self.client.request('POST', '/api/profiles/import', json=raw_profile)
+        self.assertEqual(imp_resp.status, 200)
+        imp_data = await imp_resp.json()
+        self.assertEqual(imp_data['status'], 'success')
+        self.assertIn('Export Import Chapel', imp_data['message'])
+        self.assertIn('profiles', imp_data)
+        self.assertIn('active_profile', imp_data)
+        self.assertEqual(self.overlay_server.config.general.church_name, 'Export Import Chapel')
+        self.assertTrue(self.overlay_server.config.general.church_mode)
+        self.assertTrue(len(updated_calls) >= 1)
+
+        # 4. Import the wrapped {name, data} form (round-trip of an export)
+        wrapped = {
+            'name': 'Harbor Light Fellowship',
+            'data': {**raw_profile, 'name': 'Harbor Light Fellowship', 'church_mode': False},
+        }
+        wrap_resp = await self.client.request('POST', '/api/profiles/import', json=wrapped)
+        self.assertEqual(wrap_resp.status, 200)
+        wrap_data = await wrap_resp.json()
+        self.assertEqual(wrap_data['status'], 'success')
+        self.assertEqual(self.overlay_server.config.general.church_name, 'Harbor Light Fellowship')
+        self.assertFalse(self.overlay_server.config.general.church_mode)
+
+        # 5. Import without a name is rejected
+        bad_resp = await self.client.request('POST', '/api/profiles/import', json={'church_mode': True})
+        self.assertEqual(bad_resp.status, 400)
+
+        # Cleanup imported profiles
+        await self.client.request('POST', '/api/profiles', json={'action': 'delete', 'slug': imp_data['active_profile']})
+        await self.client.request('POST', '/api/profiles', json={'action': 'delete', 'slug': wrap_data['active_profile']})
+
+    async def test_filter_export_and_import(self):
+        # Seed known rules
+        self.overlay_server.config.censor.custom_blacklist = ['seedbad']
+        self.overlay_server.config.censor.custom_whitelist = ['seedgood']
+        self.overlay_server.config.censor.custom_replacements = {'seeddamn': 'seeddarn'}
+
+        # 1. Export round-trips the current rules
+        resp = await self.client.request('GET', '/api/filter/export')
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.content_type, 'application/json')
+        self.assertIn('voxstream_filters.json', resp.headers.get('Content-Disposition', ''))
+        exported = await resp.json()
+        self.assertIn('seedbad', exported['blacklist'])
+        self.assertIn('seedgood', exported['whitelist'])
+        self.assertEqual(exported['replacements'].get('seeddamn'), 'seeddarn')
+
+        updated_calls = []
+        self.overlay_server.on_config_updated = lambda cfg: updated_calls.append(cfg)
+
+        # 2. Import merges by default (deduped) and updates replacements
+        merge_resp = await self.client.request('POST', '/api/filter/import', json={
+            'blacklist': ['seedbad', 'newbad'],
+            'whitelist': ['newgood'],
+            'replacements': {'heck': 'h-e-c-k'},
+        })
+        self.assertEqual(merge_resp.status, 200)
+        merge_data = await merge_resp.json()
+        self.assertEqual(merge_data['status'], 'success')
+        self.assertEqual(merge_data['message'], 'Imported filter rules successfully')
+        self.assertEqual(merge_data['blacklist'].count('seedbad'), 1)
+        self.assertIn('newbad', merge_data['blacklist'])
+        self.assertIn('seedgood', merge_data['whitelist'])
+        self.assertIn('newgood', merge_data['whitelist'])
+        self.assertEqual(merge_data['replacements'].get('seeddamn'), 'seeddarn')
+        self.assertEqual(merge_data['replacements'].get('heck'), 'h-e-c-k')
+        self.assertTrue(len(updated_calls) >= 1)
+
+        # 3. Import with replace_all overwrites every list
+        replace_resp = await self.client.request('POST', '/api/filter/import', json={
+            'blacklist': ['onlybad'],
+            'whitelist': [],
+            'replacements': {'dang': 'darn'},
+            'replace_all': True,
+        })
+        self.assertEqual(replace_resp.status, 200)
+        replace_data = await replace_resp.json()
+        self.assertEqual(replace_data['blacklist'], ['onlybad'])
+        self.assertEqual(replace_data['whitelist'], [])
+        self.assertEqual(replace_data['replacements'], {'dang': 'darn'})
+        self.assertEqual(self.overlay_server.config.censor.custom_blacklist, ['onlybad'])
+
+    async def test_profile_biasing_endpoint(self):
+        """Verify POST /api/profiles/biasing updates active profile speech biasing words on disk and in config."""
+        from obs_captioner.profiles import get_profile_manager
+        pm = get_profile_manager()
+
+        new_words = ["Alpha", "Beta", "Gamma Ray"]
+        resp = await self.client.request('POST', '/api/profiles/biasing', json={'words': new_words})
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertEqual(data['count'], 3)
+        self.assertEqual(data['words'], new_words)
+
+        self.assertEqual(self.overlay_server.config.gemini_live.custom_vocabulary, new_words)
+        active_church = self.overlay_server.config.general.church_name
+        prof_disk = pm.get_profile(active_church)
+        self.assertEqual(prof_disk.get('speech_biasing_words'), new_words)
+
+    async def test_profile_switch_synchronizes_words(self):
+        """Verify selecting a profile via POST /api/profiles updates both vocabulary.terms and speech_biasing_words."""
+        resp_wp = await self.client.request('POST', '/api/profiles', json={
+            'action': 'select',
+            'name': 'waypoint'
+        })
+        self.assertEqual(resp_wp.status, 200)
+        self.assertIn("ben luthi", self.overlay_server.config.vocabulary.terms)
+        self.assertIn("Pastor Ben Luthi", self.overlay_server.config.gemini_live.custom_vocabulary)
+
+        resp_def = await self.client.request('POST', '/api/profiles', json={
+            'action': 'select',
+            'name': 'default'
+        })
+        self.assertEqual(resp_def.status, 200)
+        self.assertEqual(self.overlay_server.config.vocabulary.terms, {})
+        self.assertEqual(self.overlay_server.config.gemini_live.custom_vocabulary, [])
+
+    async def test_set_and_clear_vocabulary_persists_to_disk(self):
+        """Verify setting and clearing vocabulary terms persists changes to active profile JSON on disk."""
+        from obs_captioner.profiles import get_profile_manager
+        pm = get_profile_manager()
+        active_church = self.overlay_server.config.general.church_name
+
+        resp_set = await self.client.request('POST', '/api/vocabulary/set', json={
+            'original': 'cool phrase',
+            'replacement': 'Awesome Phrase'
+        })
+        self.assertEqual(resp_set.status, 200)
+        self.assertEqual(self.overlay_server.config.vocabulary.terms.get('cool phrase'), 'Awesome Phrase')
+
+        prof_after_set = pm.get_profile(active_church)
+        self.assertEqual(prof_after_set.get('terms', {}).get('cool phrase'), 'Awesome Phrase')
+
+        resp_clear = await self.client.request('POST', '/api/vocabulary/clear')
+        self.assertEqual(resp_clear.status, 200)
+        self.assertEqual(self.overlay_server.config.vocabulary.terms, {})
+
+        prof_after_clear = pm.get_profile(active_church)
+        self.assertEqual(prof_after_clear.get('terms', {}), {})
+
+    async def test_profile_export_and_import(self):
+        """Verify exporting a profile returns JSON with terms and speech_biasing_words, and importing updates runtime & disk."""
+        resp_exp = await self.client.request('GET', '/api/profiles/export?slug=waypoint')
+        self.assertEqual(resp_exp.status, 200)
+        exported = await resp_exp.json()
+        self.assertIn('terms', exported)
+        self.assertIn('speech_biasing_words', exported)
+        self.assertIn('ben luthi', exported['terms'])
+        self.assertIn('Pastor Ben Luthi', exported['speech_biasing_words'])
+
+        custom_data = {
+            'name': 'Imported Test Org',
+            'church_mode': False,
+            'terms': {'foo bar': 'FooBar'},
+            'speech_biasing_words': ['FooBar', 'TestBiasing'],
+        }
+        resp_imp = await self.client.request('POST', '/api/profiles/import', json=custom_data)
+        self.assertEqual(resp_imp.status, 200)
+        imp_data = await resp_imp.json()
+        self.assertEqual(imp_data['status'], 'success')
+
+        self.assertEqual(self.overlay_server.config.general.church_name, 'Imported Test Org')
+        self.assertEqual(self.overlay_server.config.vocabulary.terms, {'foo bar': 'FooBar'})
+        self.assertEqual(self.overlay_server.config.gemini_live.custom_vocabulary, ['FooBar', 'TestBiasing'])
+
+        await self.client.request('POST', '/api/profiles', json={'action': 'delete', 'slug': imp_data['active_profile']})
+
+    async def test_export_full_system_backup(self):
+        """Verify GET /api/system/backup/export returns valid bundle structure and headers."""
+        resp = await self.client.request('GET', '/api/system/backup/export')
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.content_type, 'application/json')
+        self.assertIn('attachment', resp.headers.get('Content-Disposition', ''))
+        self.assertIn('voxstream_full_backup_', resp.headers.get('Content-Disposition', ''))
+        data = await resp.json()
+        self.assertIn('voxstream_backup', data)
+        self.assertEqual(data['voxstream_backup']['app_name'], 'VoxStream')
+        self.assertIn('config', data)
+        self.assertIn('profiles', data)
+        self.assertIn('general', data['config'])
+        self.assertTrue(len(data['profiles']) >= 1)
+
+    async def test_import_full_system_backup(self):
+        """Verify POST /api/system/backup/import restores profiles and config and notifies runtime."""
+        resp_exp = await self.client.request('GET', '/api/system/backup/export')
+        self.assertEqual(resp_exp.status, 200)
+        bundle = await resp_exp.json()
+
+        bundle['config']['general']['church_name'] = 'Migration Cathedral'
+        bundle['config']['general']['church_mode'] = True
+        bundle['profiles']['migration_cathedral'] = {
+            'name': 'Migration Cathedral',
+            'church_mode': True,
+            'speech_biasing_words': ['Cathedral', 'Archbishop'],
+            'terms': {'cathedral': 'Cathedral'}
+        }
+
+        updated_calls = []
+        self.overlay_server.on_config_updated = lambda cfg: updated_calls.append(cfg)
+
+        imp_resp = await self.client.request('POST', '/api/system/backup/import', json=bundle)
+        self.assertEqual(imp_resp.status, 200)
+        imp_data = await imp_resp.json()
+        self.assertEqual(imp_data['status'], 'success')
+        self.assertIn('Migration Cathedral', imp_data['active_profile'])
+        self.assertGreaterEqual(imp_data['profiles_restored'], 1)
+
+        self.assertEqual(self.overlay_server.config.general.church_name, 'Migration Cathedral')
+        self.assertTrue(len(updated_calls) >= 1)
+
+        from obs_captioner.profiles import get_profile_manager
+        pm = get_profile_manager()
+        restored_prof = pm.get_profile('migration_cathedral')
+        self.assertIsNotNone(restored_prof)
+        self.assertEqual(restored_prof.get('name'), 'Migration Cathedral')
+
+        await self.client.request('POST', '/api/profiles', json={'action': 'delete', 'slug': 'migration_cathedral'})
+
+    async def test_import_full_system_backup_invalid(self):
+        """Verify 400 rejection for malformed backup imports."""
+        resp1 = await self.client.request('POST', '/api/system/backup/import', json=['invalid'])
+        self.assertEqual(resp1.status, 400)
+
+        resp2 = await self.client.request('POST', '/api/system/backup/import', json={'random_key': 123})
+        self.assertEqual(resp2.status, 400)
+        err_data = await resp2.json()
+        self.assertEqual(err_data['status'], 'error')
 
 
 class TestCaptionSinkFinalOnly(unittest.IsolatedAsyncioTestCase):
@@ -5033,7 +5400,7 @@ class TestGeminiModelsAndSanitization(unittest.TestCase):
         from obs_captioner.gemini_models import check_model_deprecation, get_fallback_model_id
         dep = check_model_deprecation("gemini-2.0-flash")
         self.assertIsNotNone(dep)
-        self.assertEqual(dep["recommended_replacement"], "gemini-3.6-flash")
+        self.assertEqual(dep["recommended_replacement"], "gemini-3.8-flash")
 
         dep_live = check_model_deprecation("gemini-2.0-flash-live-001")
         self.assertIsNotNone(dep_live)
@@ -6831,6 +7198,272 @@ class TestGeminiLiveProactiveRotationAndInterimPreservation(unittest.IsolatedAsy
         self.assertEqual(stats["rotations"], 2)
         self.assertEqual(stats["last_rotation_time"], 1234.5)
         self.assertTrue(stats["resumption_handle_active"])
+
+
+class TestProfilesAndVocabulary(unittest.TestCase):
+    """Verify modular profiles, church_mode toggling, and Gemini speech biasing."""
+
+    def setUp(self):
+        super().setUp()
+        profiles_dir = Path(__file__).resolve().parent / "profiles"
+        self._profiles_backup = {}
+        if profiles_dir.exists():
+            for p in profiles_dir.glob("*.json"):
+                self._profiles_backup[p.name] = p.read_text(encoding="utf-8")
+
+    def tearDown(self):
+        try:
+            profiles_dir = Path(__file__).resolve().parent / "profiles"
+            if profiles_dir.exists():
+                for p in list(profiles_dir.glob("*.json")):
+                    if p.name not in self._profiles_backup:
+                        try:
+                            p.unlink()
+                        except Exception:
+                            pass
+                for name, content in self._profiles_backup.items():
+                    target = profiles_dir / name
+                    target.write_text(content, encoding="utf-8")
+        finally:
+            super().tearDown()
+
+    def test_profile_manager_discovery_and_loading(self):
+        from obs_captioner.profiles import get_profile_manager
+        pm = get_profile_manager()
+        profiles = pm.list_profiles()
+        self.assertIn("waypoint", profiles)
+        self.assertIn("default", profiles)
+
+        waypoint_prof = pm.get_profile("waypoint")
+        self.assertEqual(waypoint_prof["name"], "Waypoint Church")
+        self.assertTrue(waypoint_prof["church_mode"])
+
+        default_prof = pm.get_profile("default")
+        self.assertEqual(default_prof["name"], "General Organization")
+        self.assertFalse(default_prof["church_mode"])
+
+        mapped = pm.get_profile("Waypoint Church")
+        self.assertEqual(mapped["name"], "Waypoint Church")
+
+    def test_waypoint_profile_preserves_terms_and_splits(self):
+        from obs_captioner.profiles import get_profile_manager
+        pm = get_profile_manager()
+        prof = pm.get_profile("waypoint")
+
+        self.assertIn("ben luthi", prof["terms"])
+        self.assertEqual(prof["terms"]["ben luthi"], "Ben Luthi")
+        self.assertIn("chet the chicken", prof["terms"])
+        self.assertEqual(prof["terms"]["chet the chicken"], "Chet the Chicken")
+        self.assertIn("waypoint kids", prof["terms"])
+        self.assertEqual(prof["terms"]["waypoint kids"], "Waypoint Kids")
+
+        splits = prof["boundary_splits"]
+        self.assertIn(["waypoint", "point"], splits)
+
+        from obs_captioner.church_lexicon import ChurchLexiconFormatter
+        formatter = ChurchLexiconFormatter(church_name="Waypoint Church")
+        formatted = formatter.format_church_text("pastor ben luthi at waypoint kids")
+        self.assertIn("Ben Luthi", formatted)
+        self.assertIn("Waypoint Kids", formatted)
+
+    def test_church_mode_false_excludes_church_terms(self):
+        from obs_captioner.config import AppConfig
+        from obs_captioner.engines.gemini_live import GeminiLiveEngine
+
+        cfg = AppConfig()
+        cfg.general.church_mode = False
+        cfg.general.church_name = "Acme Corp"
+        cfg.gemini_live.custom_vocabulary = ["Acme", "Widget"]
+
+        engine = GeminiLiveEngine(cfg)
+        vocab = engine._get_effective_custom_vocabulary()
+
+        self.assertIn("Acme", vocab)
+        self.assertIn("Widget", vocab)
+        self.assertNotIn("Doxology", vocab)
+        self.assertNotIn("Genesis", vocab)
+        self.assertNotIn("1 Corinthians", vocab)
+        self.assertNotIn("Apostles' Creed", vocab)
+
+        instruction = engine._build_system_instruction()
+        self.assertIn("Domain context: Live presentation, speech, and discussion", instruction)
+        self.assertIn("Organization: Acme Corp", instruction)
+        self.assertNotIn("biblical sermon preaching", instruction)
+
+    def test_custom_organization_word_list_gemini_biasing(self):
+        from obs_captioner.config import AppConfig
+        from obs_captioner.engines.gemini_live import GeminiLiveEngine
+
+        cfg = AppConfig()
+        cfg.general.church_mode = False
+        cfg.general.church_name = "Tech Summit"
+        cfg.gemini_live.custom_vocabulary = ["Kubernetes", "Prometheus", "OpenTelemetry"]
+
+        engine = GeminiLiveEngine(cfg)
+        vocab = engine._get_effective_custom_vocabulary()
+
+        self.assertIn("Kubernetes", vocab)
+        self.assertIn("Prometheus", vocab)
+        self.assertIn("OpenTelemetry", vocab)
+
+        payload = engine.build_setup_payload()
+        self.assertIn("setup", payload)
+        self.assertIn("inputAudioTranscription", payload["setup"])
+        setup_vocab = payload["setup"]["inputAudioTranscription"]["customVocabulary"]
+        self.assertIn("Kubernetes", setup_vocab)
+
+        instruction = engine._build_system_instruction()
+        self.assertIn("Kubernetes", instruction)
+
+    def test_dynamic_boundary_stitching_custom_org(self):
+        from obs_captioner.config import AppConfig
+        from obs_captioner.obs.caption_sink import CaptionSink
+
+        cfg = AppConfig()
+        cfg.general.church_name = "Waypoint Church"
+
+        sink = CaptionSink(cfg)
+        self.assertIn(("waypoint", "point"), sink._effective_boundary_stitches)
+        self.assertIn(("dog", "solid g"), sink._effective_boundary_stitches)
+
+        cfg2 = AppConfig()
+        cfg2.general.church_name = "Enterprise Solutions"
+        sink2 = CaptionSink(cfg2)
+        self.assertIn(("dog", "solid g"), sink2._effective_boundary_stitches)
+        self.assertIn(("author", "forty"), sink2._effective_boundary_stitches)
+
+    def test_list_profiles_metadata(self):
+        from obs_captioner.profiles import get_profile_manager
+        pm = get_profile_manager()
+        profiles = pm.list_profiles_metadata()
+        self.assertIsInstance(profiles, list)
+        self.assertGreaterEqual(len(profiles), 2)
+
+        ids = [p["id"] for p in profiles]
+        self.assertIn("waypoint", ids)
+        self.assertIn("default", ids)
+
+        waypoint_meta = next(p for p in profiles if p["id"] == "waypoint")
+        self.assertEqual(waypoint_meta["name"], "Waypoint Church")
+        self.assertTrue(waypoint_meta["church_mode"])
+        self.assertTrue(waypoint_meta["is_builtin"])
+
+        default_meta = next(p for p in profiles if p["id"] == "default")
+        self.assertEqual(default_meta["name"], "General Organization")
+        self.assertFalse(default_meta["church_mode"])
+        self.assertTrue(default_meta["is_builtin"])
+
+    def test_create_and_delete_profile(self):
+        from obs_captioner.profiles import get_profile_manager
+        pm = get_profile_manager()
+
+        slug, prof = pm.create_profile(
+            name="Grace Baptist Church",
+            church_mode=True,
+            copy_from="waypoint"
+        )
+        self.assertEqual(slug, "grace_baptist_church")
+        self.assertEqual(prof["name"], "Grace Baptist Church")
+        self.assertTrue(prof["church_mode"])
+        self.assertIn("ben luthi", prof.get("terms", {}))
+
+        profiles = pm.list_profiles_metadata()
+        created = next((p for p in profiles if p["id"] == slug), None)
+        self.assertIsNotNone(created)
+        self.assertFalse(created["is_builtin"])
+
+        # Deletion
+        deleted = pm.delete_profile(slug)
+        self.assertTrue(deleted)
+
+        profiles_after = pm.list_profiles_metadata()
+        self.assertFalse(any(p["id"] == slug for p in profiles_after))
+
+    def test_builtin_profiles_protected_from_deletion(self):
+        from obs_captioner.profiles import get_profile_manager
+        pm = get_profile_manager()
+
+        self.assertFalse(pm.delete_profile("default"))
+        self.assertFalse(pm.delete_profile("waypoint"))
+
+        meta = pm.list_profiles_metadata()
+        ids = [p["id"] for p in meta]
+        self.assertIn("default", ids)
+        self.assertIn("waypoint", ids)
+
+    def test_create_profile_slug_sanitization_and_collision(self):
+        from obs_captioner.profiles import get_profile_manager
+        pm = get_profile_manager()
+
+        slug_def, _ = pm.create_profile("Default", church_mode=False)
+        self.assertEqual(slug_def, "default_custom")
+        pm.delete_profile(slug_def)
+
+        slug_wp, _ = pm.create_profile("Waypoint", church_mode=True)
+        self.assertEqual(slug_wp, "waypoint_custom")
+        pm.delete_profile(slug_wp)
+
+    def test_vocabulary_scoping_per_profile(self):
+        from obs_captioner.config import VocabularyConfig
+        from obs_captioner.vocabulary import VocabularyReplacer
+
+        vcfg = VocabularyConfig()
+        vcfg.terms = {"custom_term": "Custom Term"}
+
+        # Waypoint profile includes Waypoint terms + custom terms
+        replacer_wp = VocabularyReplacer(vcfg, church_name="Waypoint Church")
+        terms_wp = replacer_wp.get_terms()
+        self.assertIn("custom_term", terms_wp)
+        self.assertIn("ben luthi", terms_wp)
+
+        # General org profile only includes custom terms
+        replacer_gen = VocabularyReplacer(vcfg, church_name="General Organization")
+        terms_gen = replacer_gen.get_terms()
+        self.assertIn("custom_term", terms_gen)
+        self.assertNotIn("ben luthi", terms_gen)
+        self.assertNotIn("waypoint kids", terms_gen)
+
+        # Base config terms was NOT mutated
+        self.assertNotIn("ben luthi", vcfg.terms)
+
+
+class TestDashboardEnhancements(unittest.TestCase):
+    """Tests for new configuration fields and export routes."""
+
+    def test_display_and_bible_new_config_defaults(self):
+        from obs_captioner.config import DisplayConfig, BibleConfig, AppConfig
+
+        dc = DisplayConfig()
+        self.assertEqual(dc.welcome_banner_text, "")
+        self.assertEqual(dc.welcome_banner_url, "")
+
+        bc = BibleConfig()
+        self.assertEqual(bc.bible_max_verses_per_slide, 2)
+
+        app_cfg = AppConfig()
+        self.assertEqual(app_cfg.display.welcome_banner_text, "")
+        self.assertEqual(app_cfg.bible.bible_max_verses_per_slide, 2)
+
+    def test_streamdeck_profile_export_payload(self):
+        import asyncio
+        import json
+        from aiohttp.test_utils import make_mocked_request
+        from obs_captioner.web.server import WebServer
+        from obs_captioner.config import AppConfig
+
+        app_cfg = AppConfig()
+        server = WebServer(app_cfg, unittest.mock.MagicMock())
+        req = make_mocked_request("GET", "/api/export/streamdeck_profile")
+        resp = asyncio.run(server._handle_export_streamdeck_profile(req))
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.content_type, "application/json")
+        body = json.loads(resp.text)
+        self.assertEqual(body["name"], "VoxStream Captioner Companion Profile")
+        endpoints = [a["endpoint"] for a in body["actions"]]
+        self.assertIn("/api/control/panic", endpoints)
+        self.assertIn("/api/control/toggle", endpoints)
+        self.assertIn("/api/control/reopen-screen", endpoints)
+        self.assertIn("/api/control/start", endpoints)
 
 
 if __name__ == "__main__":

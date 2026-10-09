@@ -24,9 +24,6 @@ class CaptionSink:
     """Dispatches transcribed captions to OBS, Web Overlay, Translation, and Twitch Chat."""
 
     BOUNDARY_STITCH_PAIRS = {
-        ("waypoint", "point"): ("Waypoint", ""),
-        ("way point", "point"): ("Waypoint", ""),
-        ("way poi", "point"): ("Waypoint", ""),
         ("dog", "solid g"): ("Doxology", ""),
         ("dog.", "solid g"): ("Doxology", ""),
         ("author", "forty"): ("authority", ""),
@@ -50,7 +47,7 @@ class CaptionSink:
         self.web_server = web_server
         self.subtitle_recorder = subtitle_recorder
         self.is_paused = is_paused  # optional callable; engines keep running, but events are dropped while paused
-        self.vocabulary = VocabularyReplacer(config.vocabulary)
+        self.vocabulary = VocabularyReplacer(config.vocabulary, church_name=getattr(config.general, "church_name", ""))
         church_mode = getattr(config.general, "church_mode", True)
         church_name = getattr(config.general, "church_name", "Waypoint Church")
         self.formatter = TextFormatter(
@@ -84,11 +81,48 @@ class CaptionSink:
         self._duplicate_final_window = 0.75
         self._saw_interim_since_final = False
         self._history_dedup_window = 5.0
+        self._init_boundary_stitches()
+
+    def _init_boundary_stitches(self):
+        """Initialize effective boundary stitches from universal pairs, active profile, and church name."""
+        self._effective_boundary_stitches = dict(self.BOUNDARY_STITCH_PAIRS)
+        church_name = getattr(getattr(self, "config", None), "general", None)
+        c_name = getattr(church_name, "church_name", "") or ""
+
+        # Query active profile
+        try:
+            from ..profiles import get_profile_manager
+            pm = get_profile_manager()
+            prof = pm.get_profile(c_name)
+            if prof:
+                base_target = prof.get("name", "").split()[0] if prof.get("name") else "Waypoint"
+                for split in prof.get("boundary_splits", []):
+                    if isinstance(split, (list, tuple)) and len(split) >= 2:
+                        prefix, suffix = split[0], split[1]
+                        target = split[2] if len(split) > 2 else base_target
+                        self._effective_boundary_stitches[(prefix, suffix)] = (target, "")
+        except Exception as e:
+            logger.debug(f"Error loading profile boundary stitches: {e}")
+
+        # Dynamically generate boundary splits from church_name words
+        if c_name:
+            clean_name = c_name.strip()
+            first_word = clean_name.split()[0] if clean_name else ""
+            if first_word.lower() == "waypoint":
+                self._effective_boundary_stitches[("waypoint", "point")] = ("Waypoint", "")
+                self._effective_boundary_stitches[("way point", "point")] = ("Waypoint", "")
+                self._effective_boundary_stitches[("way poi", "point")] = ("Waypoint", "")
+            elif len(first_word) >= 5:
+                mid = len(first_word) // 2
+                pref_part = first_word[:mid].lower()
+                suff_part = first_word[mid:].lower()
+                self._effective_boundary_stitches[(first_word.lower(), suff_part)] = (first_word, "")
+                self._effective_boundary_stitches[(f"{pref_part} {suff_part}", suff_part)] = (first_word, "")
 
     def update_config(self, new_config: AppConfig):
         """Live update configuration, filter dictionary, and translation rules."""
         self.config = new_config
-        self.vocabulary = VocabularyReplacer(new_config.vocabulary)
+        self.vocabulary = VocabularyReplacer(new_config.vocabulary, church_name=getattr(new_config.general, "church_name", ""))
         church_mode = getattr(new_config.general, "church_mode", True)
         church_name = getattr(new_config.general, "church_name", "Waypoint Church")
         self.formatter = TextFormatter(
@@ -105,6 +139,7 @@ class CaptionSink:
                 or getattr(new_config.summary, "gemini_api_key", "")
             ),
         )
+        self._init_boundary_stitches()
 
     def _attempt_boundary_stitch(self, clean_text: str) -> Tuple[str, bool]:
         """Stitch mid-word chunk boundary splits and continuing clauses between consecutive utterances."""
@@ -119,7 +154,8 @@ class CaptionSink:
             return clean_text, False
 
         # 1. Lexical word-split stitching (e.g. 'way poi' + 'point' -> 'Waypoint')
-        for (prefix, suffix), (stitched_word, _) in self.BOUNDARY_STITCH_PAIRS.items():
+        stitches = getattr(self, "_effective_boundary_stitches", self.BOUNDARY_STITCH_PAIRS)
+        for (prefix, suffix), (stitched_word, _) in stitches.items():
             # Check if last entry ends with prefix or stitched word (ignoring trailing punctuation)
             tail_pat = rf"(?:\b|_)(?:{re.escape(prefix)}|{re.escape(stitched_word)})[.,!?:;\-_]*$"
             tail_match = re.search(tail_pat, last_text, re.IGNORECASE)

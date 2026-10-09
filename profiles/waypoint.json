@@ -1,0 +1,98 @@
+{
+  "name": "Waypoint Church",
+  "church_mode": true,
+  "leaders": [
+    "Pastor Ben Luthi",
+    "Pastor Lawrence",
+    "Peyton West",
+    "Ben Luthi"
+  ],
+  "programs": [
+    "Waypoint Kids",
+    "Story Power Party",
+    "Chet the Chicken",
+    "Bert the Blobfish"
+  ],
+  "venues_and_geography": [
+    "Gymkhana",
+    "RTP",
+    "Research Triangle Park",
+    "Raleigh",
+    "South Durham",
+    "East Chapel Hill"
+  ],
+  "speech_biasing_words": [
+    "Pastor Ben Luthi",
+    "Pastor Lawrence",
+    "Peyton West",
+    "Waypoint Kids",
+    "Story Power Party",
+    "Chet the Chicken",
+    "Bert the Blobfish",
+    "Gymkhana",
+    "RTP",
+    "Research Triangle Park"
+  ],
+  "terms": {
+    "way point": "Waypoint",
+    "way poi": "Waypoint",
+    "wave once": "Waypoint",
+    "way pope": "Waypoint",
+    "waypoint kids": "Waypoint Kids",
+    "way point kids": "Waypoint Kids",
+    "way point church": "Waypoint Church",
+    "waypoint church": "Waypoint Church",
+    "pastor lawrence": "Pastor Lawrence",
+    "pastor ben luthi": "Pastor Ben Luthi",
+    "pastor ben": "Pastor Ben",
+    "ben uthe": "Ben Luthi",
+    "ben lut": "Ben Luthi",
+    "ben luthi": "Ben Luthi",
+    "ben luther": "Ben Luthi",
+    "ben loothi": "Ben Luthi",
+    "luthi": "Luthi",
+    "loothi": "Luthi",
+    "peyton west": "Peyton West",
+    "the journey church": "The Journey Church",
+    "journey church": "Journey Church",
+    "church centre": "Church Center",
+    "church center": "Church Center",
+    "jim conna": "Gymkhana",
+    "jim conner": "Gymkhana",
+    "jim connaught": "Gymkhana",
+    "gymkhana": "Gymkhana",
+    "the triangle": "the Triangle",
+    "rtp": "RTP",
+    "research triangle park": "Research Triangle Park",
+    "raleigh": "Raleigh",
+    "raleigh and waypoint": "Raleigh and Waypoint",
+    "raleigh-durham": "Raleigh-Durham",
+    "south durham": "South Durham",
+    "east chapel hill": "East Chapel Hill",
+    "chapel hill": "Chapel Hill",
+    "headphones and pigeons": "headphones and fidgets",
+    "headphones and pigeon": "headphones and fidgets",
+    "chatter the chicken": "Chet the Chicken",
+    "chick-fil-a's chicken": "Chet the Chicken",
+    "chetha chicken": "Chet the Chicken",
+    "chet the chicken": "Chet the Chicken",
+    "bert the blobfish": "Bert the Blobfish",
+    "bertha the blowfish": "Bert the Blobfish",
+    "bertha blawfish": "Bert the Blobfish",
+    "story power party": "Story Power Party"
+  },
+  "boundary_splits": [
+    [
+      "waypoint",
+      "point"
+    ],
+    [
+      "way point",
+      "point"
+    ],
+    [
+      "way poi",
+      "point"
+    ]
+  ]
+}

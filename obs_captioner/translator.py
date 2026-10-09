@@ -124,7 +124,7 @@ class SubtitleTranslator:
                 "contents": [{"parts": [{"text": f"Translate to {target_name}: {text}"}]}],
             }
             data_bytes = json.dumps(payload).encode("utf-8")
-            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-live-translate-preview:generateContent?key={api_key}"
             try:
                 req = urllib.request.Request(
                     endpoint,

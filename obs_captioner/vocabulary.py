@@ -24,58 +24,60 @@ class VocabularyConfig:
         "obs": "OBS",
         "voxstream": "VoxStream",
         "vox stream": "VoxStream",
-        "way point": "Waypoint",
-        "way poi": "Waypoint",
-        "wave once": "Waypoint",
-        "way pope": "Waypoint",
-        "waypoint kids": "Waypoint Kids",
-        "jim conna": "Gymkhana",
-        "jim conner": "Gymkhana",
-        "jim connaught": "Gymkhana",
-        "gymkhana": "Gymkhana",
-        "ben uthe": "Ben Luthi",
-        "ben lut": "Ben Luthi",
-        "ben luthi": "Ben Luthi",
-        "ben luther": "Ben Luthi",
-        "agnes day": "Agnus Dei",
-        "agnus dei": "Agnus Dei",
-        "headphones and pigeons": "headphones and fidgets",
-        "headphones and pigeon": "headphones and fidgets",
-        "chick-fil-a's chicken": "Chet the Chicken",
-        "chetha chicken": "Chet the Chicken",
-        "chatter the chicken": "Chet the Chicken",
-        "dog solid g": "Doxology",
-        "dog. solid g": "Doxology",
-        "solid g": "Doxology",
         "pissed back up": "picked back up",
-        "said corinthians": "2 Corinthians",
-        "entinction": "intinction",
-        "top 24": "Luke 24",
-        "he took a cop": "he took a cup",
-        "receive this part in": "receive this pardon",
-        "try to lure for them": "pray to the Lord for them",
-        "a socioplship": "discipleship",
-        "the cyber": "disciple",
     })
 
 
 class VocabularyReplacer:
     """Applies custom phonetic glossary and proper noun replacements to text."""
 
-    def __init__(self, config: Optional[VocabularyConfig] = None):
+    def __init__(self, config: Optional[VocabularyConfig] = None, church_name: str = ""):
         self.config = config or VocabularyConfig()
+        self.church_name = church_name or ""
+        self._profile_terms: Dict[str, str] = {}
+        self._effective_terms: Dict[str, str] = {}
+        self._apply_profile_terms()
         self._compiled_patterns: List[Tuple[re.Pattern, str]] = []
         self.rebuild()
 
+    def _apply_profile_terms(self):
+        """Merge active-profile terms with user config terms without mutating config.
+
+        Profile terms come from the organization profile matching ``church_name``
+        (empty name means no profile terms). User config terms take precedence.
+        CRITICAL: never mutate ``self.config.terms`` here.
+        """
+        self._profile_terms = {}
+        target_name = (self.church_name or "").strip()
+        if target_name:
+            try:
+                from .profiles import get_profile_manager
+                pm = get_profile_manager()
+                prof = pm.get_profile(target_name)
+                if prof and prof.get("terms"):
+                    self._profile_terms = dict(prof["terms"])
+            except Exception:
+                pass
+        self._effective_terms = dict(self._profile_terms)
+        self._effective_terms.update(self.config.terms)
+
+    def update_terms(self, terms: Dict[str, str], church_name: Optional[str] = None):
+        """Update active terms and recompile patterns."""
+        if church_name is not None:
+            self.church_name = church_name
+        self.config.terms = dict(terms)
+        self._apply_profile_terms()
+        self.rebuild()
+
     def rebuild(self):
-        """Compile regex patterns from active terms sorted by phrase length descending."""
+        """Compile regex patterns from effective terms sorted by phrase length descending."""
         self._compiled_patterns = []
-        if not self.config.enabled or not self.config.terms:
+        if not self.config.enabled or not self._effective_terms:
             return
 
         # Sort terms by length descending so longer multi-word phrases match before single words
         sorted_terms = sorted(
-            self.config.terms.items(),
+            self._effective_terms.items(),
             key=lambda item: len(item[0].strip()),
             reverse=True,
         )
@@ -126,6 +128,7 @@ class VocabularyReplacer:
             return False
 
         self.config.terms[orig_clean] = rep_clean
+        self._apply_profile_terms()
         self.rebuild()
         logger.info(f"Added vocabulary replacement: '{orig_clean}' -> '{rep_clean}'")
         return True
@@ -135,6 +138,7 @@ class VocabularyReplacer:
         orig_clean = original.strip().lower()
         if orig_clean in self.config.terms:
             del self.config.terms[orig_clean]
+            self._apply_profile_terms()
             self.rebuild()
             logger.info(f"Removed vocabulary replacement for: '{orig_clean}'")
             return True
@@ -143,15 +147,16 @@ class VocabularyReplacer:
     def clear(self):
         """Clear all custom glossary terms."""
         self.config.terms.clear()
+        self._apply_profile_terms()
         self.rebuild()
         logger.info("Cleared all custom vocabulary terms.")
 
     def export_csv(self) -> str:
-        """Export all custom glossary terms as standard CSV."""
+        """Export all active glossary terms as standard CSV."""
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow(["Misheard Phrase", "Correct Replacement"])
-        for orig, rep in sorted(self.config.terms.items()):
+        for orig, rep in sorted(self.get_terms().items()):
             writer.writerow([orig, rep])
         return output.getvalue()
 
@@ -192,5 +197,5 @@ class VocabularyReplacer:
         return imported_count
 
     def get_terms(self) -> Dict[str, str]:
-        """Return a copy of the current glossary terms."""
-        return dict(self.config.terms)
+        """Return a copy of the effective glossary terms (profile + user terms)."""
+        return dict(self._effective_terms)

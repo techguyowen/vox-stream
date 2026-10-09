@@ -583,6 +583,22 @@
                                 <input type="text" id="display_custom_title" class="form-control" placeholder="Live Audience Captions" value="Live Audience Captions">
                                 <span class="help-text">Top navbar header displayed on attendee phones (e.g. "Grace Church Live Read-Along").</span>
                             </div>
+
+                            <div class="form-group">
+                                <label for="display_welcome_banner_text">📢 Top Announcement / Welcome Banner (Optional)</label>
+                                <input type="text" id="display_welcome_banner_text" class="form-control" placeholder="e.g. Welcome to Grace Church • Tap here for Connection Card">
+                                <span class="help-text">Shows a prominent header banner at the very top of attendee mobile devices.</span>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="display_welcome_banner_url">🔗 Banner Link URL (Optional)</label>
+                                <input type="text" id="display_welcome_banner_url" class="form-control" placeholder="e.g. https://gracechurch.org/connect or /bulletin">
+                                <span class="help-text">Clicking the welcome banner opens this link in a new tab. Leave blank for text-only banner.</span>
+                            </div>
+
+                            <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 6px; padding: 8px 12px; font-size: 11.5px; color: #94A3B8; margin-top: 10px;">
+                                💡 <strong>Attendee Personalization:</strong> Settings saved here configure initial defaults for new visitors. Attendees can still tap the ⚙️ gear icon on their personal phone to customize fonts, sizes, and colors for their individual comfort.
+                            </div>
                         </div>
 
                         <!-- Typography & Layout Card -->
@@ -873,7 +889,7 @@
                                     <option value="auto" selected>⚡ Instant Auto-Pop (Display immediately when spoken)</option>
                                     <option value="manual">👁️ AV Operator Cue Mode (Preview &amp; push manually)</option>
                                 </select>
-                                <span class="hint">Auto-pop instantly displays recognized verses on stream &amp; stage.</span>
+                                <span class="hint"><strong>Auto-Pop:</strong> Verses trigger automatically upon recognition. <strong>Cue Mode:</strong> Verses populate the search box for operator approval.</span>
                             </div>
                         </div>
 
@@ -882,6 +898,17 @@
                                 <label for="bible_tab_duration_slider">On-Screen Display Duration (<span id="val-bible-tab-duration">14s</span>)</label>
                                 <input type="range" id="bible_tab_duration_slider" min="5" max="30" step="1" value="14" class="slider">
                                 <span class="hint">How long the scripture card remains visible before smoothly fading out.</span>
+                            </div>
+                            <div class="form-group">
+                                <label for="bible_tab_max_verses_per_slide">Max Verses per Slide / Card</label>
+                                <select id="bible_tab_max_verses_per_slide" class="form-control">
+                                    <option value="1">1 Verse per Slide (High Focus / Large Text)</option>
+                                    <option value="2" selected>2 Verses per Slide (Standard Balanced)</option>
+                                    <option value="3">3 Verses per Slide (Compact)</option>
+                                    <option value="4">4 Verses per Slide (Paragraph)</option>
+                                    <option value="0">All Verses on One Slide</option>
+                                </select>
+                                <span class="hint">Auto-splits lengthy scripture passages into readable cards to prevent text crowding.</span>
                             </div>
                         </div>
 
@@ -1059,15 +1086,36 @@
                 <div class="panel">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                         <h2>📖 Custom Vocabulary &amp; Phonetic Glossary</h2>
-                        <span style="font-size: 12px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.3); color: #FCD34D; padding: 4px 10px; border-radius: 6px; font-weight: 600;">
-                            ⛪ Active Church: <strong id="vocab-active-church-name">Waypoint Church</strong>
+                        <span id="vocab-active-org-badge" style="font-size: 12px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.3); color: #FCD34D; padding: 4px 10px; border-radius: 6px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
+                            <span id="vocab-active-org-icon">⛪</span>
+                            <span id="vocab-active-org-label">Active Church:</span>
+                            <strong id="vocab-active-church-name">Waypoint Church</strong>
                         </span>
                     </div>
                     <p class="subtext">Automatically replace misheard phrases, proper nouns, brand names, slang, speaker names, and specialized jargon in real time across all engines.</p>
+                    <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 6px; padding: 8px 12px; font-size: 11.5px; color: #CBD5E1; margin: 8px 0 12px 0;">
+                        💡 <strong>Matching Rule:</strong> Glossary terms match whole words and phrases (<code>\bword\b</code>) case-insensitively, preserving surrounding text without unintended partial word replacements.
+                    </div>
 
+                    <!-- Section 1A: Add New Vocabulary Term + Glossary Table -->
                     <div class="crud-section" style="margin-top: 16px;">
-                        <h3>➕ Add New Vocabulary Term</h3>
-                        <p class="subtext">Type the word or phrase that STT commonly mishears, and the exact proper spelling you want displayed.</p>
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                            <h3 style="margin: 0;">➕ Add New Vocabulary Term</h3>
+                            <button type="button" id="btn-scan-transcript-terms" class="btn btn-secondary btn-sm" style="font-size: 11.5px; display: inline-flex; align-items: center; gap: 5px; color: #38BDF8; border-color: rgba(56, 189, 248, 0.4);">
+                                <span>💡 Suggest Terms from Transcript</span>
+                            </button>
+                        </div>
+                        <p class="subtext" style="margin-top: 4px;">Type the word or phrase that STT commonly mishears, and the exact proper spelling you want displayed.</p>
+
+                        <!-- Suggest from Transcript container -->
+                        <div id="transcript-suggested-terms-box" style="display: none; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.35); border-radius: 8px; padding: 12px 14px; margin-bottom: 12px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                <strong style="font-size: 12px; color: #38BDF8;">Detected Capitalized Terms &amp; Proper Nouns in Current Transcript:</strong>
+                                <button type="button" id="btn-close-suggested-terms" style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px;">✕</button>
+                            </div>
+                            <div id="transcript-suggested-terms-chips" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
+                        </div>
+
                         <div class="crud-add-row">
                             <input type="text" id="new-vocab-orig" placeholder="Misheard phrase (e.g. box stream, pastor mike)" class="form-control">
                             <input type="text" id="new-vocab-sub" placeholder="Correct spelling (e.g. VoxStream, Pastor Mike)" class="form-control">
@@ -1087,8 +1135,7 @@
                         </div>
                     </div>
 
-                    
-                    <!-- Bulk CSV Import & Export Section -->
+                    <!-- Section 1B: Bulk CSV / Text Import & Export -->
                     <div class="crud-section" style="margin-top: 20px; border: 1px solid var(--border); border-radius: 8px; padding: 18px; background: rgba(255,255,255,0.02);">
                         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                             <div>
@@ -1124,6 +1171,7 @@
                         </div>
                     </div>
 
+                    <!-- Section 1C: Live Glossary Sandbox -->
                     <div class="filter-tester" style="margin-top: 20px;">
                         <h3>🧪 Live Glossary Sandbox</h3>
                         <p class="subtext">Type a test sentence to preview real-time vocabulary substitution.</p>
@@ -1132,6 +1180,67 @@
                             <button id="btn-run-vocab-test" class="btn btn-secondary">Test Glossary</button>
                         </div>
                         <div id="vocab-test-result" class="test-result-box">Click 'Test Glossary' to preview substitution</div>
+                    </div>
+                </div>
+
+                <!-- Section 2: AI Speech Biasing & Specialized Word List (dedicated card) -->
+                <div class="panel" style="margin-top: 20px; background: #0F172A; border: 1.5px solid rgba(34, 211, 238, 0.45); border-radius: 10px; padding: 20px 22px;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 6px;">
+                        <h2 style="margin: 0; color: #22D3EE; display: flex; align-items: center; gap: 8px; font-size: 1rem;">🎯 AI Speech Biasing &amp; Specialized Word List (Gemini Live &amp; STT)</h2>
+                        <span style="font-size: 11px; font-weight: 700; background: rgba(34, 211, 238, 0.12); border: 1px solid rgba(34, 211, 238, 0.4); color: #67E8F9; padding: 4px 10px; border-radius: 6px;">Acoustic Audio Biasing (Pre-Transcription) vs Phonetic Replacement (Post-Transcription)</span>
+                    </div>
+                    <p class="subtext" style="margin: 0 0 12px 0; color: #CBD5E1;">Unlike the Phonetic Replacement Glossary above (which rewrites misheard words after transcription), Speech Biasing feeds custom names, brand names, and technical terms directly into Gemini Live's acoustic decoder before transcription to condition the model's recognition.</p>
+
+                    <!-- Church Mode Automatic Biasing Notice & Term Inspector -->
+                    <div id="biasing-church-info-box" style="margin-bottom: 14px; padding: 12px 14px; background: rgba(15, 23, 42, 0.75); border: 1px solid rgba(56, 189, 248, 0.28); border-radius: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                            <div style="display: flex; align-items: center; gap: 7px;">
+                                <span style="font-size: 15px;">⛪</span>
+                                <strong style="font-size: 12px; color: #38BDF8;">Automatically Biased in Church Mode (350+ Sacred Words):</strong>
+                            </div>
+                            <span id="biasing-church-mode-badge" style="font-size: 10.5px; padding: 2px 8px; border-radius: 4px; background: rgba(34, 197, 94, 0.15); color: #4ADE80; font-weight: 600; border: 1px solid rgba(34, 197, 94, 0.3);">✓ Active in Current Profile</span>
+                        </div>
+                        <p id="biasing-church-mode-desc" style="font-size: 11.5px; color: #94A3B8; margin: 6px 0 8px 0; line-height: 1.45;">
+                            When Church Mode is enabled, the following terms are passed directly into Gemini Live before transcription. You do <strong>not</strong> need to manually re-enter these standard church terms below:
+                        </p>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; font-size: 11px;">
+                            <div style="background: rgba(30, 41, 59, 0.55); padding: 7px 9px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                                <strong style="color: #FCD34D;">📖 All 66 Books of the Bible</strong>
+                                <div style="color: #94A3B8; font-size: 10.5px; margin-top: 2px;">Genesis through Revelation, 1 &amp; 2 Samuel, Kings, Chronicles, Psalms, Gospels, Epistles...</div>
+                            </div>
+                            <div style="background: rgba(30, 41, 59, 0.55); padding: 7px 9px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                                <strong style="color: #67E8F9;">👑 Sacred Names &amp; Deity Titles</strong>
+                                <div style="color: #94A3B8; font-size: 10.5px; margin-top: 2px;">Lord Jesus Christ, Holy Spirit, Heavenly Father, Almighty God, Lamb of God, Yahweh, Messiah...</div>
+                            </div>
+                            <div style="background: rgba(30, 41, 59, 0.55); padding: 7px 9px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                                <strong style="color: #A78BFA;">📜 Biblical People &amp; Places</strong>
+                                <div style="color: #94A3B8; font-size: 10.5px; margin-top: 2px;">Abraham, Moses, Elijah, David, Paul, Peter, Mary, Jerusalem, Bethlehem, Nazareth, Zion, Jordan...</div>
+                            </div>
+                            <div style="background: rgba(30, 41, 59, 0.55); padding: 7px 9px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+                                <strong style="color: #34D399;">🕊️ Doctrines &amp; Liturgical Terms</strong>
+                                <div style="color: #94A3B8; font-size: 10.5px; margin-top: 2px;">Justification, Sanctification, Righteousness, Communion, Eucharist, Baptism, Apostles' Creed...</div>
+                            </div>
+                        </div>
+                        <details style="margin-top: 8px; font-size: 11px;">
+                            <summary style="color: #38BDF8; cursor: pointer; font-weight: 600; user-select: none;">🔍 View complete list of ~350 built-in church terms</summary>
+                            <div id="biasing-built-in-terms-list" style="margin-top: 6px; padding: 10px; background: #0B1120; border-radius: 6px; max-height: 140px; overflow-y: auto; font-family: 'JetBrains Mono', monospace; font-size: 10px; line-height: 1.5; color: #CBD5E1; border: 1px solid rgba(255,255,255,0.06);"></div>
+                        </details>
+                    </div>
+
+                    <p class="subtext" style="margin: 0 0 10px 0; font-size: 12px;">Paste or upload specialized terms, speaker names, campus venues, sermon series, or modern worship songs (one per line or comma-separated).</p>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <textarea id="vocab-biasing-word-list" class="form-control" rows="3" placeholder="e.g. Acme Corp, Kubernetes, Svelte, microservices, CEO Smith" style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px;"></textarea>
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                            <span id="vocab-biasing-count" style="font-size: 11.5px; color: var(--text-muted);">0 terms configured for speech biasing</span>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+                                <button type="button" id="btn-export-vocab-biasing" class="btn btn-secondary btn-sm" style="font-size: 11.5px;">📥 Export List (.txt)</button>
+                                <label class="btn btn-secondary btn-sm" style="margin: 0; cursor: pointer; font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px;">
+                                    <span>📁 Import List (.txt/.csv)</span>
+                                    <input type="file" id="input-import-biasing" accept=".txt,.csv" style="display: none;">
+                                </label>
+                                <button type="button" id="btn-save-vocab-biasing" class="btn btn-primary btn-sm" style="background: #0284C7; border: none; font-weight: 600;">💾 Save Biased Word List</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1157,21 +1266,109 @@
                             <option value="censored_label">[CENSORED] Tag</option>
                             <option value="drop_sentence">Drop Entire Sentence (Mute caption if bad word detected)</option>
                         </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label>Active Filter Categories</label>
-                        <div class="checkbox-group">
-                            <label><input type="checkbox" id="filter_standard_profanity" checked> Standard Profanities &amp; Vulgarities</label>
-                            <label><input type="checkbox" id="filter_church_blasphemy" checked> ⛪ Harsh Curses &amp; Vulgarities ("God damn", "Holy hell", etc. — sacred names like Jesus &amp; Christ are preserved)</label>
-                            <label><input type="checkbox" id="filter_crude_terms" checked> Crude, Slurs &amp; Sexual Slang</label>
+                        <div id="censor-drop-sentence-hint" style="font-size: 11.5px; color: #94A3B8; margin-top: 5px;">
+                            💡 <strong>Drop Entire Sentence:</strong> Completely silences and suppresses the entire spoken line if any blacklisted word is detected, guaranteeing zero objectionable content appears on broadcast or stage displays.
                         </div>
                     </div>
 
+                    <div class="form-group">
+                        <label style="font-weight: 700; margin-bottom: 8px; display: block;">Built-in Safety Filter Categories</label>
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px; padding: 12px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                                    <label style="margin: 0; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                                        <input type="checkbox" id="filter_standard_profanity" checked>
+                                        <span>Standard Profanities &amp; Vulgarities</span>
+                                    </label>
+                                    <span style="font-size: 11px; color: var(--text-muted);">Tier 1 (40+ terms)</span>
+                                </div>
+                                <details style="margin-top: 8px; font-size: 11px;">
+                                    <summary style="color: #38BDF8; cursor: pointer; font-weight: 600; user-select: none;">🔍 View built-in standard profanities list</summary>
+                                    <div id="filter-tier1-terms-list" style="margin-top: 6px; padding: 8px 10px; background: #0B1120; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; line-height: 1.5; color: #CBD5E1; border: 1px solid rgba(255,255,255,0.06);"></div>
+                                </details>
+                            </div>
+
+                            <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px; padding: 12px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                                    <label style="margin: 0; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                                        <input type="checkbox" id="filter_church_blasphemy" checked>
+                                        <span>⛪ Harsh Curses &amp; Vulgarities</span>
+                                    </label>
+                                    <span style="font-size: 11px; color: var(--text-muted);">Tier 2 (Harsh oaths &amp; curses)</span>
+                                </div>
+                                <details style="margin-top: 8px; font-size: 11px;">
+                                    <summary style="color: #38BDF8; cursor: pointer; font-weight: 600; user-select: none;">🔍 View built-in harsh curses &amp; blasphemies list</summary>
+                                    <div id="filter-tier2-terms-list" style="margin-top: 6px; padding: 8px 10px; background: #0B1120; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; line-height: 1.5; color: #CBD5E1; border: 1px solid rgba(255,255,255,0.06);"></div>
+                                </details>
+                            </div>
+
+                            <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px; padding: 12px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                                    <label style="margin: 0; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                                        <input type="checkbox" id="filter_crude_terms" checked>
+                                        <span>Crude, Slurs &amp; Sexual Slang</span>
+                                    </label>
+                                    <span style="font-size: 11px; color: var(--text-muted);">Tier 3 (20+ terms)</span>
+                                </div>
+                                <details style="margin-top: 8px; font-size: 11px;">
+                                    <summary style="color: #38BDF8; cursor: pointer; font-weight: 600; user-select: none;">🔍 View built-in crude terms &amp; slurs list</summary>
+                                    <div id="filter-tier3-terms-list" style="margin-top: 6px; padding: 8px 10px; background: #0B1120; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; line-height: 1.5; color: #CBD5E1; border: 1px solid rgba(255,255,255,0.06);"></div>
+                                </details>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TIER 4: DEDICATED CUSTOM ORGANIZATION BLACKLIST CARD -->
+                    <div class="crud-section" style="margin-top: 16px; border: 1px solid var(--border); border-radius: 8px; padding: 14px; background: rgba(255,255,255,0.02);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
+                            <label style="margin: 0; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 14px;">
+                                <input type="checkbox" id="filter_custom_blacklist" checked>
+                                <span>🚫 Tier 4: Custom Organization Blacklist</span>
+                            </label>
+                            <span id="filter-tier4-count" style="font-size: 11px; color: var(--text-muted);">0 custom terms</span>
+                        </div>
+                        <p class="subtext" style="margin: 0 0 12px 24px; font-size: 11.5px; color: #94A3B8;">Block custom competitor names, internal slang, controversial topics, or spoilers specific to your organization.</p>
+                        
+                        <div class="crud-add-row">
+                            <input type="text" id="new-blacklist-term" placeholder="Add custom word to block..." class="form-control">
+                            <button id="btn-add-blacklist" class="btn btn-secondary">+ Add</button>
+                        </div>
+                        <div class="tag-list" id="blacklist-tags"></div>
+                        <details style="margin-top: 10px; font-size: 11.5px;">
+                            <summary style="color: #38BDF8; cursor: pointer; font-weight: 600; user-select: none;">📑 Bulk Paste / Multi-term Blacklist Import</summary>
+                            <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 8px;">
+                                <textarea id="blacklist-bulk-textarea" class="form-control" rows="3" placeholder="Paste multiple banned words or phrases here (one per line or comma-separated)..." style="font-family: 'JetBrains Mono', monospace; font-size: 11.5px;"></textarea>
+                                <div style="display: flex; justify-content: flex-end;">
+                                    <button type="button" id="btn-bulk-add-blacklist" class="btn btn-secondary btn-sm">+ Add All to Blacklist</button>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+
+                    <!-- CRUD: Custom Whitelist (Never Block) -->
+                    <div class="crud-section" style="margin-top: 16px;">
+                        <h3>🛡️ Custom Whitelist (Never Block)</h3>
+                        <p class="subtext" style="margin: 2px 0 10px 0;">Protect specific words or sacred names from ever being flagged or censored.</p>
+                        <div class="crud-add-row">
+                            <input type="text" id="new-whitelist-term" placeholder="Add word to protect..." class="form-control">
+                            <button id="btn-add-whitelist" class="btn btn-secondary">+ Protect</button>
+                        </div>
+                        <div class="tag-list" id="whitelist-tags"></div>
+                    </div>
+
                     <!-- CRUD: Wholesome Replacement Dictionary -->
-                    <div class="crud-section">
-                        <h3>🔄 Wholesome Word Substitution Dictionary</h3>
-                        <p class="subtext">Automatically replaces words with clean stream-safe alternatives.</p>
+                    <div class="crud-section" style="margin-top: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 8px;">
+                            <div>
+                                <h3 style="margin: 0;">🔄 Wholesome Word Substitution Dictionary</h3>
+                                <p class="subtext" style="margin: 2px 0 0 0;">Automatically replaces words with clean stream-safe alternatives.</p>
+                            </div>
+                            <button type="button" id="btn-load-default-replacements" class="btn btn-secondary btn-sm" style="font-size: 11px;">📥 Load Built-in Defaults into Table</button>
+                        </div>
+                        <details style="margin: 10px 0 12px 0; font-size: 11px;">
+                            <summary style="color: #38BDF8; cursor: pointer; font-weight: 600; user-select: none;">🔍 View built-in default wholesome replacements (35+ pairs)</summary>
+                            <div id="filter-default-replacements-list" style="margin-top: 6px; padding: 8px 10px; background: #0B1120; border-radius: 6px; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; line-height: 1.5; color: #CBD5E1; border: 1px solid rgba(255,255,255,0.06);"></div>
+                        </details>
                         <div class="crud-add-row">
                             <input type="text" id="new-rep-orig" placeholder="Original word (e.g. damn)" class="form-control">
                             <input type="text" id="new-rep-sub" placeholder="Wholesome replacement (e.g. darn)" class="form-control">
@@ -1191,24 +1388,21 @@
                         </div>
                     </div>
 
-                    <!-- CRUD: Blacklist & Whitelist Tables -->
-                    <div class="two-col-layout" style="margin-top: 16px;">
-                        <div class="crud-section">
-                            <h3>🚫 Custom Blacklist</h3>
-                            <div class="crud-add-row">
-                                <input type="text" id="new-blacklist-term" placeholder="Add custom word to block..." class="form-control">
-                                <button id="btn-add-blacklist" class="btn btn-secondary">+ Add</button>
+                    <div class="crud-section" style="margin-top: 18px; border: 1px solid var(--border); border-radius: 8px; padding: 14px; background: rgba(255,255,255,0.02);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                            <div>
+                                <h3 style="margin: 0; font-size: 13.5px; display: flex; align-items: center; gap: 6px;">
+                                    <span>📑 Filter Dictionary Backup &amp; Sync</span>
+                                </h3>
+                                <p class="subtext" style="margin: 3px 0 0 0; font-size: 11.5px;">Export or import your custom blacklist, protected whitelist, and wholesome word replacements to sync safety rules across streaming computers.</p>
                             </div>
-                            <div class="tag-list" id="blacklist-tags"></div>
-                        </div>
-
-                        <div class="crud-section">
-                            <h3>🛡️ Custom Whitelist (Never Block)</h3>
-                            <div class="crud-add-row">
-                                <input type="text" id="new-whitelist-term" placeholder="Add word to protect..." class="form-control">
-                                <button id="btn-add-whitelist" class="btn btn-secondary">+ Protect</button>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                                <a href="/api/filter/export" download class="btn btn-secondary btn-sm" id="btn-export-filters" style="text-decoration: none;">📥 Export Filters (JSON)</a>
+                                <label class="btn btn-secondary btn-sm" style="margin: 0; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">
+                                    <span>📁 Import Filters (JSON)</span>
+                                    <input type="file" id="input-import-filters" accept=".json" style="display: none;">
+                                </label>
                             </div>
-                            <div class="tag-list" id="whitelist-tags"></div>
                         </div>
                     </div>
 
@@ -1360,9 +1554,10 @@
                                     <label for="translation_gemini_key" style="margin-bottom: 0;">Google AI Studio API Key</label>
                                     <span id="translation_key_status" style="font-size: 11px; color: #22c55e; font-weight: 600; display: none;">✓ Key Configured</span>
                                 </div>
-                                <div style="display: flex; gap: 8px;">
+                                <div style="display: flex; gap: 6px;">
                                     <input type="password" id="translation_gemini_key" placeholder="AIzaSy... (leave blank to auto-use Gemini Live key)" class="form-control" style="flex: 1;">
-                                    <button type="button" id="btn-clear-translation-key" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px; white-space: nowrap;" title="Clear dedicated translation API key">Clear</button>
+                                    <button type="button" id="btn-toggle-translation-pw" class="btn btn-secondary btn-sm" title="Show/Hide Key" style="padding: 0 10px;">👁️</button>
+                                    <button type="button" id="btn-clear-translation-key" class="btn btn-secondary btn-sm" style="padding: 6px 12px; font-size: 12px; white-space: nowrap;" title="Clear dedicated translation API key">Clear</button>
                                 </div>
                                 <small class="text-muted" style="font-size: 11px; display: block; margin-top: 4px;">If left blank, VoxStream automatically uses your saved Google AI Studio key from Gemini Live.</small>
                             </div>
@@ -1380,9 +1575,9 @@
                         <p style="font-size: 12px; color: #CBD5E1; margin: 0 0 10px 0; line-height: 1.5;">
                             Viewers watching on phones or web browsers via the <strong>Display Page (<a href="/display" target="_blank" style="color: #38BDF8; text-decoration: underline;">/display</a>)</strong> can choose their own language track from the dropdown at any time.
                         </p>
-                        <div style="font-size: 11.5px; color: #94A3B8; display: flex; flex-direction: column; gap: 4px;">
-                            <div>✅ <strong>Independent of OBS Stream:</strong> Viewers can read Spanish or Japanese on their phones even when the OBS Stream toggle above is turned off.</div>
-                            <div>✅ <strong>Zero-Waste Quota:</strong> Translations only occur when a viewer actively selects a language, and are cached so duplicate viewers don't burn extra requests.</div>
+                        <div style="font-size: 11.5px; color: #94A3B8; display: flex; flex-direction: column; gap: 6px;">
+                            <div>✅ <strong>Independent of OBS Stream:</strong> Viewers can read Spanish, French, or Japanese on their phones even when the OBS Stream toggle above is turned off.</div>
+                            <div>✅ <strong>Zero-Waste Sentence Caching:</strong> If 50 people in the room select Spanish, the server translates each sentence exactly <strong>once</strong> and broadcasts the translated line to all 50 devices simultaneously with zero duplicate API tokens or network calls.</div>
                         </div>
                     </div>
 
@@ -1494,7 +1689,20 @@
                                 <input type="number" id="device_settle_seconds" min="0" max="20" step="0.5" value="4.0" class="form-control">
                                 <span style="font-size: 12px; color: var(--text-muted);">sec</span>
                             </div>
+                            <span class="hint">Allows external USB mixers &amp; audio cards to stabilize on system boot before attaching audio threads.</span>
                         </div>
+                    </div>
+
+                    <!-- Live Real-Time Mic Input VU dB Meter -->
+                    <div style="background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; margin-top: -6px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px;">
+                        <div style="font-size: 12px; font-weight: 700; color: #38BDF8; white-space: nowrap; display: flex; align-items: center; gap: 5px;">
+                            <span>🎙️ Mic Level:</span>
+                            <span id="audio-vu-db-text" style="font-family: 'JetBrains Mono', monospace; color: #94A3B8; font-size: 11px;">-inf dB</span>
+                        </div>
+                        <div style="flex: 1; background: rgba(255,255,255,0.06); height: 10px; border-radius: 5px; overflow: hidden; position: relative;">
+                            <div id="audio-tab-vu-meter" style="background: linear-gradient(90deg, #10B981 60%, #F59E0B 85%, #EF4444 100%); height: 100%; width: 0%; transition: width 0.08s ease;"></div>
+                        </div>
+                        <span style="font-size: 11px; color: var(--text-muted); white-space: nowrap;">Live Input Activity</span>
                     </div>
 
                     <div class="form-group">
@@ -1613,17 +1821,33 @@
 
                     <!-- UNIVERSAL CHURCH / ORGANIZATION SETTING -->
                     <div class="church-name-banner" style="margin-top: 14px; background: rgba(245, 158, 11, 0.07); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 8px; padding: 12px 14px;">
+                        <!-- Profile Selector & Multi-Profile Controls -->
+                        <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap;">
+                            <label for="profile_select" style="margin: 0; font-size: 12px; color: #FCD34D; font-weight: 600;">Active Profile:</label>
+                            <select id="profile_select" class="form-control" style="max-width: 260px; height: 34px; padding: 4px 8px; border-color: rgba(245, 158, 11, 0.4); background: #1F2937; color: #F3F4F6; border-radius: 6px; font-size: 13px;"></select>
+                            <button type="button" id="btn-open-new-profile-modal" class="btn btn-secondary btn-sm" style="height: 34px; font-size: 12px; border-color: rgba(245, 158, 11, 0.4); color: #FCD34D;">+ New Profile</button>
+                            <button type="button" id="btn-delete-profile" class="btn btn-danger btn-sm" style="display: none; height: 34px; font-size: 12px; padding: 4px 10px;" title="Delete this custom profile">🗑️ Delete</button>
+                            <a href="/api/profiles/export" download id="btn-export-profile" class="btn btn-secondary btn-sm" style="text-decoration: none; height: 34px; font-size: 12px; border-color: rgba(245, 158, 11, 0.4); color: #FCD34D; display: inline-flex; align-items: center; gap: 4px;">📥 Export Profile</a>
+                            <label class="btn btn-secondary btn-sm" style="margin: 0; cursor: pointer; height: 34px; font-size: 12px; border-color: rgba(245, 158, 11, 0.4); color: #FCD34D; display: inline-flex; align-items: center; gap: 4px;">
+                                <span>📤 Import Profile</span>
+                                <input type="file" id="input-import-profile" accept=".json" style="display: none;">
+                            </label>
+                        </div>
+                        <span style="font-size: 11px; color: #9CA3AF; margin-top: 4px; display: block;">
+                            💡 <strong>Share &amp; Backup Profiles:</strong> Export your active organization profile as a portable <code>.json</code> file to back up custom staff, kids ministries, geography, and word splits, or import a profile from another church campus or organization.
+                        </span>
+
                         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
-                            <label for="church_name" style="margin: 0; display: flex; align-items: center; gap: 6px; font-weight: 700; color: #FCD34D; font-size: 13.5px;">
+                            <label for="church_name" id="church_name_label" style="margin: 0; display: flex; align-items: center; gap: 6px; font-weight: 700; color: #FCD34D; font-size: 13.5px;">
                                 <span>⛪ Church Name / Organization</span>
                             </label>
-                            <span style="font-size: 11.5px; color: var(--text-muted);">Auto-formats your church &amp; ministry names in live captions</span>
+                            <span id="church_name_sublabel" style="font-size: 11.5px; color: var(--text-muted);">Auto-formats your church &amp; ministry names in live captions</span>
                         </div>
                         <div style="display: flex; gap: 8px; align-items: center;">
                             <input type="text" id="church_name" class="form-control" placeholder="e.g. Waypoint Church, Grace Community Church, First Baptist" value="Waypoint Church" style="border-color: rgba(245, 158, 11, 0.4);">
                             <button type="button" id="btn-save-church-name" class="btn btn-secondary btn-sm" style="white-space: nowrap; font-weight: 600; border-color: rgba(245, 158, 11, 0.4); color: #FCD34D;">Save Church Name</button>
                         </div>
-                        <span class="subtext" style="margin-top: 6px; font-size: 11px; color: #9CA3AF; display: block;">
+                        <span id="church_name_subtext" class="subtext" style="margin-top: 6px; font-size: 11px; color: #9CA3AF; display: block;">
                             ✨ <strong>Universal Church Ready:</strong> Any church can enter their name here. VoxStream will automatically recognize and capitalize your church name, kids ministry (e.g. <em>[Name] Kids</em>), youth groups, and campus references, while keeping all built-in scripture citations and liturgical autocorrect words (Doxology, 2 Corinthians, discipleship, etc.) 100% active.
                         </span>
                     </div>
@@ -1761,9 +1985,10 @@
                                     <optgroup label="🌐 Dedicated Real-Time Translation Models">
                                         <option value="gemini-3.5-live-translate-preview">gemini-3.5-live-translate-preview (Official Live Translate 70+ Languages)</option>
                                     </optgroup>
-                                    <optgroup label="✨ General Generation Models (Legacy)">
-                                        <option value="gemini-3.6-flash">gemini-3.6-flash (Newest Production)</option>
-                                        <option value="gemini-2.0-flash">gemini-2.0-flash (⚠️ Sunsetting June 2026)</option>
+                                    <optgroup label="✨ General Generation Models (3.8 / 3.5 / 3.1)">
+                                        <option value="gemini-3.8-flash">gemini-3.8-flash (Recommended)</option>
+                                        <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Ultra Fast)</option>
+                                        <option value="gemini-3.1-flash-live-preview">gemini-3.1-flash-live-preview (Realtime Voice)</option>
                                     </optgroup>
                                 </select>
                                 <small id="gemini_model_desc" class="text-muted" style="font-size: 11px; display: block; margin-top: 4px;">Official low-latency speech-to-text model over WebSockets.</small>
@@ -1781,9 +2006,10 @@
                                     <label for="gemini_api_key" style="margin-bottom: 0;">Google AI Studio API Key</label>
                                     <span id="gemini_key_status" style="font-size: 11px; color: #22c55e; font-weight: 600; display: none;">✓ Key Configured</span>
                                 </div>
-                                <div style="display: flex; gap: 8px;">
+                                <div style="display: flex; gap: 6px;">
                                     <input type="password" id="gemini_api_key" placeholder="AIzaSy... (leave blank or ••• to keep)" class="form-control" style="flex: 1;">
-                                    <button type="button" id="btn-clear-gemini-key" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px; white-space: nowrap;" title="Clear saved API key">Clear</button>
+                                    <button type="button" id="btn-toggle-gemini-pw" class="btn btn-secondary btn-sm" title="Show/Hide Key" style="padding: 0 10px;">👁️</button>
+                                    <button type="button" id="btn-clear-gemini-key" class="btn btn-secondary btn-sm" style="padding: 6px 12px; font-size: 12px; white-space: nowrap;" title="Clear saved API key">Clear</button>
                                 </div>
                                 <div style="margin-top: 8px; font-size: 11.5px; color: var(--text-muted); line-height: 1.5; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 6px; padding: 8px 12px;">
                                     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; flex-wrap: wrap; gap: 4px;">
@@ -1842,9 +2068,10 @@
                                 <label for="bandwidth_api_key" style="margin-bottom: 0;">Bandwidth API Key</label>
                                 <span id="bandwidth_key_status" style="font-size: 11px; color: #22c55e; font-weight: 600; display: none;">✓ Key Configured</span>
                             </div>
-                            <div style="display: flex; gap: 8px;">
+                            <div style="display: flex; gap: 6px;">
                                 <input type="password" id="bandwidth_api_key" placeholder="bwa_key_... (leave blank or ••• to keep)" class="form-control" style="flex: 1;">
-                                <button type="button" id="btn-clear-bandwidth-key" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px; white-space: nowrap;" title="Clear saved API key">Clear</button>
+                                <button type="button" id="btn-toggle-bandwidth-pw" class="btn btn-secondary btn-sm" title="Show/Hide Key" style="padding: 0 10px;">👁️</button>
+                                <button type="button" id="btn-clear-bandwidth-key" class="btn btn-secondary btn-sm" style="padding: 6px 12px; font-size: 12px; white-space: nowrap;" title="Clear saved API key">Clear</button>
                             </div>
                         </div>
                     </div>
@@ -2192,6 +2419,14 @@
                         </div>
 
                         <div id="obs-scene-control-container" style="display: flex; flex-direction: column; gap: 14px;">
+                            <!-- Live Detected OBS Scenes Picker -->
+                            <div id="obs-available-scenes-box" style="display: none; background: rgba(15, 23, 42, 0.7); border: 1px dashed rgba(139, 92, 246, 0.4); border-radius: 6px; padding: 10px 12px;">
+                                <div style="font-size: 11.5px; font-weight: 700; color: #C4B5FD; margin-bottom: 6px;">
+                                    <span>✨ Live Detected OBS Scenes (Click to Add):</span>
+                                </div>
+                                <div id="obs-available-scenes-chips" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
+                            </div>
+
                             <div>
                                 <label style="font-size: 12px; font-weight: 700; color: #EF4444; margin-bottom: 4px; display: block;">
                                     🔇 Auto-Muted Scenes (Captions PAUSE, e.g. Worship Band, Video, Prelude, Countdown):
@@ -2253,6 +2488,28 @@
                     <div class="form-group" id="group-projector-source-name" style="display: none;">
                         <label for="obs_projector_source_name">Source Name to Project</label>
                         <input type="text" id="obs_projector_source_name" class="form-control" placeholder="Captions Overlay" value="Captions Overlay">
+                    </div>
+
+                    <!-- 🔴 YouTube & Twitch Embedded CEA-608 Closed Captions [CC] -->
+                    <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 16px; margin: 16px 0 20px 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px;">
+                            <h3 style="margin: 0; color: #FCA5A5; display: flex; align-items: center; gap: 8px; font-size: 15px;">
+                                <span>🔴 YouTube &amp; Twitch Live Closed Captions (Embedded CEA-608)</span>
+                            </h3>
+                            <span style="font-size: 11px; background: rgba(239, 68, 68, 0.2); color: #F87171; padding: 3px 8px; border-radius: 4px; font-weight: 700;">Native Stream [CC]</span>
+                        </div>
+                        <p style="font-size: 13px; color: #E0E7FF; margin-bottom: 12px; line-height: 1.45;">
+                            Transmits real-time CEA-608 closed captions directly through the OBS stream encoder to YouTube Live and Twitch. Viewers can toggle official [CC] subtitles on the YouTube player without burning in text on the stream video.
+                        </p>
+                        <div class="form-group toggle-row" style="margin-bottom: 10px;">
+                            <label class="switch-label">
+                                <input type="checkbox" id="obs_send_cea608_captions" checked>
+                                <span class="switch-text"><strong style="color: #F3F4F6;">Embed CEA-608 Closed Captions into Live Stream Output</strong></span>
+                            </label>
+                        </div>
+                        <div style="font-size: 11.5px; color: var(--text-muted); line-height: 1.4; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); padding: 8px 12px; border-radius: 6px;">
+                            💡 <strong>YouTube Studio Setup:</strong> In your YouTube Live Control Room &rarr; Stream Settings, ensure Closed Captions is set to <strong>"Embedded 608/708"</strong>.
+                        </div>
                     </div>
 
                     <button id="btn-save-projector" class="btn btn-primary btn-block" style="margin-bottom: 24px;">💾 Save Projector Automation Settings</button>
@@ -2400,6 +2657,10 @@
                             <button type="button" id="btn-clear-twitch-key" class="btn btn-secondary" style="padding: 6px 12px; font-size: 12px; white-space: nowrap;" title="Clear saved OAuth token">Clear</button>
                         </div>
                         <span class="hint">Generate a token at <a href="https://twitchapps.com/tmi/" target="_blank" style="color: var(--accent);">twitchapps.com/tmi</a>.</span>
+                    </div>
+
+                    <div style="background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 6px; padding: 8px 12px; font-size: 11.5px; color: #CBD5E1; margin-bottom: 14px;">
+                        💡 <strong>Chat Flood Protection:</strong> Spoken captions are automatically batched into complete grammatical thoughts before sending to avoid Twitch chat slow-mode throttling or bot rate-limiting.
                     </div>
 
                     <button id="btn-save-twitch" class="btn btn-primary btn-block">💾 Save Twitch Bot Settings</button>
@@ -2571,9 +2832,8 @@
                             <select id="select-summary-model" class="form-control" style="font-size: 12px; padding: 4px 8px; height: 32px; min-width: 215px;" title="Choose Gemini AI model version">
                                 <option value="gemini-3.8-flash" selected>✨ Gemini 3.8 Flash (Recommended - Best Reasoning & Synthesis)</option>
                                 <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash-Lite (Fast / Economical)</option>
-                                <option value="gemini-3.5-flash">Gemini 3.5 Flash (Standard 3.x)</option>
-                                <option value="gemini-2.5-flash">Gemini 2.5 Flash (Hybrid Reasoning)</option>
-                                <option value="gemini-2.0-flash">Gemini 2.0 Flash (Legacy)</option>
+                                <option value="gemini-3.1-pro-preview">🧠 Gemini 3.1 Pro Preview (Deep Context)</option>
+                                <option value="gemini-3.1-flash-lite">🚀 Gemini 3.1 Flash-Lite (High Speed)</option>
                             </select>
                             <button id="btn-generate-summary" class="btn btn-primary btn-sm" style="background: linear-gradient(135deg, #8B5CF6, #EC4899); border: none; font-weight: 600;" title="Generate comprehensive sermon summary from current session transcript">✨ Generate Summary</button>
                         </div>
@@ -2584,6 +2844,7 @@
                         <button id="btn-copy-summary-markdown" class="btn btn-secondary btn-sm" title="Copy full Markdown summary">📋 Copy Full Recap</button>
                         <button id="btn-copy-summary-youtube" class="btn btn-secondary btn-sm" title="Copy formatted for YouTube video description">📋 Copy for YouTube Description</button>
                         <button id="btn-copy-summary-bulletin" class="btn btn-secondary btn-sm" title="Copy compact outline for church bulletin / newsletter">📋 Copy for Bulletin</button>
+                        <button id="btn-print-bulletin-summary" class="btn btn-secondary btn-sm" title="Open formatted print preview to print or save as PDF">🖨️ Print / PDF</button>
                         <button id="btn-download-summary" class="btn btn-secondary btn-sm" title="Download summary as markdown file">💾 Download .md</button>
                     </div>
 
@@ -2607,6 +2868,11 @@
                 <div class="panel">
                     <h2>🎛️ Elgato Stream Deck &amp; Bitfocus Companion Integration</h2>
                     <p class="subtext">Trigger VoxStream actions instantly from physical Stream Deck buttons, Touch Portal, or Bitfocus Companion via simple HTTP POST commands.</p>
+
+                    <div style="margin: 10px 0 16px 0; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                        <a href="/api/export/streamdeck_profile" download class="btn btn-secondary btn-sm" id="btn-download-streamdeck-profile" style="display: inline-flex; align-items: center; gap: 6px; text-decoration: none; font-weight: 600; padding: 7px 14px; background: rgba(99, 102, 241, 0.2); border: 1px solid rgba(99, 102, 241, 0.4); color: #A5B4FC; border-radius: 6px;">📥 Download Stream Deck / Companion Profile (.json)</a>
+                        <span style="font-size: 11.5px; color: var(--text-muted);">💡 <em>Note: For external tablets or Companion on other PCs, replace <code>127.0.0.1</code> with this machine's LAN IP.</em></span>
+                    </div>
 
                     <div class="two-col-layout" style="margin-top: 14px; margin-bottom: 20px;">
                         <div class="api-card" style="border-left: 4px solid #EF4444;">
@@ -2684,6 +2950,29 @@
                         <div id="caddy-url-box" style="margin-top: 10px; font-family: 'JetBrains Mono', monospace; font-size: 12px; display: none;">
                             <div style="color: #94A3B8; font-size: 11px; margin-bottom: 2px;">SECURE STAGE URL (HTTPS):</div>
                             <code id="caddy-https-url" style="color: #34D399; font-weight: 700;">https://127.0.0.1/display</code>
+                        </div>
+                    </div>
+
+                    <h2>📦 Full System Backup &amp; Migration</h2>
+                    <div class="api-card" style="border-left: 4px solid #F59E0B;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                            <div>
+                                <h3 style="margin: 0; color: #FCD34D; display: flex; align-items: center; gap: 8px;">
+                                    <span>📦 Full System Backup &amp; Machine Migration</span>
+                                </h3>
+                                <p style="font-size: 12px; color: var(--text-muted); margin: 4px 0 0 0;">
+                                    Export everything (all organization profiles, vocabulary glossaries, speech biasing lists, API keys, subtitle themes, and hardware settings) into a single portable bundle.
+                                </p>
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <a href="/api/system/backup/export" download id="btn-export-system-backup-tab" class="btn btn-secondary btn-sm" style="text-decoration: none; font-size: 11px; padding: 5px 12px; font-weight: 600; border-color: rgba(245, 158, 11, 0.4); color: #FCD34D; display: inline-flex; align-items: center; gap: 5px;">
+                                    <span>📥 Export Full Backup (.json)</span>
+                                </a>
+                                <label class="btn btn-secondary btn-sm" style="margin: 0; cursor: pointer; font-size: 11px; padding: 5px 12px; font-weight: 600; border-color: rgba(245, 158, 11, 0.4); color: #FCD34D; display: inline-flex; align-items: center; gap: 5px;">
+                                    <span>📁 Import Full Backup (.json)</span>
+                                    <input type="file" class="input-import-system-backup" id="input-import-system-backup-tab" accept=".json" style="display: none;">
+                                </label>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -3044,6 +3333,29 @@
                 </div>
             </div>
 
+            <!-- Full System Backup & Migration Card -->
+            <div style="margin-top: 18px; border-top: 1px solid var(--border-color); padding-top: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+                    <div>
+                        <span style="font-size: 13px; color: #FCD34D; font-weight: 700; display: flex; align-items: center; gap: 6px;">
+                            <span>📦 Full System Backup &amp; Migration</span>
+                        </span>
+                        <span style="font-size: 11.5px; color: var(--text-muted); display: block; margin-top: 2px;">
+                            Export everything (all profiles, glossaries, biasing lists, API keys, styles, and settings) to move to a new machine.
+                        </span>
+                    </div>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <a href="/api/system/backup/export" download id="btn-export-system-backup" class="btn btn-secondary btn-sm" style="text-decoration: none; font-size: 12px; font-weight: 600; border-color: rgba(245, 158, 11, 0.4); color: #FCD34D; display: inline-flex; align-items: center; gap: 5px;">
+                            <span>📥 Export Full Backup (.json)</span>
+                        </a>
+                        <label class="btn btn-secondary btn-sm" style="margin: 0; cursor: pointer; font-size: 12px; font-weight: 600; border-color: rgba(245, 158, 11, 0.4); color: #FCD34D; display: inline-flex; align-items: center; gap: 5px;">
+                            <span>📁 Import Full Backup (.json)</span>
+                            <input type="file" class="input-import-system-backup" id="input-import-system-backup" accept=".json" style="display: none;">
+                        </label>
+                    </div>
+                </div>
+            </div>
+
             <div style="margin-top: 18px; border-top: 1px solid var(--border-color); padding-top: 14px;">
                 <span style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 8px; font-weight: 600;">System Controls</span>
                 <div style="display: flex; justify-content: space-between; gap: 10px;">
@@ -3214,6 +3526,48 @@
                 <div id="modal-quick-links-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto;">
                     <!-- Dynamically populated -->
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 🏛️ New Organization Profile Modal -->
+    <div id="modal-new-profile" class="modal-backdrop" style="display: none;">
+        <div class="modal-content" style="max-width: 480px; background: #111827; border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 12px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; border-bottom: 1px solid rgba(245, 158, 11, 0.2); padding-bottom: 12px;">
+                <h2 style="font-size: 16px; font-weight: 700; margin: 0; color: #FCD34D; display: flex; align-items: center; gap: 8px;">
+                    <span>🏛️ Create New Organization Profile</span>
+                </h2>
+                <button type="button" id="btn-close-new-profile-modal" class="btn btn-secondary btn-sm" style="border: none; background: transparent; font-size: 16px; color: #9CA3AF; cursor: pointer;">✕</button>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 18px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="new_profile_name" style="font-size: 12px; font-weight: 600; color: #E5E7EB; margin-bottom: 6px; display: block;">Profile / Organization Name</label>
+                    <input type="text" id="new_profile_name" class="form-control" placeholder="e.g. Grace Community Church or Tech Keynote 2026" style="background: #1F2937; border-color: rgba(245, 158, 11, 0.4); color: #F9FAFB;">
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="new_profile_template" style="font-size: 12px; font-weight: 600; color: #E5E7EB; margin-bottom: 6px; display: block;">Starting Template</label>
+                    <select id="new_profile_template" class="form-control" style="background: #1F2937; border-color: rgba(245, 158, 11, 0.4); color: #F9FAFB;">
+                        <option value="waypoint" selected>Copy Waypoint Church Template (Full Church Vocabulary)</option>
+                        <option value="default">Blank General Profile (No Church Vocabulary)</option>
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; color: #FCD34D; font-size: 12.5px; font-weight: 600;">
+                        <input type="checkbox" id="new_profile_church_mode" checked style="width: 16px; height: 16px; cursor: pointer; accent-color: #F59E0B;">
+                        <span>Enable Church Mode (Sacred Liturgy &amp; Scripture formatting)</span>
+                    </label>
+                    <span style="font-size: 11px; color: #9CA3AF; margin-left: 24px; display: block; margin-top: 2px;">
+                        When checked, scripture references (John 3:16) and liturgical autocorrect remain active.
+                    </span>
+                </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 14px;">
+                <button type="button" id="btn-cancel-new-profile" class="btn btn-secondary btn-sm" style="padding: 6px 14px;">Cancel</button>
+                <button type="button" id="btn-create-new-profile" class="btn btn-primary btn-sm" style="background: #D97706; border-color: #B45309; padding: 6px 16px; font-weight: 600;">Create Profile</button>
             </div>
         </div>
     </div>

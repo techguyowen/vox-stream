@@ -15,17 +15,17 @@ logger = logging.getLogger("obs_captioner.gemini_models")
 KNOWN_GEMINI_DEPRECATIONS: Dict[str, Dict[str, Any]] = {
     "gemini-2.0-flash": {
         "shutdown_date": "June 1, 2026",
-        "recommended_replacement": "gemini-3.6-flash",
+        "recommended_replacement": "gemini-3.8-flash",
         "status": "deprecated",
         "category": "general",
-        "notice": "Google announced sunset on June 1, 2026. Upgrade to Gemini 3.6 Flash.",
+        "notice": "Google announced sunset on June 1, 2026. Upgrade to Gemini 3.8 Flash.",
     },
     "gemini-2.0-flash-001": {
         "shutdown_date": "June 1, 2026",
-        "recommended_replacement": "gemini-3.6-flash",
+        "recommended_replacement": "gemini-3.8-flash",
         "status": "deprecated",
         "category": "general",
-        "notice": "Google announced sunset on June 1, 2026. Upgrade to Gemini 3.6 Flash.",
+        "notice": "Google announced sunset on June 1, 2026. Upgrade to Gemini 3.8 Flash.",
     },
     "gemini-2.0-flash-lite": {
         "shutdown_date": "June 1, 2026",
@@ -64,10 +64,10 @@ KNOWN_GEMINI_DEPRECATIONS: Dict[str, Dict[str, Any]] = {
     },
     "gemini-2.0-flash-lite-preview": {
         "shutdown_date": "December 9, 2025",
-        "recommended_replacement": "gemini-2.5-flash-lite",
+        "recommended_replacement": "gemini-3.1-flash-lite",
         "status": "shutdown",
         "category": "general",
-        "notice": "Shutdown December 9, 2025.",
+        "notice": "Shutdown December 9, 2025. Replacement: gemini-3.1-flash-lite.",
     },
 }
 
@@ -134,13 +134,6 @@ DEFAULT_GENERAL_MODELS: List[Dict[str, Any]] = [
         "is_deprecated": False,
     },
     {
-        "id": "gemini-3.6-flash",
-        "name": "Gemini 3.6 Flash",
-        "description": "High-throughput production multimodal generation.",
-        "is_default": False,
-        "is_deprecated": False,
-    },
-    {
         "id": "gemini-3.5-flash-lite",
         "name": "Gemini 3.5 Flash-Lite",
         "description": "Lightweight, ultra-fast, and cost-effective generation model.",
@@ -148,16 +141,16 @@ DEFAULT_GENERAL_MODELS: List[Dict[str, Any]] = [
         "is_deprecated": False,
     },
     {
-        "id": "gemini-2.5-flash",
-        "name": "Gemini 2.5 Flash",
-        "description": "Balanced speed and accuracy reasoning model.",
+        "id": "gemini-3.1-pro-preview",
+        "name": "Gemini 3.1 Pro Preview",
+        "description": "Deep contextual reasoning for complex theology and long sermons.",
         "is_default": False,
         "is_deprecated": False,
     },
     {
-        "id": "gemini-2.5-pro",
-        "name": "Gemini 2.5 Pro",
-        "description": "Deep contextual reasoning for complex theology and long sermons.",
+        "id": "gemini-3.1-flash-lite",
+        "name": "Gemini 3.1 Flash-Lite",
+        "description": "Fast generation and lightweight reasoning.",
         "is_default": False,
         "is_deprecated": False,
     },
