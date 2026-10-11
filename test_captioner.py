@@ -867,7 +867,7 @@ class TestConfigAndEngines(unittest.TestCase):
         transcription = setup["inputAudioTranscription"]
         self.assertEqual(transcription["mode"], "SMART")
         # With default church_mode=True, both user terms and canonical church terms are present
-        for term in ["OBS Studio", "Twitch", "YouTube", "Jesus Christ", "Ben Luthi", "Doxology", "Genesis"]:
+        for term in ["OBS Studio", "Twitch", "YouTube", "Jesus Christ", "Ben Uthe", "Doxology", "Genesis"]:
             self.assertIn(term, transcription["customVocabulary"])
         self.assertEqual(transcription["languageCodes"], ["en-US"])
 
@@ -1224,7 +1224,7 @@ class TestTextFormatter(unittest.TestCase):
 
         # Pastoral and leadership names
         res_ben = fmt.format_text("pastor ben luthi and ben uthe are speaking", is_final=True)
-        self.assertEqual(res_ben, "Pastor Ben Luthi and Ben Luthi are speaking.")
+        self.assertEqual(res_ben, "Pastor Ben Uthe and Ben Uthe are speaking.")
 
         # Hymns and liturgical terms
         res_hymn = fmt.format_text("they sang agnes day and waymaker together", is_final=True)
@@ -2323,8 +2323,8 @@ class TestServerEndpoints(AioHTTPTestCase):
             'name': 'waypoint'
         })
         self.assertEqual(resp_wp.status, 200)
-        self.assertIn("ben luthi", self.overlay_server.config.vocabulary.terms)
-        self.assertIn("Pastor Ben Luthi", self.overlay_server.config.gemini_live.custom_vocabulary)
+        self.assertIn("ben uthe", self.overlay_server.config.vocabulary.terms)
+        self.assertIn("Pastor Ben Uthe", self.overlay_server.config.gemini_live.custom_vocabulary)
 
         resp_def = await self.client.request('POST', '/api/profiles', json={
             'action': 'select',
@@ -2364,8 +2364,8 @@ class TestServerEndpoints(AioHTTPTestCase):
         exported = await resp_exp.json()
         self.assertIn('terms', exported)
         self.assertIn('speech_biasing_words', exported)
-        self.assertIn('ben luthi', exported['terms'])
-        self.assertIn('Pastor Ben Luthi', exported['speech_biasing_words'])
+        self.assertIn('ben uthe', exported['terms'])
+        self.assertIn('Pastor Ben Uthe', exported['speech_biasing_words'])
 
         custom_data = {
             'name': 'Imported Test Org',
@@ -3068,9 +3068,9 @@ class TestSermonPipelineEnhancements(unittest.IsolatedAsyncioTestCase):
         fmt = TextFormatter(auto_capitalization=True, auto_punctuation=True, church_mode=True)
 
         # Pastoral & Leadership
-        self.assertIn("Ben Luthi", fmt.format_text("ben lut is our pastor"))
-        self.assertIn("Ben Luthi", fmt.format_text("ben luthi preached today"))
-        self.assertIn("Ben Luthi", fmt.format_text("ben uthe is speaking"))
+        self.assertIn("Ben Uthe", fmt.format_text("ben lut is our pastor"))
+        self.assertIn("Ben Uthe", fmt.format_text("ben luthi preached today"))
+        self.assertIn("Ben Uthe", fmt.format_text("ben uthe is speaking"))
 
         # Church & Campuses & Events
         self.assertIn("Waypoint Church", fmt.format_text("welcome to way point church"))
@@ -7250,8 +7250,8 @@ class TestProfilesAndVocabulary(unittest.TestCase):
         pm = get_profile_manager()
         prof = pm.get_profile("waypoint")
 
-        self.assertIn("ben luthi", prof["terms"])
-        self.assertEqual(prof["terms"]["ben luthi"], "Ben Luthi")
+        self.assertIn("ben uthe", prof["terms"])
+        self.assertEqual(prof["terms"]["ben uthe"], "Ben Uthe")
         self.assertIn("chet the chicken", prof["terms"])
         self.assertEqual(prof["terms"]["chet the chicken"], "Chet the Chicken")
         self.assertIn("waypoint kids", prof["terms"])
@@ -7263,7 +7263,7 @@ class TestProfilesAndVocabulary(unittest.TestCase):
         from obs_captioner.church_lexicon import ChurchLexiconFormatter
         formatter = ChurchLexiconFormatter(church_name="Waypoint Church")
         formatted = formatter.format_church_text("pastor ben luthi at waypoint kids")
-        self.assertIn("Ben Luthi", formatted)
+        self.assertIn("Ben Uthe", formatted)
         self.assertIn("Waypoint Kids", formatted)
 
     def test_church_mode_false_excludes_church_terms(self):
@@ -7365,7 +7365,7 @@ class TestProfilesAndVocabulary(unittest.TestCase):
         self.assertEqual(slug, "grace_baptist_church")
         self.assertEqual(prof["name"], "Grace Baptist Church")
         self.assertTrue(prof["church_mode"])
-        self.assertIn("ben luthi", prof.get("terms", {}))
+        self.assertIn("ben uthe", prof.get("terms", {}))
 
         profiles = pm.list_profiles_metadata()
         created = next((p for p in profiles if p["id"] == slug), None)
@@ -7414,17 +7414,17 @@ class TestProfilesAndVocabulary(unittest.TestCase):
         replacer_wp = VocabularyReplacer(vcfg, church_name="Waypoint Church")
         terms_wp = replacer_wp.get_terms()
         self.assertIn("custom_term", terms_wp)
-        self.assertIn("ben luthi", terms_wp)
+        self.assertIn("ben uthe", terms_wp)
 
         # General org profile only includes custom terms
         replacer_gen = VocabularyReplacer(vcfg, church_name="General Organization")
         terms_gen = replacer_gen.get_terms()
         self.assertIn("custom_term", terms_gen)
-        self.assertNotIn("ben luthi", terms_gen)
+        self.assertNotIn("ben uthe", terms_gen)
         self.assertNotIn("waypoint kids", terms_gen)
 
         # Base config terms was NOT mutated
-        self.assertNotIn("ben luthi", vcfg.terms)
+        self.assertNotIn("ben uthe", vcfg.terms)
 
 
 class TestDashboardEnhancements(unittest.TestCase):
