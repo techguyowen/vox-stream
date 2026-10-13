@@ -942,6 +942,11 @@ async def main_async(args):
                 audio_capture.stop()
             except Exception as e:
                 logger.debug(f"Error stopping audio capture: {e}")
+        if sink:
+            try:
+                await asyncio.wait_for(sink.stop(), timeout=0.8)
+            except Exception as e:
+                logger.debug(f"Error stopping caption sink: {e}")
         if obs_client:
             try:
                 await asyncio.wait_for(obs_client.close(), timeout=0.8)

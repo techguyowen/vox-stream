@@ -27,11 +27,18 @@ class TranslationDiskCache:
         self,
         db_path: Optional[Path] = None,
         max_entries: int = 25000,
+        flush_threshold: int = 50,
+        prune_interval: Optional[int] = None,
     ):
         self.db_path = db_path or get_default_cache_db_path()
         self.max_entries = max_entries
+        self.flush_threshold = flush_threshold
+        self.prune_interval = prune_interval if prune_interval is not None else (100 if max_entries >= 100 else 1)
         self._lock = threading.Lock()
         self._conn: Optional[sqlite3.Connection] = None
+        self._pending_hits: Dict[str, int] = {}
+        self._pending_hits_count: int = 0
+        self._insert_count: int = 0
         self._init_db()
 
     def _get_connection(self) -> sqlite3.Connection:
@@ -72,12 +79,41 @@ class TranslationDiskCache:
                         ON translations (provider, target_lang);
                         """
                     )
+                    conn.execute(
+                        """
+                        CREATE INDEX IF NOT EXISTS idx_translations_lru
+                        ON translations (hit_count, created_at);
+                        """
+                    )
             logger.debug(f"Translation disk cache initialized at {self.db_path}")
         except Exception as e:
             logger.error(f"Failed to initialize translation disk cache: {e}", exc_info=True)
 
+    def _flush_hits_locked(self, conn: Optional[sqlite3.Connection] = None) -> None:
+        """Flush pending hit counts to disk while holding self._lock."""
+        if not self._pending_hits:
+            return
+        try:
+            if conn is None:
+                conn = self._get_connection()
+            items = [(hits, key) for key, hits in self._pending_hits.items()]
+            self._pending_hits.clear()
+            self._pending_hits_count = 0
+            with conn:
+                conn.executemany(
+                    "UPDATE translations SET hit_count = hit_count + ? WHERE cache_key = ?",
+                    items,
+                )
+        except Exception as e:
+            logger.debug(f"Error flushing pending hits to translation disk cache: {e}")
+
+    def flush(self) -> None:
+        """Flush pending hit increments to disk."""
+        with self._lock:
+            self._flush_hits_locked()
+
     def get(self, cache_key: str) -> Optional[str]:
-        """Retrieve a cached translation by key. Increments hit count on hit."""
+        """Retrieve a cached translation by key. Accumulates hit increments in memory."""
         if not cache_key:
             return None
 
@@ -86,18 +122,16 @@ class TranslationDiskCache:
                 conn = self._get_connection()
                 cursor = conn.cursor()
                 cursor.execute(
-                    "SELECT translated_text, hit_count FROM translations WHERE cache_key = ?",
+                    "SELECT translated_text FROM translations WHERE cache_key = ?",
                     (cache_key,),
                 )
                 row = cursor.fetchone()
                 if row:
-                    translated, hits = row
-                    # Increment hit counter
-                    with conn:
-                        conn.execute(
-                            "UPDATE translations SET hit_count = ? WHERE cache_key = ?",
-                            (hits + 1, cache_key),
-                        )
+                    translated = row[0]
+                    self._pending_hits[cache_key] = self._pending_hits.get(cache_key, 0) + 1
+                    self._pending_hits_count += 1
+                    if self._pending_hits_count >= self.flush_threshold:
+                        self._flush_hits_locked(conn)
                     return translated
         except Exception as e:
             logger.debug(f"Error reading from translation disk cache: {e}")
@@ -134,14 +168,16 @@ class TranslationDiskCache:
                         (cache_key, source_text, translated_text, provider, source_lang, target_lang, now),
                     )
 
-                # Prune if exceeded max entries
-                self._maybe_prune(conn)
+                self._insert_count += 1
+                if self._insert_count % self.prune_interval == 0:
+                    self._maybe_prune(conn)
         except Exception as e:
             logger.debug(f"Error saving to translation disk cache: {e}")
 
     def _maybe_prune(self, conn: sqlite3.Connection) -> None:
         """Auto-prune oldest/least-used entries if table exceeds max_entries."""
         try:
+            self._flush_hits_locked(conn)
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM translations")
             count = cursor.fetchone()[0]
@@ -174,7 +210,7 @@ class TranslationDiskCache:
                 size_kb = round(self.db_path.stat().st_size / 1024, 1) if self.db_path.exists() else 0
                 return {
                     "total_entries": count,
-                    "total_hits": hits,
+                    "total_hits": hits + self._pending_hits_count,
                     "db_size_kb": size_kb,
                     "db_path": str(self.db_path),
                 }
@@ -185,6 +221,9 @@ class TranslationDiskCache:
         """Clear all entries from the disk cache."""
         try:
             with self._lock:
+                self._pending_hits.clear()
+                self._pending_hits_count = 0
+                self._insert_count = 0
                 conn = self._get_connection()
                 with conn:
                     conn.execute("DELETE FROM translations")
@@ -196,6 +235,10 @@ class TranslationDiskCache:
         """Safely close the SQLite database connection."""
         with self._lock:
             if self._conn:
+                try:
+                    self._flush_hits_locked(self._conn)
+                except Exception:
+                    pass
                 try:
                     self._conn.close()
                 except Exception:

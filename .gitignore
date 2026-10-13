@@ -140,6 +140,7 @@ tests/
 /test
 /test.*
 /test_*
+!test_perf_*.py
 .coverage
 .coverage.*
 htmlcov/

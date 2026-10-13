@@ -176,7 +176,7 @@ class SubtitleTranslator:
 
         # 2. Check L2 persistent SQLite disk cache (<1ms on warm reboot)
         if self.disk_cache:
-            cached_disk = self.disk_cache.get(cache_key)
+            cached_disk = await asyncio.to_thread(self.disk_cache.get, cache_key)
             if cached_disk:
                 self._cache[cache_key] = cached_disk
                 return cached_disk
@@ -210,7 +210,8 @@ class SubtitleTranslator:
         if translated:
             self._cache[cache_key] = translated
             if self.disk_cache:
-                self.disk_cache.set(
+                await asyncio.to_thread(
+                    self.disk_cache.set,
                     cache_key=cache_key,
                     source_text=clean_text,
                     translated_text=translated,

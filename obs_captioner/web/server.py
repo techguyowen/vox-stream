@@ -1,6 +1,7 @@
 """Hardened Web and WebSocket Server for OBS Browser Source, Dashboard, and REST API."""
 
 import asyncio
+import collections
 import json
 import logging
 import mimetypes
@@ -11,7 +12,7 @@ import urllib.parse
 import uuid
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Set
+from typing import Any, Callable, Dict, Optional, Set, Tuple
 
 from aiohttp import web
 
@@ -149,8 +150,25 @@ class WebOverlayServer:
         self.caption_sockets: Dict[web.WebSocketResponse, str] = {}
         self.socket_roles: Dict[web.WebSocketResponse, str] = {}
         self.control_sockets: Set[web.WebSocketResponse] = set()
+        self.caption_queues: Dict[web.WebSocketResponse, asyncio.Queue] = {}
+        self.caption_tasks: Dict[web.WebSocketResponse, asyncio.Task] = {}
+        self._snapshot_tasks: Set[asyncio.Task] = set()
+        self._status_cache: Dict[str, Tuple[float, dict]] = {}
+        self._status_cache_ttl: float = 2.0
 
         self._setup_routes()
+
+    def _client_ip(self, request: web.Request) -> str:
+        remote = request.remote or "127.0.0.1"
+        caddy_cfg = getattr(self.config, "caddy", None)
+        caddy_enabled = bool(getattr(caddy_cfg, "enabled", False)) if caddy_cfg else False
+        if (request.remote in ("127.0.0.1", "::1") or request.remote is None) and caddy_enabled:
+            xff = request.headers.get("X-Forwarded-For")
+            if xff:
+                hop = xff.split(",")[0].strip()
+                if hop:
+                    return hop
+        return remote
 
     def _check_auth(self, request: web.Request) -> bool:
         auth_func = require_api_auth(self.config.api.api_key)
@@ -377,10 +395,12 @@ class WebOverlayServer:
             "Cache-Control": "no-cache"
         })
 
-    async def _handle_get_status(self, request: web.Request) -> web.Response:
-        client_ip = request.remote or "127.0.0.1"
-        if not self.rate_limiter.is_allowed(client_ip):
-            return web.json_response({"error": "Rate limit exceeded"}, status=429)
+    def _get_status_payload(self, request: web.Request) -> dict:
+        now = time.monotonic()
+        host_key = request.host or ""
+        cached = self._status_cache.get(host_key)
+        if cached is not None and (now - cached[0]) < self._status_cache_ttl:
+            return cached[1]
 
         from ..hardware import get_ram_usage_mb, get_gpu_info, get_available_gpus, get_local_ip
         lan_ip = get_local_ip()
@@ -393,7 +413,7 @@ class WebOverlayServer:
             "engine": self.config.general.engine,
             "language": self.config.general.language,
             "audio_device": self.config.audio.device_name_filter,
-            "total_transcript_lines": len(self.history.entries),
+            "total_transcript_lines": len(self.history.entries) if self.history else 0,
             "theme": self.config.overlay.theme_id,
             "translation_enabled": self.config.translation.enabled,
             "timestamp": time.time(),
@@ -455,6 +475,15 @@ class WebOverlayServer:
                 pass
         # Never report "running" unless the app-status hook confirmed it
         status_info.setdefault("is_running", False)
+        self._status_cache[host_key] = (now, status_info)
+        return status_info
+
+    async def _handle_get_status(self, request: web.Request) -> web.Response:
+        client_ip = self._client_ip(request)
+        if not self.rate_limiter.is_allowed(client_ip):
+            return web.json_response({"error": "Rate limit exceeded"}, status=429)
+
+        status_info = self._get_status_payload(request)
         return web.json_response(status_info)
 
     async def _handle_get_network_info(self, request: web.Request) -> web.Response:
@@ -1042,14 +1071,14 @@ class WebOverlayServer:
 
     async def _handle_summary_status(self, request: web.Request) -> web.Response:
         """Return availability and configuration of AI sermon summary & chapter providers."""
-        client_ip = request.remote or "127.0.0.1"
+        client_ip = self._client_ip(request)
         if not self.rate_limiter.is_allowed(client_ip):
             return web.json_response({"error": "Rate limit exceeded"}, status=429)
         return web.json_response(self.summary_engine.get_status())
 
     async def _handle_ai_chapters(self, request: web.Request) -> web.Response:
         """Generate semantic, YouTube-compliant timestamped video chapters using AI or heuristics."""
-        client_ip = request.remote or "127.0.0.1"
+        client_ip = self._client_ip(request)
         if not self.rate_limiter.is_allowed(client_ip):
             return web.json_response({"error": "Rate limit exceeded"}, status=429)
 
@@ -1100,7 +1129,7 @@ class WebOverlayServer:
 
     async def _handle_sermon_summary(self, request: web.Request) -> web.Response:
         """Generate comprehensive sermon summary, bulletin outline, and discussion questions."""
-        client_ip = request.remote or "127.0.0.1"
+        client_ip = self._client_ip(request)
         if not self.rate_limiter.is_allowed(client_ip):
             return web.json_response({"error": "Rate limit exceeded"}, status=429)
 
@@ -1125,7 +1154,7 @@ class WebOverlayServer:
         return web.json_response(result)
 
     async def _handle_translate_text(self, request: web.Request) -> web.Response:
-        client_ip = request.remote or "127.0.0.1"
+        client_ip = self._client_ip(request)
         if not self.rate_limiter.is_allowed(client_ip):
             return web.json_response({"error": "Rate limit exceeded"}, status=429)
 
@@ -1157,7 +1186,7 @@ class WebOverlayServer:
         })
 
     async def _handle_translation_prewarm(self, request: web.Request) -> web.Response:
-        client_ip = request.remote or "127.0.0.1"
+        client_ip = self._client_ip(request)
         if not self.rate_limiter.is_allowed(client_ip):
             return web.json_response({"error": "Rate limit exceeded"}, status=429)
         try:
@@ -1557,7 +1586,7 @@ class WebOverlayServer:
         return web.json_response(censor.get_filter_state())
 
     async def _handle_filter_test(self, request: web.Request) -> web.Response:
-        client_ip = request.remote or "127.0.0.1"
+        client_ip = self._client_ip(request)
         if not self.rate_limiter.is_allowed(client_ip):
             return web.json_response({"error": "Rate limit exceeded"}, status=429)
         try:
@@ -2118,6 +2147,72 @@ class WebOverlayServer:
             logger.error(f"Error updating profile speech biasing: {e}")
             return web.json_response({"error": str(e)}, status=400)
 
+    def _ensure_caption_queue(self, ws: web.WebSocketResponse) -> asyncio.Queue:
+        queue = self.caption_queues.get(ws)
+        if queue is None:
+            queue = asyncio.Queue(maxsize=8)
+            self.caption_queues[ws] = queue
+            self.caption_tasks[ws] = asyncio.create_task(self._caption_sender_loop(ws, queue))
+        return queue
+
+    def _close_caption_client(self, ws: web.WebSocketResponse):
+        self.caption_sockets.pop(ws, None)
+        self.socket_roles.pop(ws, None)
+        self.caption_queues.pop(ws, None)
+        task = self.caption_tasks.pop(ws, None)
+        current = asyncio.current_task()
+        if task and task is not current and not task.done():
+            task.cancel()
+        try:
+            res = ws.close()
+            if asyncio.iscoroutine(res):
+                asyncio.create_task(res)
+        except Exception:
+            pass
+
+    async def _caption_sender_loop(self, ws: web.WebSocketResponse, queue: asyncio.Queue):
+        try:
+            while True:
+                item = await queue.get()
+                try:
+                    msg = item[1] if isinstance(item, tuple) else item
+                    await ws.send_str(msg)
+                finally:
+                    queue.task_done()
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            pass
+        finally:
+            self._close_caption_client(ws)
+
+    def _enqueue_caption(self, ws: web.WebSocketResponse, is_final: bool, msg_str: str):
+        if ws not in self.caption_sockets:
+            return
+        queue = self._ensure_caption_queue(ws)
+        if queue.full():
+            dropped = 0
+            new_deque = collections.deque()
+            for item in queue._queue:
+                if isinstance(item, tuple) and item[0]:
+                    new_deque.append(item)
+                elif not isinstance(item, tuple):
+                    new_deque.append(item)
+                else:
+                    dropped += 1
+            queue._queue = new_deque
+            queue._unfinished_tasks = max(0, queue._unfinished_tasks - dropped)
+            if queue._unfinished_tasks == 0:
+                queue._finished.set()
+
+            if not queue.full():
+                queue.put_nowait((is_final, msg_str))
+            else:
+                if is_final:
+                    self._close_caption_client(ws)
+        else:
+            queue.put_nowait((is_final, msg_str))
+
     async def _handle_caption_ws(self, request: web.Request) -> web.WebSocketResponse:
         ws = web.WebSocketResponse(heartbeat=25.0)
         await ws.prepare(request)
@@ -2134,11 +2229,11 @@ class WebOverlayServer:
 
         self.caption_sockets[ws] = lang
         self.socket_roles[ws] = role
+        self._ensure_caption_queue(ws)
         try:
             try:
                 snapshot_lines = list(self._recent_finals)
                 if not snapshot_lines and self.history:
-                    # Fallback to persistent transcript history so display screens always populate immediately
                     entries = self.history.get_history(limit=10)
                     for e in reversed(entries):
                         txt = e.get("text", "").strip()
@@ -2146,20 +2241,40 @@ class WebOverlayServer:
                             snapshot_lines.append({"text": txt, "is_final": True, "timestamp": e.get("timestamp", 0)})
 
                 if lang in ("en", "original", "none", ""):
-                    await ws.send_str(json.dumps({"type": "snapshot", "lines": snapshot_lines}))
+                    self._enqueue_caption(ws, is_final=True, msg_str=json.dumps({"type": "snapshot", "lines": snapshot_lines}))
                 else:
-                    translated_lines = []
-                    for line in snapshot_lines:
-                        t_text = await self.translator.translate_to_language(line.get("text", ""), target_lang=lang)
-                        translated_lines.append({**line, "text": t_text})
-                    await ws.send_str(json.dumps({"type": "snapshot", "lines": translated_lines}))
+                    self._enqueue_caption(ws, is_final=True, msg_str=json.dumps({"type": "snapshot", "lines": snapshot_lines}))
+                    if snapshot_lines and hasattr(self, "translator") and self.translator:
+                        async def _translate_snapshot():
+                            try:
+                                async def _tr_line(line: dict) -> dict:
+                                    t = line.get("text", "")
+                                    if not t:
+                                        return line
+                                    try:
+                                        t_text = await self.translator.translate_to_language(t, target_lang=lang)
+                                        return {**line, "text": t_text}
+                                    except Exception:
+                                        return line
+
+                                results = await asyncio.gather(*[_tr_line(l) for l in snapshot_lines], return_exceptions=True)
+                                translated_lines = [
+                                    r if isinstance(r, dict) else l
+                                    for l, r in zip(snapshot_lines, results)
+                                ]
+                                self._enqueue_caption(ws, is_final=True, msg_str=json.dumps({"type": "snapshot", "lines": translated_lines}))
+                            except Exception:
+                                pass
+
+                        task = asyncio.create_task(_translate_snapshot())
+                        self._snapshot_tasks.add(task)
+                        task.add_done_callback(self._snapshot_tasks.discard)
             except Exception:
                 pass
             async for _ in ws:
                 pass
         finally:
-            self.caption_sockets.pop(ws, None)
-            self.socket_roles.pop(ws, None)
+            self._close_caption_client(ws)
         return ws
 
     async def _handle_control_ws(self, request: web.Request) -> web.WebSocketResponse:
@@ -2243,11 +2358,7 @@ class WebOverlayServer:
         is_final = bool(payload.get("is_final"))
 
         lang_payloads = {}
-        stale = []
         non_english_finals = []
-
-        send_tasks = []
-        target_sockets = []
 
         for ws, lang in list(self.caption_sockets.items()):
             if lang in ("en", "original", "none", "") or not raw_text:
@@ -2255,27 +2366,15 @@ class WebOverlayServer:
                     lang_payloads["en"] = json.dumps(payload)
                 msg_str = lang_payloads["en"]
             elif not is_final:
-                # Deliver interim text instantly with zero blocking network delay
                 if lang not in lang_payloads:
                     custom_payload = {**payload, "text": raw_text, "original_text": raw_text}
                     lang_payloads[lang] = json.dumps(custom_payload)
                 msg_str = lang_payloads[lang]
             else:
-                # Finalized text for non-English subscriber: collect for non-blocking async translation
                 non_english_finals.append((ws, lang))
                 continue
 
-            target_sockets.append(ws)
-            send_tasks.append(ws.send_str(msg_str))
-
-        if send_tasks:
-            results = await asyncio.gather(*send_tasks, return_exceptions=True)
-            for ws, res in zip(target_sockets, results):
-                if isinstance(res, (Exception, BaseException)):
-                    stale.append(ws)
-
-        for ws in stale:
-            self.caption_sockets.pop(ws, None)
+            self._enqueue_caption(ws, is_final, msg_str)
 
         if non_english_finals and raw_text:
             self._caption_translate_seq += 1
@@ -2283,32 +2382,34 @@ class WebOverlayServer:
             queued_at = time.monotonic()
 
             async def _translate_and_send():
-                lang_cache = {}
-                for ws, lang in non_english_finals:
-                    if ws not in self.caption_sockets:
-                        continue
-                    try:
-                        if lang not in lang_cache:
-                            if self._caption_translate_seq > my_seq and (time.monotonic() - queued_at) > 3.0:
-                                # Genuinely backlogged (waited >3s) with a newer final queued
-                                # behind us: send the original text now (still in order)
-                                # instead of delaying every later caption.
-                                t_text = raw_text
-                            else:
-                                try:
-                                    t_text = await asyncio.wait_for(
-                                        self.translator.translate_to_language(raw_text, target_lang=lang),
-                                        timeout=5.0,
-                                    )
-                                except asyncio.TimeoutError:
-                                    t_text = raw_text
-                            lang_cache[lang] = json.dumps({**payload, "text": t_text, "original_text": raw_text})
-                        await ws.send_str(lang_cache[lang])
-                    except Exception:
-                        self.caption_sockets.pop(ws, None)
+                unique_langs = list({lang for ws, lang in non_english_finals if ws in self.caption_sockets})
+                if not unique_langs:
+                    return
 
-            # Chain translation batches so successive finals translate and send
-            # in broadcast order instead of racing and arriving out of order.
+                async def _translate_one(lang: str) -> str:
+                    if self._caption_translate_seq > my_seq and (time.monotonic() - queued_at) > 3.0:
+                        return raw_text
+                    try:
+                        return await asyncio.wait_for(
+                            self.translator.translate_to_language(raw_text, target_lang=lang),
+                            timeout=5.0,
+                        )
+                    except (asyncio.TimeoutError, Exception):
+                        return raw_text
+
+                results = await asyncio.gather(*[_translate_one(l) for l in unique_langs], return_exceptions=True)
+                lang_cache = {}
+                for l, res in zip(unique_langs, results):
+                    t_text = res if isinstance(res, str) else raw_text
+                    lang_cache[l] = json.dumps({**payload, "text": t_text, "original_text": raw_text})
+
+                for ws, lang in non_english_finals:
+                    if ws in self.caption_sockets:
+                        msg_str = lang_cache.get(lang)
+                        if msg_str:
+                            self._enqueue_caption(ws, is_final=True, msg_str=msg_str)
+                await asyncio.sleep(0)
+
             previous = self._caption_translate_chain
 
             async def _chained_translate_and_send():
@@ -2390,6 +2491,21 @@ class WebOverlayServer:
         if self._updater_task:
             self._updater_task.cancel()
             self._updater_task = None
+
+        if self._caption_translate_chain and not self._caption_translate_chain.done():
+            self._caption_translate_chain.cancel()
+            self._caption_translate_chain = None
+
+        for task in list(self._snapshot_tasks):
+            if not task.done():
+                task.cancel()
+        self._snapshot_tasks.clear()
+
+        for task in list(self.caption_tasks.values()):
+            if not task.done():
+                task.cancel()
+        self.caption_tasks.clear()
+        self.caption_queues.clear()
 
         all_sockets = list(set(self.caption_sockets.keys()) | self.control_sockets)
         self.caption_sockets.clear()

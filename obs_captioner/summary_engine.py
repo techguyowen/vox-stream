@@ -22,6 +22,8 @@ from .history import HistoryEntry, TranscriptHistory
 
 logger = logging.getLogger("obs_captioner.summary_engine")
 
+OLLAMA_MAX_TRANSCRIPT_CHARS = 40000
+
 
 class SermonSummaryEngine:
     """Generates structured sermon recaps and YouTube-compliant chapters."""
@@ -450,7 +452,7 @@ class SermonSummaryEngine:
         prompt = (
             "Analyze this sermon transcript with timestamps. Output a JSON array of YouTube chapters starting at 00:00:00.\n"
             "Format: [{\"timecode\": \"00:00:00\", \"title\": \"Welcome\"}, ...]\n\n"
-            f"{transcript_text[:8000]}"
+            f"{transcript_text[:OLLAMA_MAX_TRANSCRIPT_CHARS]}"
         )
         response_text = await self._call_ollama_api(prompt)
         if not response_text:
@@ -472,23 +474,31 @@ class SermonSummaryEngine:
         transcript_text, _ = self._format_transcript_for_prompt(entries, anchor="first_speech", time_offset_seconds=0.0)
         prompt = (
             "Analyze this sermon transcript. Return a JSON object with keys: title, scriptures, big_idea, key_points, quotes, discussion_questions.\n\n"
-            f"{transcript_text[:8000]}"
+            f"{transcript_text[:OLLAMA_MAX_TRANSCRIPT_CHARS]}"
         )
         response_text = await self._call_ollama_api(prompt)
         if not response_text:
             return None
         return self._extract_json_object(response_text)
 
-    async def _call_ollama_api(self, prompt: str) -> Optional[str]:
+    async def _call_ollama_api(self, prompt: str, options: Optional[Dict[str, Any]] = None) -> Optional[str]:
         """Execute local Ollama completion."""
         loop = asyncio.get_event_loop()
 
         def _run_sync():
             url = f"{self.config.ollama_url.rstrip('/')}/api/generate"
+            ollama_options = {"num_ctx": 16384}
+            cfg_options = getattr(self.config, "ollama_options", None) or getattr(self.config, "options", None)
+            if isinstance(cfg_options, dict):
+                ollama_options.update(cfg_options)
+            if options:
+                ollama_options.update(options)
+
             payload = {
                 "model": self.config.ollama_model,
                 "prompt": prompt,
                 "stream": False,
+                "options": ollama_options,
             }
             req = urllib.request.Request(
                 url,
@@ -496,7 +506,7 @@ class SermonSummaryEngine:
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=15.0) as resp:
+            with urllib.request.urlopen(req, timeout=120.0) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 return data.get("response", "")
 

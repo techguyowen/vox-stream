@@ -1,6 +1,7 @@
 """Caption Sink and Dispatcher with Content Filtering, Live Translation, and Twitch Broadcast."""
 
 import asyncio
+from collections import deque
 import logging
 import re
 import time
@@ -81,6 +82,10 @@ class CaptionSink:
         self._duplicate_final_window = 0.75
         self._saw_interim_since_final = False
         self._history_dedup_window = 5.0
+        self._obs_text_queue: deque = deque()
+        self._obs_cea_queue: deque = deque()
+        self._obs_text_worker_task: Optional[asyncio.Task] = None
+        self._obs_cea_worker_task: Optional[asyncio.Task] = None
         self._init_boundary_stitches()
 
     def _init_boundary_stitches(self):
@@ -140,6 +145,97 @@ class CaptionSink:
             ),
         )
         self._init_boundary_stitches()
+
+    def _enqueue_obs_text(self, source_name: str, text: str, is_final: bool):
+        if not self.obs_client:
+            return
+
+        if is_final:
+            if self._obs_text_queue and not self._obs_text_queue[-1][2]:
+                self._obs_text_queue[-1] = (source_name, text, True)
+            else:
+                self._obs_text_queue.append((source_name, text, True))
+        else:
+            if self._obs_text_queue and not self._obs_text_queue[-1][2]:
+                self._obs_text_queue[-1] = (source_name, text, False)
+            else:
+                self._obs_text_queue.append((source_name, text, False))
+
+        if self._obs_text_worker_task is None or self._obs_text_worker_task.done():
+            try:
+                loop = asyncio.get_running_loop()
+                self._obs_text_worker_task = loop.create_task(self._obs_text_worker_loop())
+            except RuntimeError:
+                pass
+
+    def _enqueue_obs_cea(self, caption_text: str):
+        if not self.obs_client:
+            return
+
+        self._obs_cea_queue.append(caption_text)
+        if self._obs_cea_worker_task is None or self._obs_cea_worker_task.done():
+            try:
+                loop = asyncio.get_running_loop()
+                self._obs_cea_worker_task = loop.create_task(self._obs_cea_worker_loop())
+            except RuntimeError:
+                pass
+
+    async def _obs_text_worker_loop(self):
+        try:
+            while self._obs_text_queue:
+                source_name, text, is_final = self._obs_text_queue.popleft()
+                if self.obs_client and getattr(self.obs_client, "is_connected", False):
+                    try:
+                        await self.obs_client.update_text_source(source_name, text)
+                    except Exception as e:
+                        logger.debug(f"OBS update_text_source error: {e}")
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self._obs_text_worker_task = None
+
+    async def _obs_cea_worker_loop(self):
+        try:
+            while self._obs_cea_queue:
+                caption_text = self._obs_cea_queue.popleft()
+                if self.obs_client and getattr(self.obs_client, "is_connected", False):
+                    try:
+                        if hasattr(self.obs_client, "send_stream_caption"):
+                            await self.obs_client.send_stream_caption(caption_text)
+                    except Exception as e:
+                        logger.debug(f"OBS send_stream_caption error: {e}")
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self._obs_cea_worker_task = None
+
+    async def stop(self):
+        if self._auto_clear_task and not self._auto_clear_task.done():
+            self._auto_clear_task.cancel()
+            self._auto_clear_task = None
+        for task_name in ("_obs_text_worker_task", "_obs_cea_worker_task"):
+            task = getattr(self, task_name, None)
+            if task and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
+                setattr(self, task_name, None)
+        self._obs_text_queue.clear()
+        self._obs_cea_queue.clear()
+
+    def close(self):
+        if self._auto_clear_task and not self._auto_clear_task.done():
+            self._auto_clear_task.cancel()
+            self._auto_clear_task = None
+        for task_name in ("_obs_text_worker_task", "_obs_cea_worker_task"):
+            task = getattr(self, task_name, None)
+            if task and not task.done():
+                task.cancel()
+                setattr(self, task_name, None)
+        self._obs_text_queue.clear()
+        self._obs_cea_queue.clear()
 
     def _attempt_boundary_stitch(self, clean_text: str) -> Tuple[str, bool]:
         """Stitch mid-word chunk boundary splits and continuing clauses between consecutive utterances."""
@@ -360,12 +456,12 @@ class CaptionSink:
                         )
                     )
 
-                if self.obs_client and self.obs_client.is_connected:
-                    if self.config.obs.update_text_source and self.config.obs.text_source_name:
-                        await self.obs_client.update_text_source(
-                            self.config.obs.text_source_name,
-                            updated_text,
-                        )
+                if self.config.obs.update_text_source and self.config.obs.text_source_name:
+                    self._enqueue_obs_text(
+                        self.config.obs.text_source_name,
+                        updated_text,
+                        is_final=True,
+                    )
 
                 # Rewrite the sidecar block so the absorbed continuation also
                 # reaches the .srt/.vtt recording instead of being lost there.
@@ -377,6 +473,7 @@ class CaptionSink:
                         self._auto_clear_task.cancel()
                     self._auto_clear_task = asyncio.create_task(self._auto_clear_worker())
 
+                await asyncio.sleep(0)
                 return
             if prev_entry_text is not None and self.history.entries:
                 _seal_norm = lambda t: re.sub(r"\s*\([^)]*\)$", "", t).rstrip(".,;:… ")
@@ -405,12 +502,12 @@ class CaptionSink:
                             utterance_id,
                         )
                     )
-                if self.obs_client and self.obs_client.is_connected:
-                    if self.config.obs.update_text_source and self.config.obs.text_source_name:
-                        await self.obs_client.update_text_source(
-                            self.config.obs.text_source_name,
-                            corrected_text,
-                        )
+                if self.config.obs.update_text_source and self.config.obs.text_source_name:
+                    self._enqueue_obs_text(
+                        self.config.obs.text_source_name,
+                        corrected_text,
+                        is_final=True,
+                    )
                 if self.subtitle_recorder and getattr(self.subtitle_recorder, "is_recording", False):
                     self.subtitle_recorder.update_last_caption(corrected_text)
             clean_text = stitched_text
@@ -421,7 +518,7 @@ class CaptionSink:
             # Directly provided by live speech translation engine (e.g. gemini-3.5-live-translate-preview)
             translated_text = event.translated_text
             display_text = clean_text
-        elif clean_text and self.config.translation.enabled:
+        elif clean_text and self.config.translation.enabled and event.is_final:
             primary_text, translated_text = await self.translator.translate_text(clean_text)
             display_text = primary_text
         else:
@@ -523,38 +620,35 @@ class CaptionSink:
                 except Exception as e:
                     logger.error(f"Error broadcasting caption to web overlay: {e}", exc_info=True)
 
-        async def _dispatch_obs():
-            if self.obs_client and self.obs_client.is_connected:
-                try:
-                    obs_out_text = display_text
-                    if translated_text and self.config.translation.display_mode == "dual":
-                        dual_fmt = getattr(self.config.translation, "dual_subtitle_format", "clean")
-                        if dual_fmt == "parentheses":
-                            obs_out_text = f"{display_text}\n({translated_text})"
-                        else:
-                            obs_out_text = f"{display_text}\n{translated_text}"
+        def _dispatch_obs():
+            if not self.obs_client:
+                return
+            obs_out_text = display_text
+            if translated_text and self.config.translation.display_mode == "dual":
+                dual_fmt = getattr(self.config.translation, "dual_subtitle_format", "clean")
+                if dual_fmt == "parentheses":
+                    obs_out_text = f"{display_text}\n({translated_text})"
+                else:
+                    obs_out_text = f"{display_text}\n{translated_text}"
 
-                    if self.config.obs.update_text_source and self.config.obs.text_source_name:
-                        if not getattr(self.config.overlay, "final_only", False) or event.is_final:
-                            await self.obs_client.update_text_source(
-                                self.config.obs.text_source_name,
-                                obs_out_text,
-                            )
+            if self.config.obs.update_text_source and self.config.obs.text_source_name:
+                if not getattr(self.config.overlay, "final_only", False) or event.is_final:
+                    self._enqueue_obs_text(
+                        self.config.obs.text_source_name,
+                        obs_out_text,
+                        is_final=event.is_final,
+                    )
 
-                    # Send Twitch/YouTube Closed Captions (only on finalized sentences)
-                    if self.config.obs.send_cea608_captions and event.is_final and clean_text and hasattr(self.obs_client, "send_stream_caption"):
-                        await self.obs_client.send_stream_caption(clean_text)
-                except Exception as e:
-                    logger.error(f"Error dispatching caption to OBS WebSocket: {e}", exc_info=True)
+            # Send Twitch/YouTube Closed Captions (only on finalized sentences)
+            if self.config.obs.send_cea608_captions and event.is_final and clean_text:
+                self._enqueue_obs_cea(clean_text)
 
-        dispatch_coros = []
+        if self.obs_client:
+            _dispatch_obs()
         if self.web_server:
-            dispatch_coros.append(_dispatch_web())
-        if self.obs_client and self.obs_client.is_connected:
-            dispatch_coros.append(_dispatch_obs())
+            await _dispatch_web()
 
-        if dispatch_coros:
-            await asyncio.gather(*dispatch_coros, return_exceptions=True)
+        await asyncio.sleep(0)
 
         # Reset auto-clear timer
         if self.config.overlay.auto_hide_seconds > 0:
@@ -573,12 +667,12 @@ class CaptionSink:
             await asyncio.sleep(sleep_duration)
             self._last_partial_text = None
             # Clear OBS text source
-            if self.obs_client and self.obs_client.is_connected:
-                if self.config.obs.update_text_source and self.config.obs.text_source_name:
-                    await self.obs_client.update_text_source(
-                        self.config.obs.text_source_name,
-                        "",
-                    )
+            if self.config.obs.update_text_source and self.config.obs.text_source_name:
+                self._enqueue_obs_text(
+                    self.config.obs.text_source_name,
+                    "",
+                    is_final=True,
+                )
             # Clear web overlay browser source too
             if self.web_server:
                 await self.web_server.broadcast_caption(
