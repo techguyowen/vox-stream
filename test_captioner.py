@@ -2808,10 +2808,13 @@ class TestWindowsAuditAndResilience(unittest.IsolatedAsyncioTestCase):
         from obs_captioner.config import AudioConfig
 
         ac = AudioCapture(AudioConfig())
-        ac._running = True
-        # update_device must NOT reset _running to False
-        ac.update_device(None)
-        self.assertTrue(ac._running)
+        try:
+            ac._running = True
+            # update_device must NOT reset _running to False
+            ac.update_device(None)
+            self.assertTrue(ac._running)
+        finally:
+            ac.stop()
 
     async def test_obs_open_projector_payloads(self):
         from obs_captioner.obs.ws_client import OBSWebSocketClient
