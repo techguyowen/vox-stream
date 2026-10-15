@@ -1,9 +1,9 @@
 {
-  "version": "1.1.0",
+  "version": "1.2.0",
   "major": 1,
-  "minor": 1,
+  "minor": 2,
   "patch": 0,
-  "release_date": "2026-09-06",
-  "codename": "DirectML & Lexicon",
-  "notes": "AMD Radeon RX 580 DirectML acceleration, STT RAM lifecycle management, church sermon lexicon, scripture tuning, and auto-updater."
+  "release_date": "2026-10-15",
+  "codename": "Live Translate & Real-Time Performance",
+  "notes": "Gemini Live Translate with in-ear audio interpretation, CEA-608 closed captions, decoupled asynchronous queues, constant-time API security, and profile preservation."
 }

@@ -3496,22 +3496,23 @@ class TestVersioningAndSemanticUpdater(unittest.TestCase):
 
     def test_bump_version_cli_dry_run(self):
         from scripts.bump_version import bump_version
-        self.assertEqual(bump_version(bump_type="patch", dry_run=True), "1.1.1")
-        self.assertEqual(bump_version(bump_type="minor", dry_run=True), "1.2.0")
+        self.assertEqual(bump_version(bump_type="patch", dry_run=True), "1.2.1")
+        self.assertEqual(bump_version(bump_type="minor", dry_run=True), "1.3.0")
         self.assertEqual(bump_version(bump_type="major", dry_run=True), "2.0.0")
         self.assertEqual(bump_version(custom_version="3.5.0", dry_run=True), "3.5.0")
 
     def test_updater_sync_check_detects_semantic_version_update(self):
         from unittest.mock import patch, MagicMock
         from obs_captioner.updater import UpdateManager
+        from obs_captioner.version import VERSION, bump_version_string
         import io
 
         updater = UpdateManager()
 
-        # Mock urllib.request.urlopen returning version.json with version 1.2.0
+        # Mock urllib.request.urlopen returning version.json with version 1.3.0
         mock_resp = MagicMock()
         mock_resp.status = 200
-        mock_resp.read.return_value = b'{"version": "1.2.0"}'
+        mock_resp.read.return_value = b'{"version": "1.3.0"}'
         mock_resp.__enter__.return_value = mock_resp
 
         with patch("urllib.request.urlopen", return_value=mock_resp), \
@@ -3521,9 +3522,9 @@ class TestVersioningAndSemanticUpdater(unittest.TestCase):
 
             status = updater._sync_check_update()
             self.assertTrue(status["update_available"])
-            self.assertEqual(status["latest_version"], "1.2.0")
+            self.assertEqual(status["latest_version"], "1.3.0")
             self.assertEqual(status["update_type"], "minor")
-            self.assertEqual(status["current_version"], "1.1.0")
+            self.assertEqual(status["current_version"], VERSION)
 
     def test_updater_sync_check_ahead_of_remote_not_flagged(self):
         from unittest.mock import patch, MagicMock
@@ -3642,6 +3643,7 @@ class TestVersioningAndSemanticUpdater(unittest.TestCase):
         import urllib.error
         from unittest.mock import patch
         from obs_captioner.updater import UpdateManager
+        from obs_captioner.version import VERSION
 
         updater = UpdateManager()
         with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("Network down")), \
@@ -3649,7 +3651,7 @@ class TestVersioningAndSemanticUpdater(unittest.TestCase):
             res = updater._sync_check_update()
             self.assertIsInstance(res, dict)
             self.assertFalse(res["update_available"])
-            self.assertEqual(res["current_version"], "1.1.0")
+            self.assertEqual(res["current_version"], VERSION)
 
     def test_generate_youtube_chapters_expanded_liturgy(self):
         from obs_captioner.history import TranscriptHistory
