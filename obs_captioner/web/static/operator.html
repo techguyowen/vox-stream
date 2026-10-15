@@ -585,6 +585,39 @@
         (function() {
             'use strict';
 
+            // API Authentication Wrapper
+            const API_KEY_STORAGE = "voxstream_api_key";
+            const nativeFetch = window.fetch.bind(window);
+            let authPromptShown = false;
+
+            window.fetch = async (url, opts = {}) => {
+                if (typeof url === "string" && (url.startsWith("/api/") || url.startsWith("/api"))) {
+                    const key = localStorage.getItem(API_KEY_STORAGE);
+                    if (key) {
+                        opts.headers = Object.assign({}, opts.headers, {
+                            "Authorization": `Bearer ${key}`,
+                            "X-API-Key": key
+                        });
+                    }
+                    let res = await nativeFetch(url, opts);
+                    if (res.status === 401 && !authPromptShown) {
+                        authPromptShown = true;
+                        const entered = prompt("This VoxStream server requires an API key (config.json → api.api_key):");
+                        if (entered && entered.trim()) {
+                            localStorage.setItem(API_KEY_STORAGE, entered.trim());
+                            opts.headers = Object.assign({}, opts.headers, {
+                                "Authorization": `Bearer ${entered.trim()}`,
+                                "X-API-Key": entered.trim()
+                            });
+                            res = await nativeFetch(url, opts);
+                            if (res.ok) authPromptShown = false;
+                        }
+                    }
+                    return res;
+                }
+                return nativeFetch(url, opts);
+            };
+
             // DOM Elements
             const connBadge = document.getElementById('conn-badge');
             const connText = document.getElementById('conn-text');
@@ -680,7 +713,9 @@
             // WebSockets Connection
             function connectWs() {
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const wsUrl = `${protocol}//${window.location.host}/api/control/ws`;
+                const key = localStorage.getItem(API_KEY_STORAGE);
+                const querySuffix = key ? `?api_key=${encodeURIComponent(key)}` : '';
+                const wsUrl = `${protocol}//${window.location.host}/api/control/ws${querySuffix}`;
                 controlWs = new WebSocket(wsUrl);
 
                 controlWs.onopen = () => {

@@ -241,12 +241,23 @@ class ModelDownloadManager:
         elif item.engine == "moonshine":
             # Check HuggingFace hub cache or useful-sensors cache
             hf_cache = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub"
+            variant = item.model_key.split("/")[-1].lower()
             if hf_cache.exists():
                 for repo in hf_cache.iterdir():
-                    if "moonshine" in repo.name.lower():
+                    rname = repo.name.lower()
+                    if "moonshine" in rname:
                         snap = repo / "snapshots"
-                        if snap.exists() and any(snap.iterdir()):
+                        if not snap.exists() or not any(snap.iterdir()):
+                            continue
+                        if f"-{variant}" in rname or f"_{variant}" in rname:
                             return True, str(repo)
+                        for s in snap.iterdir():
+                            if s.is_dir():
+                                for root, _, files in os.walk(s):
+                                    if any(variant in f.lower() for f in files):
+                                        return True, str(repo)
+                                if any(variant in d.name.lower() for d in s.iterdir() if d.is_dir()):
+                                    return True, str(repo)
             return False, None
 
         elif item.engine in ("sherpa", "sensevoice", "parakeet"):
@@ -509,19 +520,149 @@ class ModelDownloadManager:
                 return False, f"Model directory for {item.name} not found in cache.", 0
 
             elif item.engine == "local_whisper":
-                hf_cache = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub"
-                hf_dir = hf_cache / f"models--Systran--faster-whisper-{item.model_key}"
-                if hf_dir.exists():
-                    shutil.rmtree(hf_dir, ignore_errors=True)
-                logger.info(f"Deleted Faster-Whisper model '{item.name}' from {hf_dir}")
-                return True, f"Deleted {item.name} from local cache (freed ~{freed_mb} MB).", freed_mb
+                deleted = False
+                deleted_paths = []
+
+                # 1. Dynamically resolve faster-whisper snapshots via download_model(item.model_key, local_files_only=True)
+                try:
+                    import faster_whisper
+                    resolved_path = faster_whisper.download_model(item.model_key, local_files_only=True)
+                    if resolved_path:
+                        p = Path(resolved_path).resolve()
+                        repo_root = p
+                        for parent in [p] + list(p.parents):
+                            if parent.name.startswith("models--"):
+                                repo_root = parent
+                                break
+                        if repo_root.exists():
+                            shutil.rmtree(repo_root, ignore_errors=True)
+                            deleted = True
+                            deleted_paths.append(str(repo_root))
+                except Exception:
+                    pass
+
+                # 2. Multi-candidate fallbacks for Systran, mobiuslabsgmbh, and deepdml directories
+                if not deleted:
+                    hf_cache = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub"
+                    key_clean = item.model_key.replace("distil-", "")
+                    candidates = [
+                        hf_cache / f"models--Systran--faster-whisper-{item.model_key}",
+                        hf_cache / f"models--Systran--faster-distil-whisper-{key_clean}",
+                        hf_cache / f"models--Systran--faster-{item.model_key}",
+                        hf_cache / f"models--Systran--{item.model_key}",
+                        hf_cache / f"models--mobiuslabsgmbh--faster-whisper-{item.model_key}",
+                        hf_cache / f"models--mobiuslabsgmbh--{item.model_key}",
+                        hf_cache / f"models--deepdml--faster-whisper-{item.model_key}",
+                        hf_cache / f"models--deepdml--{item.model_key}",
+                    ]
+                    if "distil" in item.model_key.lower():
+                        candidates.extend([
+                            hf_cache / f"models--mobiuslabsgmbh--faster-distil-whisper-{key_clean}",
+                            hf_cache / f"models--deepdml--faster-distil-whisper-{key_clean}",
+                        ])
+                    else:
+                        candidates.extend([
+                            hf_cache / f"models--mobiuslabsgmbh--faster-whisper-{key_clean}",
+                            hf_cache / f"models--deepdml--faster-whisper-{key_clean}",
+                        ])
+
+                    if hf_cache.is_dir():
+                        for d in hf_cache.iterdir():
+                            d_lower = d.name.lower()
+                            if any(org in d_lower for org in ("systran", "mobiuslabsgmbh", "deepdml")):
+                                if item.model_key.lower() in d_lower:
+                                    if "turbo" not in item.model_key.lower() and "turbo" in d_lower:
+                                        continue
+                                    candidates.append(d)
+                                elif "distil" in item.model_key.lower() and "distil" in d_lower and key_clean.lower() in d_lower:
+                                    if "turbo" not in item.model_key.lower() and "turbo" in d_lower:
+                                        continue
+                                    candidates.append(d)
+
+                    for c in set(candidates):
+                        if c.exists():
+                            shutil.rmtree(c, ignore_errors=True)
+                            deleted = True
+                            deleted_paths.append(str(c))
+
+                if deleted:
+                    logger.info(f"Deleted Faster-Whisper model '{item.name}' from {deleted_paths}")
+                    return True, f"Deleted {item.name} from local cache (freed ~{freed_mb} MB).", freed_mb
+                return False, f"Model directory for {item.name} not found in cache.", 0
 
             elif item.engine == "moonshine":
-                hf_dir = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub" / "models--UsefulSensors--moonshine"
-                if hf_dir.exists():
-                    shutil.rmtree(hf_dir, ignore_errors=True)
-                logger.info(f"Deleted Moonshine model '{item.name}' from {hf_dir}")
-                return True, f"Deleted {item.name} from local cache (freed ~{freed_mb} MB).", freed_mb
+                hf_cache = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub"
+                variant = item.model_key.split("/")[-1].lower()  # e.g. "tiny" or "base"
+                sibling_variants = [v for v in ["tiny", "base"] if v != variant]
+                deleted = False
+
+                if hf_cache.is_dir():
+                    for repo_dir in list(hf_cache.iterdir()):
+                        rname = repo_dir.name.lower()
+                        if "moonshine" in rname:
+                            # If repository belongs to a sibling variant, NEVER delete or prune it
+                            if any(f"-{sib}" in rname or f"_{sib}" in rname for sib in sibling_variants):
+                                continue
+
+                            # 1. If repository is variant-specific, remove whole repo
+                            if f"-{variant}" in rname or f"_{variant}" in rname:
+                                shutil.rmtree(repo_dir, ignore_errors=True)
+                                deleted = True
+                                continue
+
+                            # 2. If shared repository, delete only variant-specific files/dirs
+                            snap_dir = repo_dir / "snapshots"
+                            has_sibling_files = False
+                            if snap_dir.is_dir():
+                                for root, dirs, files in os.walk(repo_dir, topdown=False):
+                                    for f in files:
+                                        f_lower = f.lower()
+                                        if variant in f_lower:
+                                            file_path = Path(root) / f
+                                            try:
+                                                file_path.unlink()
+                                                deleted = True
+                                            except Exception:
+                                                pass
+                                        elif any(sib in f_lower for sib in sibling_variants):
+                                            has_sibling_files = True
+
+                                    for d in dirs:
+                                        d_lower = d.lower()
+                                        dir_path = Path(root) / d
+                                        if variant in d_lower:
+                                            try:
+                                                shutil.rmtree(dir_path, ignore_errors=True)
+                                                deleted = True
+                                            except Exception:
+                                                pass
+                                        elif any(sib in d_lower for sib in sibling_variants):
+                                            has_sibling_files = True
+
+                                # Clean up broken symlinks
+                                for root, dirs, files in os.walk(repo_dir):
+                                    for f in files:
+                                        p = Path(root) / f
+                                        if p.is_symlink() and not p.exists():
+                                            try:
+                                                p.unlink()
+                                            except Exception:
+                                                pass
+
+                                # If no sibling models remain anywhere in the repo, delete the repo root
+                                if not has_sibling_files:
+                                    shutil.rmtree(repo_dir, ignore_errors=True)
+                                    deleted = True
+                            else:
+                                # No snapshots directory; remove repo if no sibling identifier in name
+                                if not any(sib in rname for sib in sibling_variants):
+                                    shutil.rmtree(repo_dir, ignore_errors=True)
+                                    deleted = True
+
+                if deleted:
+                    logger.info(f"Deleted Moonshine model '{item.name}' from local cache")
+                    return True, f"Deleted {item.name} from local cache (freed ~{freed_mb} MB).", freed_mb
+                return False, f"Model directory for {item.name} not found in cache.", 0
 
             elif item.engine in ("sherpa", "sensevoice", "parakeet"):
                 hf_cache = Path(os.environ.get("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub"
@@ -562,7 +703,15 @@ class ModelDownloadManager:
             return False, f"Error deleting model: {e}", 0
 
 
-if __name__ == "__main__":
+def _cli_progress(info: Dict[str, Any]) -> None:
+    """Print download progress events for CLI consumers."""
+    msg = info.get("message") or info.get("status") or ""
+    if msg:
+        print(f"    {msg}")
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    """CLI entry point for model cache management and pre-loading."""
     import argparse
     import sys
 
@@ -578,7 +727,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--preload-defaults",
         action="store_true",
-        help="Pre-download default offline models (Vosk, Faster-Whisper, and Silero VAD) for 100% offline use.",
+        help="Pre-download default offline models (Vosk, Faster-Whisper, and Silero VAD) for 100%% offline use.",
     )
     parser.add_argument("--list", action="store_true", help="List all supported models and their cache status")
     parser.add_argument(
@@ -586,7 +735,7 @@ if __name__ == "__main__":
         type=str,
         help="Download a specific model ID (e.g. whisper_base, vosk_small, moonshine_tiny, all)",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     mgr = ModelDownloadManager()
 
@@ -596,7 +745,7 @@ if __name__ == "__main__":
             status_icon = "✅ CACHED" if m["is_cached"] else "⚪ NOT DOWNLOADED"
             print(f"[{status_icon}] {m['name']} ({m['id']}) - ~{m['size_mb']}MB")
             print(f"    {m['description']}\n")
-        sys.exit(0)
+        return 0
 
     if args.preload_defaults:
         print("\n=== Pre-downloading VoxStream Default Offline AI Models ===")
@@ -615,7 +764,7 @@ if __name__ == "__main__":
         if vosk_item:
             cached, _ = mgr.check_model_cached(vosk_item)
             if not cached:
-                mgr._sync_download_single(vosk_item)
+                mgr._sync_download_single(vosk_item, progress_cb=_cli_progress)
             print("    ✅ Vosk Small model ready.")
 
         # 3. Faster-Whisper Base.en
@@ -624,15 +773,22 @@ if __name__ == "__main__":
         if whisper_item:
             cached, _ = mgr.check_model_cached(whisper_item)
             if not cached:
-                mgr._sync_download_single(whisper_item)
+                mgr._sync_download_single(whisper_item, progress_cb=_cli_progress)
             print("    ✅ Faster-Whisper Base model ready.")
 
         print("\n🎉 All default offline AI models are cached and ready for 100% offline broadcast!\n")
-        sys.exit(0)
+        return 0
 
     if args.download:
         asyncio.run(mgr.download_model(args.download))
-        sys.exit(0)
+        return 0
 
     parser.print_help()
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(main())
+
 

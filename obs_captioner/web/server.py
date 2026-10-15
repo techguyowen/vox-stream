@@ -260,6 +260,8 @@ class WebOverlayServer:
         
         # Transcript, Chapters, Summary, Translation & Export
         self.app.router.add_get("/api/transcript/history", self._handle_get_history)
+        self.app.router.add_post("/api/transcript/clear", self._handle_clear_history)
+        self.app.router.add_post("/api/history/clear", self._handle_clear_history)
         self.app.router.add_get("/api/transcript/stats", self._handle_get_transcript_stats)
         self.app.router.add_get("/api/transcript/chapters", self._handle_get_chapters)
         self.app.router.add_get("/api/transcript/ai-chapters", self._handle_ai_chapters)
@@ -598,6 +600,8 @@ class WebOverlayServer:
 
     async def _handle_post_caddy_start(self, request: web.Request) -> web.Response:
         """Start Caddy reverse proxy."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         from ..caddy_manager import start_caddy
         success, msg = start_caddy()
         if success and getattr(self.config, "caddy", None):
@@ -608,6 +612,8 @@ class WebOverlayServer:
 
     async def _handle_post_caddy_stop(self, request: web.Request) -> web.Response:
         """Stop Caddy reverse proxy."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         from ..caddy_manager import stop_caddy
         success, msg = stop_caddy()
         if success and getattr(self.config, "caddy", None):
@@ -618,12 +624,16 @@ class WebOverlayServer:
 
     async def _handle_post_caddy_download(self, request: web.Request) -> web.Response:
         """Download Caddy binary."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         from ..caddy_manager import download_caddy
         success, msg = download_caddy()
         return web.json_response({"success": success, "message": msg}, status=200 if success else 400)
 
     async def _handle_post_caddy_trust(self, request: web.Request) -> web.Response:
         """Install Caddy root CA into system trust store."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         from ..caddy_manager import trust_caddy_ca
         success, msg = trust_caddy_ca()
         return web.json_response({"success": success, "message": msg}, status=200 if success else 400)
@@ -650,6 +660,8 @@ class WebOverlayServer:
 
     async def _handle_recording_start(self, request: web.Request) -> web.Response:
         """Manually trigger synchronized subtitle sidecar recording."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         if not self.subtitle_recorder:
             return web.json_response({"error": "Recorder not configured"}, status=400)
         try:
@@ -664,6 +676,8 @@ class WebOverlayServer:
 
     async def _handle_recording_stop(self, request: web.Request) -> web.Response:
         """Manually stop synchronized subtitle sidecar recording and finalize files."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         if not self.subtitle_recorder:
             return web.json_response({"error": "Recorder not configured"}, status=400)
         res = self.subtitle_recorder.stop_recording()
@@ -672,6 +686,8 @@ class WebOverlayServer:
 
     async def _handle_trim_memory(self, request: web.Request) -> web.Response:
         """Trigger on-demand garbage collection and physical working set memory trim."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         from ..hardware import release_stt_memory, get_ram_usage_mb
         if self.on_trim_memory and callable(self.on_trim_memory):
             try:
@@ -1760,12 +1776,6 @@ class WebOverlayServer:
                 self.config.censor.custom_replacements.update(dict(replacements))
 
             save_config(self.config)
-            content_filter = getattr(self, "content_filter", None)
-            if content_filter is not None:
-                try:
-                    content_filter.rebuild_dictionary()
-                except Exception:
-                    logger.warning("Failed to rebuild content filter dictionary after import", exc_info=True)
             if self.on_config_updated:
                 self.on_config_updated(self.config)
             return web.json_response({
@@ -2192,19 +2202,20 @@ class WebOverlayServer:
             return
         queue = self._ensure_caption_queue(ws)
         if queue.full():
-            dropped = 0
-            new_deque = collections.deque()
-            for item in queue._queue:
+            items = []
+            while not queue.empty():
+                try:
+                    item = queue.get_nowait()
+                    queue.task_done()
+                    items.append(item)
+                except asyncio.QueueEmpty:
+                    break
+
+            for item in items:
                 if isinstance(item, tuple) and item[0]:
-                    new_deque.append(item)
+                    queue.put_nowait(item)
                 elif not isinstance(item, tuple):
-                    new_deque.append(item)
-                else:
-                    dropped += 1
-            queue._queue = new_deque
-            queue._unfinished_tasks = max(0, queue._unfinished_tasks - dropped)
-            if queue._unfinished_tasks == 0:
-                queue._finished.set()
+                    queue.put_nowait(item)
 
             if not queue.full():
                 queue.put_nowait((is_final, msg_str))
@@ -2212,7 +2223,10 @@ class WebOverlayServer:
                 if is_final:
                     self._close_caption_client(ws)
         else:
-            queue.put_nowait((is_final, msg_str))
+            try:
+                queue.put_nowait((is_final, msg_str))
+            except asyncio.QueueFull:
+                pass
 
     async def _handle_caption_ws(self, request: web.Request) -> web.WebSocketResponse:
         ws = web.WebSocketResponse(heartbeat=25.0)
@@ -2272,8 +2286,14 @@ class WebOverlayServer:
                         task.add_done_callback(self._snapshot_tasks.discard)
             except Exception:
                 pass
-            async for _ in ws:
-                pass
+            async for msg in ws:
+                if msg.type == web.WSMsgType.TEXT:
+                    try:
+                        data = json.loads(msg.data)
+                        if data.get("type") in ("config_update", "config_updated") and role == "bible":
+                            await self.broadcast_control({"type": "config_updated", "config": self.get_masked_config_dict()})
+                    except Exception:
+                        pass
         finally:
             self._close_caption_client(ws)
         return ws
@@ -2456,17 +2476,29 @@ class WebOverlayServer:
 
     async def broadcast_control(self, payload: dict):
         """Broadcast telemetry/config events to dashboard control websockets."""
-        if not self.control_sockets:
-            return
         message = json.dumps(payload)
-        stale = []
-        for ws in list(self.control_sockets):
-            try:
-                await ws.send_str(message)
-            except Exception:
-                stale.append(ws)
-        for ws in stale:
-            self.control_sockets.discard(ws)
+        if self.control_sockets:
+            stale = []
+            for ws in list(self.control_sockets):
+                try:
+                    await ws.send_str(message)
+                except Exception:
+                    stale.append(ws)
+            for ws in stale:
+                self.control_sockets.discard(ws)
+
+        # Synchronize config updates with bible overlay sockets
+        if payload.get("type") in ("config_updated", "config_update"):
+            dead_caps = []
+            for ws in list(self.caption_sockets.keys()):
+                role = self.socket_roles.get(ws, "caption")
+                if role == "bible":
+                    try:
+                        await ws.send_str(message)
+                    except Exception:
+                        dead_caps.append(ws)
+            for ws in dead_caps:
+                self._close_caption_client(ws)
 
     async def broadcast_vu_level(self, db_level: float):
         """Broadcast audio VU level to dashboard clients."""
@@ -2913,6 +2945,8 @@ class WebOverlayServer:
 
     async def _handle_export_system_backup(self, request: web.Request) -> web.Response:
         """Export complete VoxStream backup (all profiles, glossaries, biasing lists, API keys, styles, and settings)."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         from datetime import datetime, timezone
         from dataclasses import asdict
         from ..profiles import get_profile_manager

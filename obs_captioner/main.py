@@ -984,7 +984,7 @@ async def main_async(args):
             logger.warning("Resource cleanup timed out after 3.0s, proceeding with exit.")
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
-        return 42 if is_restart else 0
+    return 42 if is_restart else 0
 
 
 def main():

@@ -26,7 +26,7 @@ MODULE_EXPORT const char *obs_module_description(void)
     return "Ultra-low latency real-time speech captions with church & safety filtering, live translation, and direct OBS rendering.";
 }
 
-MODULE_EXPORT const char *obs_module_ver(void)
+MODULE_EXPORT const char *obs_module_text_version(void)
 {
     return "1.0.0";
 }

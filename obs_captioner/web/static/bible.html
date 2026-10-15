@@ -427,7 +427,7 @@
                         showScriptureVerse(data);
                     } else if (data.type === "scripture_dismiss") {
                         dismissScriptureVerse();
-                    } else if (data.type === "config_update") {
+                    } else if (data.type === "config_update" || data.type === "config_updated") {
                         applyBibleStyles(data.config);
                     }
                 } catch (e) {

@@ -1243,7 +1243,7 @@
                 <div class="brand-badge">
                     <span>🎙️ VoxStream</span>
                     <span class="brand-sub">|</span>
-                    <span class="brand-sub" style="font-weight: 600;">Live Read-Along</span>
+                    <span id="headerCustomTitle" class="brand-sub" style="font-weight: 600;">Live Read-Along</span>
                 </div>
                 <div class="status-pill" id="statusPill" title="Live Speech Recognition Connection">
                     <span class="status-dot"></span>
@@ -2944,10 +2944,11 @@
                             applyDisplayA11yMode(Boolean(d.dyslexia_mode));
                         }
                         // 7. Custom Branding Title
-                        if (d.custom_title && !urlParams.has('title')) {
-                            document.title = `${d.custom_title} - VoxStream`;
-                            const headerTitle = document.querySelector('.header-title') || document.querySelector('h1');
-                            if (headerTitle) headerTitle.textContent = d.custom_title;
+                        const effectiveTitle = urlParams.get('title') || (d && d.custom_title);
+                        if (effectiveTitle) {
+                            document.title = `${effectiveTitle} - VoxStream`;
+                            const headerTitle = document.getElementById('headerCustomTitle') || document.querySelector('.header-title') || document.querySelector('h1');
+                            if (headerTitle) headerTitle.textContent = effectiveTitle;
                         }
                         // 8. Welcome / Connection Card Banner Link
                         if (d.welcome_banner_text) {

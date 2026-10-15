@@ -167,5 +167,9 @@ weights/
 checkpoints/
 *.weights
 
+# Multi-Agent Coordination Workspaces
+.agents/
+
+
 
 

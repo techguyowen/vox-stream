@@ -89,6 +89,20 @@ static std::string toLower(const std::string &str)
     return lower;
 }
 
+static std::string escapeRegex(const std::string &str)
+{
+    static const std::string metachars = "\\.^$*+?()[]{}|";
+    std::string escaped;
+    escaped.reserve(str.length() * 2);
+    for (char c : str) {
+        if (metachars.find(c) != std::string::npos) {
+            escaped.push_back('\\');
+        }
+        escaped.push_back(c);
+    }
+    return escaped;
+}
+
 CensorEngine::CensorEngine()
 {
     rebuildDictionary();
@@ -161,8 +175,8 @@ void CensorEngine::rebuildDictionary()
     blacklist_patterns_.clear();
     for (const auto &t : terms) {
         try {
-            // Regex word boundary pattern
-            std::string pat = "\\b" + t + "\\b";
+            // Regex word boundary pattern with escaped metacharacters
+            std::string pat = "\\b" + escapeRegex(t) + "\\b";
             blacklist_patterns_.emplace_back(std::regex(pat, std::regex_constants::icase), t);
         } catch (...) {
             // Ignore invalid regex

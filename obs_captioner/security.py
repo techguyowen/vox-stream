@@ -1,5 +1,6 @@
 """Security hardening, input validation, and API authentication."""
 
+import hmac
 import html
 import logging
 import re
@@ -72,9 +73,18 @@ class SimpleRateLimiter:
 
     def is_allowed(self, client_ip: str) -> bool:
         now = time.time()
+        cutoff = now - self.window_seconds
+
+        # Prune empty/expired client IP entries to prevent memory growth over long uptimes
+        expired_ips = [
+            ip for ip, timestamps in self._clients.items()
+            if not timestamps or timestamps[-1] <= cutoff
+        ]
+        for ip in expired_ips:
+            del self._clients[ip]
+
         timestamps = self._clients.setdefault(client_ip, [])
-        # Prune older than window
-        timestamps[:] = [t for t in timestamps if now - t < self.window_seconds]
+        timestamps[:] = [t for t in timestamps if t > cutoff]
         
         if len(timestamps) >= self.max_requests:
             return False
@@ -89,16 +99,23 @@ def require_api_auth(config_api_key: str):
         if not config_api_key:
             return True  # Auth not required if no key configured
 
-        # Check Authorization header (Bearer <token>)
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
+        config_bytes = config_api_key.encode("utf-8")
+
+        # 1. Check Authorization header (Bearer <token>, case-insensitive prefix)
+        auth_header = (request.headers.get("Authorization") or request.headers.get("authorization") or "").strip()
+        if auth_header.lower().startswith("bearer "):
             token = auth_header[7:].strip()
-            if token == config_api_key:
+            if token and hmac.compare_digest(token.encode("utf-8"), config_bytes):
                 return True
 
-        # Check query param (?api_key=<token>)
-        query_key = request.query.get("api_key", "").strip()
-        if query_key == config_api_key:
+        # 2. Check X-API-Key header (case-insensitive in aiohttp CIMultiDictProxy, fallback for dict mocks)
+        x_api_key = (request.headers.get("X-API-Key") or request.headers.get("x-api-key") or "").strip()
+        if x_api_key and hmac.compare_digest(x_api_key.encode("utf-8"), config_bytes):
+            return True
+
+        # 3. Check query param (?api_key=<token>)
+        query_key = (request.query.get("api_key", "") if getattr(request, "query", None) else "").strip()
+        if query_key and hmac.compare_digest(query_key.encode("utf-8"), config_bytes):
             return True
 
         return False

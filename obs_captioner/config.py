@@ -189,6 +189,7 @@ class OverlayConfig:
     box_padding: str = "14px 26px"
     text_shadow: str = "2px 2px 5px rgba(0, 0, 0, 0.95)"
     text_stroke: str = "2px #000000"
+    backdrop_blur: str = "8px"
     auto_hide_seconds: float = 4.0
     min_display_seconds: float = 2.5  # Minimum time a caption remains visible on screen (default 2.5s)
     use_italics: bool = False  # Accessibility: False = upright text, True = italic slant
@@ -217,6 +218,7 @@ class OverlayConfig:
             self.box_padding = preset.box_padding
             self.text_shadow = preset.text_shadow
             self.text_stroke = preset.text_stroke
+            self.backdrop_blur = getattr(preset, "backdrop_blur", self.backdrop_blur)
             self.animation_style = preset.animation_style
             self.bottom_offset_px = getattr(preset, "bottom_offset_px", self.bottom_offset_px)
             self.box_layout = getattr(preset, "box_layout", self.box_layout)
@@ -238,6 +240,7 @@ class OverlayConfig:
             self.box_padding = cp.get("box_padding", self.box_padding)
             self.text_shadow = cp.get("text_shadow", self.text_shadow)
             self.text_stroke = cp.get("text_stroke", self.text_stroke)
+            self.backdrop_blur = cp.get("backdrop_blur", self.backdrop_blur)
             self.animation_style = cp.get("animation_style", self.animation_style)
             self.bottom_offset_px = cp.get("bottom_offset_px", self.bottom_offset_px)
             self.box_layout = cp.get("box_layout", self.box_layout)
@@ -263,7 +266,23 @@ class BibleConfig:
     high_contrast_outline: bool = False  # Accessibility: False = normal, True = heavy high-contrast outline
     show_on_stream_overlay: bool = False
     show_on_stage_display: bool = True
+    max_verses_per_slide: int = 2
     bible_max_verses_per_slide: int = 2  # Max verses displayed per card before paginating (1..6, 0=all)
+
+    def __post_init__(self):
+        if self.max_verses_per_slide != 2 and self.bible_max_verses_per_slide == 2:
+            self.bible_max_verses_per_slide = self.max_verses_per_slide
+        elif self.bible_max_verses_per_slide != 2 and self.max_verses_per_slide == 2:
+            self.max_verses_per_slide = self.bible_max_verses_per_slide
+        object.__setattr__(self, "_init_done", True)
+
+    def __setattr__(self, key, value):
+        super().__setattr__(key, value)
+        if getattr(self, "_init_done", False):
+            if key == "max_verses_per_slide" and getattr(self, "bible_max_verses_per_slide", None) != value:
+                super().__setattr__("bible_max_verses_per_slide", value)
+            elif key == "bible_max_verses_per_slide" and getattr(self, "max_verses_per_slide", None) != value:
+                super().__setattr__("max_verses_per_slide", value)
 
 
 @dataclass

@@ -3,6 +3,7 @@
 #include <vector>
 #include <cmath>
 #include <chrono>
+#include <memory>
 
 #include <httplib.h>
 
@@ -86,6 +87,20 @@ void SttWorkerClient::workerLoop()
     std::vector<int16_t> chunk_buffer(1600); // 100ms chunk at 16kHz
     auto last_clear_check = std::chrono::steady_clock::now();
 
+    std::unique_ptr<httplib::Client> http_client;
+    std::string connected_url;
+
+    auto get_or_create_client = [&](const std::string &url) -> httplib::Client* {
+        if (!http_client || connected_url != url) {
+            http_client = std::make_unique<httplib::Client>(url.c_str());
+            http_client->set_keep_alive(true);
+            http_client->set_connection_timeout(0, 500000); // 500ms
+            http_client->set_read_timeout(1, 0);           // 1s
+            connected_url = url;
+        }
+        return http_client.get();
+    };
+
     while (is_running_) {
         size_t available = ring_buffer_.availableSamples();
 
@@ -94,21 +109,26 @@ void SttWorkerClient::workerLoop()
             if (read_count > 0) {
                 float db = computeRmsDb(chunk_buffer.data(), read_count);
 
+                SttClientConfig cfg = getConfig();
                 // Voice Activity Check
-                if (db >= config_.noise_gate_db) {
-                    // Send HTTP POST chunk to backend
-                    // Note: In production C++, we'd parse the URL. For safety, httplib::Client takes the full URL.
-                    httplib::Client cli(config_.backend_url.c_str());
-                    cli.set_connection_timeout(0, 500000); // 500ms
-                    cli.set_read_timeout(1, 0); // 1s
-                    
+                if (db >= cfg.noise_gate_db) {
+                    httplib::Client *cli = get_or_create_client(cfg.backend_url);
+
                     httplib::Headers headers = {
-                        {"Authorization", "Bearer " + config_.api_key}
+                        {"Authorization", "Bearer " + cfg.api_key}
                     };
-                    
-                    auto res = cli.Post("/api/audio/chunk", headers, reinterpret_cast<const char*>(chunk_buffer.data()), read_count * sizeof(int16_t), "application/octet-stream");
+
+                    auto res = cli->Post(
+                        "/api/audio/chunk",
+                        headers,
+                        reinterpret_cast<const char*>(chunk_buffer.data()),
+                        read_count * sizeof(int16_t),
+                        "application/octet-stream"
+                    );
                     if (!res || res->status != 200) {
-                        blog(LOG_WARNING, "[Live Captions] Failed to send audio chunk to backend.");
+                        blog(LOG_WARNING, "[Live Captions] Failed to send audio chunk to backend, reconnecting.");
+                        http_client.reset();
+                        connected_url.clear();
                     }
                 }
             }

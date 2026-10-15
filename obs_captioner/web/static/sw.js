@@ -1,8 +1,8 @@
-const CACHE_NAME = 'voxstream-cache-v15';
+const CACHE_NAME = 'voxstream-cache-v16';
 const PRECACHE_ASSETS = [
-  'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;700&family=Montserrat:wght@700;800&family=Poppins:wght@600;700&display=swap',
   '/display',
   '/dashboard',
+  '/operator',
   '/bible',
   '/manifest.json',
   '/manifest-display.json',
@@ -29,9 +29,13 @@ const PRECACHE_ASSETS = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(PRECACHE_ASSETS).catch((err) => {
-        console.warn('PWA Precache warning:', err);
-      });
+      return Promise.allSettled(
+        PRECACHE_ASSETS.map((asset) =>
+          cache.add(asset).catch((err) => {
+            console.warn(`PWA Precache failed for ${asset}:`, err);
+          })
+        )
+      );
     }).then(() => self.skipWaiting())
   );
 });

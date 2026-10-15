@@ -40,6 +40,7 @@ class VoiceActivityDetector:
         self.silero_model = None
         self.silero_mode = None  # "torch" or "onnx"
         self._onnx_state = None
+        self._was_speaking: bool = False
 
         if enable_silero:
             try:
@@ -103,6 +104,11 @@ class VoiceActivityDetector:
         self.vad_threshold = getattr(audio_config, "vad_threshold", self.vad_threshold)
         self.suppress_music = getattr(audio_config, "suppress_music", self.suppress_music)
         self.suppress_music_strict = getattr(audio_config, "suppress_music_strict", self.suppress_music_strict)
+        if self.silero_model is not None and hasattr(self.silero_model, "reset_states"):
+            try:
+                self.silero_model.reset_states()
+            except Exception:
+                pass
 
     def is_music(
         self,
@@ -148,6 +154,17 @@ class VoiceActivityDetector:
 
     def is_speech(self, audio_chunk_bytes: bytes) -> bool:
         """Return True if speech is detected in the audio chunk."""
+        is_active = self._detect_speech(audio_chunk_bytes)
+        if self._was_speaking and not is_active:
+            if self.silero_model is not None and hasattr(self.silero_model, "reset_states"):
+                try:
+                    self.silero_model.reset_states()
+                except Exception:
+                    pass
+        self._was_speaking = is_active
+        return is_active
+
+    def _detect_speech(self, audio_chunk_bytes: bytes) -> bool:
         # 1. Noise gate check
         db = self.calculate_rms_db(audio_chunk_bytes)
         if db < self.noise_gate_db:

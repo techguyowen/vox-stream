@@ -345,9 +345,20 @@ class UpdateManager:
 
     def _apply_update_git(self, progress_cb: Optional[Callable[[str], None]] = None) -> Tuple[bool, str]:
         """Update via Git pull with safe stash and dependency check."""
+        profiles_dir = self.app_root / "profiles"
+        profile_snapshots: Dict[str, bytes] = {}
+
         try:
             self._safe_progress(progress_cb, "💾 Step 1/4: Preserving local configs and stashing changes...", 20)
             logger.info("Executing git pull origin main...")
+
+            # Snapshot all *.json profile files in profiles/ into memory before git stash
+            if profiles_dir.exists():
+                for p in profiles_dir.glob("*.json"):
+                    try:
+                        profile_snapshots[p.name] = p.read_bytes()
+                    except Exception as err:
+                        logger.warning(f"Could not snapshot profile {p.name}: {err}")
 
             git_cmd = self.get_git_cmd() or "git"
             # 1. Stash any accidental local modifications and untracked files
@@ -388,7 +399,23 @@ class UpdateManager:
                     timeout=15,
                 )
                 if reset_res.returncode != 0:
+                    if profile_snapshots:
+                        profiles_dir.mkdir(parents=True, exist_ok=True)
+                        for fname, content in profile_snapshots.items():
+                            try:
+                                (profiles_dir / fname).write_bytes(content)
+                            except Exception:
+                                pass
                     return False, f"Git update failed: {reset_res.stderr.strip()}"
+
+            # Restore user profiles after git update operations
+            if profile_snapshots:
+                profiles_dir.mkdir(parents=True, exist_ok=True)
+                for fname, content in profile_snapshots.items():
+                    try:
+                        (profiles_dir / fname).write_bytes(content)
+                    except Exception as err:
+                        logger.warning(f"Could not restore profile {fname}: {err}")
 
             # 3. Update Python dependencies
             req_file = self.app_root / "requirements.txt"
@@ -407,6 +434,16 @@ class UpdateManager:
             return True, "VoxStream updated successfully to the latest version!"
 
         except Exception as e:
+            if profile_snapshots:
+                try:
+                    profiles_dir.mkdir(parents=True, exist_ok=True)
+                    for fname, content in profile_snapshots.items():
+                        try:
+                            (profiles_dir / fname).write_bytes(content)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
             logger.error(f"Error applying Git update: {e}", exc_info=True)
             return False, f"Failed to apply update: {e}"
 
@@ -415,9 +452,20 @@ class UpdateManager:
         import tempfile
         import zipfile
 
+        profiles_dir = self.app_root / "profiles"
+        profile_backups: Dict[str, bytes] = {}
+
         try:
             self._safe_progress(progress_cb, "⬇️ Step 1/4: Downloading release archive from GitHub...", 25)
             logger.info(f"Downloading release archive from {GITHUB_ZIP_URL}...")
+
+            # Back up existing profiles/*.json files prior to archive extraction
+            if profiles_dir.exists():
+                for p in profiles_dir.glob("*.json"):
+                    try:
+                        profile_backups[p.name] = p.read_bytes()
+                    except Exception as err:
+                        logger.warning(f"Could not backup profile {p.name}: {err}")
 
             with tempfile.TemporaryDirectory() as tmp_dir:
                 zip_path = Path(tmp_dir) / "update.zip"
@@ -504,6 +552,15 @@ class UpdateManager:
                     else:
                         _safe_copy_file(item, dest)
 
+                # Restore user modifications to profiles
+                if profile_backups:
+                    profiles_dir.mkdir(parents=True, exist_ok=True)
+                    for fname, content in profile_backups.items():
+                        try:
+                            (profiles_dir / fname).write_bytes(content)
+                        except Exception as err:
+                            logger.warning(f"Could not restore user profile {fname}: {err}")
+
                 # Update dependencies
                 req_file = self.app_root / "requirements.txt"
                 if req_file.exists():
@@ -518,6 +575,16 @@ class UpdateManager:
             return True, "VoxStream updated successfully from GitHub archive!"
 
         except Exception as e:
+            if profile_backups:
+                try:
+                    profiles_dir.mkdir(parents=True, exist_ok=True)
+                    for fname, content in profile_backups.items():
+                        try:
+                            (profiles_dir / fname).write_bytes(content)
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
             logger.error(f"Error applying Zip update: {e}", exc_info=True)
             return False, f"Failed to download or apply update: {e}"
 

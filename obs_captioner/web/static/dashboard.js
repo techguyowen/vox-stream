@@ -167,18 +167,16 @@ function setupA11yPresets() {
     const chkLetterSp = document.getElementById("a11y_toggle_letter_spacing");
     if (chkLetterSp) {
         chkLetterSp.addEventListener("change", () => {
-            const box = document.getElementById("preview-caption-box");
-            if (box) box.style.letterSpacing = chkLetterSp.checked ? "0.05em" : "normal";
+            updatePreviewStyles();
+            autoSyncStyleChanges();
         });
     }
 
     const chkStroke = document.getElementById("a11y_toggle_contrast_outline");
     if (chkStroke) {
         chkStroke.addEventListener("change", () => {
-            const box = document.getElementById("preview-caption-box");
-            if (box) {
-                box.style.webkitTextStroke = chkStroke.checked ? "3px #000000" : "1.5px #000000";
-            }
+            updatePreviewStyles();
+            autoSyncStyleChanges();
         });
     }
 
@@ -189,6 +187,16 @@ function setupA11yPresets() {
             if (animSel && chkMotion.checked) {
                 animSel.value = "instant";
             }
+            updatePreviewStyles();
+            autoSyncStyleChanges();
+        });
+    }
+
+    const chkItal = document.getElementById("overlay_use_italics");
+    if (chkItal) {
+        chkItal.addEventListener("change", () => {
+            updatePreviewStyles();
+            autoSyncStyleChanges();
         });
     }
 
@@ -199,6 +207,7 @@ function setupA11yPresets() {
                 previewInterim.textContent = "";
             }
             updatePreviewStyles();
+            autoSyncStyleChanges();
         });
     }
 
@@ -617,8 +626,14 @@ function initBibleHandlers() {
     
     const overlayItal = document.getElementById("overlay_use_italics");
     if (overlayItal) {
-        overlayItal.addEventListener("change", updatePreviewStyles);
-        overlayItal.addEventListener("click", updatePreviewStyles);
+        overlayItal.addEventListener("change", () => {
+            updatePreviewStyles();
+            autoSyncStyleChanges();
+        });
+        overlayItal.addEventListener("click", () => {
+            updatePreviewStyles();
+            autoSyncStyleChanges();
+        });
     }
 
     const bibleItal = document.getElementById("bible_tab_use_italics");
@@ -2020,6 +2035,22 @@ function populateFormFields(cfg) {
             const el = document.getElementById("overlay_final_only");
             if (el) el.checked = !!ov.final_only;
         }
+        if (ov.letter_spacing !== undefined) {
+            const chkLetterSp = document.getElementById("a11y_toggle_letter_spacing");
+            if (chkLetterSp) chkLetterSp.checked = (ov.letter_spacing === "0.05em");
+        }
+        if (ov.high_contrast_outline !== undefined) {
+            const chkStroke = document.getElementById("a11y_toggle_contrast_outline");
+            if (chkStroke) chkStroke.checked = !!ov.high_contrast_outline;
+        }
+        if (ov.reduce_motion !== undefined) {
+            const chkMotion = document.getElementById("a11y_toggle_reduce_motion");
+            if (chkMotion) chkMotion.checked = !!ov.reduce_motion;
+        }
+        if (ov.use_italics !== undefined) {
+            const chkItal = document.getElementById("overlay_use_italics");
+            if (chkItal) chkItal.checked = !!ov.use_italics;
+        }
         if (ov.bottom_offset_px !== undefined) {
             const boEl = document.getElementById("bottom_offset_slider");
             if (boEl) boEl.value = ov.bottom_offset_px;
@@ -2599,6 +2630,10 @@ function buildOverlayStylePayload() {
         interim_color: document.getElementById("interim_color").value,
         highlight_color: document.getElementById("highlight_color").value,
         background_box_color: `rgba(${r}, ${g}, ${b}, ${opacity})`,
+        letter_spacing: (document.getElementById("a11y_toggle_letter_spacing") && document.getElementById("a11y_toggle_letter_spacing").checked) ? "0.05em" : "normal",
+        high_contrast_outline: document.getElementById("a11y_toggle_contrast_outline") ? document.getElementById("a11y_toggle_contrast_outline").checked : false,
+        reduce_motion: document.getElementById("a11y_toggle_reduce_motion") ? document.getElementById("a11y_toggle_reduce_motion").checked : false,
+        use_italics: document.getElementById("overlay_use_italics") ? document.getElementById("overlay_use_italics").checked : false,
         final_only: document.getElementById("overlay_final_only") ? document.getElementById("overlay_final_only").checked : false,
         bottom_offset_px: parseInt(document.getElementById("bottom_offset_slider") ? document.getElementById("bottom_offset_slider").value : "40", 10) || 40,
         backdrop_blur: `${parseInt(document.getElementById("backdrop_blur_slider") ? document.getElementById("backdrop_blur_slider").value : "8", 10) || 8}px`,
@@ -2645,10 +2680,20 @@ function updatePreviewStyles() {
     const b = parseInt(bgPicker.slice(5, 7), 16);
     const bgColorRgba = `rgba(${r}, ${g}, ${b}, ${opacity})`;
 
+    const chkLetterSp = document.getElementById("a11y_toggle_letter_spacing");
+    const chkStroke = document.getElementById("a11y_toggle_contrast_outline");
+    const chkItal = document.getElementById("overlay_use_italics");
+
+    const letterSpacing = (chkLetterSp && chkLetterSp.checked) ? "0.05em" : "normal";
+    const fontStyle = (chkItal && chkItal.checked) ? "italic" : "normal";
+    const textStroke = (chkStroke && chkStroke.checked) ? "3.5px #000000" : "1.5px #000000";
+
     previewBox.style.fontFamily = font;
     previewBox.style.maxWidth = maxWidth;
     previewBox.style.textAlign = textAlign;
     previewBox.style.background = bgColorRgba;
+    previewBox.style.letterSpacing = letterSpacing;
+    previewBox.style.fontStyle = fontStyle;
 
     const accentLine = document.getElementById("accent_line") ? document.getElementById("accent_line").value : "none";
     const accentColor = document.getElementById("accent_color") ? document.getElementById("accent_color").value : "#38BDF8";
@@ -2661,9 +2706,15 @@ function updatePreviewStyles() {
 
     previewFinal.style.fontSize = fontSize;
     previewFinal.style.color = textColor;
+    previewFinal.style.letterSpacing = letterSpacing;
+    previewFinal.style.fontStyle = fontStyle;
+    previewFinal.style.webkitTextStroke = textStroke;
 
     previewInterim.style.fontSize = fontSize;
     previewInterim.style.color = interimColor;
+    previewInterim.style.letterSpacing = letterSpacing;
+    previewInterim.style.fontStyle = fontStyle;
+    previewInterim.style.webkitTextStroke = textStroke;
 
     // Show realistic lines in the preview according to max_lines
     if (maxLines === 1) {
@@ -2872,7 +2923,12 @@ function updateWhisperStats() {
     if (headEl) headEl.textContent = headroom;
 }
 
-document.getElementById("whisper_model").addEventListener("change", updateWhisperStats);
+document.getElementById("whisper_model").addEventListener("change", () => {
+    updateWhisperStats();
+    if (cachedBenchmarkData) {
+        renderBenchmarkRankings(cachedBenchmarkData);
+    }
+});
 document.getElementById("whisper_device").addEventListener("change", updateWhisperStats);
 document.getElementById("whisper_compute").addEventListener("change", updateWhisperStats);
 
@@ -3110,9 +3166,19 @@ if (btnRunVocabTest) {
 
 // Suggest terms from recent transcript
 const btnScanTranscript = document.getElementById("btn-scan-transcript-terms");
+const btnCloseSuggested = document.getElementById("btn-close-suggested-terms");
+const suggestedBox = document.getElementById("transcript-suggested-terms-box");
+
+if (btnCloseSuggested && suggestedBox) {
+    btnCloseSuggested.addEventListener("click", () => {
+        suggestedBox.style.display = "none";
+    });
+}
+
 if (btnScanTranscript) {
     btnScanTranscript.addEventListener("click", async () => {
-        const chipsContainer = document.getElementById("suggested-terms-chips");
+        const chipsContainer = document.getElementById("transcript-suggested-terms-chips") || document.getElementById("suggested-terms-chips");
+        if (suggestedBox) suggestedBox.style.display = "block";
         if (!chipsContainer) return;
         chipsContainer.innerHTML = '<span style="font-size: 11px; color: var(--text-muted);">Scanning recent transcript history...</span>';
         try {
@@ -3150,8 +3216,8 @@ if (btnScanTranscript) {
                 btn.innerHTML = `<span>+ <strong>${escapeHtml(term)}</strong></span> <span style="opacity: 0.6; font-size: 9.5px;">(${termCounts[term]}x)</span>`;
                 btn.title = `Click to prefill '${term}' into Glossary Correct Replacement`;
                 btn.addEventListener("click", () => {
-                    const repInput = document.getElementById("vocab-replacement");
-                    const misInput = document.getElementById("vocab-misheard");
+                    const repInput = document.getElementById("new-vocab-sub") || document.getElementById("vocab-replacement");
+                    const misInput = document.getElementById("new-vocab-orig") || document.getElementById("vocab-misheard");
                     if (repInput) repInput.value = term;
                     if (misInput) {
                         misInput.value = term.toLowerCase();
@@ -5830,12 +5896,26 @@ function renderBenchmarkRankings(data, activeEngineId) {
     if (!tbody || !data || !data.rankings) return;
 
     const currentEngine = (activeEngineId || (currentConfig && currentConfig.general && currentConfig.general.engine) || "local_whisper").toLowerCase();
+    const activeWhisperModel = (document.getElementById("whisper_model")?.value || (currentConfig && currentConfig.local_whisper && currentConfig.local_whisper.model_size) || "base.en").toLowerCase();
 
     tbody.innerHTML = data.rankings.map(e => {
-        const isMatch = (e.engine_id.toLowerCase() === currentEngine) ||
-                        (currentEngine === "vosk" && e.engine_id === "vosk") ||
-                        (currentEngine === "local_whisper" && e.engine_id === "local_whisper") ||
-                        (currentEngine === "moonshine" && e.engine_id === "moonshine");
+        let isMatch = false;
+        if (e.engine_id.toLowerCase() === currentEngine) {
+            if (currentEngine === "local_whisper") {
+                const spec = (e.model_spec || "").toLowerCase();
+                if (spec.includes("distil-large-v3")) {
+                    isMatch = activeWhisperModel.includes("distil-large-v3");
+                } else if (spec.includes("large-v3-turbo")) {
+                    isMatch = activeWhisperModel.includes("large-v3-turbo");
+                } else if (spec.includes("base.en")) {
+                    isMatch = activeWhisperModel.includes("base.en") || (!activeWhisperModel.includes("distil-large-v3") && !activeWhisperModel.includes("large-v3-turbo"));
+                } else {
+                    isMatch = spec.includes(activeWhisperModel);
+                }
+            } else {
+                isMatch = true;
+            }
+        }
 
         const rankMedals = { 1: "🥇", 2: "🥈", 3: "🥉" };
         const medal = rankMedals[e.rank] || `#${e.rank}`;
@@ -5849,7 +5929,7 @@ function renderBenchmarkRankings(data, activeEngineId) {
             ? `<span style="background: rgba(16, 185, 129, 0.18); color: #10B981; border: 1px solid #10B981; padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; gap: 5px;">
                  <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#10B981;"></span> Active
                </span>`
-            : `<button class="btn btn-secondary btn-sm" onclick="selectEngineFromLeaderboard('${e.engine_id}')" style="padding: 4px 10px; font-size: 11px; border-radius: 6px; cursor: pointer;">
+            : `<button class="btn btn-secondary btn-sm" onclick="selectEngineFromLeaderboard('${e.engine_id}', '${escapeHtml(e.model_spec || '')}')" style="padding: 4px 10px; font-size: 11px; border-radius: 6px; cursor: pointer;">
                  Select
                </button>`;
 
@@ -5889,11 +5969,26 @@ function renderBenchmarkRankings(data, activeEngineId) {
     }).join("");
 }
 
-async function selectEngineFromLeaderboard(engineId) {
+async function selectEngineFromLeaderboard(engineId, modelSpec) {
     const engineSelect = document.getElementById("engine_select");
     if (engineSelect) {
         engineSelect.value = engineId;
         engineSelect.dispatchEvent(new Event("change"));
+    }
+
+    let selectedWhisperModel = null;
+    if (engineId === "local_whisper" && modelSpec) {
+        const whisperModel = document.getElementById("whisper_model");
+        if (whisperModel) {
+            const spec = modelSpec.toLowerCase();
+            if (spec.includes("distil-large-v3")) selectedWhisperModel = "distil-large-v3";
+            else if (spec.includes("large-v3-turbo")) selectedWhisperModel = "large-v3-turbo";
+            else if (spec.includes("base.en")) selectedWhisperModel = "base.en";
+            if (selectedWhisperModel) {
+                whisperModel.value = selectedWhisperModel;
+                whisperModel.dispatchEvent(new Event("change"));
+            }
+        }
     }
 
     if (engineId === "gemini_live") {
@@ -5930,6 +6025,11 @@ async function selectEngineFromLeaderboard(engineId) {
             engine: engineId
         }
     };
+    if (engineId === "local_whisper" && selectedWhisperModel) {
+        payload.local_whisper = {
+            model_size: selectedWhisperModel
+        };
+    }
     await saveConfigPayload(payload, `Switched engine to ${engineId}!`);
     if (cachedBenchmarkData) {
         renderBenchmarkRankings(cachedBenchmarkData, engineId);

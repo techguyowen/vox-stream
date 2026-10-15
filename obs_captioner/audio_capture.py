@@ -131,6 +131,75 @@ def find_audio_device(config: AudioConfig, wait_settle: bool = True) -> Tuple[Op
     return devices[0]["index"], devices[0]
 
 
+async def find_audio_device_async(config: AudioConfig, wait_settle: bool = True) -> Tuple[Optional[int], Optional[Dict]]:
+    """Asynchronously resolve the appropriate input device based on index or name filter.
+
+    Includes a boot settle delay for USB audio interfaces (Focusrite, Behringer, etc.)
+    that may take a few seconds to enumerate on system startup, without blocking the asyncio event loop.
+    """
+    settle_sec = getattr(config, "device_settle_seconds", 4.0) or 0.0
+    is_specific = (config.device_index is not None) or (
+        bool(config.device_name_filter) and config.device_name_filter.strip().lower() != "default"
+    )
+
+    start_time = time.monotonic()
+    attempts = 0
+    devices: List[Dict] = []
+
+    while True:
+        attempts += 1
+        devices = list_audio_devices()
+        if devices:
+            # 1. Match by explicit index
+            if config.device_index is not None:
+                for d in devices:
+                    if d["index"] == config.device_index:
+                        if attempts > 1:
+                            logger.info(
+                                f"✅ Audio device index {config.device_index} ready after {time.monotonic() - start_time:.1f}s settle delay."
+                            )
+                        return d["index"], d
+
+            # 2. Match by name filter
+            query = (config.device_name_filter or "").strip().lower()
+            if query and query != "default":
+                matches = [d for d in devices if query in d["name"].lower()]
+                if matches:
+                    wasapi_matches = [d for d in matches if "wasapi" in d["hostapi"].lower()]
+                    selected = wasapi_matches[0] if wasapi_matches else matches[0]
+                    if attempts > 1:
+                        logger.info(
+                            f"✅ Audio device '{selected['name']}' ready after {time.monotonic() - start_time:.1f}s settle delay."
+                        )
+                    return selected["index"], selected
+
+        elapsed = time.monotonic() - start_time
+        if not wait_settle or not is_specific or elapsed >= settle_sec:
+            break
+        await asyncio.sleep(0.4)
+
+    if not devices:
+        return None, None
+
+    if is_specific and settle_sec > 0:
+        logger.warning(
+            f"Configured audio device (filter='{config.device_name_filter}', index={config.device_index}) "
+            f"not found after {settle_sec:.1f}s boot settle window. Falling back to system default input."
+        )
+
+    # 3. Default input device
+    try:
+        default_idx = sd.default.device[0]
+        if default_idx is not None and default_idx >= 0:
+            for d in devices:
+                if d["index"] == default_idx:
+                    return d["index"], d
+    except Exception:
+        pass
+
+    return devices[0]["index"], devices[0]
+
+
 class AudioCapture:
     """Captures continuous 16kHz mono 16-bit PCM audio stream with real-time level metering."""
 
@@ -153,6 +222,20 @@ class AudioCapture:
         self._overflow_drops = 0
         self._last_overflow_log = 0.0
 
+    def _flush_overflow_warning(self) -> None:
+        """Log throttled queue-overflow drops and reset overflow drop count."""
+        if self._overflow_drops <= 0:
+            return
+        now = time.monotonic()
+        if self._last_overflow_log == 0.0 or now - self._last_overflow_log >= 5.0:
+            self._last_overflow_log = now
+            dropped = self._overflow_drops
+            self._overflow_drops = 0
+            logger.warning(
+                f"Audio capture queue full; dropped {dropped} oldest chunk(s) "
+                f"to keep up (downstream consumer is stalled)."
+            )
+
     def _note_queue_overflow(self) -> None:
         """Record a queue-overflow chunk drop with a throttled warning.
 
@@ -161,14 +244,7 @@ class AudioCapture:
         gaps diagnosable without spamming the log during a stall.
         """
         self._overflow_drops += 1
-        now = time.monotonic()
-        if self._last_overflow_log == 0.0 or now - self._last_overflow_log >= 5.0:
-            self._last_overflow_log = now
-            dropped, self._overflow_drops = self._overflow_drops, 0
-            logger.warning(
-                f"Audio capture queue full; dropped {dropped} oldest chunk(s) "
-                f"to keep up (downstream consumer is stalled)."
-            )
+        self._flush_overflow_warning()
 
     def _apply_agc_and_limiter(self, audio_f: np.ndarray) -> np.ndarray:
         """
@@ -315,7 +391,7 @@ class AudioCapture:
                             self._queue.put_nowait(pcm_bytes)
                         except Exception:
                             pass
-                        self._note_queue_overflow()
+                        self._overflow_drops += 1
 
                 return audio_callback
 
@@ -464,7 +540,7 @@ class AudioCapture:
                     except Exception:
                         pass
 
-                new_idx, new_info = find_audio_device(self.config)
+                new_idx, new_info = await find_audio_device_async(self.config)
                 if new_idx is not None:
                     if self.stream is not None:
                         s = self.stream
@@ -492,8 +568,10 @@ class AudioCapture:
         silence_chunk = b"\x00" * (self.chunk_samples * 2)
 
         while self._running:
+            self._flush_overflow_warning()
             try:
                 chunk = await loop.run_in_executor(None, self._queue.get, True, 0.2)
+                self._flush_overflow_warning()
                 empty_strikes = 0
                 if self.is_recovering:
                     self.is_recovering = False

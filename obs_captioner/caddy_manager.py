@@ -285,6 +285,11 @@ def trust_caddy_ca() -> Tuple[bool, str]:
     return True, f"Caddy root CA generated at {ca_crt}"
 
 
+# Backward compatibility aliases for setup scripts and external callers
+install_local_ca = trust_caddy_ca
+trust_caddy_ca = install_local_ca
+
+
 def start_caddy(config_file: Optional[str] = None) -> Tuple[bool, str]:
     """Start Caddy reverse proxy in background using `caddy start`."""
     caddy_bin = find_caddy_binary()

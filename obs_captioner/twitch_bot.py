@@ -36,7 +36,7 @@ class TwitchCaptionBot:
 
         logger.info(f"Connecting Twitch Caption Bot to #{self.config.channel}...")
         try:
-            self.reader, self.writer = await asyncio.open_connection("irc.chat.twitch.tv", 6667)
+            self.reader, self.writer = await asyncio.open_connection("irc.chat.twitch.tv", 6697, ssl=True)
             
             token = self.config.oauth_token
             if not token.startswith("oauth:"):
