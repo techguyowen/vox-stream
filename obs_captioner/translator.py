@@ -50,6 +50,7 @@ class TranslationConfig:
     target_language: str = "es"  # e.g., "es" for Spanish
     display_mode: str = "dual"  # "dual" (original + translated), "translated_only"
     provider: str = "google_free"  # "google_free", "nllb", "gemini_live"
+    interpreter_mode: bool = False  # When True and target != "en", uses gemini-3.5-live-translate-preview
     gemini_api_key: str = ""  # If empty, automatically falls back to gemini_live API key
     temperature: float = 0.1
     dual_subtitle_color: str = "#FFD700"  # Classic Subtitle Gold/Yellow
@@ -121,10 +122,24 @@ class SubtitleTranslator:
 
         def _sync_gemini_call() -> Optional[str]:
             payload = {
+                "systemInstruction": {
+                    "parts": [{
+                        "text": (
+                            "You are a professional ecclesiastical interpreter for live church sermon subtitles. "
+                            "Translate accurately and naturally into the target language while preserving theological precision. "
+                            "Canonical ecclesiastical terms must match biblical standards (e.g. Spanish 'Reino de Dios', 'Espíritu Santo'; Korean '성령', '회개'). "
+                            "Preacher names and church names must be preserved verbatim. "
+                            "Return only the direct translation without quotes, commentary, or markdown."
+                        )
+                    }]
+                },
+                "generationConfig": {
+                    "temperature": 0.0
+                },
                 "contents": [{"parts": [{"text": f"Translate to {target_name}: {text}"}]}],
             }
             data_bytes = json.dumps(payload).encode("utf-8")
-            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-live-translate-preview:generateContent?key={api_key}"
+            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key={api_key}"
             try:
                 req = urllib.request.Request(
                     endpoint,
@@ -161,8 +176,9 @@ class SubtitleTranslator:
 
         clean_text = text.strip()
         t_code = target_lang.lower().strip() if target_lang else "en"
+        s_code = source_lang.lower().strip() if source_lang else "auto"
 
-        if t_code in ("en", "original", "none", ""):
+        if t_code in ("original", "none", "") or (t_code == s_code and s_code != "auto") or (t_code == "en" and s_code in ("en", "auto")):
             return clean_text
 
         # Map language code if necessary (e.g. zh -> zh-CN)
@@ -182,7 +198,7 @@ class SubtitleTranslator:
                 return cached_disk
 
         translated = None
-        if provider == "nllb":
+        if provider in ("nllb", "local"):
             try:
                 src_code = source_lang if source_lang and source_lang != "auto" else "en"
                 translated = await self.nllb_translator.translate(
@@ -196,7 +212,7 @@ class SubtitleTranslator:
                 logger.warning(f"NLLB-200 translation failed: {e}. Falling back to default provider.")
                 translated = None
 
-        elif provider in ("gemini", "gemini_live"):
+        elif provider in ("gemini", "gemini_flash", "gemini_live"):
             api_key = self.get_gemini_api_key()
             if api_key:
                 translated = await self._fetch_gemini_translation(clean_text, source_lang, resolved_target, api_key)
@@ -282,7 +298,7 @@ class SubtitleTranslator:
                 ),
                 # 3. MyMemory Free API
                 (
-                    f"https://api.mymemory.translated.net/get?q={encoded_text}&langpair=en|{target}",
+                    f"https://api.mymemory.translated.net/get?q={encoded_text}&langpair={source if source and source != 'auto' else 'en'}|{target}",
                     "mymemory"
                 )
             ]

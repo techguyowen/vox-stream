@@ -140,6 +140,7 @@ tests/
 /test
 /test.*
 /test_*
+!test_captioner.py
 !test_perf_*.py
 .coverage
 .coverage.*
@@ -147,10 +148,24 @@ htmlcov/
 nosetests.xml
 coverage.xml
 
+# SQLite Temporary Files & Local Caches
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+translation_cache.db
+!obs_captioner/data/bible.db
+
+# Headless Browser & CLI Typo Artifacts
+about:blank
+--*
+
 # Local Model Downloads & Scratch Caches
 models/
 weights/
 checkpoints/
 *.weights
+
 
 

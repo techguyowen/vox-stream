@@ -20,7 +20,7 @@ import os
 import re
 import ssl
 import time
-from typing import AsyncGenerator, Callable, Dict, List, Optional, Tuple, Any
+from typing import AsyncGenerator, Callable, Dict, List, Optional, Tuple, Any, Sequence
 
 import aiohttp
 
@@ -60,7 +60,37 @@ SESSION_HARD_ROTATION_SEC = 550.0       # (~9.16 minutes) forced rotation thresh
 
 
 
-def _is_duplicate_of_events(text: str, events: List[Tuple[str, bool]]) -> bool:
+class ParsedTranscriptTuple(tuple):
+    """3-element tuple (text, is_final, translated_text) with backwards-compatible 2-tuple equality."""
+
+    def __new__(cls, text: str, is_final: bool, translated_text: Optional[str] = None):
+        return super().__new__(cls, (text, is_final, translated_text))
+
+    @property
+    def text(self) -> str:
+        return self[0]
+
+    @property
+    def is_final(self) -> bool:
+        return self[1]
+
+    @property
+    def translated_text(self) -> Optional[str]:
+        return self[2]
+
+    def __eq__(self, other: Any) -> bool:
+        if isinstance(other, tuple):
+            if len(other) == 2:
+                return (self[0], self[1]) == other
+            elif len(other) == 3:
+                return (self[0], self[1], self[2]) == other
+        return super().__eq__(other)
+
+    def __ne__(self, other: Any) -> bool:
+        return not self.__eq__(other)
+
+
+def _is_duplicate_of_events(text: str, events: Sequence[Tuple[Any, ...]]) -> bool:
     """Return True when an interim hypothesis merely restates an event's text.
 
     Same-message interim/final pairs overlap when the interim is a stale
@@ -70,7 +100,8 @@ def _is_duplicate_of_events(text: str, events: List[Tuple[str, bool]]) -> bool:
     candidate = " ".join(str(text).split()).casefold()
     if not candidate:
         return True
-    for event_text, _ in events:
+    for ev in events:
+        event_text = ev[0]
         existing = " ".join(str(event_text).split()).casefold()
         if candidate and existing and candidate in existing:
             return True
@@ -95,6 +126,7 @@ class GeminiLiveEngine(BaseSTTEngine):
         self._resumption_handle: Optional[str] = None
         self._go_away_received: bool = False
         self.last_rotation_time: float = 0.0
+        self.on_audio_data: Optional[Callable[[bytes, str], Any]] = None
 
         # Client-side VAD for zero-latency Hybrid VAD turn finalization
         self.vad = VoiceActivityDetector(
@@ -357,8 +389,17 @@ class GeminiLiveEngine(BaseSTTEngine):
         if lang_codes:
             input_audio_transcription["languageCodes"] = lang_codes
 
-        is_live_translate = "translate" in model.lower()
+        is_live_translate = (
+            "translate" in model.lower()
+            or bool(
+                getattr(self.config, "translation", None)
+                and getattr(self.config.translation, "enabled", False)
+                and getattr(self.config.translation, "interpreter_mode", False)
+                and getattr(self.config.translation, "target_language", "en") not in ("en", "none", "")
+            )
+        )
         if is_live_translate:
+            model = "models/gemini-3.5-live-translate-preview"
             target_lang = getattr(getattr(self.config, "translation", None), "target_language", "es") or "es"
             gen_config: Dict[str, Any] = {
                 "responseModalities": ["AUDIO"],
@@ -400,41 +441,45 @@ class GeminiLiveEngine(BaseSTTEngine):
 
         return setup_dict
 
-    def parse_server_message(self, data: Dict[str, Any]) -> List[Tuple[str, bool]]:
+    def parse_server_message(self, data: Dict[str, Any]) -> List[ParsedTranscriptTuple]:
         """Parse Gemini Live server JSON response and extract text events.
 
-        Returns a list of (text, is_final) tuples.
+        Returns a list of (text, is_final, translated_text) tuples.
         """
-        events: List[Tuple[str, bool]] = []
+        events: List[ParsedTranscriptTuple] = []
         server_content = data.get("serverContent")
         if not isinstance(server_content, dict):
             return events
 
-        # 0. Live translated output (from gemini-3.5-live-translate-preview)
-        output_obj = server_content.get("outputTranscription")
-        if isinstance(output_obj, dict) and output_obj.get("text"):
-            out_text = str(output_obj["text"]).strip()
-            if out_text:
-                if not is_hallucinated_or_leaked_text(out_text):
-                    events.append((out_text, True))
-                else:
-                    logger.warning(f"Suppressed hallucinated translated text from Gemini Live: {out_text}")
-
-        # 1. Authoritative finalized transcription (emitted on speech completion)
+        # Extract finalized transcriptions: inputTranscription (original) and outputTranscription (translated)
         final_obj = server_content.get("inputTranscription")
-        if isinstance(final_obj, dict) and final_obj.get("text"):
-            text = str(final_obj["text"]).strip()
-            if text and not output_obj:
-                if not is_hallucinated_or_leaked_text(text):
-                    events.append((text, True))
-                else:
-                    logger.warning(f"Suppressed hallucinated final transcript from Gemini Live: {text}")
+        output_obj = server_content.get("outputTranscription")
 
-        # 2. Speculative interim hypothesis (updates rapidly while user speaks).
-        # Suppressed only when it merely restates a final from this same
-        # message, otherwise the stale interim would emit AFTER its final and
-        # linger on screen. An interim that reaches beyond the finals carries
-        # newer speech and is still emitted, so fresh words are never dropped.
+        input_text = ""
+        output_text = ""
+
+        if isinstance(final_obj, dict) and final_obj.get("text"):
+            raw_in = str(final_obj["text"]).strip()
+            if raw_in and not is_hallucinated_or_leaked_text(raw_in):
+                input_text = raw_in
+            elif raw_in:
+                logger.warning(f"Suppressed hallucinated final transcript from Gemini Live: {raw_in}")
+
+        if isinstance(output_obj, dict) and output_obj.get("text"):
+            raw_out = str(output_obj["text"]).strip()
+            if raw_out and not is_hallucinated_or_leaked_text(raw_out):
+                output_text = raw_out
+            elif raw_out:
+                logger.warning(f"Suppressed hallucinated translated text from Gemini Live: {raw_out}")
+
+        if input_text and output_text:
+            events.append(ParsedTranscriptTuple(input_text, True, output_text))
+        elif output_text:
+            events.append(ParsedTranscriptTuple(output_text, True, output_text))
+        elif input_text:
+            events.append(ParsedTranscriptTuple(input_text, True, None))
+
+        # Speculative interim hypothesis (updates rapidly while user speaks).
         interim_obj = server_content.get("interimInputTranscription")
         if isinstance(interim_obj, dict) and interim_obj.get("text"):
             text = str(interim_obj["text"]).strip()
@@ -443,14 +488,27 @@ class GeminiLiveEngine(BaseSTTEngine):
                     if events and _is_duplicate_of_events(text, events):
                         logger.debug("Suppressed stale interim restating a final in the same message.")
                     else:
-                        events.append((text, False))
+                        events.append(ParsedTranscriptTuple(text, False, None))
                 else:
                     logger.debug(f"Suppressed hallucinated interim transcript from Gemini Live: {text}")
 
-        # 3. Conversational fallback (modelTurn parts)
+        # Conversational fallback & synthesized audio (modelTurn parts)
         model_turn = server_content.get("modelTurn")
         if isinstance(model_turn, dict):
             parts = model_turn.get("parts", [])
+            for part in parts:
+                if isinstance(part, dict):
+                    inline_data = part.get("inlineData")
+                    if isinstance(inline_data, dict) and inline_data.get("data"):
+                        audio_b64 = inline_data.get("data")
+                        mime_type = inline_data.get("mimeType", "audio/pcm;rate=24000")
+                        if self.on_audio_data and audio_b64:
+                            try:
+                                raw_bytes = base64.b64decode(audio_b64)
+                                self.on_audio_data(raw_bytes, mime_type)
+                            except Exception as e:
+                                logger.debug(f"Error invoking on_audio_data: {e}")
+
             part_texts = [p.get("text", "") for p in parts if isinstance(p, dict) and p.get("text")]
             full_part_text = "".join(part_texts).strip()
             if full_part_text:
@@ -458,7 +516,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                 if events and not is_done and _is_duplicate_of_events(full_part_text, events):
                     logger.debug("Suppressed modelTurn interim restating a final in the same message.")
                 elif not is_hallucinated_or_leaked_text(full_part_text):
-                    events.append((full_part_text, is_done))
+                    events.append(ParsedTranscriptTuple(full_part_text, is_done, None))
                 else:
                     logger.debug(f"Suppressed hallucinated modelTurn from Gemini Live: {full_part_text}")
 
@@ -916,12 +974,28 @@ class GeminiLiveEngine(BaseSTTEngine):
                                                 )
 
                                         events = self.parse_server_message(data)
-                                        is_trans_model = "translate" in getattr(self.config.gemini_live, "model", "").lower()
+                                        is_trans_model = (
+                                            "translate" in getattr(self.config.gemini_live, "model", "").lower()
+                                            or bool(
+                                                getattr(self.config, "translation", None)
+                                                and getattr(self.config.translation, "enabled", False)
+                                                and getattr(self.config.translation, "interpreter_mode", False)
+                                            )
+                                        )
                                         suppress_music = getattr(self.config.audio, "suppress_music", True)
                                         strict_music = getattr(self.config.audio, "suppress_music_strict", False)
-                                        for text, is_final in events:
+                                        for item in events:
+                                            if len(item) >= 3:
+                                                text, is_final, translated_text = item[0], item[1], item[2]
+                                            else:
+                                                text, is_final = item[0], item[1]
+                                                translated_text = None
+
+                                            if translated_text is None and is_trans_model:
+                                                translated_text = text
+
                                             if suppress_music:
-                                                if (strict_music and self.vad.music_detector.music_detected) or is_music_text(text, strict=strict_music):
+                                                if (strict_music and getattr(self.vad.music_detector, "music_detected", False)) or is_music_text(text, strict=strict_music):
                                                     logger.debug(f"Gemini Live suppressed singing/music text: {text}")
                                                     continue
 
@@ -936,7 +1010,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                                                 TranscriptEvent(
                                                     text=text,
                                                     is_final=is_final,
-                                                    translated_text=text if is_trans_model else None,
+                                                    translated_text=translated_text,
                                                 )
                                             )
                                             if asyncio.iscoroutine(res):
@@ -955,7 +1029,14 @@ class GeminiLiveEngine(BaseSTTEngine):
                                         )
                                         text_to_finalize = _latest_interim_text
                                         _latest_interim_text = None
-                                        is_trans_model = "translate" in getattr(self.config.gemini_live, "model", "").lower()
+                                        is_trans_model = (
+                                            "translate" in getattr(self.config.gemini_live, "model", "").lower()
+                                            or bool(
+                                                getattr(self.config, "translation", None)
+                                                and getattr(self.config.translation, "enabled", False)
+                                                and getattr(self.config.translation, "interpreter_mode", False)
+                                            )
+                                        )
                                         try:
                                             res = on_transcript(
                                                 TranscriptEvent(

@@ -1,6 +1,7 @@
 """Hardened Web and WebSocket Server for OBS Browser Source, Dashboard, and REST API."""
 
 import asyncio
+import base64
 import collections
 import json
 import logging
@@ -2387,6 +2388,9 @@ class WebOverlayServer:
                     return
 
                 async def _translate_one(lang: str) -> str:
+                    target_cfg_lang = getattr(getattr(self.config, "translation", None), "target_language", "")
+                    if lang == target_cfg_lang and payload.get("translated_text"):
+                        return payload["translated_text"]
                     if self._caption_translate_seq > my_seq and (time.monotonic() - queued_at) > 3.0:
                         return raw_text
                     try:
@@ -2428,6 +2432,27 @@ class WebOverlayServer:
                 asyncio.create_task(self.broadcast_control({"type": "stats_update", **stats}))
             except Exception:
                 pass
+
+    def broadcast_translated_audio(self, audio_bytes: bytes, mime_type: str = "audio/pcm;rate=24000"):
+        """Fan out synthesized interpreter audio to clients viewing in the target language."""
+        if not self.caption_sockets or not audio_bytes:
+            return
+        target_lang = getattr(getattr(self.config, "translation", None), "target_language", "es") or "es"
+        # Strictly send ONLY to sockets viewing in the non-English target language
+        matching_sockets = [
+            ws for ws, lang in self.caption_sockets.items()
+            if lang == target_lang and lang not in ("en", "original", "none", "")
+        ]
+        if not matching_sockets:
+            return
+        audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
+        msg_str = json.dumps({
+            "type": "translated_audio",
+            "mime": mime_type,
+            "data": audio_b64,
+        })
+        for ws in matching_sockets:
+            self._enqueue_caption(ws, is_final=False, msg_str=msg_str)
 
     async def broadcast_control(self, payload: dict):
         """Broadcast telemetry/config events to dashboard control websockets."""

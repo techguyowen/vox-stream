@@ -1084,7 +1084,55 @@ class TestConfigAndEngines(unittest.TestCase):
         }
         events = engine.parse_server_message(msg)
         self.assertEqual(len(events), 1)
-        self.assertEqual(events[0], ("Hola a todos", True))
+        self.assertEqual(events[0], ("Hello everyone", True, "Hola a todos"))
+        self.assertEqual(events[0].text, "Hello everyone")
+        self.assertTrue(events[0].is_final)
+        self.assertEqual(events[0].translated_text, "Hola a todos")
+
+    def test_gemini_live_interpreter_mode_setup_and_parsing(self):
+        """Verify Interpreter Mode auto-activates live translate model and dual subtitle parsing."""
+        cfg = AppConfig()
+        cfg.gemini_live.api_key = "test-key"
+        cfg.gemini_live.model = "gemini-3.5-transcribe-live"
+        cfg.translation.enabled = True
+        cfg.translation.interpreter_mode = True
+        cfg.translation.target_language = "es"
+
+        engine = GeminiLiveEngine(cfg)
+        setup = engine.build_setup_payload()["setup"]
+
+        self.assertEqual(setup["model"], "models/gemini-3.5-live-translate-preview")
+        self.assertEqual(setup["generationConfig"]["translationConfig"]["targetLanguageCode"], "es")
+
+        # 1. Output-only message
+        output_only = {
+            "serverContent": {
+                "outputTranscription": {"text": "Solo traducción"}
+            }
+        }
+        ev_out = engine.parse_server_message(output_only)
+        self.assertEqual(len(ev_out), 1)
+        self.assertEqual(ev_out[0], ("Solo traducción", True, "Solo traducción"))
+
+        # 2. Input-only message
+        input_only = {
+            "serverContent": {
+                "inputTranscription": {"text": "Original speech only"}
+            }
+        }
+        ev_in = engine.parse_server_message(input_only)
+        self.assertEqual(len(ev_in), 1)
+        self.assertEqual(ev_in[0], ("Original speech only", True, None))
+
+        # 3. Interim message
+        interim_msg = {
+            "serverContent": {
+                "interimInputTranscription": {"text": "Speaking right now"}
+            }
+        }
+        ev_interim = engine.parse_server_message(interim_msg)
+        self.assertEqual(len(ev_interim), 1)
+        self.assertEqual(ev_interim[0], ("Speaking right now", False, None))
 
     def test_vad_energy_calculation(self):
         vad = VoiceActivityDetector(enable_silero=False, noise_gate_db=-40.0)
@@ -7467,6 +7515,87 @@ class TestDashboardEnhancements(unittest.TestCase):
         self.assertIn("/api/control/toggle", endpoints)
         self.assertIn("/api/control/reopen-screen", endpoints)
         self.assertIn("/api/control/start", endpoints)
+
+
+class TestGeminiLiveAudioDataCallback(unittest.TestCase):
+    def test_on_audio_data_callback_invoked_on_inline_data(self):
+        import base64
+        from obs_captioner.config import AppConfig
+        from obs_captioner.engines.gemini_live import GeminiLiveEngine
+
+        cfg = AppConfig()
+        engine = GeminiLiveEngine(cfg)
+
+        received_chunks = []
+        def _on_audio(data: bytes, mime: str):
+            received_chunks.append((data, mime))
+
+        engine.on_audio_data = _on_audio
+
+        raw_pcm = b"\x01\x02\x03\x04\x05\x06\x07\x08"
+        b64_str = base64.b64encode(raw_pcm).decode("ascii")
+
+        # Simulate Gemini Live response with inlineData in modelTurn parts
+        msg = {
+            "serverContent": {
+                "modelTurn": {
+                    "parts": [
+                        {
+                            "inlineData": {
+                                "mimeType": "audio/pcm;rate=24000",
+                                "data": b64_str,
+                            }
+                        },
+                        {
+                            "text": "Hola mundo"
+                        }
+                    ]
+                }
+            }
+        }
+
+        events = engine.parse_server_message(msg)
+
+        # Confirm audio callback fired with expected raw bytes and mime
+        self.assertEqual(len(received_chunks), 1)
+        self.assertEqual(received_chunks[0][0], raw_pcm)
+        self.assertEqual(received_chunks[0][1], "audio/pcm;rate=24000")
+
+        # Confirm text parsing still works
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].text, "Hola mundo")
+
+    def test_on_audio_data_callback_handles_exceptions_gracefully(self):
+        import base64
+        from obs_captioner.config import AppConfig
+        from obs_captioner.engines.gemini_live import GeminiLiveEngine
+
+        cfg = AppConfig()
+        engine = GeminiLiveEngine(cfg)
+
+        def _bad_callback(data: bytes, mime: str):
+            raise RuntimeError("Audio pipeline crash simulation")
+
+        engine.on_audio_data = _bad_callback
+
+        msg = {
+            "serverContent": {
+                "modelTurn": {
+                    "parts": [
+                        {
+                            "inlineData": {
+                                "mimeType": "audio/pcm;rate=24000",
+                                "data": base64.b64encode(b"1234").decode("ascii"),
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+
+        # Must not raise an exception
+        events = engine.parse_server_message(msg)
+        self.assertEqual(events, [])
 
 
 if __name__ == "__main__":

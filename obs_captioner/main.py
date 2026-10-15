@@ -157,6 +157,8 @@ async def main_async(args):
     def wire_engine_callbacks(eng):
         if web_server is not None:
             web_server.engine = eng
+        if eng and hasattr(eng, "on_audio_data") and web_server:
+            eng.on_audio_data = web_server.broadcast_translated_audio
         if eng and hasattr(eng, "on_ping"):
             def _on_gemini_ping(ping_ms: float):
                 if web_server:

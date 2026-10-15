@@ -240,3 +240,45 @@ class TestPerfWeb(unittest.IsolatedAsyncioTestCase):
 
         req6 = FakeRequest(remote="192.168.1.100", headers={"X-Forwarded-For": "203.0.113.195"})
         self.assertEqual(server_caddy._client_ip(req6), "192.168.1.100")
+
+    async def test_broadcast_translated_audio_routes_only_to_target_lang(self):
+        cfg = AppConfig()
+        cfg.translation.enabled = True
+        cfg.translation.target_language = "es"
+        server = WebOverlayServer(cfg)
+
+        ws_es = FakeWs(block_send=False)
+        ws_en = FakeWs(block_send=False)
+        ws_fr = FakeWs(block_send=False)
+
+        server.caption_sockets[ws_es] = "es"
+        server.caption_sockets[ws_en] = "en"
+        server.caption_sockets[ws_fr] = "fr"
+
+        server._ensure_caption_queue(ws_es)
+        server._ensure_caption_queue(ws_en)
+        server._ensure_caption_queue(ws_fr)
+
+        pcm_data = b"\x00\x01\x02\x03\x04\x05"
+        server.broadcast_translated_audio(pcm_data, mime_type="audio/pcm;rate=24000")
+
+        await asyncio.sleep(0.02)
+
+        # Only ws_es should have received the translated audio chunk
+        self.assertEqual(len(ws_en.sent), 0)
+        self.assertEqual(len(ws_fr.sent), 0)
+        self.assertEqual(len(ws_es.sent), 1)
+
+        msg = json.loads(ws_es.sent[0])
+        self.assertEqual(msg["type"], "translated_audio")
+        self.assertEqual(msg["mime"], "audio/pcm;rate=24000")
+        import base64
+        self.assertEqual(base64.b64decode(msg["data"]), pcm_data)
+
+        # Empty bytes should be ignored
+        server.broadcast_translated_audio(b"")
+        await asyncio.sleep(0.01)
+        self.assertEqual(len(ws_es.sent), 1)
+
+        await server.stop()
+

@@ -427,6 +427,47 @@
             color: #FFFFFF;
         }
 
+        .audio-listen-btn {
+            background: rgba(16, 185, 129, 0.18) !important;
+            color: #34D399 !important;
+            border: 1px solid rgba(16, 185, 129, 0.45) !important;
+            font-weight: 700 !important;
+            font-size: 12px !important;
+            padding: 5px 10px !important;
+            border-radius: 6px !important;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.2s ease;
+        }
+
+        .audio-listen-btn:hover {
+            background: rgba(16, 185, 129, 0.3) !important;
+            border-color: #34D399 !important;
+            color: #FFFFFF !important;
+        }
+
+        .audio-listen-btn.active {
+            background: #10B981 !important;
+            color: #000000 !important;
+            border-color: #A7F3D0 !important;
+            box-shadow: 0 0 12px rgba(16, 185, 129, 0.65);
+            animation: pulse-audio 2s infinite;
+        }
+
+        .audio-listen-btn.muted {
+            background: rgba(239, 68, 68, 0.18) !important;
+            color: #F87171 !important;
+            border-color: rgba(239, 68, 68, 0.45) !important;
+        }
+
+        @keyframes pulse-audio {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
         /* High-visibility font-size quick actions (header bar).
            Solid amber fill + near-black bold text reads clearly on the
            fixed dark slate header (Option B: identical in every theme). */
@@ -1256,6 +1297,8 @@
                 <option value="vi">Tiếng Việt</option>
                 <option value="tl">🇵🇭 Tagalog</option>
             </select>
+
+            <button id="audioListenBtn" class="audio-listen-btn" style="display: none;" title="Listen to Live Spoken Translation">🎧 Listen Live</button>
         </div>
     </header>
 
@@ -1593,6 +1636,82 @@
         const btnCloseSettings = document.getElementById('btnCloseSettings');
         const btnDoneSettings = document.getElementById('btnDoneSettings');
         const settingsModal = document.getElementById('settingsModal');
+        const audioListenBtn = document.getElementById('audioListenBtn');
+
+        // Web Audio Interpretation State
+        let audioCtx = null;
+        let isAudioListening = false;
+        let isAudioMuted = false;
+        let nextAudioTime = 0;
+
+        function updateAudioButtonVisibility() {
+            if (!audioListenBtn) return;
+            if (currentLang !== 'en') {
+                audioListenBtn.style.display = 'inline-flex';
+            } else {
+                audioListenBtn.style.display = 'none';
+                stopAudioPlayback();
+            }
+        }
+
+        function stopAudioPlayback() {
+            isAudioListening = false;
+            isAudioMuted = false;
+            nextAudioTime = 0;
+            if (audioListenBtn) {
+                audioListenBtn.classList.remove('active', 'muted');
+                audioListenBtn.textContent = '🎧 Listen Live';
+            }
+            if (audioCtx) {
+                try {
+                    audioCtx.close();
+                } catch (e) {}
+                audioCtx = null;
+            }
+        }
+
+        if (audioListenBtn) {
+            audioListenBtn.addEventListener('click', async () => {
+                if (!isAudioListening) {
+                    // Activate listening
+                    try {
+                        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                        if (!audioCtx || audioCtx.state === 'closed') {
+                            audioCtx = new AudioContextClass({ sampleRate: 24000 });
+                        }
+                        if (audioCtx.state === 'suspended') {
+                            await audioCtx.resume();
+                        }
+                        isAudioListening = true;
+                        isAudioMuted = false;
+                        nextAudioTime = audioCtx.currentTime;
+                        audioListenBtn.classList.remove('muted');
+                        audioListenBtn.classList.add('active');
+                        audioListenBtn.textContent = '🔊 Listening (Tap to Mute)';
+                    } catch (err) {
+                        console.error('Failed to initialize AudioContext:', err);
+                    }
+                } else if (!isAudioMuted) {
+                    // Mute
+                    isAudioMuted = true;
+                    audioListenBtn.classList.remove('active');
+                    audioListenBtn.classList.add('muted');
+                    audioListenBtn.textContent = '🔇 Muted (Tap to Listen)';
+                } else {
+                    // Unmute
+                    isAudioMuted = false;
+                    if (audioCtx && audioCtx.state === 'suspended') {
+                        await audioCtx.resume();
+                    }
+                    if (audioCtx) {
+                        nextAudioTime = Math.max(audioCtx.currentTime, nextAudioTime);
+                    }
+                    audioListenBtn.classList.remove('muted');
+                    audioListenBtn.classList.add('active');
+                    audioListenBtn.textContent = '🔊 Listening (Tap to Mute)';
+                }
+            });
+        }
 
         // Mode Selector: Scrollable History vs Live Prompter
         function applyDisplayMode(mode) {
@@ -1638,10 +1757,12 @@
         // Language Selector
         if (langSelect) {
             langSelect.value = currentLang;
+            updateAudioButtonVisibility();
             langSelect.addEventListener('change', async (e) => {
                 const newLang = e.target.value;
                 currentLang = newLang;
                 localStorage.setItem('voxstream_display_lang', currentLang);
+                updateAudioButtonVisibility();
 
                 const newUrl = currentLang === 'en'
                     ? window.location.pathname
@@ -2634,6 +2755,52 @@
                                 renderCaptions();
                                 scrollToBottom(false);
                             }
+                        }
+                        return;
+                    }
+
+                    if (data.type === 'translated_audio') {
+                        if (!isAudioListening || isAudioMuted || !data.data) return;
+                        try {
+                            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                            if (!audioCtx || audioCtx.state === 'closed') {
+                                audioCtx = new AudioContextClass({ sampleRate: 24000 });
+                            }
+                            if (audioCtx.state === 'suspended') {
+                                await audioCtx.resume();
+                            }
+
+                            // Decode base64 to binary byte string -> Int16Array -> Float32Array
+                            const binaryStr = window.atob(data.data);
+                            const len = binaryStr.length;
+                            const bytes = new Uint8Array(len);
+                            for (let i = 0; i < len; i++) {
+                                bytes[i] = binaryStr.charCodeAt(i);
+                            }
+
+                            // 16-bit linear PCM little-endian
+                            const numSamples = Math.floor(bytes.length / 2);
+                            const int16 = new Int16Array(bytes.buffer, bytes.byteOffset, numSamples);
+                            const float32 = new Float32Array(numSamples);
+                            for (let i = 0; i < numSamples; i++) {
+                                float32[i] = int16[i] / 32768.0;
+                            }
+
+                            if (float32.length > 0) {
+                                const audioBuf = audioCtx.createBuffer(1, float32.length, 24000);
+                                audioBuf.copyToChannel(float32, 0);
+
+                                const source = audioCtx.createBufferSource();
+                                source.buffer = audioBuf;
+                                source.connect(audioCtx.destination);
+
+                                const currentTime = audioCtx.currentTime;
+                                const startTime = Math.max(currentTime + 0.02, nextAudioTime);
+                                source.start(startTime);
+                                nextAudioTime = startTime + audioBuf.duration;
+                            }
+                        } catch (audioErr) {
+                            console.error("Audio playback error:", audioErr);
                         }
                         return;
                     }

@@ -50,6 +50,7 @@
   },
   "translation": {
     "enabled": false,
+    "interpreter_mode": false,
     "source_language": "auto",
     "target_language": "es",
     "display_mode": "dual"

@@ -2059,6 +2059,9 @@ function populateFormFields(cfg) {
     // Translation tab
     if (cfg.translation) {
         document.getElementById("translation_enabled").checked = !!cfg.translation.enabled;
+        if (document.getElementById("translation_interpreter_mode")) {
+            document.getElementById("translation_interpreter_mode").checked = !!cfg.translation.interpreter_mode;
+        }
         if (document.getElementById("translation_provider")) {
             document.getElementById("translation_provider").value = cfg.translation.provider || "google_free";
         }
@@ -3435,6 +3438,7 @@ document.getElementById("btn-save-translation").addEventListener("click", async 
     const payload = {
         translation: {
             enabled: document.getElementById("translation_enabled").checked,
+            interpreter_mode: document.getElementById("translation_interpreter_mode") ? document.getElementById("translation_interpreter_mode").checked : false,
             provider: document.getElementById("translation_provider") ? document.getElementById("translation_provider").value : "google_free",
             target_language: document.getElementById("translation_target").value,
             display_mode: document.getElementById("translation_mode").value,

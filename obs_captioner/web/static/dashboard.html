@@ -1478,6 +1478,16 @@
                             </div>
                         </div>
 
+                        <div class="form-check" style="margin-top: 12px; padding: 10px 12px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: 6px;">
+                            <input type="checkbox" id="translation_interpreter_mode" class="form-check-input">
+                            <label for="translation_interpreter_mode" class="form-check-label" style="font-weight: 600; color: #E0E7FF; font-size: 13px;">
+                                🎙️ Live Interpreter Mode (Gemini Live Translate)
+                            </label>
+                            <small class="text-muted" style="display: block; font-size: 11.5px; margin-top: 4px; color: #94A3B8;">
+                                Streams microphone audio directly into Gemini Live Translate (gemini-3.5-live-translate-preview). Simultaneously generates live English speech-to-text AND instant foreign language subtitles in a single unified stream.
+                            </small>
+                        </div>
+
                         <!-- Dual Subtitle Appearance Controls -->
                         <div id="dual-subtitle-appearance-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 14px; margin-top: 12px;">
                             <h4 style="margin: 0 0 10px 0; font-size: 13px; color: #FCD34D; display: flex; align-items: center; gap: 6px;">
@@ -1522,9 +1532,10 @@
                         <div class="form-group">
                             <label for="translation_provider">Translation Provider</label>
                             <select id="translation_provider" class="form-control">
-                                <option value="google_free" selected>🆓 Google Free Translation (Built-in / Zero-Setup / Fast for Local Models)</option>
-                                <option value="nllb">💻 Meta NLLB-200 (100% Offline / Local GPU / Zero API Keys)</option>
-                                <option value="gemini_live">✨ Google Gemini Live Translate (gemini-3.5-live-translate-preview)</option>
+                                <option value="google_free" selected>🆓 Google Free Translation (Built-in / Zero-Setup / Fast)</option>
+                                <option value="nllb">💻 Meta NLLB-200 (100% Offline / Local Neural Engine / Zero API Keys)</option>
+                                <option value="gemini_flash">⚡ Google Gemini Flash (gemini-3.5-flash-lite / Ecclesiastical Steering)</option>
+                                <option value="gemini_live">🎙️ Google Gemini Live Audio Translation (gemini-3.5-live-translate-preview)</option>
                             </select>
                         </div>
 
