@@ -36,7 +36,12 @@ cp VoxStream.vbs "$RELEASE_NAME/" 2>/dev/null || true
 cp create_desktop_shortcut.bat "$RELEASE_NAME/" 2>/dev/null || true
 cp build_launcher_windows.bat "$RELEASE_NAME/" 2>/dev/null || true
 cp setup_mac.sh "$RELEASE_NAME/"
+cp setup_linux.sh "$RELEASE_NAME/" 2>/dev/null || true
 cp setup_windows.bat "$RELEASE_NAME/"
+cp run_tray.bat "$RELEASE_NAME/" 2>/dev/null || true
+cp uninstall_mac.sh "$RELEASE_NAME/" 2>/dev/null || true
+cp uninstall_linux.sh "$RELEASE_NAME/" 2>/dev/null || true
+cp uninstall_windows.bat "$RELEASE_NAME/" 2>/dev/null || true
 cp launch_obs_clean.bat "$RELEASE_NAME/" 2>/dev/null || true
 cp build_plugin_mac.sh "$RELEASE_NAME/" 2>/dev/null || true
 cp build_plugin_windows.bat "$RELEASE_NAME/" 2>/dev/null || true
