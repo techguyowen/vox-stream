@@ -2286,11 +2286,12 @@ class WebOverlayServer:
                         task.add_done_callback(self._snapshot_tasks.discard)
             except Exception:
                 pass
+            authorized = self._check_auth(request)
             async for msg in ws:
                 if msg.type == web.WSMsgType.TEXT:
                     try:
                         data = json.loads(msg.data)
-                        if data.get("type") in ("config_update", "config_updated") and role == "bible":
+                        if data.get("type") in ("config_update", "config_updated") and role == "bible" and authorized:
                             await self.broadcast_control({"type": "config_updated", "config": self.get_masked_config_dict()})
                     except Exception:
                         pass
