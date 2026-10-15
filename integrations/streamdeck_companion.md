@@ -1,25 +1,25 @@
-# 🎛️ Elgato Stream Deck & Bitfocus Companion Integration Guide
+# Elgato Stream Deck & Bitfocus Companion Integration Guide
 
 VoxStream exposes a high-speed, local REST API designed for hardware broadcast controllers, Stream Decks, and Bitfocus Companion.
 
 ---
 
-## ⚡ Quick Reference: Action Endpoints
+## Quick Reference: Action Endpoints
 
 | Button Action | HTTP Method | Endpoint URL | Payload (JSON) | Description |
 | :--- | :---: | :--- | :--- | :--- |
-| **⏯️ Toggle Captions** | `POST` | `http://127.0.0.1:8765/api/control/toggle` | None | Toggles speech-to-text on/off |
-| **🚨 Emergency Panic Drop** | `POST` | `http://127.0.0.1:8765/api/control/panic` | None | Instantly wipes captions from all screens |
-| **📺 Reopen Screen Projector** | `POST` | `http://127.0.0.1:8765/api/control/reopen-screen` | `{"monitor_index": 1}` | Sends preview to external stage display & resumes STT |
-| **🎨 Switch Theme (Worship)** | `POST` | `http://127.0.0.1:8765/api/presets/apply` | `{"theme_id": "sanctuary_worship"}` | Applies Liturgical Amber styling |
-| **🎨 Switch Theme (Lower-Third)** | `POST` | `http://127.0.0.1:8765/api/presets/apply` | `{"theme_id": "broadcast_news"}` | Applies Newsroom Lower-Third bar |
-| **🎨 Switch Theme (Cinema)** | `POST` | `http://127.0.0.1:8765/api/presets/apply` | `{"theme_id": "minimalist_cinema"}` | Applies Netflix/BBC clean drop-shadow subtitles |
-| **🗑️ Clear Screen History** | `POST` | `http://127.0.0.1:8765/api/transcript/clear` | None | Clears stage monitor & transcript log |
-| **🔄 Restart Backend** | `POST` | `http://127.0.0.1:8765/api/control/restart` | None | Cleanly reboots speech engines |
+| **Toggle Captions** | `POST` | `http://127.0.0.1:8765/api/control/toggle` | None | Toggles speech-to-text on/off |
+| **Emergency Panic Drop** | `POST` | `http://127.0.0.1:8765/api/control/panic` | None | Instantly wipes captions from all screens |
+| **Reopen Screen Projector** | `POST` | `http://127.0.0.1:8765/api/control/reopen-screen` | `{"monitor_index": 1}` | Sends preview to external stage display & resumes STT |
+| **Switch Theme (Worship)** | `POST` | `http://127.0.0.1:8765/api/presets/apply` | `{"theme_id": "sanctuary_worship"}` | Applies Liturgical Amber styling |
+| **Switch Theme (Lower-Third)** | `POST` | `http://127.0.0.1:8765/api/presets/apply` | `{"theme_id": "broadcast_news"}` | Applies Newsroom Lower-Third bar |
+| **Switch Theme (Cinema)** | `POST` | `http://127.0.0.1:8765/api/presets/apply` | `{"theme_id": "minimalist_cinema"}` | Applies Netflix/BBC clean drop-shadow subtitles |
+| **Clear Screen History** | `POST` | `http://127.0.0.1:8765/api/transcript/clear` | None | Clears stage monitor & transcript log |
+| **Restart Backend** | `POST` | `http://127.0.0.1:8765/api/control/restart` | None | Cleanly reboots speech engines |
 
 ---
 
-## 🎮 1. Elgato Stream Deck Setup
+## 1. Elgato Stream Deck Setup
 
 ### Option A: Using the Free "API Request" Plugin (Recommended)
 1. In the **Elgato Stream Deck Store**, install the free **API Request** (or **HTTP Request** / **Advanced REST Client**) plugin by *BarRaider* or *Fred Emmott*.
@@ -36,7 +36,7 @@ VoxStream exposes a high-speed, local REST API designed for hardware broadcast c
 
 ---
 
-## 🎛️ 2. Bitfocus Companion Setup
+## 2. Bitfocus Companion Setup
 
 Bitfocus Companion connects to broadcast hardware like Blackmagic ATEM, Behringer X32, and OBS Studio.
 
@@ -48,19 +48,19 @@ Bitfocus Companion connects to broadcast hardware like Blackmagic ATEM, Behringe
 
 ### Step 2: Create Buttons
 
-#### Button 1: 🚨 Emergency Panic Censor Button
+#### Button 1: Emergency Panic Censor Button
 * **Button Text**: `PANIC\nCENSOR`
 * **Color**: Red background (`#FF0000`), White text (`#FFFFFF`)
 * **Press Action**: `generic-http: POST`
   * **URI**: `/api/control/panic`
 
-#### Button 2: ⏯️ Toggle Live Captions
+#### Button 2: Toggle Live Captions
 * **Button Text**: `TOGGLE\nCAPTIONS`
 * **Color**: Green background (`#00AA44`), White text (`#FFFFFF`)
 * **Press Action**: `generic-http: POST`
   * **URI**: `/api/control/toggle`
 
-#### Button 3: 🎨 Switch Theme to Worship Amber
+#### Button 3: Switch Theme to Worship Amber
 * **Button Text**: `THEME\nWORSHIP`
 * **Color**: Amber background (`#F59E0B`), Black text (`#000000`)
 * **Press Action**: `generic-http: POST (JSON)`
@@ -68,7 +68,7 @@ Bitfocus Companion connects to broadcast hardware like Blackmagic ATEM, Behringe
   * **Body**: `{"theme_id": "sanctuary_worship"}`
   * **Header**: `Content-Type: application/json`
 
-#### Button 4: 📺 Restore External Stage Screen
+#### Button 4: Restore External Stage Screen
 * **Button Text**: `STAGE\nSCREEN`
 * **Color**: Blue background (`#0284C7`), White text (`#FFFFFF`)
 * **Press Action**: `generic-http: POST`
@@ -76,7 +76,7 @@ Bitfocus Companion connects to broadcast hardware like Blackmagic ATEM, Behringe
 
 ---
 
-## 🌐 3. Multi-Track Language Routing on Stage Monitors
+## 3. Multi-Track Language Routing on Stage Monitors
 VoxStream allows every stage screen or mobile device to pick its own independent target language in real-time:
 
 * **English Default**: `http://127.0.0.1:8765/display`

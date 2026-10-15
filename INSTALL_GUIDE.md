@@ -1,12 +1,12 @@
-# 📖 VoxStream Live Captioner — Complete Installation & Setup Guide
+# VoxStream Live Captioner — Complete Installation & Setup Guide
 
 This step-by-step guide walks you through setting up the **VoxStream Real-Time Live Captioner & Broadcast Suite** on **macOS**, **Windows**, and **Linux**.
 
-> 💡 **Looking for day-to-day operator instructions?** Check out the [**User Manual & Quick Start Guide (USER_MANUAL.md)**](USER_MANUAL.md) for 3-minute quick starts, stage monitor QR codes, teleprompter modes, and accessibility features.
+> **Looking for day-to-day operator instructions?** Check out the [**User Manual & Quick Start Guide (USER_MANUAL.md)**](USER_MANUAL.md) for 3-minute quick starts, stage monitor QR codes, teleprompter modes, and accessibility features.
 
 ---
 
-## 📋 Table of Contents
+## Table of Contents
 1. [Prerequisites](#-1-prerequisites)
 2. [Step 1: Installation & Launch](#-step-1-installation--launch)
    - [macOS / Linux Installation](#-macos--linux-setup)
@@ -34,7 +34,7 @@ This step-by-step guide walks you through setting up the **VoxStream Real-Time L
 
 ---
 
-## ⚙️ 1. Prerequisites
+## 1. Prerequisites
 
 * **Operating System**:
   * **macOS**: macOS 12 (Monterey), 13 (Ventura), 14 (Sonoma), 15 (Sequoia) on Apple Silicon (M1/M2/M3/M4) or Intel.
@@ -45,9 +45,9 @@ This step-by-step guide walks you through setting up the **VoxStream Real-Time L
 
 ---
 
-## 🚀 Step 1: Installation & Launch
+## Step 1: Installation & Launch
 
-### 🍏 macOS & Linux Setup
+### macOS & Linux Setup
 
 1. Open **Terminal** and navigate to the project directory:
    ```bash
@@ -68,7 +68,7 @@ This step-by-step guide walks you through setting up the **VoxStream Real-Time L
 
 ---
 
-### 🪟 Windows Setup
+### Windows Setup
 
 1. Open the project folder in File Explorer.
 2. Double-click:
@@ -103,11 +103,11 @@ This step-by-step guide walks you through setting up the **VoxStream Real-Time L
 
 ---
 
-## 🔑 Step 2: Choosing Your Speech Engine
+## Step 2: Choosing Your Speech Engine
 
-You can select and configure your engine directly in the **Web Control Dashboard** (`/dashboard`) under the **🎙️ Audio & Engine** tab, or in `config.json`:
+You can select and configure your engine directly in the **Web Control Dashboard** (`/dashboard`) under the **Audio & Engine** tab, or in `config.json`:
 
-### Option A: Vosk (Kaldi) (Ultra-Fast CPU Streaming) ⭐ LOWEST LATENCY
+### Option A: Vosk (Kaldi) (Ultra-Fast CPU Streaming) LOWEST LATENCY
 * **Best for**: Instant token-by-token continuous streaming with lowest latency (~20–40ms), 100% offline, zero API keys, and minimal CPU load (<3%).
 * **Models**:
   * `small`: `vosk-model-small-en-us-0.15` (~40MB, auto-downloads on first launch).
@@ -131,13 +131,13 @@ You can select and configure your engine directly in the **Web Control Dashboard
 * **Setup**:
   1. Get a free API key at **[Google AI Studio (aistudio.google.com)](https://aistudio.google.com/)**.
   2. Paste your `AIzaSy...` key in the Web Dashboard under **Gemini 3.5 Transcribe Live Settings**.
-  3. Click **💾 Save Audio & Engine**.
+  3. Click **Save Audio & Engine**.
 
 ---
 
 ### Option D: Local Faster-Whisper (NVIDIA GPU)
 * **Best for**: Windows PCs with dedicated NVIDIA GPUs (e.g. GTX 1660, RTX 3060/4070+).
-* **Setup**: Select **Local Faster-Whisper** and click the **🎮 GTX 1660 (Recommended)** 1-click preset button.
+* **Setup**: Select **Local Faster-Whisper** and click the **GTX 1660 (Recommended)** 1-click preset button.
 
 ---
 
@@ -152,15 +152,15 @@ You can select and configure your engine directly in the **Web Control Dashboard
 * **Setup**:
   1. Get an API key from [Bandwidth Labs (labs.bandwidth.com)](https://labs.bandwidth.com/docs/speech-to-text).
   2. Paste your `bwa_key_...` in the Web Dashboard under **Bandwidth Labs Settings** (or set `BANDWIDTH_API_KEY` env var).
-  3. Click **💾 Save Audio & Engine**.
+  3. Click **Save Audio & Engine**.
 
 ---
 
-## 🖥️ Step 3: Setting Up OBS Studio
+## Step 3: Setting Up OBS Studio
 
 ### A. Add the In-OBS Control Dock (Recommended)
 This puts the live control dashboard, microphone VU meter, and status controls directly inside OBS:
-1. In OBS Studio, open the top menu: **Docks ➔ Custom Browser Docks...**
+1. In OBS Studio, open the top menu: **Docks Custom Browser Docks...**
 2. In the table:
    * **Dock Name**: `Live Captions`
    * **URL**: `http://127.0.0.1:8765/dashboard`
@@ -171,38 +171,36 @@ This puts the live control dashboard, microphone VU meter, and status controls d
 
 
 ### B. Add the Transparent Stream Overlay (Live Captions)
-1. In your active OBS Scene, under **Sources**, click **+ ➔ Browser**.
+1. In your active OBS Scene, under **Sources**, click **+ Browser**.
 2. Name the source: `Captions Overlay`.
 3. Set the properties:
    * **URL**: `http://127.0.0.1:8765/` *(or `http://127.0.0.1:8765/?lang=es` for Spanish subtitles)*
    * **Width**: `1920` (or match your base canvas)
    * **Height**: `1080` (or match your base canvas)
-   * ✅ Check: **"Shutdown source when not visible"**
-   * ✅ Check: **"Refresh browser when scene becomes active"**
+   * Check: **"Shutdown source when not visible"**
+   * Check: **"Refresh browser when scene becomes active"**
 4. Click **OK**.
 
 ---
 
-### C. Add the Dedicated Scripture Overlay (Pure Bible Passages) 📖
-If you want an isolated lower-third specifically for **Bible Passages & Scripture Verses** (with zero speech captions appearing on it):
-1. In OBS Studio, under **Sources**, click **+ ➔ Browser**.
+### C. Add the Dedicated Scripture Overlay (Pure Bible Passages) If you want an isolated lower-third specifically for **Bible Passages & Scripture Verses** (with zero speech captions appearing on it):
+1. In OBS Studio, under **Sources**, click **+ Browser**.
 2. Name the source: `Scripture Overlay`.
 3. Set the properties:
    * **URL**: `http://127.0.0.1:8765/bible`
    * **Width**: `1920`
    * **Height**: `1080`
-   * ✅ Check: **"Shutdown source when not visible"**
-   * ✅ Check: **"Refresh browser when scene becomes active"**
+   * Check: **"Shutdown source when not visible"**
+   * Check: **"Refresh browser when scene becomes active"**
 4. Click **OK**.
 *(This overlay exclusively renders beautiful gold-badged scripture lower-thirds whenever a Bible verse is spoken or cued via the dashboard!)*
 
 
 ---
 
-### D. Enable YouTube & Twitch Closed Captions (Native [CC] Button) 📺
-To send viewer-toggleable closed captions directly into your YouTube and Twitch video player:
+### D. Enable YouTube & Twitch Closed Captions (Native [CC] Button) To send viewer-toggleable closed captions directly into your YouTube and Twitch video player:
 1. **In OBS Studio**:
-   * Go to **Tools ➔ WebSocket Server Settings**.
+   * Go to **Tools WebSocket Server Settings**.
    * Check **"Enable WebSocket server"** (Port `4455`).
 2. **In YouTube Studio (Live Control Room)**:
    * Go to your stream's **Stream Settings** tab.
@@ -214,15 +212,14 @@ To send viewer-toggleable closed captions directly into your YouTube and Twitch 
 
 ---
 
-### E. Enable Zero-Touch Auto-Start with OBS (Launch when OBS Opens) 🚀
-1. In OBS Studio, go to **Tools ➔ Scripts**.
+### E. Enable Zero-Touch Auto-Start with OBS (Launch when OBS Opens) 1. In OBS Studio, go to **Tools Scripts**.
 2. Under **Python Settings**, select your Python path.
 3. Click the **Scripts** tab, click **+ (Add Script)**, and choose `obs_script/obs_live_captions.py`.
 4. Check **"Auto-start when OBS launches"** and **"Auto-start when Streaming/Recording starts"**.
 
 ---
 
-## 📱 Step 4: Live Read-Along Display & Multi-Device Accessibility
+## Step 4: Live Read-Along Display & Multi-Device Accessibility
 
 VoxStream includes a dedicated **Progressive Web App (PWA)** at `/display` built as a **Universal Live Read-Along Display** for anyone following spoken speech in real-time — including individuals who are deaf or hard of hearing, people with visual impairments or low vision, auditorium audiences, podium presenters, and overflow rooms.
 
@@ -236,58 +233,58 @@ VoxStream automatically binds to `0.0.0.0:8765`, allowing any attendee, student,
 ### 2. Installing as a PWA (Standalone App)
 * **iPad / iPhone (Safari)**:
   1. Open `http://<YOUR_IP>:8765/display` in Safari.
-  2. Tap the **Share** button (`⎙` / `↑`).
+  2. Tap the **Share** button (`` / `↑`).
   3. Tap **"Add to Home Screen"**.
 * **Android (Chrome)**:
   1. Open `http://<YOUR_IP>:8765/display`.
-  2. Tap the **`📲 Install`** button in the top header (or Chrome Menu ➔ *"Install App"*).
+  2. Tap the **`Install`** button in the top header (or Chrome Menu *"Install App"*).
 * **Mac / PC (Chrome / Edge / Brave)**:
-  1. Click the **`📲 Install`** button in the header bar or the install icon in the URL bar to run VoxStream as a separate desktop window.
+  1. Click the **`Install`** button in the header bar or the install icon in the URL bar to run VoxStream as a separate desktop window.
 
 ---
 
 ### 3. Choosing a Display Mode
 The display bar includes two dedicated modes:
-* **`📜 Scrollable History` (Default)**: Displays the complete continuous transcript of the sermon or presentation. Presenters can scroll up with touch or mouse wheel to read previous points or Bible verses.
-* **`⚡ Live Prompter (Auto-Fade)`**: Shows only the active 2 lines on screen and automatically fades out on silence for clean broadcast teleprompting.
+* **`Scrollable History` (Default)**: Displays the complete continuous transcript of the sermon or presentation. Presenters can scroll up with touch or mouse wheel to read previous points or Bible verses.
+* **`Live Prompter (Auto-Fade)`**: Shows only the active 2 lines on screen and automatically fades out on silence for clean broadcast teleprompting.
 
 ---
 
 ### 4. Automatic Screen Wake Lock
-### 5. 👁️ Visual Aid & Reading Comfort Controls
+### 5. Visual Aid & Reading Comfort Controls
 On the Stage Display toolbar:
-* **`[ ] 👁️ Visual Aid Mode`**: 1-click toggle that expands character tracking (`0.06em`), word spacing (`0.15em`), and line height (`1.65x`) while keeping your custom font and theme active.
-* **`[ ] 🐢 Slow Down Text`**: Intelligently paces fast speech bursts to a calm **135 WPM** flow and holds completed sentences on screen for **10.0 seconds** to eliminate reading fatigue.
-* **`⬇️ Jump to Live` Button**: When scrolling up to review earlier notes, auto-scroll pauses so your view stays undisturbed. A floating button appears at the bottom right to smoothly glide back to the live words.
+* **`[ ] Visual Aid Mode`**: 1-click toggle that expands character tracking (`0.06em`), word spacing (`0.15em`), and line height (`1.65x`) while keeping your custom font and theme active.
+* **`[ ] Slow Down Text`**: Intelligently paces fast speech bursts to a calm **135 WPM** flow and holds completed sentences on screen for **10.0 seconds** to eliminate reading fatigue.
+* **`⬇Jump to Live` Button**: When scrolling up to review earlier notes, auto-scroll pauses so your view stays undisturbed. A floating button appears at the bottom right to smoothly glide back to the live words.
 
 The display monitor automatically invokes the **Screen Wake Lock API**, preventing tablets and phones on podiums or stage stands from dimming or falling asleep during live speech.
 
 ---
 
-## 🎨 Step 5: Customizing Filters, Glossary & Themes
+## Step 5: Customizing Filters, Glossary & Themes
 
 Open the Web Dashboard (`/dashboard`):
 
-### 1. 📖 Custom Glossary & Vocabulary Tab
+### 1. Custom Glossary & Vocabulary Tab
 * Fix misheard names, proper nouns, church terms, or gaming slang (e.g. automatically replace `"box stream"` with `"VoxStream"`, or `"jhon"` with `"John"`).
 * Includes a live testing sandbox to verify replacements instantly.
 
-### 2. 🛡️ Safety & Church Filter Tab
+### 2. Safety & Church Filter Tab
 * Filter profanities, crude slang, and harsh curses with 4 action modes: **Wholesome Word Replacement**, **Asterisk Masking (`****`)**, **`[CENSORED]` Tag**, or **Drop Sentence**.
 * Religious and sacred names (*"Jesus Christ"*, *"God"*, *"Lord"*, *"scripture"*, *"worship"*) are whitelisted and protected from censorship.
 
-### 3. 🎨 Style & Themes Tab
+### 3. Style & Themes Tab
 * Select from 1-click theme presets (*Modern Clean, Broadcast Lower-Third, Sanctuary & Worship, Corporate Keynote, Minimal Cinema, Stage Confidence, Editorial Talk Show, Classic Broadcast CEA-708*).
 * Customize fonts (Google Fonts), font sizes, text stroke, highlight colors, and word-pop animations.
 
 ---
 
-## 🍎 macOS Specific Tips & Audio Routing
+## macOS Specific Tips & Audio Routing
 
 ### 1. Microphone Permissions in macOS
 When launching VoxStream for the first time on macOS:
 * If prompted, click **Allow** to give Terminal / Python access to the microphone.
-* If audio is not picking up, verify in macOS **System Settings ➔ Privacy & Security ➔ Microphone** that **Terminal** (or your code editor) is toggled **ON**.
+* If audio is not picking up, verify in macOS **System Settings Privacy & Security Microphone** that **Terminal** (or your code editor) is toggled **ON**.
 
 ### 2. Capturing Audio from Mixing Consoles & USB Interfaces
 * macOS CoreAudio supports USB mixers and audio interfaces (Focusrite Scarlett, Behringer X32/Wing, Rode, PreSonus, Yamaha) natively without third-party drivers.
@@ -296,15 +293,15 @@ When launching VoxStream for the first time on macOS:
 ### 3. Capturing OBS Audio Output on macOS (Virtual Routing)
 * If you want VoxStream to capture audio being monitored out of OBS on macOS:
   1. Install the free [BlackHole 2ch](https://existential.audio/blackhole/) virtual audio driver.
-  2. In OBS: Go to **Settings ➔ Audio ➔ Advanced ➔ Monitoring Device** and select **BlackHole 2ch**.
+  2. In OBS: Go to **Settings Audio Advanced Monitoring Device** and select **BlackHole 2ch**.
   3. In VoxStream Dashboard: Select **BlackHole 2ch** as your Audio Input Device.
 
 ---
 
-## 🛠️ Troubleshooting & FAQs
+## Troubleshooting & FAQs
 
 ### Q: How do I restart or stop VoxStream?
-* **In the Dashboard**: Click the **🔄 Restart** or **🛑 Quit** button in the top navigation header.
+* **In the Dashboard**: Click the **Restart** or **Quit** button in the top navigation header.
 * **In Terminal**: Press `Ctrl+C` to shut down cleanly.
 
 ### Q: Port 8765 is already in use by another app (e.g. REAPER).

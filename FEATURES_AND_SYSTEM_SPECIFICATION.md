@@ -1,10 +1,10 @@
-# 🎙️ VoxStream: Master System Architecture & Feature Specification
+# VoxStream: Master System Architecture & Feature Specification
 
 > **Document Purpose**: This specification serves as the definitive reference for all features, architecture, UI systems, audio pipelines, APIs, and platform integrations in **VoxStream**. It establishes the core invariants and architectural decisions that must be preserved in all future releases.
 
 ---
 
-## 📑 Table of Contents
+## Table of Contents
 1. [Core Mission & System Overview](#1-core-mission--system-overview)
 2. [Audio & Speech Recognition (STT) Engines](#2-audio--speech-recognition-stt-engines)
 3. [Text Processing, Formatting & Church Intelligence](#3-text-processing-formatting--church-intelligence)
@@ -28,7 +28,7 @@
 
 ```mermaid
 graph TD
-    MIC[🎙️ Microphone / Soundboard / ASIO] --> AUD[AudioCapture / PyAudio / sounddevice]
+    MIC[Microphone / Soundboard / ASIO] --> AUD[AudioCapture / PyAudio / sounddevice]
     NATIVE[OBS Native C++ Plugin] --> AUD
     AUD --> VAD[Silero VAD + RMS Energy Gate]
     VAD --> STT{STT Engine Selector}
@@ -48,11 +48,11 @@ graph TD
     SINK --> BIBLE[Offline Scripture Detection Engine]
     
     SINK --> WS_BC[WebSocket Server /ws]
-    WS_BC --> OVERLAY[📺 Stream Overlay /]
-    WS_BC --> STAGE[📱 Stage Display /display]
-    WS_BC --> DASH[🎛️ In-OBS Dashboard /dashboard]
-    WS_BC --> BIBLE_OV[📖 Scripture Overlay /bible]
-    SINK --> OBS_WS[📡 OBS WebSocket CEA-608 Injection]
+    WS_BC --> OVERLAY[Stream Overlay /]
+    WS_BC --> STAGE[Stage Display /display]
+    WS_BC --> DASH[In-OBS Dashboard /dashboard]
+    WS_BC --> BIBLE_OV[Scripture Overlay /bible]
+    SINK --> OBS_WS[OBS WebSocket CEA-608 Injection]
 ```
 
 ---
@@ -71,9 +71,9 @@ VoxStream provides a pluggable engine architecture supporting local offline exec
    - Hardware accelerated: Apple Silicon Neural Engine via **MPS (Metal Performance Shaders)**, NVIDIA CUDA, or CPU fallback.
 3. **Local Faster-Whisper (`local_whisper`)**:
    - Built for NVIDIA GPUs with 1-click presets:
-     - `🎮 GTX 1660 / 6GB VRAM` (float16 / int8 quantization)
-     - `🚀 RTX 3060/4070+ / 8GB+ VRAM` (large-v3 model)
-     - `💻 CPU Fast` (int8 optimized)
+     - `GTX 1660 / 6GB VRAM` (float16 / int8 quantization)
+     - `RTX 3060/4070+ / 8GB+ VRAM` (large-v3 model)
+     - `CPU Fast` (int8 optimized)
 4. **Google Gemini 3.5 Transcribe Live (`gemini`)**:
    - Conversational speech understanding with system instructions for automatic filler-word removal (*"um"*, *"ah"*, *"like"*).
    - High-accuracy context-aware spelling.
@@ -157,24 +157,24 @@ http://127.0.0.1:8765/
 - **Audience Read-Along Experience**: Any attendee on local Wi-Fi can open `http://<IP>:8765/display` on their personal smartphone, tablet, or laptop to read along with live sermons, lectures, or presentations in real-time with zero lag.
 - **PWA Ready**: Installable as a standalone app on iOS/iPadOS and Android; features **Screen Wake Lock API** to keep screens on continuously.
 - **Display Modes**:
-  - **Scrollable History**: Retains up to 300 sentences for scrolling back, with smart "⬇️ Jump to Live" button.
+  - **Scrollable History**: Retains up to 300 sentences for scrolling back, with smart "⬇Jump to Live" button.
   - **Live Prompter**: Keeps 2 high-impact lines with auto-silence fade.
 - **Reading Accessibility Studio**:
-  - 👁️ **Visual Aid Mode**: Expanded letter spacing (0.06em), word spacing (0.15em), and 1.65x line height.
-  - 🐢 **Slow-Down Text Pacing**: Holds words at 140 WPM pace and extends on-screen duration 3x for reading comfort.
-  - ⚡ **Bionic Reading Mode**: Applies saccadic eye-fixation formatting by bolding initial syllables of each word for rapid scanning and ADHD/focus support.
+  - **Visual Aid Mode**: Expanded letter spacing (0.06em), word spacing (0.15em), and 1.65x line height.
+  - **Slow-Down Text Pacing**: Holds words at 140 WPM pace and extends on-screen duration 3x for reading comfort.
+  - **Bionic Reading Mode**: Applies saccadic eye-fixation formatting by bolding initial syllables of each word for rapid scanning and ADHD/focus support.
 - **High Contrast Themes**: OLED Black, Dark Slate, High Vis (Yellow on Black), Stage Amber, Clean Light, Pro Green, Hacker Terminal, Classic Dark.
 - **Typography Engine**: Inter, OpenDyslexic, Lexend, Roboto, Bebas Neue, Oswald, Montserrat, Poppins, Lora, JetBrains Mono, Open Sans.
 - **Controls & Navigation**:
-  - ⚙️ Floating gear button (auto-reveals when header is hidden).
-  - ⛶ Cross-browser fullscreen toggle (`requestFullscreen` + `-webkit-` fallback).
-  - 🗑️ Instant history wipe button.
+  - Floating gear button (auto-reveals when header is hidden).
+  - Cross-browser fullscreen toggle (`requestFullscreen` + `-webkit-` fallback).
+  - Instant history wipe button.
   - `+` / `-` Keyboard and button font size scalers (18px to 96px).
 
 ---
 
 ### C. In-OBS Control Dashboard & Quick Dock (`/dashboard`, `/dock`)
-- **Designed for**: OBS Custom Browser Docks (`Docks ➔ Custom Browser Docks...`).
+- **Designed for**: OBS Custom Browser Docks (`Docks Custom Browser Docks...`).
 - **10 Core Control Modules**:
   1. **Live Status & Panic Button**: 1-click emergency caption mute, restart, and engine status pill.
   2. **Engine Switcher**: Hot-swap between Vosk, Moonshine, Faster-Whisper, Gemini Live, and Google Cloud with download progress bars.
@@ -207,7 +207,7 @@ http://127.0.0.1:8765/
 - Captures audio directly inside the OBS audio graph before mixing, enabling clean speech capture independent of system audio routing.
 
 ### 3. OBS Auto-Start Python Script (`obs_script/obs_live_captions.py`)
-- Drop-in script for OBS Studio (`Tools ➔ Scripts`).
+- Drop-in script for OBS Studio (`Tools Scripts`).
 - Automatically starts and stops VoxStream when OBS opens, streams, or records.
 
 ---
@@ -351,14 +351,14 @@ http://127.0.0.1:8765/
 
 To ensure stability in all future refactors and updates, adhere strictly to these architectural invariants:
 
-1. 🔒 **Viewport Clamping**: `html` and `body` in `display.html` must always have `max-width: 100vw; overflow: hidden;` to prevent desktop wallpaper bleeding on tiled or multi-monitor setups.
-2. 🔒 **Flex-Shrink Safety on Scripture Prompters**: Elements inserted above the main caption container (like `#scripturePrompterCard`) must have `flex-shrink: 0;` so they never compress or push the caption scrolling area off-screen.
-3. 🔒 **Bottom Padding & Flex Calculation**: `.stage-container` must use `flex: 1 1 0; min-height: 0;` rather than `height: 100%;` to ensure bottom lines and safe-area insets are never clipped.
-4. 🔒 **Cross-Browser Fullscreen Handlers**: All fullscreen toggle logic must provide `-webkit-` fallbacks (`webkitRequestFullscreen`, `webkitExitFullscreen`, `webkitFullscreenElement`) for Safari and embedded WebKit docks.
-5. 🔒 **ClassList Mutation Safety**: When updating theme classes dynamically, always collect classes into an array before removing them to prevent iterator skipping.
-6. 🔒 **Exit Code `42` Loop**: All shell scripts (`run_captioner.bat`, `run_captioner.sh`) must catch exit code `42` to support instant hot-restarts triggered from the web UI panic button.
-7. 🔒 **Zero External CDN Hard-Lock**: The web server must always provide bundled fallback fonts and local icons so core captioning functions completely offline without internet access.
-8. 🔒 **Pure Local Security**: VoxStream is a local broadcast tool. All audio processing must remain strictly on the local machine unless the user explicitly configures a cloud API key.
+1. **Viewport Clamping**: `html` and `body` in `display.html` must always have `max-width: 100vw; overflow: hidden;` to prevent desktop wallpaper bleeding on tiled or multi-monitor setups.
+2. **Flex-Shrink Safety on Scripture Prompters**: Elements inserted above the main caption container (like `#scripturePrompterCard`) must have `flex-shrink: 0;` so they never compress or push the caption scrolling area off-screen.
+3. **Bottom Padding & Flex Calculation**: `.stage-container` must use `flex: 1 1 0; min-height: 0;` rather than `height: 100%;` to ensure bottom lines and safe-area insets are never clipped.
+4. **Cross-Browser Fullscreen Handlers**: All fullscreen toggle logic must provide `-webkit-` fallbacks (`webkitRequestFullscreen`, `webkitExitFullscreen`, `webkitFullscreenElement`) for Safari and embedded WebKit docks.
+5. **ClassList Mutation Safety**: When updating theme classes dynamically, always collect classes into an array before removing them to prevent iterator skipping.
+6. **Exit Code `42` Loop**: All shell scripts (`run_captioner.bat`, `run_captioner.sh`) must catch exit code `42` to support instant hot-restarts triggered from the web UI panic button.
+7. **Zero External CDN Hard-Lock**: The web server must always provide bundled fallback fonts and local icons so core captioning functions completely offline without internet access.
+8. **Pure Local Security**: VoxStream is a local broadcast tool. All audio processing must remain strictly on the local machine unless the user explicitly configures a cloud API key.
 
 ---
 *Maintained by the VoxStream Open Source Broadcast Suite Team.*

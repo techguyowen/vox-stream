@@ -1,4 +1,4 @@
-# ⚡ OBS Live Captioner PRO — Complete REST & WebSocket API Reference Manual
+# OBS Live Captioner PRO — Complete REST & WebSocket API Reference Manual
 
 The **OBS Live Captioner PRO Suite** provides a high-performance, asynchronous REST and WebSocket API running on port `8765` (`http://127.0.0.1:8765` / `http://0.0.0.0:8765`).
 
@@ -6,19 +6,19 @@ This API enables hardware controllers (**Elgato Stream Deck**, **Bitfocus Compan
 
 ---
 
-## 📋 Table of Contents
+## Table of Contents
 1. [Base URL & Authentication](#1-base-url--authentication)
-2. [🎙️ Speech-to-Text & Engine Control](#2-speech-to-text--engine-control)
-3. [🚨 Panic Censor & Safety Controls](#3-panic-censor--safety-controls)
-4. [🤖 Offline AI Model Downloader & Cache Manager](#4-offline-ai-model-downloader--cache-manager)
-5. [📖 Custom Vocabulary & Bulk Glossary API](#5-custom-vocabulary--bulk-glossary-api)
-6. [🎨 Visual Themes & Custom Presets API](#6-visual-themes--custom-presets-api)
-7. [📜 Transcripts, Exports & YouTube Chapters](#7-transcripts-exports--youtube-chapters)
-8. [🌐 Live Translation API](#8-live-translation-api)
-9. [📺 OBS Projector, Monitors & External Screen Automation](#9-obs-projector-monitors--external-screen-automation)
-10. [🔊 Live Audio Distribution & Stream API](#10-live-audio-distribution--stream-api)
-11. [🌐 WebSocket Streaming APIs](#11-websocket-streaming-apis)
-12. [🎮 Hardware Integrations (Stream Deck, Companion, Curl, PowerShell)](#12-hardware-integrations)
+2. [Speech-to-Text & Engine Control](#2-speech-to-text--engine-control)
+3. [Panic Censor & Safety Controls](#3-panic-censor--safety-controls)
+4. [Offline AI Model Downloader & Cache Manager](#4-offline-ai-model-downloader--cache-manager)
+5. [Custom Vocabulary & Bulk Glossary API](#5-custom-vocabulary--bulk-glossary-api)
+6. [Visual Themes & Custom Presets API](#6-visual-themes--custom-presets-api)
+7. [Transcripts, Exports & YouTube Chapters](#7-transcripts-exports--youtube-chapters)
+8. [Live Translation API](#8-live-translation-api)
+9. [OBS Projector, Monitors & External Screen Automation](#9-obs-projector-monitors--external-screen-automation)
+10. [Live Audio Distribution & Stream API](#10-live-audio-distribution--stream-api)
+11. [WebSocket Streaming APIs](#11-websocket-streaming-apis)
+12. [Hardware Integrations (Stream Deck, Companion, Curl, PowerShell)](#12-hardware-integrations)
 
 ---
 
@@ -35,9 +35,9 @@ This API enables hardware controllers (**Elgato Stream Deck**, **Bitfocus Compan
 
 ---
 
-## 2. 🎙️ Speech-to-Text & Engine Control
+## 2. Speech-to-Text & Engine Control
 
-### 🟢 Start Captioning
+### Start Captioning
 Starts the speech recognition engine and audio capture stream.
 * **Endpoint**: `POST /api/control/start`
 * **cURL**:
@@ -51,7 +51,7 @@ Starts the speech recognition engine and audio capture stream.
 
 ---
 
-### 🔴 Stop Captioning
+### Stop Captioning
 Pauses/stops audio capture and recognition.
 * **Endpoint**: `POST /api/control/stop`
 * **cURL**:
@@ -65,7 +65,7 @@ Pauses/stops audio capture and recognition.
 
 ---
 
-### ⏯️ Toggle Captioning (Play/Pause)
+### Toggle Captioning (Play/Pause)
 1-click toggle between active and stopped states.
 * **Endpoint**: `POST /api/control/toggle`
 * **cURL**:
@@ -79,7 +79,7 @@ Pauses/stops audio capture and recognition.
 
 ---
 
-### 🔄 Restart Backend Engine
+### Restart Backend Engine
 Gracefully recycles the audio capture pipeline and model inference workers.
 * **Endpoint**: `POST /api/control/restart`
 * **cURL**:
@@ -89,13 +89,13 @@ Gracefully recycles the audio capture pipeline and model inference workers.
 
 ---
 
-### 🛑 Shutdown Application
+### Shutdown Application
 Gracefully closes OBS connections, WebSockets, audio streams, and shuts down the process.
 * **Endpoint**: `POST /api/control/shutdown`
 
 ---
 
-### 📊 Get System Status
+### Get System Status
 * **Endpoint**: `GET /api/status`
 * **Response (200 OK)**:
   ```json
@@ -113,7 +113,7 @@ Gracefully closes OBS connections, WebSockets, audio streams, and shuts down the
 
 ---
 
-### ⚙️ Get / Save Configuration
+### Get / Save Configuration
 * **Get Config**: `GET /api/config`
 * **Save Config (Hot-Reload)**: `POST /api/config`
   ```bash
@@ -127,9 +127,9 @@ Gracefully closes OBS connections, WebSockets, audio streams, and shuts down the
 
 ---
 
-## 3. 🚨 Panic Censor & Safety Controls
+## 3. Panic Censor & Safety Controls
 
-### 🚨 Emergency Panic Caption Drop
+### Emergency Panic Caption Drop
 Instantly purges all visible text from OBS overlays, Stage confidence monitors, and WebSockets, and emits a blank frame.
 * **Endpoint**: `POST /api/control/panic`
 * **cURL**:
@@ -147,7 +147,7 @@ Instantly purges all visible text from OBS overlays, Stage confidence monitors, 
 
 ---
 
-### 🛡️ Content Filter State & Whitelist / Blacklist CRUD
+### Content Filter State & Whitelist / Blacklist CRUD
 * **Get Filter State**: `GET /api/filter/state`
 * **Test Filter Phrase**: `POST /api/filter/test` (`{"text": "phrase to evaluate"}`)
 * **Add Blacklist Term**: `POST /api/filter/blacklist/add` (`{"term": "badword"}`)
@@ -158,7 +158,7 @@ Instantly purges all visible text from OBS overlays, Stage confidence monitors, 
 
 ---
 
-## 4. 🤖 Offline AI Model Downloader & Cache Manager
+## 4. Offline AI Model Downloader & Cache Manager
 
 Manage local offline speech recognition models on disk.
 
@@ -174,7 +174,7 @@ Manage local offline speech recognition models on disk.
 
 ---
 
-### 📊 Query Model Download Status
+### Query Model Download Status
 Returns disk cache verification for every model and total disk consumption.
 * **Endpoint**: `GET /api/models/status`
 * **Response (200 OK)**:
@@ -199,7 +199,7 @@ Returns disk cache verification for every model and total disk consumption.
 
 ---
 
-### 📥 Pre-Download Model(s)
+### Pre-Download Model(s)
 Downloads a single model or all catalog models in the background. Progress broadcasts in real-time over `/api/control/ws`.
 * **Endpoint**: `POST /api/models/download`
 * **Request Body**:
@@ -218,7 +218,7 @@ Downloads a single model or all catalog models in the background. Progress broad
 
 ---
 
-### 🛑 Cancel In-Flight Download
+### Cancel In-Flight Download
 * **Endpoint**: `POST /api/models/cancel`
 * **Response (200 OK)**:
   ```json
@@ -227,7 +227,7 @@ Downloads a single model or all catalog models in the background. Progress broad
 
 ---
 
-### 🗑️ Delete Model from Disk Cache
+### Delete Model from Disk Cache
 Deletes a specific model or clears the entire cache to free storage space.
 * **Endpoint**: `POST /api/models/delete` *(or `DELETE /api/models`)*
 * **Request Body**:
@@ -247,11 +247,11 @@ Deletes a specific model or clears the entire cache to free storage space.
 
 ---
 
-## 5. 📖 Custom Vocabulary & Bulk Glossary API
+## 5. Custom Vocabulary & Bulk Glossary API
 
 Custom phonetics and proper noun replacement engine.
 
-### ➕ Set Single Term
+### Set Single Term
 * **Endpoint**: `POST /api/vocabulary/set`
 * **Request Body**:
   ```json
@@ -263,7 +263,7 @@ Custom phonetics and proper noun replacement engine.
 
 ---
 
-### 📑 Bulk CSV / TSV Import
+### Bulk CSV / TSV Import
 * **Endpoint**: `POST /api/vocabulary/bulk`
 * **Request Body**:
   ```json
@@ -283,18 +283,18 @@ Custom phonetics and proper noun replacement engine.
 
 ---
 
-### 📥 Export Glossary as CSV
+### Export Glossary as CSV
 * **Endpoint**: `GET /api/vocabulary/export`
 * **Response**: `text/csv` attachment (`Misheard Phrase,Correct Replacement\n...`).
 
 ---
 
-### 🗑️ Clear All Terms
+### Clear All Terms
 * **Endpoint**: `POST /api/vocabulary/clear`
 
 ---
 
-### 🧪 Test Glossary Substitution
+### Test Glossary Substitution
 * **Endpoint**: `POST /api/vocabulary/test`
 * **Request Body**: `{"text": "welcome to box stream with pastor mike"}`
 * **Response (200 OK)**:
@@ -308,11 +308,11 @@ Custom phonetics and proper noun replacement engine.
 
 ---
 
-## 6. 📖 Instant Scripture & Offline Bible Auto-Lookup API
+## 6. Instant Scripture & Offline Bible Auto-Lookup API
 
 VoxStream automatically parses spoken scripture references (e.g. *"John 3:16"*, *"1 Corinthians 13:4-7"*, *"Romans 8:28"*) and looks up the full passage across built-in offline Bible translations (**BSB**, **WEB**, **KJV**) in < 0.1ms.
 
-### 📚 List Available Offline Translations
+### List Available Offline Translations
 * **Endpoint**: `GET /api/bible/versions`
 * **Response (200 OK)**:
   ```json
@@ -327,7 +327,7 @@ VoxStream automatically parses spoken scripture references (e.g. *"John 3:16"*, 
 
 ---
 
-### 🔍 Lookup Verse or Range (Offline)
+### Lookup Verse or Range (Offline)
 * **Endpoint**: `GET /api/bible/lookup?citation=1+Thessalonians+5:16-18&version=bsb`
 * **Response (200 OK)**:
   ```json
@@ -345,7 +345,7 @@ VoxStream automatically parses spoken scripture references (e.g. *"John 3:16"*, 
 
 ---
 
-### 📺 Push Scripture Passage to Stream & Stage Screens
+### Push Scripture Passage to Stream & Stage Screens
 Manually displays a passage or cued verse on the OBS Stream Overlay and Stage Confidence Monitors.
 * **Endpoint**: `POST /api/bible/display`
 * **Request Body**:
@@ -371,7 +371,7 @@ Manually displays a passage or cued verse on the OBS Stream Overlay and Stage Co
 
 ---
 
-### ✕ Dismiss Active Scripture Card
+### Dismiss Active Scripture Card
 * **Endpoint**: `POST /api/bible/dismiss`
 * **Response (200 OK)**:
   ```json
@@ -380,9 +380,9 @@ Manually displays a passage or cued verse on the OBS Stream Overlay and Stage Co
 
 ---
 
-## 7. 🎨 Visual Themes & Custom Presets API
+## 7. Visual Themes & Custom Presets API
 
-### 🎨 List Themes & Presets
+### List Themes & Presets
 * **Endpoint**: `GET /api/presets`
 * **Response (200 OK)**:
   ```json
@@ -396,14 +396,14 @@ Manually displays a passage or cued verse on the OBS Stream Overlay and Stage Co
       { "id": "corporate_keynote", "name": "Corporate Keynote & Tech", "is_custom": false },
       { "id": "editorial_nordic", "name": "Editorial & Talk Show", "is_custom": false },
       { "id": "youtube_cc", "name": "Classic Broadcast CEA-708", "is_custom": false },
-      { "id": "opendyslexic", "name": "📖 OpenDyslexic (Accessibility)", "is_custom": false }
+      { "id": "opendyslexic", "name": "OpenDyslexic (Accessibility)", "is_custom": false }
     ]
   }
   ```
 
 ---
 
-### ✨ Apply Theme Preset
+### Apply Theme Preset
 * **Endpoint**: `POST /api/presets/apply`
 * **Request Body**:
   ```json
@@ -412,7 +412,7 @@ Manually displays a passage or cued verse on the OBS Stream Overlay and Stage Co
 
 ---
 
-### 💾 Save Custom Theme Preset
+### Save Custom Theme Preset
 * **Endpoint**: `POST /api/presets/save`
 * **Request Body**:
   ```json
@@ -438,21 +438,21 @@ Manually displays a passage or cued verse on the OBS Stream Overlay and Stage Co
 
 ---
 
-### 🗑️ Delete Custom Theme Preset
+### Delete Custom Theme Preset
 * **Endpoint**: `POST /api/presets/delete`
 * **Request Body**: `{"id": "sunday_morning_gold"}` *(or `{"preset_id": "sunday_morning_gold"}`)*
 
 ---
 
-## 8. 📜 Transcripts, Exports & YouTube Chapters
+## 8. Transcripts, Exports & YouTube Chapters
 
-### 📥 Export Subtitles (.SRT / .VTT / .TXT)
+### Export Subtitles (.SRT / .VTT / .TXT)
 * **Endpoint**: `GET /api/transcript/export?format=srt`
 * **Parameters**: `format=srt` (default), `format=vtt`, or `format=txt`
 
 ---
 
-### 📑 Automated YouTube Description Chapter Markers
+### Automated YouTube Description Chapter Markers
 Automatically detects scripture passages, prayer moments, and sermon points with formatted timecodes.
 * **Endpoint**: `GET /api/transcript/chapters`
 * **Response (200 OK)**:
@@ -471,19 +471,19 @@ Automatically detects scripture passages, prayer moments, and sermon points with
 
 ---
 
-### 📜 Get Recent Transcript History
+### Get Recent Transcript History
 * **Endpoint**: `GET /api/transcript/history?limit=100&search=keyword`
 
 ---
 
-### 🗑️ Clear Transcript History
+### Clear Transcript History
 * **Endpoint**: `POST /api/transcript/clear`
 
 ---
 
-## 9. 🌐 Live Translation API
+## 9. Live Translation API
 
-### 🌐 Translate Text On-Demand
+### Translate Text On-Demand
 * **Endpoint**: `GET /api/translate?text=Hello+world&target_lang=es`
 * **Response (200 OK)**:
   ```json
@@ -497,21 +497,21 @@ Automatically detects scripture passages, prayer moments, and sermon points with
 
 ---
 
-### 🌐 Supported Languages List
+### Supported Languages List
 * **Endpoint**: `GET /api/languages` (Returns 100+ BCP-47 language codes and native display names).
 
 ---
 
-## 10. 📺 OBS Projector, Monitors & External Screen Automation
+## 10. OBS Projector, Monitors & External Screen Automation
 
-### 🚨 Emergency 1-Click Screen Re-Open
+### Emergency 1-Click Screen Re-Open
 Re-launches OBS fullscreen projector to secondary screen (LONTIUM / Monitor 1) and ensures captioning is active.
 * **Endpoint**: `POST /api/control/reopen-screen` *(or `POST /api/control/restore-display`)*
 * **Body / Query Parameters** *(Optional)*: `{"monitor": 1, "mix_type": "preview"}`
 
 ---
 
-### 📺 Open Custom OBS Projector
+### Open Custom OBS Projector
 * **Endpoint**: `POST /api/obs/projector/open`
 * **Request Body**:
   ```json
@@ -524,12 +524,12 @@ Re-launches OBS fullscreen projector to secondary screen (LONTIUM / Monitor 1) a
 
 ---
 
-### 🖥️ List Connected OBS Displays
+### List Connected OBS Displays
 * **Endpoint**: `GET /api/obs/monitors`
 
 ---
 
-## 11. 🔊 Live Audio Distribution & Stream API
+## 11. Live Audio Distribution & Stream API
 
 Broadcasts low-latency audio for hearing assistance devices and mobile web listeners.
 
@@ -538,7 +538,7 @@ Broadcasts low-latency audio for hearing assistance devices and mobile web liste
 
 ---
 
-## 12. 🌐 WebSocket Streaming APIs
+## 12. WebSocket Streaming APIs
 
 ### A. Live Subtitles Stream (`/ws`)
 Connect web browsers, OBS browser sources, or stage monitors.
@@ -572,24 +572,20 @@ Real-time state synchronization for the Dashboard and hardware docks.
 
 ---
 
-## 12. 🎮 Hardware Integrations
+## 12. Hardware Integrations
 
 ### A. Elgato Stream Deck
-1. In the Stream Deck software, add a **System ➔ Website** (or **API Ninja / HTTP Request**) action.
+1. In the Stream Deck software, add a **System Website** (or **API Ninja / HTTP Request**) action.
 2. **Panic Censor Key**:
    * URL: `http://127.0.0.1:8765/api/control/panic`
    * Method: `POST`
-   * Label: `PANIC DROP` 🚨
-3. **Play/Pause Key**:
+   * Label: `PANIC DROP` 3. **Play/Pause Key**:
    * URL: `http://127.0.0.1:8765/api/control/toggle`
    * Method: `POST`
-   * Label: `CAPTIONS` ⏯️
-4. **Reopen Projector Key**:
+   * Label: `CAPTIONS` 4. **Reopen Projector Key**:
    * URL: `http://127.0.0.1:8765/api/control/reopen-screen`
    * Method: `POST`
-   * Label: `LONTIUM SCREEN` 📺
-
----
+   * Label: `LONTIUM SCREEN` ---
 
 ### B. Bitfocus Companion
 1. Add a **generic-http** connection with Base URL: `http://127.0.0.1:8765`.

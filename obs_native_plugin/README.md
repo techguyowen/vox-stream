@@ -6,7 +6,7 @@ This native C++ plugin is designed to act purely as an **ultra-low-latency audio
 
 Instead, this plugin adds an Audio Filter to OBS ("Live Speech Captions (AI)"). When attached to a specific audio source, it grabs the raw audio frames, computes the noise gate, and streams the PCM chunks via `HTTP POST` directly to the Python backend (`http://127.0.0.1:8765/api/audio/chunk`).
 
-### ⚠️ Important Compilation Warning (macOS / Linux)
+### Important Compilation Warning (macOS / Linux)
 
 The `deps/obs-sdk` folder included in this repository contains **incomplete "mock" headers** (likely left over from a Windows IDE environment). They are missing critical OBS Studio SDK definitions (like `obs_source_get_settings`, `obs_output_t`, etc.).
 
