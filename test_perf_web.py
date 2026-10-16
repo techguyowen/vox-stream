@@ -162,7 +162,7 @@ class TestPerfWeb(unittest.IsolatedAsyncioTestCase):
                 return self
 
             async def __anext__(self):
-                await asyncio.sleep(0.05)
+                await asyncio.sleep(0.15)
                 raise StopAsyncIteration
 
         ws = MockCaptionWs()
