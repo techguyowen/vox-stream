@@ -18,6 +18,8 @@ cp -R obs_captioner "$RELEASE_NAME/"
 cp -R obs_script "$RELEASE_NAME/"
 cp -R integrations "$RELEASE_NAME/" 2>/dev/null || true
 cp -R obs_native_plugin "$RELEASE_NAME/" 2>/dev/null || true
+cp Caddyfile "$RELEASE_NAME/" 2>/dev/null || true
+cp -R profiles "$RELEASE_NAME/" 2>/dev/null || true
 cp requirements.txt "$RELEASE_NAME/"
 cp version.json "$RELEASE_NAME/" 2>/dev/null || true
 cp config.json.example "$RELEASE_NAME/"

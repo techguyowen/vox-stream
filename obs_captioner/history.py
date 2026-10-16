@@ -2,9 +2,11 @@
 
 import collections
 import datetime
+import json
 import re
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Deque, List, Optional
 
 
@@ -23,11 +25,82 @@ class HistoryEntry:
 class TranscriptHistory:
     """Manages session transcript history with instant subtitle format exports."""
 
-    def __init__(self, max_entries: int = 5000):
+    def __init__(self, max_entries: int = 5000, persist_path: Optional[str | Path] = None):
         self.max_entries = max_entries
         self.entries: collections.deque[HistoryEntry] = collections.deque(maxlen=self.max_entries)
         self._counter = 1
         self.session_start_time = time.time()
+        self.persist_path = Path(persist_path) if persist_path else None
+        if self.persist_path is not None and self.persist_path.exists():
+            self._load_from_disk()
+
+    def _load_from_disk(self) -> None:
+        """Restore previous entries from the JSONL persistence file."""
+        try:
+            max_id = 0
+            with open(self.persist_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        data = json.loads(line)
+                    except Exception:
+                        continue
+                    try:
+                        entry = HistoryEntry(
+                            id=int(data["id"]),
+                            start_time=float(data["start_time"]),
+                            end_time=float(data["end_time"]),
+                            text=str(data["text"]),
+                            is_censored=bool(data.get("is_censored", False)),
+                        )
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                    self.entries.append(entry)
+                    max_id = max(max_id, entry.id)
+            if self.entries:
+                self._counter = max_id + 1
+                self.session_start_time = self.entries[0].start_time
+        except Exception:
+            pass
+
+    def _append_to_disk(self, entry: HistoryEntry) -> None:
+        """Append one entry as a JSON line; disk errors never crash captioning."""
+        if self.persist_path is None:
+            return
+        try:
+            if self.persist_path.parent and str(self.persist_path.parent) not in ("", "."):
+                self.persist_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.persist_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps({
+                    "id": entry.id,
+                    "start_time": entry.start_time,
+                    "end_time": entry.end_time,
+                    "text": entry.text,
+                    "is_censored": entry.is_censored,
+                }) + "\n")
+        except Exception:
+            pass
+
+    def rewrite_disk(self) -> None:
+        """Rewrite the persistence file from current entries (after in-place edits)."""
+        if self.persist_path is None:
+            return
+        try:
+            if self.persist_path.parent and str(self.persist_path.parent) not in ("", "."):
+                self.persist_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.persist_path, "w", encoding="utf-8") as f:
+                for entry in self.entries:
+                    f.write(json.dumps({
+                        "id": entry.id,
+                        "start_time": entry.start_time,
+                        "end_time": entry.end_time,
+                        "text": entry.text,
+                        "is_censored": entry.is_censored,
+                    }) + "\n")
+        except Exception:
+            pass
 
     def add_entry(self, text: str, start_time: float, end_time: Optional[float] = None, is_censored: bool = False):
         """Add a finalized transcript line to history."""
@@ -47,6 +120,7 @@ class TranscriptHistory:
         )
         self._counter += 1
         self.entries.append(entry)
+        self._append_to_disk(entry)
 
     def get_history(self, limit: int = 100, search: str = "") -> List[dict]:
         """Query recent history items with optional search filter."""
@@ -78,6 +152,11 @@ class TranscriptHistory:
         self.entries.clear()
         self._counter = 1
         self.session_start_time = time.time()
+        if self.persist_path is not None and self.persist_path.exists():
+            try:
+                self.persist_path.unlink()
+            except Exception:
+                pass
 
     def get_stats(self) -> dict:
         """Calculate live Words Per Minute (WPM), session WPM, total words, and active speaking time."""

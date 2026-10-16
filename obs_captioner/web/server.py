@@ -8,6 +8,7 @@ import logging
 import mimetypes
 import os
 import re
+import secrets
 import time
 import urllib.parse
 import uuid
@@ -60,6 +61,40 @@ def is_secret_placeholder(val: Any) -> bool:
     if not s:
         return False
     return s == "•••" or s in ("•••", "••", "•", "••••", "••••••••", "••••••••••••", "***") or all(c in "•*· " for c in s)
+
+
+class _FallbackProPresenterClient:
+    """In-memory lyrics-slide tracker used when no ProPresenter/Proclaim integration is configured."""
+
+    LYRICS_LABEL_KEYWORDS = (
+        "lyric", "verse", "chorus", "bridge", "song", "worship",
+        "hymn", "music", "pre-chorus", "prechorus", "anthem", "psalm",
+    )
+
+    def __init__(self, config=None):
+        self.config = config
+        self._slide_text = ""
+        self._slide_label = ""
+        self._is_lyrics_slide_active = False
+
+    def get_status(self) -> dict:
+        cfg = self.config
+        return {
+            "enabled": bool(getattr(cfg, "enabled", False)),
+            "provider": getattr(cfg, "provider", "propresenter"),
+            "is_connected": False,
+            "is_lyrics_slide_active": self._is_lyrics_slide_active,
+        }
+
+    def update_slide_state(self, slide_text: str = "", slide_label: str = "", source: str = "propresenter") -> bool:
+        self._slide_text = slide_text or ""
+        self._slide_label = slide_label or ""
+        label = (slide_label or "").lower()
+        self._is_lyrics_slide_active = bool(slide_text) and any(k in label for k in self.LYRICS_LABEL_KEYWORDS)
+        return self._is_lyrics_slide_active
+
+    async def send_proclaim_command(self, command: str, index=None) -> bool:
+        return False
 
 
 class WebOverlayServer:
@@ -127,6 +162,8 @@ class WebOverlayServer:
         self.model_downloader = ModelDownloadManager()
         self.bible_engine = BibleEngine()
         self.summary_engine = SermonSummaryEngine(getattr(self.config, "summary", None), self.history, app_config=self.config)
+        self.propresenter_client = None
+        self._last_scripture = None
         # Rolling snapshot of recent final caption payloads, replayed to newly
         # connected /ws clients so refreshed views aren't blank until the next utterance.
         self._recent_finals: list = []
@@ -175,6 +212,26 @@ class WebOverlayServer:
         auth_func = require_api_auth(self.config.api.api_key)
         return auth_func(request)
 
+    def _check_operator_auth(self, request: web.Request) -> bool:
+        """Two-tier access: full API key OR limited operator PIN."""
+        if self._check_auth(request):
+            return True
+        pin = getattr(self.config.api, "operator_pin", "") or ""
+        if not pin:
+            return False
+        supplied = (
+            request.headers.get("X-Operator-Pin")
+            or request.query.get("pin", "")
+            or request.query.get("api_key", "")
+        ) or ""
+        supplied = supplied.strip()
+        if not supplied:
+            return False
+        try:
+            return secrets.compare_digest(supplied.encode("utf-8"), pin.encode("utf-8"))
+        except Exception:
+            return False
+
     def _make_filter(self) -> ContentFilter:
         return ContentFilter(self.config.censor, church_mode=getattr(self.config.general, "church_mode", True))
 
@@ -220,6 +277,7 @@ class WebOverlayServer:
         # REST API Routes
         self.app.router.add_get("/api/status", self._handle_get_status)
         self.app.router.add_get("/api/config", self._handle_get_config)
+        self.app.router.add_get("/api/public/config", self._handle_get_public_config)
         self.app.router.add_post("/api/config", self._handle_post_config)
         self.app.router.add_get("/api/devices", self._handle_get_devices)
         self.app.router.add_get("/api/audio/devices", self._handle_get_devices)
@@ -230,6 +288,7 @@ class WebOverlayServer:
         self.app.router.add_post("/api/presets/delete", self._handle_delete_preset)
         self.app.router.add_get("/api/languages", self._handle_get_languages)
         self.app.router.add_get("/api/engine/benchmark", self._handle_get_benchmark)
+        self.app.router.add_post("/api/engine/reset_tokens", self._handle_reset_token_usage)
         
         # Control Endpoints
         self.app.router.add_post("/api/control/start", self._handle_control_start)
@@ -325,6 +384,15 @@ class WebOverlayServer:
         self.app.router.add_get("/api/bible/lookup", self._handle_bible_lookup)
         self.app.router.add_post("/api/bible/display", self._handle_bible_display)
         self.app.router.add_post("/api/bible/dismiss", self._handle_bible_dismiss)
+        self.app.router.add_post("/api/bible/show", self._handle_bible_display)
+        self.app.router.add_post("/api/bible/hide", self._handle_bible_dismiss)
+        self.app.router.add_post("/api/bible/next", self._handle_bible_next)
+        self.app.router.add_post("/api/bible/prev", self._handle_bible_prev)
+
+        # ProPresenter & Faithlife Proclaim Display Sync
+        self.app.router.add_get("/api/presentation/status", self._handle_presentation_status)
+        self.app.router.add_post("/api/presentation/slide", self._handle_presentation_slide)
+        self.app.router.add_post("/api/presentation/proclaim/command", self._handle_proclaim_command)
         self.app.router.add_get("/api/bible/context", self._handle_get_bible_context)
         self.app.router.add_post("/api/bible/context", self._handle_post_bible_context)
 
@@ -474,8 +542,25 @@ class WebOverlayServer:
                 s_stats = self.engine.get_session_stats()
                 status_info["gemini_session_uptime"] = s_stats.get("uptime_seconds")
                 status_info["gemini_rotations"] = s_stats.get("rotations")
+                if isinstance(s_stats, dict) and "token_usage" in s_stats:
+                    status_info["token_usage"] = s_stats["token_usage"]
             except Exception:
                 pass
+        offline_engines = ("vosk", "local_whisper", "moonshine", "sherpa", "parakeet", "sensevoice")
+        if self.config.general.engine in offline_engines:
+            status_info["token_usage"] = {
+                "prompt_tokens": 0,
+                "response_tokens": 0,
+                "total_tokens": 0,
+                "estimated_cost_usd": 0.0,
+                "cost_rate_per_hour": "$0.00 / hr",
+                "audio_seconds": 0.0,
+                "model": self.config.general.engine,
+                "is_offline": True,
+                "notes": "100% Free (Offline Engine)",
+            }
+        status_info["status"] = "online"
+        status_info["model"] = status_info.get("model_detail") or status_info.get("engine")
         # Never report "running" unless the app-status hook confirmed it
         status_info.setdefault("is_running", False)
         self._status_cache[host_key] = (now, status_info)
@@ -669,7 +754,7 @@ class WebOverlayServer:
         except Exception:
             body = {}
         video_path = body.get("video_path")
-        self.subtitle_recorder.start_recording(video_path=video_path)
+        self.subtitle_recorder.start_recording(video_path=video_path, allow_arbitrary_video_path=False)
         status = self.subtitle_recorder.get_status()
         await self.broadcast_control({"type": "recording_state_changed", "recording": status})
         return web.json_response({"status": "started", "recording": status})
@@ -726,6 +811,15 @@ class WebOverlayServer:
                 logger.error(f"Error reading engine_rankings.json: {e}")
         return web.json_response({"error": "Benchmark rankings not found", "rankings": []}, status=404)
 
+    async def _handle_reset_token_usage(self, request: web.Request) -> web.Response:
+        """Reset the active engine's session token/cost counters."""
+        if hasattr(self.engine, "reset_token_usage"):
+            try:
+                self.engine.reset_token_usage()
+            except Exception:
+                logger.warning("reset_token_usage failed", exc_info=True)
+        return web.json_response({"status": "ok", "message": "Token counter reset"})
+
     # Sentinel used in place of secret values in GET /api/config responses.
     # POSTing the sentinel back leaves the stored secret unchanged.
     SECRET_SENTINEL = "•••"
@@ -734,9 +828,10 @@ class WebOverlayServer:
         "bandwidth": ("api_key",),
         "twitch": ("oauth_token",),
         "obs": ("password",),
-        "api": ("api_key",),
+        "api": ("api_key", "operator_pin"),
         "summary": ("gemini_api_key",),
         "translation": ("gemini_api_key",),
+        "propresenter": ("password", "proclaim_password"),
     }
 
     def get_masked_config_dict(self) -> dict:
@@ -754,8 +849,36 @@ class WebOverlayServer:
                             data[section][f"{f}_preview"] = "••••"
         return data
 
+    def get_public_config_dict(self) -> dict:
+        """Return sanitized display/overlay config with zero secrets (safe for LAN displays)."""
+        return {
+            "general": {
+                "church_name": getattr(self.config.general, "church_name", ""),
+                "language": getattr(self.config.general, "language", "en-US"),
+            },
+            "overlay": asdict(self.config.overlay),
+            "display": asdict(self.config.display),
+            "bible": asdict(self.config.bible),
+            "translation": {
+                "enabled": getattr(self.config.translation, "enabled", False),
+                "target_language": getattr(self.config.translation, "target_language", "es"),
+                "display_mode": getattr(self.config.translation, "display_mode", "dual"),
+                "dual_subtitle_color": getattr(self.config.translation, "dual_subtitle_color", "#FFD700"),
+                "dual_subtitle_scale": getattr(self.config.translation, "dual_subtitle_scale", 0.85),
+                "dual_subtitle_format": getattr(self.config.translation, "dual_subtitle_format", "clean"),
+                "interpreter_mode": getattr(self.config.translation, "interpreter_mode", False),
+            },
+        }
+
+    async def _handle_get_public_config(self, request: web.Request) -> web.Response:
+        return web.json_response(self.get_public_config_dict())
+
     async def _handle_get_config(self, request: web.Request) -> web.Response:
-        return web.json_response(self.get_masked_config_dict())
+        if self._check_auth(request):
+            return web.json_response(self.get_masked_config_dict())
+        if str(request.query.get("admin", "")).lower() in ("1", "true", "yes"):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        return web.json_response(self.get_public_config_dict())
 
     async def _handle_post_config(self, request: web.Request) -> web.Response:
         """Update live settings and persist to config.json."""
@@ -794,6 +917,10 @@ class WebOverlayServer:
                                     continue
 
                         setattr(section, sec_k, sec_v)
+
+            if getattr(self.config, "translation", None) and getattr(self.config.translation, "interpreter_mode", False):
+                if getattr(self.config.translation, "provider", "") != "gemini_live":
+                    self.config.translation.provider = "gemini_live"
 
             save_config(self.config)
             if hasattr(self, "translator") and self.translator:
@@ -939,7 +1066,7 @@ class WebOverlayServer:
         return web.json_response({"languages": SUPPORTED_LANGUAGES})
 
     async def _handle_control_toggle(self, request: web.Request) -> web.Response:
-        if not self._check_auth(request):
+        if not self._check_operator_auth(request):
             return web.json_response({"error": "Unauthorized"}, status=401)
         is_running = False
         if self.get_app_status:
@@ -961,7 +1088,7 @@ class WebOverlayServer:
         return web.json_response({"status": "success", "is_running": new_state, "message": msg})
 
     async def _handle_control_panic(self, request: web.Request) -> web.Response:
-        if not self._check_auth(request):
+        if not self._check_operator_auth(request):
             return web.json_response({"error": "Unauthorized"}, status=401)
         self._recent_finals.clear()
         panic_payload = {"text": "", "is_final": True, "is_censored": True, "panic": True, "timestamp": time.time()}
@@ -1095,6 +1222,8 @@ class WebOverlayServer:
 
     async def _handle_ai_chapters(self, request: web.Request) -> web.Response:
         """Generate semantic, YouTube-compliant timestamped video chapters using AI or heuristics."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         client_ip = self._client_ip(request)
         if not self.rate_limiter.is_allowed(client_ip):
             return web.json_response({"error": "Rate limit exceeded"}, status=429)
@@ -1146,6 +1275,8 @@ class WebOverlayServer:
 
     async def _handle_sermon_summary(self, request: web.Request) -> web.Response:
         """Generate comprehensive sermon summary, bulletin outline, and discussion questions."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         client_ip = self._client_ip(request)
         if not self.rate_limiter.is_allowed(client_ip):
             return web.json_response({"error": "Rate limit exceeded"}, status=429)
@@ -1186,12 +1317,15 @@ class WebOverlayServer:
             provider = sanitize_text(body.get("provider", "")).strip().lower() or None
         else:
             text = sanitize_text(request.query.get("text", "")).strip()
-            target = sanitize_text(request.query.get("target", "es")).strip().lower()
+            target = sanitize_text(request.query.get("target") or request.query.get("target_lang") or "es").strip().lower()
             source = sanitize_text(request.query.get("source", "auto")).strip().lower()
             provider = sanitize_text(request.query.get("provider", "")).strip().lower() or None
 
+        text = text[:1000]
         if not text:
             return web.json_response({"original": "", "translated": "", "target": target})
+        if provider == "gemini" and getattr(self.config.api, "api_key", "") and not self._check_auth(request):
+            provider = None
         translated = await self.translator.translate_to_language(
             text, target_lang=target, source_lang=source, provider_override=provider
         )
@@ -1203,6 +1337,8 @@ class WebOverlayServer:
         })
 
     async def _handle_translation_prewarm(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         client_ip = self._client_ip(request)
         if not self.rate_limiter.is_allowed(client_ip):
             return web.json_response({"error": "Rate limit exceeded"}, status=429)
@@ -1222,14 +1358,14 @@ class WebOverlayServer:
         return web.json_response({"status": "ok", "stats": stats})
 
     async def _handle_control_start(self, request: web.Request) -> web.Response:
-        if not self._check_auth(request):
+        if not self._check_operator_auth(request):
             return web.json_response({"error": "Unauthorized"}, status=401)
         if self.on_start_requested:
             self.on_start_requested()
         return web.json_response({"status": "success", "message": "Captioner started."})
 
     async def _handle_control_stop(self, request: web.Request) -> web.Response:
-        if not self._check_auth(request):
+        if not self._check_operator_auth(request):
             return web.json_response({"error": "Unauthorized"}, status=401)
         if self.on_stop_requested:
             self.on_stop_requested()
@@ -1570,10 +1706,23 @@ class WebOverlayServer:
         except ValueError:
             limit = 100
         entries = self.history.get_history(limit=limit, search=search)
+        lang = sanitize_text(request.query.get("lang", "")).strip().lower()
+        if lang and lang not in ("en", "original", "none", "") and self.translator:
+            async def _translate_entry(entry: dict) -> dict:
+                src = entry.get("text", "")
+                if not src:
+                    return entry
+                try:
+                    t = await self.translator.translate_to_language(src, target_lang=lang)
+                    return {**entry, "text": t or src, "original_text": src}
+                except Exception:
+                    return entry
+            results = await asyncio.gather(*[_translate_entry(e) for e in entries], return_exceptions=True)
+            entries = [r if isinstance(r, dict) else e for r, e in zip(results, entries)]
         return web.json_response({"history": entries})
 
     async def _handle_clear_history(self, request: web.Request) -> web.Response:
-        if not self._check_auth(request):
+        if not self._check_operator_auth(request):
             return web.json_response({"error": "Unauthorized"}, status=401)
         self.history.clear()
         return web.json_response({"status": "success", "message": "History cleared."})
@@ -1726,6 +1875,8 @@ class WebOverlayServer:
 
     async def _handle_export_filter(self, request: web.Request) -> web.Response:
         """Export custom blacklist, whitelist, and replacements as a portable JSON file."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         payload = {
             "blacklist": self.config.censor.custom_blacklist,
             "whitelist": self.config.censor.custom_whitelist,
@@ -1922,6 +2073,8 @@ class WebOverlayServer:
             return web.json_response({"error": str(e)}, status=400)
 
     async def _handle_export_vocabulary(self, request: web.Request) -> web.Response:
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         church_name = getattr(self.config.general, "church_name", "")
         vocab = VocabularyReplacer(self.config.vocabulary, church_name=church_name)
         csv_text = vocab.export_csv()
@@ -2067,6 +2220,8 @@ class WebOverlayServer:
 
     async def _handle_export_profile(self, request: web.Request) -> web.Response:
         """Export an organization profile as a portable JSON file download."""
+        if not self._check_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
         from ..profiles import get_profile_manager
         slug = (request.query.get("slug") or "").strip()
         if not slug:
@@ -2161,7 +2316,7 @@ class WebOverlayServer:
     def _ensure_caption_queue(self, ws: web.WebSocketResponse) -> asyncio.Queue:
         queue = self.caption_queues.get(ws)
         if queue is None:
-            queue = asyncio.Queue(maxsize=8)
+            queue = asyncio.Queue(maxsize=64)
             self.caption_queues[ws] = queue
             self.caption_tasks[ws] = asyncio.create_task(self._caption_sender_loop(ws, queue))
         return queue
@@ -2389,7 +2544,11 @@ class WebOverlayServer:
                 msg_str = lang_payloads["en"]
             elif not is_final:
                 if lang not in lang_payloads:
-                    custom_payload = {**payload, "text": raw_text, "original_text": raw_text}
+                    target_cfg_lang = getattr(getattr(self.config, "translation", None), "target_language", "")
+                    if payload.get("translated_text") and lang == target_cfg_lang:
+                        custom_payload = {**payload, "text": payload["translated_text"], "original_text": raw_text}
+                    else:
+                        custom_payload = {**payload, "text": raw_text, "original_text": raw_text}
                     lang_payloads[lang] = json.dumps(custom_payload)
                 msg_str = lang_payloads[lang]
             else:
@@ -2454,16 +2613,28 @@ class WebOverlayServer:
             except Exception:
                 pass
 
-    def broadcast_translated_audio(self, audio_bytes: bytes, mime_type: str = "audio/pcm;rate=24000"):
+    def broadcast_translated_audio(self, audio_bytes: bytes, mime_type: str = "audio/pcm;rate=24000", target_lang: Optional[str] = None):
         """Fan out synthesized interpreter audio to clients viewing in the target language."""
         if not self.caption_sockets or not audio_bytes:
             return
-        target_lang = getattr(getattr(self.config, "translation", None), "target_language", "es") or "es"
-        # Strictly send ONLY to sockets viewing in the non-English target language
+        target = target_lang or getattr(getattr(self.config, "translation", None), "target_language", "es") or "es"
+        # First preference: non-English display clients whose lang matches target
         matching_sockets = [
             ws for ws, lang in self.caption_sockets.items()
-            if lang == target_lang and lang not in ("en", "original", "none", "")
+            if lang == target and lang not in ("en", "original", "none", "") and self.socket_roles.get(ws) == "display"
         ]
+        if not matching_sockets:
+            # Second preference: any non-English display clients connected
+            matching_sockets = [
+                ws for ws, lang in self.caption_sockets.items()
+                if lang not in ("en", "original", "none", "") and self.socket_roles.get(ws) == "display"
+            ]
+        if not matching_sockets:
+            # Third preference: any non-English socket
+            matching_sockets = [
+                ws for ws, lang in self.caption_sockets.items()
+                if lang not in ("en", "original", "none", "")
+            ]
         if not matching_sockets:
             return
         audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
@@ -2731,7 +2902,7 @@ class WebOverlayServer:
 
     async def _handle_bible_display(self, request: web.Request) -> web.Response:
         """Manually trigger display of a scripture passage across OBS overlays and stage monitors."""
-        if not self._check_auth(request):
+        if not self._check_operator_auth(request):
             return web.json_response({"error": "Unauthorized"}, status=401)
             
         try:
@@ -2759,11 +2930,123 @@ class WebOverlayServer:
 
     async def _handle_bible_dismiss(self, request: web.Request) -> web.Response:
         """Dismiss any active scripture popup on stream and stage screens."""
-        if not self._check_auth(request):
+        if not self._check_operator_auth(request):
             return web.json_response({"error": "Unauthorized"}, status=401)
             
         await self.dismiss_scripture()
         return web.json_response({"status": "success", "message": "Scripture card dismissed."})
+
+    async def _handle_bible_next(self, request: web.Request) -> web.Response:
+        """Advance the displayed scripture passage by one verse window."""
+        if not self._check_operator_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        return await self._step_scripture(request, direction=1)
+
+    async def _handle_bible_prev(self, request: web.Request) -> web.Response:
+        """Move the displayed scripture passage back by one verse window."""
+        if not self._check_operator_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        return await self._step_scripture(request, direction=-1)
+
+    async def _step_scripture(self, request: web.Request, direction: int) -> web.Response:
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        version = sanitize_text(str(body.get("version", "") or "")).strip() or getattr(self.config.bible, "default_version", "bsb")
+        try:
+            duration = float(body.get("duration", getattr(self.config.bible, "display_duration_seconds", 14.0)))
+        except (ValueError, TypeError):
+            duration = getattr(self.config.bible, "display_duration_seconds", 14.0)
+        citation = sanitize_text(str(body.get("citation", "") or "")).strip()
+        if not citation:
+            last = self._last_scripture
+            if last is None:
+                return web.json_response({"error": "No active scripture to step from. Provide 'citation'."}, status=400)
+            try:
+                window = max(1, min(6, int(getattr(self.config.bible, "max_verses_per_slide", 2) or 2)))
+            except (ValueError, TypeError):
+                window = 2
+            new_start = max(1, (last.verse_start or 1) + direction * window)
+            citation = f"{last.book} {last.chapter}:{new_start}-{new_start + window - 1}"
+            version = last.version or version
+        res = self.bible_engine.parse_and_lookup_first(citation, version=version)
+        if not res:
+            return web.json_response({"error": f"Scripture citation '{citation}' not found."}, status=404)
+        await self.broadcast_scripture(res, duration_seconds=duration)
+        return web.json_response({
+            "status": "success",
+            "message": f"Displayed {res.citation} [{res.version}] on scripture overlay and stage monitors.",
+            "scripture": res.to_dict(),
+        })
+
+    def _get_presenter_client(self):
+        """Return the ProPresenter/Proclaim client, lazily instantiating a fallback."""
+        if self.propresenter_client is None:
+            try:
+                from ..presenter import ProPresenterClient, ProPresenterConfig
+                cfg = getattr(self.config, "propresenter", None) or ProPresenterConfig()
+                self.propresenter_client = ProPresenterClient(cfg)
+            except Exception:
+                self.propresenter_client = _FallbackProPresenterClient(getattr(self.config, "propresenter", None))
+        return self.propresenter_client
+
+    async def _handle_presentation_status(self, request: web.Request) -> web.Response:
+        """Return ProPresenter/Proclaim lyrics-slide sync status (public; contains no secrets)."""
+        if self.propresenter_client is not None:
+            try:
+                status = self.propresenter_client.get_status()
+                if asyncio.iscoroutine(status):
+                    status = await status
+                return web.json_response(status)
+            except Exception:
+                pass
+        pp_cfg = getattr(self.config, "propresenter", None)
+        return web.json_response({
+            "enabled": getattr(pp_cfg, "enabled", False),
+            "provider": getattr(pp_cfg, "provider", "propresenter"),
+            "is_connected": False,
+            "is_lyrics_slide_active": False,
+        })
+
+    async def _handle_presentation_slide(self, request: web.Request) -> web.Response:
+        """Sync current ProPresenter/Proclaim slide text for lyrics-slide caption suppression."""
+        if not self._check_operator_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        provider = sanitize_text(str(body.get("provider", "propresenter") or "propresenter")).strip().lower() or "propresenter"
+        slide_text = str(body.get("slide_text", "") or "")
+        slide_label = str(body.get("slide_label", "") or body.get("item_type", "") or "")
+        client = self._get_presenter_client()
+        is_lyrics = client.update_slide_state(slide_text, slide_label, source=provider)
+        if asyncio.iscoroutine(is_lyrics):
+            is_lyrics = await is_lyrics
+        return web.json_response({"status": "ok", "is_lyrics_slide_active": bool(is_lyrics)})
+
+    async def _handle_proclaim_command(self, request: web.Request) -> web.Response:
+        """Relay a remote-control command to Faithlife Proclaim."""
+        if not self._check_operator_auth(request):
+            return web.json_response({"error": "Unauthorized"}, status=401)
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        command = sanitize_text(str(body.get("command", "") or "")).strip()
+        allowed = ("nextSlide", "previousSlide", "goToServiceItem", "blankScreen", "showText", "logoScreen", "lastSlide")
+        if command not in allowed:
+            return web.json_response({"error": f"Unknown command '{command}'."}, status=400)
+        index = body.get("index", None)
+        try:
+            index = int(index) if index is not None else None
+        except (ValueError, TypeError):
+            index = None
+        client = self._get_presenter_client()
+        result = client.send_proclaim_command(command, index=index)
+        ok = await result if asyncio.iscoroutine(result) else result
+        return web.json_response({"status": "ok" if ok else "error", "command": command})
 
     async def _handle_get_bible_context(self, request: web.Request) -> web.Response:
         """Return active sermon scripture context."""
@@ -2826,6 +3109,7 @@ class WebOverlayServer:
 
     async def broadcast_scripture(self, res: ScriptureLookupResult, duration_seconds: float = 14.0):
         """Broadcast scripture passage payload to all connected caption overlays and control dashboards."""
+        self._last_scripture = res
         show_on_stream = bool(getattr(self.config.bible, "show_on_stream_overlay", False)) if getattr(self.config, "bible", None) else False
         show_on_stage = bool(getattr(self.config.bible, "show_on_stage_display", True)) if getattr(self.config, "bible", None) else True
 
@@ -2968,14 +3252,22 @@ class WebOverlayServer:
                 "waypoint": WAYPOINT_PROFILE_DATA,
             }
 
-        config_dict = asdict(self.config)
+        from ..version import VERSION
+        if request.query.get("include_secrets", "").lower() not in ("1", "true", "yes"):
+            config_dict = self.get_masked_config_dict()
+            for section in list(config_dict.keys()):
+                if isinstance(config_dict[section], dict):
+                    for k in [k for k in config_dict[section] if k.endswith("_preview")]:
+                        del config_dict[section][k]
+        else:
+            config_dict = asdict(self.config)
 
         bundle = {
             "voxstream_backup": {
                 "version": "1.0",
                 "exported_at": datetime.now(timezone.utc).isoformat(),
                 "app_name": "VoxStream",
-                "app_version": "1.1.0",
+                "app_version": VERSION,
             },
             "config": config_dict,
             "profiles": profiles_dict,
@@ -3068,7 +3360,12 @@ class WebOverlayServer:
                 for section, sub_dict in config_dict.items():
                     if hasattr(self.config, section) and isinstance(sub_dict, dict):
                         target_sec = getattr(self.config, section)
+                        secret_fields = self.SECRET_FIELDS.get(section, ())
                         for k, v in sub_dict.items():
+                            if k in secret_fields and is_secret_placeholder(v):
+                                continue
+                            if k.endswith("_preview") and not hasattr(target_sec, k):
+                                continue
                             if hasattr(target_sec, k):
                                 setattr(target_sec, k, v)
 

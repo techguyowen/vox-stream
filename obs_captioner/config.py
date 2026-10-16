@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from .censor import CensorConfig
+from .propresenter import ProPresenterConfig
 from .translator import TranslationConfig
 from .twitch_bot import TwitchConfig
 from .vocabulary import VocabularyConfig
@@ -29,6 +30,7 @@ class GeneralConfig:
     church_name: str = "Waypoint Church"
     tray_icon: bool = True  # Enable taskbar system tray icon on desktop systems
     preferred_gpu: str = "auto"  # "auto", "nvidia", "intel", "cpu", or adapter name
+    persist_session_transcript: bool = True  # Persist rolling session transcript to transcripts/ across hot-restarts
 
 
 @dataclass
@@ -289,6 +291,7 @@ class BibleConfig:
 class APIConfig:
     enabled: bool = True
     api_key: str = ""
+    operator_pin: str = ""  # Optional 4-6 digit volunteer PIN for /operator quick actions
 
 
 @dataclass
@@ -384,6 +387,7 @@ class AppConfig:
     summary: SummaryConfig = field(default_factory=SummaryConfig)
     caddy: CaddyConfig = field(default_factory=CaddyConfig)
     scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
+    propresenter: ProPresenterConfig = field(default_factory=ProPresenterConfig)
 
 
 _current_config_path: Optional[str] = None
@@ -475,6 +479,7 @@ def load_config(config_path: Optional[str] = None) -> AppConfig:
         summary=_safe_dataclass_load(SummaryConfig, data.get("summary")),
         caddy=_safe_dataclass_load(CaddyConfig, data.get("caddy")),
         scheduler=scheduler_cfg,
+        propresenter=_safe_dataclass_load(ProPresenterConfig, data.get("propresenter")),
     )
 
     # Environment variable overrides

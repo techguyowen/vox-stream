@@ -142,6 +142,9 @@ tests/
 /test_*
 !test_captioner.py
 !test_perf_*.py
+!test_multi_user_proof.py
+!test_translation_and_interpreter.py
+!test_reconnect_history.py
 .coverage
 .coverage.*
 htmlcov/

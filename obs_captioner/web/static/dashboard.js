@@ -1588,6 +1588,8 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
             loadObsStatus();
             loadObsMonitors();
             refreshObsScenesList();
+        } else if (btn.dataset.tab === "presentation") {
+            refreshPresentationMonitor();
         }
     });
 });
@@ -2104,10 +2106,26 @@ function populateFormFields(cfg) {
         if (transKeyStatus) {
             if (cfg.translation.gemini_api_key && cfg.translation.gemini_api_key.length > 0) {
                 const preview = cfg.translation.gemini_api_key_preview ? ` (${cfg.translation.gemini_api_key_preview})` : "";
-                transKeyStatus.textContent = `✓ Key Configured${preview}`;
+                transKeyStatus.textContent = `✓ Dedicated Key Configured${preview}`;
+                transKeyStatus.style.color = "#22c55e";
                 transKeyStatus.style.display = "inline";
+                if (transKeyInput) {
+                    transKeyInput.placeholder = "AIzaSy... (leave blank to auto-use Gemini Live key)";
+                }
+            } else if (cfg.gemini_live && cfg.gemini_live.api_key && cfg.gemini_live.api_key.length > 0) {
+                const livePreview = cfg.gemini_live.api_key_preview || cfg.translation.gemini_api_key_preview;
+                const preview = livePreview ? ` (${livePreview})` : "";
+                transKeyStatus.textContent = `✓ Synced with Gemini Live${preview}`;
+                transKeyStatus.style.color = "#38bdf8";
+                transKeyStatus.style.display = "inline";
+                if (transKeyInput) {
+                    transKeyInput.placeholder = "Inheriting from Gemini Live (Active)";
+                }
             } else {
                 transKeyStatus.style.display = "none";
+                if (transKeyInput) {
+                    transKeyInput.placeholder = "AIzaSy... (leave blank to auto-use Gemini Live key)";
+                }
             }
         }
         document.getElementById("translation_target").value = cfg.translation.target_language || "es";
@@ -2603,6 +2621,36 @@ function updateChurchModeLabels(isChurchMode) {
 
         if (typeof updateBibleTabPreviewStyling === "function") {
             updateBibleTabPreviewStyling();
+        }
+    }
+
+    // Presentation Sync tab
+    if (cfg.propresenter) {
+        const pp = cfg.propresenter;
+        const ppEnabled = document.getElementById("propresenter_enabled");
+        if (ppEnabled) ppEnabled.checked = !!pp.enabled;
+        const ppProvider = document.getElementById("propresenter_provider");
+        if (ppProvider) ppProvider.value = pp.provider || "propresenter";
+        const ppHost = document.getElementById("propresenter_host");
+        if (ppHost) ppHost.value = pp.host || "127.0.0.1";
+        const ppPort = document.getElementById("propresenter_port");
+        if (ppPort) ppPort.value = pp.port ?? 1025;
+        const ppPassword = document.getElementById("propresenter_password");
+        if (ppPassword && document.activeElement !== ppPassword) ppPassword.value = pp.password || "";
+        const pcHost = document.getElementById("proclaim_host");
+        if (pcHost) pcHost.value = pp.proclaim_host || "127.0.0.1";
+        const pcPort = document.getElementById("proclaim_port");
+        if (pcPort) pcPort.value = pp.proclaim_port ?? 52195;
+        const pcPassword = document.getElementById("proclaim_password");
+        if (pcPassword && document.activeElement !== pcPassword) pcPassword.value = pp.proclaim_password || "proclaim";
+        const ppAutoMute = document.getElementById("propresenter_auto_mute");
+        if (ppAutoMute) ppAutoMute.checked = pp.auto_mute_on_lyrics !== false;
+        const ppKeywords = document.getElementById("propresenter_keywords");
+        if (ppKeywords && document.activeElement !== ppKeywords) {
+            ppKeywords.value = (pp.lyrics_keywords || []).join(", ");
+        }
+        if (typeof togglePresentationProviderGroups === "function") {
+            togglePresentationProviderGroups();
         }
     }
 }
@@ -3505,7 +3553,11 @@ document.getElementById("btn-save-translation").addEventListener("click", async 
         translation: {
             enabled: document.getElementById("translation_enabled").checked,
             interpreter_mode: document.getElementById("translation_interpreter_mode") ? document.getElementById("translation_interpreter_mode").checked : false,
-            provider: document.getElementById("translation_provider") ? document.getElementById("translation_provider").value : "google_free",
+            provider: (() => {
+                const isInterp = document.getElementById("translation_interpreter_mode") && document.getElementById("translation_interpreter_mode").checked;
+                if (isInterp) return "gemini_live";
+                return document.getElementById("translation_provider") ? document.getElementById("translation_provider").value : "google_free";
+            })(),
             target_language: document.getElementById("translation_target").value,
             display_mode: document.getElementById("translation_mode").value,
             dual_subtitle_color: document.getElementById("translation_dual_color") ? document.getElementById("translation_dual_color").value : "#FFD700",
@@ -3543,6 +3595,17 @@ if (transProviderEl) {
                     body: JSON.stringify({ provider: "nllb" }),
                 }).catch(() => {});
             }
+        }
+    });
+}
+
+const interpModeEl = document.getElementById("translation_interpreter_mode");
+if (interpModeEl) {
+    interpModeEl.addEventListener("change", (e) => {
+        if (e.target.checked && transProviderEl) {
+            transProviderEl.value = "gemini_live";
+            transProviderEl.dispatchEvent(new Event("change"));
+            showToast("🎙️ Switched translation provider to Gemini Live Audio Translation.", "info", 3000);
         }
     });
 }
@@ -3802,6 +3865,85 @@ if (ceaCheckbox) {
         const statusMsg = ceaCheckbox.checked ? "🔴 CEA-608 Stream Captions enabled (YouTube/Twitch [CC])." : "⚪ CEA-608 Stream Captions disabled.";
         await saveConfigPayload(payload, statusMsg);
     });
+}
+
+// --- Presentation Display Sync (Read-Only Monitor + Settings) ---
+
+function togglePresentationProviderGroups() {
+    const provider = document.getElementById("propresenter_provider")?.value || "propresenter";
+    const ppGroup = document.getElementById("group-propresenter-settings");
+    const pcGroup = document.getElementById("group-proclaim-settings");
+    if (ppGroup) ppGroup.style.display = (provider === "proclaim") ? "none" : "block";
+    if (pcGroup) pcGroup.style.display = (provider === "propresenter") ? "none" : "block";
+}
+
+const propresenterProviderSelect = document.getElementById("propresenter_provider");
+if (propresenterProviderSelect) {
+    propresenterProviderSelect.addEventListener("change", togglePresentationProviderGroups);
+}
+
+const btnSavePresentation = document.getElementById("btn-save-presentation");
+if (btnSavePresentation) {
+    btnSavePresentation.addEventListener("click", async () => {
+        const portVal = parseInt(document.getElementById("propresenter_port").value, 10);
+        const proclaimPortVal = parseInt(document.getElementById("proclaim_port").value, 10);
+        const payload = {
+            propresenter: {
+                enabled: document.getElementById("propresenter_enabled").checked,
+                provider: document.getElementById("propresenter_provider").value,
+                host: document.getElementById("propresenter_host").value.trim() || "127.0.0.1",
+                port: isNaN(portVal) ? 1025 : portVal,
+                password: document.getElementById("propresenter_password").value,
+                proclaim_host: document.getElementById("proclaim_host").value.trim() || "127.0.0.1",
+                proclaim_port: isNaN(proclaimPortVal) ? 52195 : proclaimPortVal,
+                proclaim_password: document.getElementById("proclaim_password").value,
+                auto_mute_on_lyrics: document.getElementById("propresenter_auto_mute").checked,
+                lyrics_keywords: document.getElementById("propresenter_keywords").value.split(",").map(s => s.trim()).filter(Boolean),
+            }
+        };
+        await saveConfigPayload(payload, "Presentation settings saved!");
+    });
+}
+
+function updatePresentationMonitor(data) {
+    if (!data) return;
+    const connBadge = document.getElementById("presentation-connection-badge");
+    if (connBadge) {
+        const connected = !!data.is_connected;
+        connBadge.textContent = connected ? "CONNECTED" : "DISCONNECTED";
+        connBadge.style.background = connected ? "rgba(16, 185, 129, 0.2)" : "rgba(239, 68, 68, 0.2)";
+        connBadge.style.color = connected ? "#34D399" : "#FCA5A5";
+    }
+    const provBadge = document.getElementById("presentation-provider-badge");
+    if (provBadge) {
+        provBadge.textContent = data.provider || data.source || "propresenter";
+    }
+    const lyricsBadge = document.getElementById("presentation-lyrics-badge");
+    if (lyricsBadge) {
+        const isLyrics = !!((data.is_lyrics_slide_active !== undefined) ? data.is_lyrics_slide_active : data.is_lyrics);
+        lyricsBadge.textContent = isLyrics ? "🎵 Worship Lyrics Detected - Captions Auto-Muted" : "🎤 Speech Captions Active";
+        lyricsBadge.style.background = isLyrics ? "rgba(245, 158, 11, 0.2)" : "rgba(16, 185, 129, 0.2)";
+        lyricsBadge.style.color = isLyrics ? "#FCD34D" : "#34D399";
+    }
+    const slideLabel = document.getElementById("presentation-slide-label");
+    if (slideLabel) {
+        slideLabel.textContent = data.current_slide_label || data.slide_label || "—";
+    }
+    const slideText = document.getElementById("presentation-slide-text");
+    if (slideText) {
+        slideText.textContent = data.current_slide_text || data.slide_text || "Waiting for slide data…";
+    }
+}
+
+async function refreshPresentationMonitor() {
+    try {
+        const res = await fetch("/api/presentation/status", { cache: "no-store" });
+        if (res.ok) {
+            updatePresentationMonitor(await res.json());
+        }
+    } catch (e) {
+        // Offline or unreachable — keep the last known monitor state.
+    }
 }
 
 // --- Audience Caption Display (/display) Studio & Defaults ---
@@ -4780,6 +4922,63 @@ function updateGeminiPingUI(pingMs, isGeminiActive) {
     }
 }
 
+function updateTokenUsageUI(tu) {
+    if (!tu) return;
+    const p = tu.prompt_tokens || 0;
+    const r = tu.response_tokens || 0;
+    const total = (tu.total_tokens !== undefined && tu.total_tokens !== null) ? tu.total_tokens : (p + r);
+    const cost = tu.estimated_cost_usd || 0;
+    const secs = tu.audio_seconds || 0;
+    const rate = tu.cost_rate_per_hour || "~$0.54 / hr";
+
+    const totalEl = document.getElementById("token_usage_total");
+    const breakdownEl = document.getElementById("token_usage_breakdown");
+    const costEl = document.getElementById("token_usage_cost");
+    const rateEl = document.getElementById("token_usage_rate");
+    const durationEl = document.getElementById("token_usage_duration");
+    const heroCostEl = document.getElementById("hero-token-cost");
+    const heroCountEl = document.getElementById("hero-token-count");
+
+    if (totalEl) totalEl.textContent = Number(total).toLocaleString();
+    if (breakdownEl) breakdownEl.textContent = `In: ${Number(p).toLocaleString()} • Out: ${Number(r).toLocaleString()}`;
+    if (durationEl) durationEl.textContent = `${Math.floor(secs / 60)}m ${Math.floor(secs % 60)}s`;
+    if (tu.is_offline) {
+        if (costEl) costEl.textContent = "$0.0000 (Offline • 100% Free)";
+        if (rateEl) rateEl.textContent = "Rate: $0.00 / hr (Offline)";
+        if (heroCostEl) heroCostEl.textContent = "$0.0000";
+        if (heroCountEl) heroCountEl.textContent = "0 tokens (Offline • 100% Free)";
+    } else {
+        if (costEl) costEl.textContent = `$${Number(cost).toFixed(4)} USD`;
+        if (rateEl) rateEl.textContent = `Rate: ${rate}`;
+        if (heroCostEl) heroCostEl.textContent = `$${Number(cost).toFixed(4)}`;
+        if (heroCountEl) heroCountEl.textContent = `${Number(total).toLocaleString()} tokens (${rate})`;
+    }
+}
+
+function initTokenCounterResetHandler() {
+    const btn = document.getElementById("btn-reset-token-counter");
+    if (!btn) return;
+    btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        try {
+            await fetch("/api/engine/reset_tokens", { method: "POST" });
+        } catch (e) {
+            console.debug("Token counter reset error:", e);
+        }
+        updateTokenUsageUI({
+            prompt_tokens: 0,
+            response_tokens: 0,
+            total_tokens: 0,
+            estimated_cost_usd: 0,
+            cost_rate_per_hour: "~$0.54 / hr",
+            audio_seconds: 0,
+            is_offline: false,
+        });
+        btn.disabled = false;
+        refreshEngineStatus();
+    });
+}
+
 async function refreshEngineStatus() {
     try {
         const res = await fetch("/api/status", { cache: "no-store" });
@@ -4943,6 +5142,11 @@ async function refreshEngineStatus() {
                 (typeof data.engine_name === "string" && data.engine_name.toLowerCase().includes("gemini")) ||
                 (typeof currentEngineName === "string" && currentEngineName.toLowerCase().includes("gemini"));
             updateGeminiPingUI(data.gemini_ping_ms, isGeminiEngine);
+
+            // Update Live Token Usage & Cost Estimator
+            if (data.token_usage) {
+                updateTokenUsageUI(data.token_usage);
+            }
         }
     } catch (e) {
         console.debug("Status poll error:", e);
@@ -5175,6 +5379,12 @@ function connectControlWs() {
                     badge.textContent = "Live Captions Active";
                     badge.style.background = "rgba(16, 185, 129, 0.2)";
                     badge.style.color = "#34D399";
+                }
+            } else if (msg.type === "propresenter_lyrics_state" || msg.type === "presentation_status") {
+                if (msg.current_slide_text !== undefined || msg.current_slide_label !== undefined || msg.is_lyrics_slide_active !== undefined) {
+                    updatePresentationMonitor(msg);
+                } else {
+                    refreshPresentationMonitor();
                 }
             }
         } catch (e) {}
@@ -6379,6 +6589,28 @@ function initSecretClearHandlers() {
         });
     }
 
+    const btnSyncTrans = document.getElementById("btn-sync-translation-key");
+    if (btnSyncTrans) {
+        btnSyncTrans.addEventListener("click", async () => {
+            const liveKey = currentConfig && currentConfig.gemini_live && currentConfig.gemini_live.api_key;
+            const isPlaceholder = !liveKey || liveKey === "•••" || /^[•*·\s]+$/.test(String(liveKey));
+            if (!isPlaceholder) {
+                const input = document.getElementById("translation_gemini_key");
+                if (input) input.value = liveKey;
+                await saveConfigPayload({ translation: { gemini_api_key: liveKey } }, "✓ Synced Gemini Live key to Translation!");
+            } else {
+                const typedKey = (document.getElementById("gemini_api_key") || {}).value || "";
+                if (typedKey && typedKey.trim() && typedKey.trim() !== "•••") {
+                    const input = document.getElementById("translation_gemini_key");
+                    if (input) input.value = typedKey.trim();
+                    await saveConfigPayload({ translation: { gemini_api_key: typedKey.trim() } }, "✓ Synced Gemini Live key to Translation!");
+                } else {
+                    showToast("⚠️ No Gemini Live key is set. Enter a key in Audio & Engine first.", "error");
+                }
+            }
+        });
+    }
+
     const btnClearBw = document.getElementById("btn-clear-bandwidth-key");
     if (btnClearBw) {
         btnClearBw.addEventListener("click", async () => {
@@ -7230,8 +7462,13 @@ window.addEventListener("DOMContentLoaded", async () => {
 
     await checkCaddyStatus();
     initGeminiModelScanner();
+    initTokenCounterResetHandler();
     initAudienceDisplayTab();
 
     // Periodic status poll (every 4s)
     setInterval(refreshEngineStatus, 4000);
+
+    // Presentation slide monitor poll (every 2.5s)
+    refreshPresentationMonitor();
+    setInterval(refreshPresentationMonitor, 2500);
 });

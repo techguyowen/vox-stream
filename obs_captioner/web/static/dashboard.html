@@ -139,6 +139,7 @@
                 <button class="tab-btn active" data-tab="styling">🎬 OBS Caption Overlay</button>
                 <button class="tab-btn" data-tab="display">📱 Audience Display</button>
                 <button class="tab-btn" data-tab="bible">📖 Scripture Overlay</button>
+                <button class="tab-btn" data-tab="presentation">📽️ Presentation Sync</button>
                 <button class="tab-btn" data-tab="vocabulary">📚 Glossary</button>
                 <button class="tab-btn" data-tab="filter">🛡️ Safety Filter</button>
                 <button class="tab-btn" data-tab="translation">🌐 Translation</button>
@@ -1081,6 +1082,119 @@
                 </div>
             </div>
 
+            <!-- TAB: PRESENTATION DISPLAY SYNC (READ-ONLY MONITOR) -->
+            <div id="tab-presentation" class="tab-pane">
+                <div class="two-col-layout">
+                    <!-- Left: Live Read-Only Status & Slide Monitor -->
+                    <div class="panel" style="border-left: 4px solid #38BDF8;">
+                        <h2 style="margin: 0; color: #38BDF8;">📽️ Live Slide Monitor (Read-Only)</h2>
+                        <p class="subtext" style="margin: 4px 0 12px 0;">Live view of the active ProPresenter / Proclaim slide. This monitor never sends remote-control commands.</p>
+
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;">
+                            <span id="presentation-connection-badge" class="badge" style="background: rgba(239, 68, 68, 0.2); color: #FCA5A5; font-weight: 800; font-size: 11px; padding: 3px 10px; border-radius: 4px;">DISCONNECTED</span>
+                            <span id="presentation-provider-badge" class="badge" style="background: rgba(56, 189, 248, 0.15); color: #7DD3FC; font-weight: 700; font-size: 11px; padding: 3px 10px; border-radius: 4px;">propresenter</span>
+                        </div>
+
+                        <div style="margin-bottom: 12px;">
+                            <span id="presentation-lyrics-badge" class="badge" style="background: rgba(16, 185, 129, 0.2); color: #34D399; font-weight: 700; font-size: 12px; padding: 5px 12px; border-radius: 6px; display: inline-block;">🎤 Speech Captions Active</span>
+                        </div>
+
+                        <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px; margin-bottom: 10px;">
+                            <span style="font-size: 10.5px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; display: block;">Current Slide</span>
+                            <span id="presentation-slide-label" style="font-size: 13px; font-weight: 700; color: #7DD3FC;">—</span>
+                        </div>
+
+                        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px 14px; min-height: 90px;">
+                            <span style="font-size: 10.5px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 6px;">Slide Text</span>
+                            <div id="presentation-slide-text" style="font-size: 13px; color: var(--text-main); line-height: 1.5; white-space: pre-wrap; word-break: break-word;">Waiting for slide data…</div>
+                        </div>
+
+                        <p class="hint" style="margin-top: 10px;">Strictly read-only: slide advance and screen controls stay inside ProPresenter / Proclaim.</p>
+                    </div>
+
+                    <!-- Right: Presentation Sync Configuration -->
+                    <div class="panel">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                            <div>
+                                <h2 style="margin: 0;">⚙️ Presentation Sync Settings</h2>
+                                <p class="subtext" style="margin: 4px 0 0 0;">Sync worship slides to auto-mute speech captions during lyrics.</p>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 12px; font-weight: 700;">Enable Presentation Display Sync</span>
+                                <label class="toggle-switch" title="Master toggle for ProPresenter / Proclaim slide sync">
+                                    <input type="checkbox" id="propresenter_enabled">
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="propresenter_provider">Sync Provider</label>
+                            <select id="propresenter_provider" class="form-control">
+                                <option value="proclaim">Faithlife Proclaim (Local App API)</option>
+                                <option value="propresenter" selected>ProPresenter (Stage Display)</option>
+                                <option value="both">Both Providers</option>
+                            </select>
+                            <span class="hint">Choose which presentation software VoxStream listens to for slide changes.</span>
+                        </div>
+
+                        <div id="group-propresenter-settings">
+                            <h3 style="font-size: 13px; margin: 14px 0 8px 0; color: var(--text-main);">ProPresenter Connection</h3>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="propresenter_host">ProPresenter Host</label>
+                                    <input type="text" id="propresenter_host" class="form-control" value="127.0.0.1" placeholder="127.0.0.1">
+                                </div>
+                                <div class="form-group">
+                                    <label for="propresenter_port">ProPresenter Port</label>
+                                    <input type="number" id="propresenter_port" class="form-control" value="1025" min="1" max="65535">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="propresenter_password">ProPresenter Password</label>
+                                <input type="password" id="propresenter_password" class="form-control" placeholder="Stage display password (optional)" autocomplete="off">
+                            </div>
+                        </div>
+
+                        <div id="group-proclaim-settings">
+                            <h3 style="font-size: 13px; margin: 14px 0 8px 0; color: var(--text-main);">Faithlife Proclaim Connection</h3>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="proclaim_host">Proclaim Host</label>
+                                    <input type="text" id="proclaim_host" class="form-control" value="127.0.0.1" placeholder="127.0.0.1">
+                                </div>
+                                <div class="form-group">
+                                    <label for="proclaim_port">Proclaim Port</label>
+                                    <input type="number" id="proclaim_port" class="form-control" value="52195" min="1" max="65535">
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label for="proclaim_password">Proclaim Password</label>
+                                <input type="password" id="proclaim_password" class="form-control" placeholder="proclaim" autocomplete="off">
+                            </div>
+                        </div>
+
+                        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px; margin: 12px 0;">
+                            <label class="switch-label" style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer; margin: 0;">
+                                <input type="checkbox" id="propresenter_auto_mute" checked style="width: 18px; height: 18px; margin-top: 2px; cursor: pointer;">
+                                <div>
+                                    <strong style="color: var(--text-main); display: block; font-size: 13px;">Auto-Mute Speech Captions on Lyrics Slides</strong>
+                                    <span style="font-size: 11.5px; color: var(--text-muted);">Pauses speech captions while worship lyrics are on screen, then resumes automatically.</span>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="propresenter_keywords">Lyrics Detection Keywords</label>
+                            <input type="text" id="propresenter_keywords" class="form-control" placeholder="worship, song, lyrics, chorus, verse, bridge, hymn, praise">
+                            <span class="hint">Comma-separated slide-label keywords treated as worship lyrics.</span>
+                        </div>
+
+                        <button id="btn-save-presentation" class="btn btn-primary btn-block">💾 Save Presentation Sync Settings</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- TAB: CUSTOM GLOSSARY & VOCABULARY -->
             <div id="tab-vocabulary" class="tab-pane">
                 <div class="panel">
@@ -1478,16 +1592,6 @@
                             </div>
                         </div>
 
-                        <div class="form-check" style="margin-top: 12px; padding: 10px 12px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: 6px;">
-                            <input type="checkbox" id="translation_interpreter_mode" class="form-check-input">
-                            <label for="translation_interpreter_mode" class="form-check-label" style="font-weight: 600; color: #E0E7FF; font-size: 13px;">
-                                🎙️ Live Interpreter Mode (Gemini Live Translate)
-                            </label>
-                            <small class="text-muted" style="display: block; font-size: 11.5px; margin-top: 4px; color: #94A3B8;">
-                                Streams microphone audio directly into Gemini Live Translate (gemini-3.5-live-translate-preview). Simultaneously generates live English speech-to-text AND instant foreign language subtitles in a single unified stream.
-                            </small>
-                        </div>
-
                         <!-- Dual Subtitle Appearance Controls -->
                         <div id="dual-subtitle-appearance-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 14px; margin-top: 12px;">
                             <h4 style="margin: 0 0 10px 0; font-size: 13px; color: #FCD34D; display: flex; align-items: center; gap: 6px;">
@@ -1520,6 +1624,27 @@
                                     </div>
                                     <input type="range" id="translation_dual_scale" min="0.60" max="1.00" step="0.05" value="0.85" style="width: 100%; margin-top: 6px;">
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SECTION 1B: Live Interpreter Mode (standalone, independent of OBS) -->
+                    <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 18px;">
+                        <h3 style="margin: 0; font-size: 14px; color: #F8FAFC;">🎙️ Live Interpreter Mode (Gemini Live Translate)</h3>
+                        <p style="font-size: 12px; color: var(--text-muted); margin: 4px 0 12px 0;">
+                            Powers live spoken audio translation on /display and audience devices independently of OBS stream subtitles. Streams microphone audio directly into Gemini Live Translate (gemini-3.5-live-translate-preview) and simultaneously generates live speech-to-text plus instant translated subtitles in a single unified stream, even when "Translate on OBS Stream" above is off.
+                        </p>
+                        <div class="form-check" style="padding: 10px 12px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: 6px;">
+                            <input type="checkbox" id="translation_interpreter_mode" class="form-check-input">
+                            <label for="translation_interpreter_mode" class="form-check-label" style="font-weight: 600; color: #E0E7FF; font-size: 13px;">
+                                Enable Live Interpreter Mode
+                            </label>
+                            <small class="text-muted" style="display: block; font-size: 11.5px; margin-top: 4px; color: #94A3B8;">
+                                Uses the OBS Broadcast Target Language above as the spoken translation target for /display viewers and language rooms.
+                            </small>
+                            <div style="margin-top: 10px; padding: 8px 12px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 6px; font-size: 11.5px; color: #FDE68A; line-height: 1.45;">
+                                <strong style="color: #FBBF24;">⚠️ Cost Notice: High Token Consumption (~$2.21 / hr)</strong><br>
+                                Live Interpreter Mode continuously streams raw audio in <em>and</em> synthesizes live 24kHz speech audio back out (<code style="color: #FDE68A;">gemini-3.5-live-translate-preview</code>). Because audio output is billed at <strong>$21.00 / 1M tokens</strong>, this mode is roughly <strong>4× more expensive</strong> than standard transcription (~$0.54/hr) and will consume monthly quotas quickly. Keep turned off unless viewers are actively listening to spoken audio on <a href="/display" target="_blank" style="color: #38BDF8; text-decoration: underline;">/display</a>.
                             </div>
                         </div>
                     </div>
@@ -1569,6 +1694,7 @@
                                     <input type="password" id="translation_gemini_key" placeholder="AIzaSy... (leave blank to auto-use Gemini Live key)" class="form-control" style="flex: 1;">
                                     <button type="button" id="btn-toggle-translation-pw" class="btn btn-secondary btn-sm" title="Show/Hide Key" style="padding: 0 10px;">👁️</button>
                                     <button type="button" id="btn-clear-translation-key" class="btn btn-secondary btn-sm" style="padding: 6px 12px; font-size: 12px; white-space: nowrap;" title="Clear dedicated translation API key">Clear</button>
+                                    <button type="button" id="btn-sync-translation-key" class="btn btn-secondary btn-sm" style="padding: 6px 12px; font-size: 12px; white-space: nowrap;" title="Sync key from Gemini Live">🔄 Sync from Gemini Live</button>
                                 </div>
                                 <small class="text-muted" style="font-size: 11px; display: block; margin-top: 4px;">If left blank, VoxStream automatically uses your saved Google AI Studio key from Gemini Live.</small>
                             </div>
@@ -1643,6 +1769,7 @@
                             <span>🎙️ Audio Input: <strong id="hero-input-device" style="color: #E2E8F0;">Default Mic</strong></span>
                             <span>💬 Captions Produced: <strong id="hero-total-captions" style="color: #38BDF8;">0 sentences</strong></span>
                             <span>⏱️ Live State: <strong id="hero-live-state" style="color: #34D399;">🟢 Listening &amp; Working</strong></span>
+                            <span>💰 Tokens &amp; Cloud Cost: <strong id="hero-token-cost" style="color: #FBBF24;">$0.0000</strong> <span id="hero-token-count" style="color: #94A3B8;">0 tokens (~$0.54/hr)</span></span>
                         </div>
                     </div>
                     
@@ -1980,6 +2107,38 @@
                             </div>
                         </div>
 
+                        <!-- Live Token Usage & Cost Estimator -->
+                        <div id="token-usage-card" style="background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px; padding: 14px 16px; margin-bottom: 12px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 12px;">
+                                <div style="font-size: 13.5px; font-weight: 700; color: #FBBF24;">💰 Live Token Usage &amp; Cost Estimate</div>
+                                <a href="https://ai.studio/spend" target="_blank" rel="noopener noreferrer" style="font-size: 11.5px; color: #38BDF8; text-decoration: underline;">Google Spend Cap &amp; Billing ↗</a>
+                            </div>
+                            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+                                <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px; text-align: center;">
+                                    <div style="font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 700;">Total Tokens</div>
+                                    <div id="token_usage_total" style="font-size: 20px; font-weight: 700; color: #E2E8F0; font-family: monospace;">0</div>
+                                    <div id="token_usage_breakdown" style="font-size: 11px; color: var(--text-muted);">In: 0 • Out: 0</div>
+                                </div>
+                                <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px; text-align: center;">
+                                    <div style="font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 700;">Session Cost Estimate</div>
+                                    <div id="token_usage_cost" style="font-size: 20px; font-weight: 700; color: #FBBF24; font-family: monospace;">$0.0000</div>
+                                    <div id="token_usage_rate" style="font-size: 11px; color: var(--text-muted);">Rate: ~$0.54 / hr</div>
+                                </div>
+                                <div style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px; text-align: center;">
+                                    <div style="font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 700;">Audio Duration</div>
+                                    <div id="token_usage_duration" style="font-size: 20px; font-weight: 700; color: #38BDF8; font-family: monospace;">0m 0s</div>
+                                    <div style="font-size: 11px; color: var(--text-muted);">~25 audio tokens/sec</div>
+                                </div>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px;">
+                                <div style="font-size: 11px; color: var(--text-muted); line-height: 1.4;">
+                                    Billed by Google AI Studio ($3.50/1M input audio tokens, $21/1M output text). 
+                                    <strong style="color: #FBBF24;">Notice:</strong> Live Interpreter Mode costs <strong>~$2.21/hr (approx. 4× standard transcription)</strong> due to bidirectional speech audio synthesis. Free tier requests incur $0.00.
+                                </div>
+                                <button type="button" id="btn-reset-token-counter" class="btn btn-secondary btn-sm" style="font-size: 11.5px; padding: 4px 10px;">Reset Session Counter</button>
+                            </div>
+                        </div>
+
                         <div class="form-row">
                             <div class="form-group" style="flex: 1.2;">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
@@ -1988,18 +2147,18 @@
                                 </div>
                                 <select id="gemini_model" class="form-control">
                                     <optgroup label="🎙️ Dedicated Real-Time Transcription Models (Live WebSocket)">
-                                        <option value="gemini-3.5-transcribe-live" selected>gemini-3.5-transcribe-live (Recommended - Official Realtime STT)</option>
-                                        <option value="gemini-3.5-transcribe-live-preview">gemini-3.5-transcribe-live-preview (Enterprise Live Preview)</option>
-                                        <option value="gemini-3.5-transcribe">gemini-3.5-transcribe (Batch Audio API)</option>
-                                        <option value="gemini-3.1-flash-live-preview">gemini-3.1-flash-live-preview (Next-Gen Realtime Voice)</option>
+                                        <option value="gemini-3.5-transcribe-live" selected>gemini-3.5-transcribe-live (Recommended • ~$0.54/hr)</option>
+                                        <option value="gemini-3.5-transcribe-live-preview">gemini-3.5-transcribe-live-preview (Enterprise Live Preview • ~$0.54/hr)</option>
+                                        <option value="gemini-3.5-transcribe">gemini-3.5-transcribe (Batch Audio API • ~$0.54/hr)</option>
+                                        <option value="gemini-3.1-flash-live-preview">gemini-3.1-flash-live-preview (Next-Gen Realtime Voice • ~$0.09/hr)</option>
                                     </optgroup>
                                     <optgroup label="🌐 Dedicated Real-Time Translation Models">
-                                        <option value="gemini-3.5-live-translate-preview">gemini-3.5-live-translate-preview (Official Live Translate 70+ Languages)</option>
+                                        <option value="gemini-3.5-live-translate-preview">gemini-3.5-live-translate-preview (Live Translate • ~$2.21/hr)</option>
                                     </optgroup>
                                     <optgroup label="✨ General Generation Models (3.8 / 3.5 / 3.1)">
-                                        <option value="gemini-3.8-flash">gemini-3.8-flash (Recommended)</option>
-                                        <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Ultra Fast)</option>
-                                        <option value="gemini-3.1-flash-live-preview">gemini-3.1-flash-live-preview (Realtime Voice)</option>
+                                        <option value="gemini-3.8-flash">gemini-3.8-flash (Flash • ~$0.09/hr)</option>
+                                        <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite (Ultra Fast • ~$0.09/hr)</option>
+                                        <option value="gemini-3.1-flash-live-preview">gemini-3.1-flash-live-preview (Realtime Voice • ~$0.09/hr)</option>
                                     </optgroup>
                                 </select>
                                 <small id="gemini_model_desc" class="text-muted" style="font-size: 11px; display: block; margin-top: 4px;">Official low-latency speech-to-text model over WebSockets.</small>

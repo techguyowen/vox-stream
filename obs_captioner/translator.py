@@ -52,6 +52,7 @@ class TranslationConfig:
     provider: str = "google_free"  # "google_free", "nllb", "gemini_live"
     interpreter_mode: bool = False  # When True and target != "en", uses gemini-3.5-live-translate-preview
     gemini_api_key: str = ""  # If empty, automatically falls back to gemini_live API key
+    gemini_model: str = "gemini-3.8-flash"  # Gemini REST translation model ID
     temperature: float = 0.1
     dual_subtitle_color: str = "#FFD700"  # Classic Subtitle Gold/Yellow
     dual_subtitle_scale: float = 0.85  # Secondary subtitle font size scale (0.6 - 1.0)
@@ -139,7 +140,8 @@ class SubtitleTranslator:
                 "contents": [{"parts": [{"text": f"Translate to {target_name}: {text}"}]}],
             }
             data_bytes = json.dumps(payload).encode("utf-8")
-            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key={api_key}"
+            model_id = getattr(self.config, "gemini_model", "") or "gemini-3.8-flash"
+            endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={api_key}"
             try:
                 req = urllib.request.Request(
                     endpoint,

@@ -567,6 +567,15 @@ class AudioCapture:
         empty_strikes = 0
         silence_chunk = b"\x00" * (self.chunk_samples * 2)
 
+        # Drain stale pre-pause chunks so resuming captioning doesn't flush
+        # outdated audio or log a false queue-overflow warning.
+        try:
+            for _ in range(self._queue.qsize()):
+                self._queue.get_nowait()
+        except queue.Empty:
+            pass
+        self._overflow_drops = 0
+
         while self._running:
             self._flush_overflow_warning()
             try:

@@ -1473,6 +1473,65 @@ class TestChurchCensorship(unittest.TestCase):
 from aiohttp.test_utils import AioHTTPTestCase
 from obs_captioner.web.server import WebOverlayServer
 
+
+class TestGeminiTokenUsage(unittest.TestCase):
+    """Token usage tracking, cost estimation, and reset for GeminiLiveEngine."""
+
+    def _make_engine(self, model="gemini-3.5-transcribe-live"):
+        cfg = AppConfig()
+        cfg.gemini_live.api_key = "dummy-test-key"
+        cfg.gemini_live.model = model
+        return GeminiLiveEngine(cfg)
+
+    def test_initial_counters_zero(self):
+        engine = self._make_engine()
+        self.assertEqual(engine._prompt_tokens, 0)
+        self.assertEqual(engine._response_tokens, 0)
+        self.assertEqual(engine._audio_seconds_streamed, 0.0)
+        tu = engine.get_session_stats()["token_usage"]
+        self.assertEqual(tu["total_tokens"], 0)
+        self.assertEqual(tu["estimated_cost_usd"], 0.0)
+        self.assertFalse(tu["is_offline"])
+
+    def test_usage_metadata_tracks_maxima(self):
+        engine = self._make_engine()
+        engine.parse_server_message({"usageMetadata": {"promptTokenCount": 100, "responseTokenCount": 10}, "serverContent": {}})
+        engine.parse_server_message({"usageMetadata": {"promptTokenCount": 250, "responseTokenCount": 5}, "serverContent": {}})
+        self.assertEqual(engine._prompt_tokens, 250)
+        self.assertEqual(engine._response_tokens, 10)
+
+    def test_audio_seconds_estimate_and_cost(self):
+        engine = self._make_engine()
+        engine._audio_seconds_streamed = 120.0
+        tu = engine.get_session_stats()["token_usage"]
+        self.assertEqual(tu["prompt_tokens"], 3000)  # 120s * ~25 audio tok/s
+        self.assertEqual(tu["total_tokens"], 3000)
+        self.assertEqual(tu["estimated_cost_usd"], round(3000 / 1e6 * 3.50, 4))
+        self.assertEqual(tu["cost_rate_per_hour"], "$0.54 / hr")
+
+    def test_translate_model_rate(self):
+        engine = self._make_engine("gemini-3.5-live-translate-preview")
+        tu = engine.get_session_stats()["token_usage"]
+        self.assertEqual(tu["cost_rate_per_hour"], "$2.21 / hr")
+
+    def test_response_cost_math(self):
+        engine = self._make_engine()
+        engine._prompt_tokens = 1_000_000
+        engine._response_tokens = 1_000_000
+        tu = engine.get_session_stats()["token_usage"]
+        self.assertEqual(tu["estimated_cost_usd"], 24.5)
+
+    def test_reset_token_usage(self):
+        engine = self._make_engine()
+        engine._prompt_tokens = 500
+        engine._response_tokens = 50
+        engine._audio_seconds_streamed = 20.0
+        engine.reset_token_usage()
+        self.assertEqual(engine._prompt_tokens, 0)
+        self.assertEqual(engine._response_tokens, 0)
+        self.assertEqual(engine._audio_seconds_streamed, 0.0)
+
+
 class TestServerEndpoints(AioHTTPTestCase):
     def setUp(self):
         profiles_dir = Path(__file__).resolve().parent / "profiles"
@@ -1586,6 +1645,42 @@ class TestServerEndpoints(AioHTTPTestCase):
         data = await resp.json()
         self.assertIn('engine', data)
         self.assertIn('uptime_seconds', data)
+
+    async def test_status_propagates_token_usage(self):
+        self.cfg.general.engine = "gemini_live"
+        engine = GeminiLiveEngine(self.cfg)
+        engine._audio_seconds_streamed = 60.0
+        self.overlay_server.engine = engine
+        self.overlay_server._status_cache.clear()
+        resp = await self.client.request('GET', '/api/status')
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertIn('token_usage', data)
+        self.assertEqual(data['token_usage']['prompt_tokens'], 1500)
+        self.assertFalse(data['token_usage']['is_offline'])
+
+    async def test_status_offline_engine_token_usage(self):
+        self.cfg.general.engine = "vosk"
+        self.overlay_server._status_cache.clear()
+        resp = await self.client.request('GET', '/api/status')
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertIn('token_usage', data)
+        self.assertTrue(data['token_usage']['is_offline'])
+        self.assertEqual(data['token_usage']['estimated_cost_usd'], 0.0)
+
+    async def test_reset_tokens_endpoint(self):
+        self.cfg.general.engine = "gemini_live"
+        engine = GeminiLiveEngine(self.cfg)
+        engine._prompt_tokens = 999
+        engine._audio_seconds_streamed = 30.0
+        self.overlay_server.engine = engine
+        resp = await self.client.request('POST', '/api/engine/reset_tokens')
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertEqual(data['status'], 'ok')
+        self.assertEqual(engine._prompt_tokens, 0)
+        self.assertEqual(engine._audio_seconds_streamed, 0.0)
 
     async def test_models_status_api(self):
         resp = await self.client.request('GET', '/api/models/status')
@@ -3359,6 +3454,38 @@ class TestHardwareAndMemoryManagement(unittest.IsolatedAsyncioTestCase):
             self.assertGreater(data["current_ram_mb"], 0.0)
         finally:
             await client.close()
+
+    async def test_periodic_memory_watchdog_execution(self):
+        """Verify memory watchdog executes trim and handles cancellations gracefully."""
+        trim_called = 0
+
+        def mock_trim():
+            nonlocal trim_called
+            trim_called += 1
+            return 5.0
+
+        shutdown_event = asyncio.Event()
+
+        async def _test_watchdog():
+            while not shutdown_event.is_set():
+                try:
+                    await asyncio.sleep(0.01)
+                    if shutdown_event.is_set():
+                        break
+                    mock_trim()
+                except asyncio.CancelledError:
+                    break
+
+        task = asyncio.create_task(_test_watchdog())
+        await asyncio.sleep(0.03)
+        shutdown_event.set()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        self.assertGreaterEqual(trim_called, 1)
 
     async def test_status_endpoint_includes_hardware_and_ram(self):
         from obs_captioner.web.server import WebOverlayServer
@@ -6194,6 +6321,89 @@ class TestCaptionTextLossJsGuards(unittest.TestCase):
         self.assertIn("captionLastFinalUtterance = 0;", self.dashboard)
 
 
+class TestDisplayUiLocalization(unittest.TestCase):
+    """Static guards for display.html UI i18n (no JS runner in this repo)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.display = (
+            Path(__file__).parent
+            / "obs_captioner" / "web" / "static" / "display.html"
+        ).read_text(encoding="utf-8")
+
+    def test_apply_ui_language_present(self):
+        self.assertIn("UI_LOCALIZATIONS", self.display)
+        self.assertIn("function applyUiLanguage(lang)", self.display)
+        self.assertIn("document.documentElement.lang = lang;", self.display)
+        self.assertIn(
+            "document.documentElement.dir = (lang === 'ar' || lang === 'he')"
+            " ? 'rtl' : 'ltr';",
+            self.display,
+        )
+        # Called once on page init and again inside the langSelect change handler.
+        self.assertGreaterEqual(
+            self.display.count("applyUiLanguage(currentLang)"), 2
+        )
+
+    def test_ui_localizations_spanish(self):
+        for text in (
+            "Configuración",
+            "Modo de visualización",
+            "📜 Historial desplazable",
+            "⚡ Teleprompter en vivo",
+            "🎧 Escuchar en Vivo",
+            "🔊 Escuchando (Tocar para Silenciar)",
+            "🔇 Silenciado (Tocar para Escuchar)",
+            "Borrar historial",
+            "Pantalla completa",
+            "Esperando voz en vivo...",
+        ):
+            self.assertIn(text, self.display)
+
+    def test_ui_localizations_french(self):
+        for text in (
+            "Paramètres",
+            "🎧 Écouter en Direct",
+            "🔊 Écoute en cours (Appuyer pour couper)",
+            "🔇 Coupé (Appuyer pour écouter)",
+            "Effacer l’historique",
+            "Plein écran",
+            "Terminé",
+            "En attente de la parole en direct...",
+        ):
+            self.assertIn(text, self.display)
+
+    def test_ui_localizations_german(self):
+        for text in (
+            "Einstellungen",
+            "🎧 Live Anhören",
+            "🔊 Hören (Tippen zum Stummschalten)",
+            "Verlauf löschen",
+            "Vollbild",
+            "Fertig",
+        ):
+            self.assertIn(text, self.display)
+
+    def test_ui_localizations_chinese(self):
+        for text in (
+            "设置",
+            "🎧 实时收听",
+            "清除历史",
+            "全屏切换",
+            "完成",
+        ):
+            self.assertIn(text, self.display)
+
+    def test_ui_localizations_arabic(self):
+        for text in (
+            "الإعدادات",
+            "🎧 استمع مباشرة",
+            "مسح السجل",
+            "في انتظار الكلام المباشر...",
+        ):
+            self.assertIn(text, self.display)
+
+
 class TestDroppedTextSinkPaths(unittest.IsolatedAsyncioTestCase):
     """Sink text-loss paths: repeats, drop_sentence, stitch recorder gap."""
 
@@ -7598,6 +7808,573 @@ class TestGeminiLiveAudioDataCallback(unittest.TestCase):
         # Must not raise an exception
         events = engine.parse_server_message(msg)
         self.assertEqual(events, [])
+
+
+class TestV120AuditRemediationAndFeatures(AioHTTPTestCase):
+    """Unit 4: regression & feature verification for v1.2.0 audit remediation."""
+
+    def setUp(self):
+        repo_root = Path(__file__).resolve().parent
+        self._config_path = repo_root / "config.json"
+        self._config_backup = None
+        if self._config_path.exists():
+            self._config_backup = self._config_path.read_bytes()
+        profiles_dir = repo_root / "profiles"
+        self._profiles_backup = {}
+        if profiles_dir.exists():
+            for p in profiles_dir.glob("*.json"):
+                self._profiles_backup[p.name] = p.read_text(encoding="utf-8")
+        super().setUp()
+
+    def tearDown(self):
+        try:
+            profiles_dir = Path(__file__).resolve().parent / "profiles"
+            if profiles_dir.exists():
+                for p in list(profiles_dir.glob("*.json")):
+                    if p.name not in self._profiles_backup:
+                        try:
+                            p.unlink()
+                        except Exception:
+                            pass
+                for name, content in self._profiles_backup.items():
+                    (profiles_dir / name).write_text(content, encoding="utf-8")
+            if self._config_backup is not None:
+                self._config_path.write_bytes(self._config_backup)
+        finally:
+            super().tearDown()
+
+    async def get_application(self):
+        self.cfg = AppConfig()
+        self.overlay_server = WebOverlayServer(self.cfg)
+        return self.overlay_server.app
+
+    def _enable_two_tier_auth(self, api_key="secret-admin-key", pin="1234"):
+        self.overlay_server.config.api.api_key = api_key
+        self.overlay_server.config.api.operator_pin = pin
+
+    # ---- 1. Symbol-safe profanity regex (censor.py) ----
+
+    def _symbol_filter(self):
+        terms = ["@$$", "$#!t", "f*ck", "b!tch"]
+        cf = ContentFilter(CensorConfig(enabled=True, mode="asterisk", custom_blacklist=list(terms)))
+        return cf, terms
+
+    def test_censor_symbol_terms_surrounded_by_spaces(self):
+        cf, terms = self._symbol_filter()
+        for term in terms:
+            filtered, censored = cf.filter_text(f"hello {term} world")
+            self.assertTrue(censored, f"term {term!r} not censored between spaces")
+            self.assertNotIn(term, filtered)
+
+    def test_censor_symbol_terms_surrounded_by_punctuation(self):
+        cf, terms = self._symbol_filter()
+        for term in terms:
+            for text in (f"wow, {term}!", f"({term})", f'"{term}"', f"oh {term}."):
+                filtered, censored = cf.filter_text(text)
+                self.assertTrue(censored, f"term {term!r} not censored in {text!r}")
+                self.assertNotIn(term, filtered)
+
+    def test_censor_symbol_terms_normal_words_unaffected(self):
+        cf, _ = self._symbol_filter()
+        for text in (
+            "hello world this is fine",
+            "Good morning and welcome to the service",
+            "stuck buck chick",
+        ):
+            filtered, censored = cf.filter_text(text)
+            self.assertFalse(censored, f"clean text wrongly censored: {text!r}")
+            self.assertEqual(filtered, text)
+
+    # ---- 2. Short Bible book alias false-positive prevention (bible_engine.py) ----
+
+    @staticmethod
+    def _extract_citations(text):
+        from obs_captioner.bible_engine import BibleEngine
+        fn = getattr(BibleEngine, "extract_citations", None)
+        if fn is None:
+            fn = BibleEngine.extract_citations_from_text
+        return fn(text)
+
+    def test_bible_short_alias_no_false_positives(self):
+        for phrase in (
+            "My ex 2 years ago",
+            "Act 1 of the play",
+            "I got a new job 2 weeks ago",
+        ):
+            self.assertEqual(self._extract_citations(phrase), [], f"false positive: {phrase!r}")
+
+    def test_bible_explicit_citations_trigger(self):
+        expected = {
+            "Job chapter 2": ("Job", 2),
+            "Job 2:1": ("Job", 2),
+            "Acts chapter 1": ("Acts", 1),
+            "John 3:16": ("John", 3),
+            "John 3": ("John", 3),
+        }
+        for phrase, (book, chapter) in expected.items():
+            res = self._extract_citations(phrase)
+            self.assertTrue(res, f"no citation extracted: {phrase!r}")
+            self.assertEqual(res[0][0], book, phrase)
+            self.assertEqual(res[0][1], chapter, phrase)
+
+    # ---- 3. Rolling session transcript persistence (history.py) ----
+
+    def test_transcript_persistence_append_restore_clear(self):
+        with tempfile.TemporaryDirectory() as td:
+            persist = str(Path(td) / "session.jsonl")
+            h1 = TranscriptHistory(persist_path=persist)
+            h1.add_entry("First line", start_time=100.0, end_time=101.0)
+            h1.add_entry("Second line", start_time=102.0, end_time=103.5, is_censored=True)
+
+            lines = Path(persist).read_text(encoding="utf-8").strip().splitlines()
+            self.assertEqual(len(lines), 2)
+            first = json.loads(lines[0])
+            self.assertEqual(first["text"], "First line")
+            self.assertEqual(first["id"], 1)
+
+            h2 = TranscriptHistory(persist_path=persist)
+            self.assertEqual(len(h2.entries), 2)
+            self.assertEqual(h2._counter, 3)
+            self.assertEqual([e.text for e in h2.entries], ["First line", "Second line"])
+            self.assertTrue(h2.entries[1].is_censored)
+
+            h2.clear()
+            self.assertFalse(Path(persist).exists())
+            self.assertEqual(len(h2.entries), 0)
+            self.assertEqual(h2._counter, 1)
+
+    # ---- 4. SubtitleRecorder path traversal guard & VTT status (subtitle_recorder.py) ----
+
+    def test_recorder_path_traversal_guard(self):
+        from obs_captioner.subtitle_recorder import SubtitleRecorder
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td).resolve()
+            rec = SubtitleRecorder(enabled=True, output_format="both", output_dir=td)
+            try:
+                rec.start_recording(video_path="../../etc/evil.mp4", allow_arbitrary_video_path=False)
+                for p in (rec.current_file_path, rec.current_vtt_path):
+                    self.assertIsNotNone(p)
+                    resolved = Path(str(p)).resolve()
+                    self.assertTrue(
+                        str(resolved).startswith(str(out)),
+                        f"subtitle path escaped output_dir: {resolved}",
+                    )
+                self.assertEqual(rec.current_file_path.suffix, ".srt")
+                self.assertEqual(rec.current_vtt_path.suffix, ".vtt")
+                self.assertEqual(rec.current_file_path.stem, "evil")
+                self.assertTrue((out / "evil.srt").exists())
+            finally:
+                rec.stop_recording()
+
+    def test_recorder_vtt_status_path(self):
+        from obs_captioner.subtitle_recorder import SubtitleRecorder
+        with tempfile.TemporaryDirectory() as td:
+            rec = SubtitleRecorder(enabled=True, output_format="vtt", output_dir=td)
+            try:
+                rec.start_recording(video_path="sermon.mp4", allow_arbitrary_video_path=False)
+                status = rec.get_status()
+                self.assertTrue(status["file_path"].endswith(".vtt"), status["file_path"])
+                self.assertEqual(status["file_path"], str(rec.current_vtt_path))
+            finally:
+                rec.stop_recording()
+
+    # ---- 5. ProPresenter & Faithlife Proclaim display sync (propresenter.py) ----
+
+    def test_classify_lyrics_worship_slides(self):
+        from obs_captioner.propresenter import classify_slide_as_lyrics
+        self.assertTrue(classify_slide_as_lyrics("Amazing grace how sweet the sound", "Worship Song"))
+        self.assertTrue(classify_slide_as_lyrics(
+            "Amazing grace how sweet the sound\nThat saved a wretch like me"
+        ))
+        self.assertTrue(classify_slide_as_lyrics("[Chorus]\nAmazing grace how sweet"))
+        self.assertTrue(classify_slide_as_lyrics("Holy holy holy\nLord God Almighty"))
+
+    def test_classify_non_lyrics_scripture_and_sermon(self):
+        from obs_captioner.propresenter import classify_slide_as_lyrics
+        self.assertFalse(classify_slide_as_lyrics("John 3:16 - For God so loved the world that He gave"))
+        self.assertFalse(classify_slide_as_lyrics(
+            "Today we will examine Romans chapter 8 and consider Paul's argument about hope.",
+            "Sermon Notes",
+        ))
+        self.assertFalse(classify_slide_as_lyrics(
+            "Please turn in your Bibles to Genesis 1:1. In the beginning God created the heavens.",
+            "Scripture Reading",
+        ))
+
+    def test_presenter_client_transitions_both_providers(self):
+        from obs_captioner.propresenter import ProPresenterClient, ProPresenterConfig
+        events = []
+        cfg = ProPresenterConfig(enabled=True, provider="both", auto_mute_on_lyrics=True)
+        client = ProPresenterClient(cfg, on_lyrics_state_changed=lambda a, s: events.append((a, s)))
+        lyrics = "Amazing grace how sweet the sound\nThat saved a wretch like me"
+        prose = "Today we will examine Romans chapter 8 and consider Paul's argument about hope."
+
+        self.assertTrue(client.update_slide_state(lyrics, "", source="propresenter"))
+        self.assertTrue(client.is_lyrics_slide_active)
+        self.assertFalse(client.update_slide_state(prose, "Sermon Notes", source="propresenter"))
+        self.assertFalse(client.is_lyrics_slide_active)
+
+        res_on = client.handle_external_slide_event(
+            {"provider": "proclaim", "slide_text": lyrics, "slide_label": "Worship Song"}
+        )
+        self.assertTrue(res_on["is_lyrics_slide_active"])
+        res_off = client.handle_external_slide_event(
+            {"provider": "proclaim", "slide_text": prose, "slide_label": "Sermon"}
+        )
+        self.assertFalse(res_off["is_lyrics_slide_active"])
+
+        self.assertGreaterEqual(len(events), 4)
+        sources = [s for _, s in events]
+        self.assertTrue(any(s.startswith("propresenter:") for s in sources), sources)
+        self.assertTrue(any(s.startswith("proclaim:") for s in sources), sources)
+        states = {a for a, _ in events}
+        self.assertEqual(states, {True, False})
+
+    def test_presentation_sync_tab_is_read_only_monitor(self):
+        html = (
+            Path(__file__).resolve().parent
+            / "obs_captioner" / "web" / "static" / "dashboard.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn('data-tab="presentation"', html)
+        self.assertIn("tab-presentation", html)
+        start = html.index('id="tab-presentation"')
+        end = html.index('id="tab-vocabulary"')
+        pane = html[start:end]
+        for required_id in (
+            "presentation-connection-badge",
+            "presentation-provider-badge",
+            "presentation-lyrics-badge",
+            "presentation-slide-label",
+            "presentation-slide-text",
+            "propresenter_enabled",
+            "propresenter_provider",
+            "group-propresenter-settings",
+            "group-proclaim-settings",
+            "propresenter_host",
+            "propresenter_port",
+            "propresenter_password",
+            "proclaim_host",
+            "proclaim_port",
+            "proclaim_password",
+            "propresenter_auto_mute",
+            "propresenter_keywords",
+            "btn-save-presentation",
+        ):
+            self.assertIn(required_id, pane, f"missing element {required_id!r} in presentation pane")
+        # Strictly read-only: no slide remote-control buttons may exist in the pane.
+        for forbidden in (
+            "presentation-next",
+            "presentation-prev",
+            "presentation-blank",
+            "slide-next",
+            "slide-prev",
+            "next-slide",
+            "prev-slide",
+            "Next Slide",
+            "Previous Slide",
+            "Blank Slide",
+        ):
+            self.assertNotIn(forbidden, pane, f"forbidden slide control {forbidden!r} in read-only pane")
+
+    # ---- 6. Two-tier access, public config, backup masking, language rooms (server.py) ----
+
+    @staticmethod
+    def _all_json_keys(obj):
+        keys = set()
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                keys.add(k)
+                keys |= TestV120AuditRemediationAndFeatures._all_json_keys(v)
+        elif isinstance(obj, list):
+            for v in obj:
+                keys |= TestV120AuditRemediationAndFeatures._all_json_keys(v)
+        return keys
+
+    async def test_public_config_sections_zero_secrets(self):
+        self.overlay_server.config.gemini_live.api_key = "super-secret-gemini-xyz"
+        self.overlay_server.config.translation.gemini_api_key = "super-secret-translate-xyz"
+        self._enable_two_tier_auth()
+        resp = await self.client.request("GET", "/api/public/config")
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        for key in ("overlay", "display", "bible", "translation"):
+            self.assertIn(key, data)
+        secret_keys = {
+            "api_key", "operator_pin", "gemini_api_key", "oauth_token",
+            "password", "proclaim_password", "api_key_preview", "gemini_api_key_preview",
+        }
+        self.assertTrue(secret_keys.isdisjoint(self._all_json_keys(data)))
+        blob = json.dumps(data)
+        for raw in ("super-secret-gemini-xyz", "super-secret-translate-xyz", "secret-admin-key", "1234"):
+            self.assertNotIn(raw, blob)
+
+    async def test_config_two_tier_get(self):
+        self._enable_two_tier_auth()
+        resp = await self.client.request("GET", "/api/config")
+        self.assertEqual(resp.status, 200)
+        public = await resp.json()
+        for key in ("overlay", "display", "bible", "translation"):
+            self.assertIn(key, public)
+        self.assertNotIn("censor", public)
+        self.assertNotIn("api", public)
+        self.assertNotIn("api_key_preview", json.dumps(public))
+
+        resp2 = await self.client.request("GET", "/api/config", params={"api_key": "secret-admin-key"})
+        self.assertEqual(resp2.status, 200)
+        full = await resp2.json()
+        self.assertIn("censor", full)
+        self.assertIn("api", full)
+        self.assertIn("gemini_live", full)
+        self.assertEqual(full["api"]["api_key"], "•••")
+        self.assertIn("api_key_preview", full["api"])
+
+        resp3 = await self.client.request(
+            "GET", "/api/config", headers={"X-API-Key": "secret-admin-key"}
+        )
+        self.assertEqual(resp3.status, 200)
+
+    async def test_admin_endpoints_require_auth(self):
+        self._enable_two_tier_auth()
+        cases = [
+            ("POST", "/api/transcript/summary", {"json": {}}),
+            ("POST", "/api/transcript/ai-chapters", {"json": {"provider": "heuristic"}}),
+            ("GET", "/api/filter/export", {}),
+            ("GET", "/api/vocabulary/export", {}),
+            ("GET", "/api/profiles/export", {}),
+        ]
+        for method, path, kwargs in cases:
+            resp = await self.client.request(method, path, **kwargs)
+            self.assertEqual(resp.status, 401, f"{method} {path}")
+
+    async def test_volunteer_pin_operator_endpoints(self):
+        self._enable_two_tier_auth()
+        r1 = await self.client.request("POST", "/api/control/panic", params={"pin": "1234"})
+        self.assertEqual(r1.status, 200)
+        r2 = await self.client.request("POST", "/api/control/panic", headers={"X-Operator-Pin": "1234"})
+        self.assertEqual(r2.status, 200)
+        r3 = await self.client.request(
+            "POST", "/api/presentation/slide", params={"pin": "1234"},
+            json={"provider": "proclaim", "slide_text": "Amazing grace", "slide_label": "Worship Song"},
+        )
+        self.assertEqual(r3.status, 200)
+        r4 = await self.client.request(
+            "POST", "/api/presentation/slide", headers={"X-Operator-Pin": "1234"},
+            json={"provider": "propresenter", "slide_text": "Holy holy holy", "slide_label": "Song"},
+        )
+        self.assertEqual(r4.status, 200)
+        r5 = await self.client.request("POST", "/api/control/panic")
+        self.assertEqual(r5.status, 401)
+
+    async def test_volunteer_pin_rejected_on_admin_config(self):
+        self._enable_two_tier_auth()
+        r1 = await self.client.request(
+            "POST", "/api/config", params={"pin": "1234"},
+            json={"general": {"church_name": "Volunteer Church"}},
+        )
+        self.assertEqual(r1.status, 401)
+        r2 = await self.client.request(
+            "POST", "/api/config", headers={"X-Operator-Pin": "1234"},
+            json={"general": {"church_name": "Volunteer Church"}},
+        )
+        self.assertEqual(r2.status, 401)
+        r3 = await self.client.request(
+            "POST", "/api/config", params={"api_key": "secret-admin-key"},
+            json={"general": {"church_name": "Admin Church"}},
+        )
+        self.assertEqual(r3.status, 200)
+        self.assertEqual(self.overlay_server.config.general.church_name, "Admin Church")
+
+    async def test_backup_export_masks_secrets_and_version(self):
+        from obs_captioner.version import VERSION
+        self._enable_two_tier_auth()
+        self.overlay_server.config.gemini_live.api_key = "live-gemini-secret-xyz"
+        self.overlay_server.config.summary.gemini_api_key = "live-summary-secret-abc"
+        unauth = await self.client.request("GET", "/api/system/backup/export")
+        self.assertEqual(unauth.status, 401)
+        resp = await self.client.request(
+            "GET", "/api/system/backup/export", params={"api_key": "secret-admin-key"}
+        )
+        self.assertEqual(resp.status, 200)
+        bundle = await resp.json()
+        self.assertEqual(bundle["voxstream_backup"]["app_version"], VERSION)
+        self.assertEqual(bundle["voxstream_backup"]["app_version"], "1.2.0")
+        blob = json.dumps(bundle)
+        for raw in ("live-gemini-secret-xyz", "live-summary-secret-abc", "secret-admin-key"):
+            self.assertNotIn(raw, blob)
+        self.assertNotIn("_preview", blob)
+        self.assertEqual(bundle["config"]["gemini_live"]["api_key"], "•••")
+        self.assertEqual(bundle["config"]["api"]["api_key"], "•••")
+
+    async def test_backup_import_preserves_live_secrets(self):
+        self._enable_two_tier_auth()
+        self.overlay_server.config.gemini_live.api_key = "live-gemini-key-abc123"
+        self.overlay_server.config.summary.gemini_api_key = "live-summary-key-def456"
+        exp = await self.client.request(
+            "GET", "/api/system/backup/export", params={"api_key": "secret-admin-key"}
+        )
+        self.assertEqual(exp.status, 200)
+        bundle = await exp.json()
+        bundle["config"]["general"]["church_name"] = "Restored Chapel"
+        imp = await self.client.request(
+            "POST", "/api/system/backup/import", params={"api_key": "secret-admin-key"}, json=bundle
+        )
+        self.assertEqual(imp.status, 200)
+        data = await imp.json()
+        self.assertEqual(data["status"], "success")
+        self.assertEqual(self.overlay_server.config.gemini_live.api_key, "live-gemini-key-abc123")
+        self.assertEqual(self.overlay_server.config.summary.gemini_api_key, "live-summary-key-def456")
+        self.assertEqual(self.overlay_server.config.api.api_key, "secret-admin-key")
+        self.assertEqual(self.overlay_server.config.general.church_name, "Restored Chapel")
+
+    async def test_multicast_language_rooms_ws_registration(self):
+        import aiohttp
+        ws_en = await self.client.ws_connect("/ws?lang=en")
+        ws_es = await self.client.ws_connect("/ws?lang=es")
+        try:
+            await asyncio.sleep(0.3)
+            langs = sorted(self.overlay_server.caption_sockets.values())
+            self.assertIn("en", langs)
+            self.assertIn("es", langs)
+            msg_en = await ws_en.receive(timeout=5)
+            msg_es = await ws_es.receive(timeout=5)
+            self.assertEqual(msg_en.type, aiohttp.WSMsgType.TEXT)
+            self.assertEqual(msg_es.type, aiohttp.WSMsgType.TEXT)
+            self.assertEqual(json.loads(msg_en.data).get("type"), "snapshot")
+            self.assertEqual(json.loads(msg_es.data).get("type"), "snapshot")
+        finally:
+            await ws_en.close()
+            await ws_es.close()
+
+    async def test_multicast_language_rooms_broadcast_fanout(self):
+        captured_en, captured_es = [], []
+
+        class _FakeWs:
+            def __init__(self, buf):
+                self.buf = buf
+            async def send_str(self, msg):
+                self.buf.append(msg)
+            async def close(self):
+                pass
+
+        srv = self.overlay_server
+        srv.config.translation.target_language = "es"
+        ws_en, ws_es = _FakeWs(captured_en), _FakeWs(captured_es)
+        srv.caption_sockets[ws_en] = "en"
+        srv.caption_sockets[ws_es] = "es"
+        try:
+            await srv.broadcast_caption({"text": "Hello world", "is_final": False, "timestamp": time.time()})
+            await asyncio.sleep(0.5)
+            self.assertTrue(captured_en, "en room received nothing")
+            self.assertTrue(captured_es, "es room received nothing")
+            es_payload = json.loads(captured_es[-1])
+            self.assertEqual(es_payload.get("original_text"), "Hello world")
+
+            captured_en.clear()
+            captured_es.clear()
+            srv.broadcast_translated_audio(b"\x00\x01fake-audio", "audio/pcm;rate=24000")
+            await asyncio.sleep(0.5)
+            self.assertFalse(captured_en, "en room must not receive translated audio")
+            self.assertTrue(captured_es, "es room must receive translated audio")
+            self.assertEqual(json.loads(captured_es[-1]).get("type"), "translated_audio")
+        finally:
+            srv._close_caption_client(ws_en)
+            srv._close_caption_client(ws_es)
+
+    def test_interpreter_mode_standalone_without_obs_translation(self):
+        """Interpreter Mode must activate without OBS dual subtitles enabled."""
+        cfg = AppConfig()
+        cfg.gemini_live.api_key = "test-key"
+        cfg.gemini_live.model = "gemini-3.5-transcribe-live"
+        cfg.translation.enabled = False
+        cfg.translation.interpreter_mode = True
+        cfg.translation.target_language = "es"
+
+        engine = GeminiLiveEngine(cfg)
+        setup = engine.build_setup_payload()["setup"]
+        self.assertEqual(setup["model"], "models/gemini-3.5-live-translate-preview")
+        self.assertIn("generationConfig", setup)
+        gen_cfg = setup["generationConfig"]
+        self.assertIn("translationConfig", gen_cfg)
+        self.assertEqual(gen_cfg["translationConfig"]["targetLanguageCode"], "es")
+
+        html = (
+            Path(__file__).resolve().parent
+            / "obs_captioner" / "web" / "static" / "dashboard.html"
+        ).read_text(encoding="utf-8")
+        self.assertIn("btn-sync-translation-key", html)
+        idx_dual = html.index("dual-subtitle-appearance-card")
+        idx_interp = html.index("translation_interpreter_mode")
+        idx_s2 = html.index("SECTION 2")
+        self.assertLess(
+            idx_dual, idx_interp,
+            "interpreter mode card should be outside Section 1 (after dual-subtitle card)",
+        )
+        self.assertLess(idx_interp, idx_s2)
+        self.assertIn("independently of OBS", html)
+
+
+class TestInterpreterModeNoPollution(unittest.IsolatedAsyncioTestCase):
+    async def test_interpreter_mode_does_not_pollute_english_history_or_primary_stt(self):
+        from unittest.mock import AsyncMock, MagicMock
+        from obs_captioner.obs.caption_sink import CaptionSink
+
+        cfg = AppConfig()
+        cfg.gemini_live.api_key = "test-key"
+        cfg.gemini_live.model = "gemini-3.5-transcribe-live"
+        cfg.gemini_live.language_codes = ["en-US"]
+        cfg.translation.enabled = False
+        cfg.translation.interpreter_mode = True
+        cfg.translation.target_language = "es"
+        cfg.overlay.auto_hide_seconds = 0
+        if hasattr(cfg, "bible") and cfg.bible:
+            cfg.bible.enabled = False
+
+        engine = GeminiLiveEngine(cfg)
+
+        setup_default = engine.build_setup_payload()["setup"]
+        self.assertEqual(setup_default["model"], "models/gemini-3.5-live-translate-preview")
+
+        setup_forced = engine.build_setup_payload(force_transcribe=True)["setup"]
+        self.assertEqual(setup_forced["model"], "models/gemini-3.5-transcribe-live")
+        self.assertEqual(setup_forced["generationConfig"]["responseModalities"], ["TEXT"])
+        self.assertIn("languageCodes", setup_forced["inputAudioTranscription"])
+        self.assertEqual(setup_forced["inputAudioTranscription"]["languageCodes"], ["en-US"])
+
+        sink = CaptionSink(cfg)
+        try:
+            mock_web = MagicMock()
+            mock_web.broadcast_caption = AsyncMock()
+            sink.web_server = mock_web
+
+            event = TranscriptEvent(
+                text="First time calling on the phone.",
+                is_final=True,
+                translated_text="Primera vez que llamo por teléfono.",
+            )
+            await sink.handle_transcript(event)
+
+            self.assertTrue(sink.history.entries)
+            history_text = sink.history.entries[-1].text
+            # English-only: formatter normalizes "First" to "1St"; accept either
+            # but never the dual " / <translated>" form.
+            self.assertIn(
+                history_text,
+                ["First time calling on the phone.", "1St time calling on the phone."],
+            )
+            self.assertNotIn("Primera vez", history_text)
+            self.assertNotIn(" / ", history_text)
+
+            mock_web.broadcast_caption.assert_awaited_once()
+            payload = mock_web.broadcast_caption.call_args[0][0]
+            self.assertIn(
+                payload["text"],
+                ["First time calling on the phone.", "1St time calling on the phone."],
+            )
+            self.assertEqual(
+                payload["translated_text"], "Primera vez que llamo por teléfono."
+            )
+        finally:
+            await sink.stop()
 
 
 if __name__ == "__main__":

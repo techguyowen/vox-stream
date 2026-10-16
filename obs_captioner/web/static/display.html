@@ -468,6 +468,29 @@
             100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
         }
 
+        /* Floating "tap to listen" banner pill shown when translated audio
+           is streaming but the viewer hasn't enabled audio yet. */
+        .audio-listen-banner {
+            position: fixed;
+            top: max(12px, env(safe-area-inset-top, 12px));
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: #10B981;
+            color: #000000;
+            font-weight: 800;
+            font-size: 14px;
+            padding: 10px 20px;
+            border-radius: 999px;
+            box-shadow: 0 4px 20px rgba(16, 185, 129, 0.55);
+            cursor: pointer;
+            white-space: nowrap;
+            max-width: calc(100vw - 32px);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            animation: pulse-audio 2s infinite;
+        }
+
         /* High-visibility font-size quick actions (header bar).
            Solid amber fill + near-black bold text reads clearly on the
            fixed dark slate header (Option B: identical in every theme). */
@@ -560,10 +583,15 @@
         }
 
         .header-controls-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
             gap: 8px;
             width: 100%;
+        }
+
+        #audioListenBtn {
+            flex: 0 0 auto;
         }
 
         .theme-select {
@@ -1236,6 +1264,9 @@
         <a id="welcome-banner-link" href="#" target="_blank" rel="noopener noreferrer"></a>
     </div>
 
+    <!-- Floating "audio translation live" prompt (tap to enable audio) -->
+    <div id="audioListenBanner" class="audio-listen-banner" style="display: none;" role="button" tabindex="0" aria-live="polite"></div>
+
     <!-- Header Navigation Bar -->
     <header class="header-bar" id="headerBar">
         <div class="header-main-row">
@@ -1308,7 +1339,7 @@
             
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.12); padding-bottom: 14px; margin-bottom: 16px;">
                 <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
-                    <span>⚙️ Display &amp; Reading Settings</span>
+                    <span id="settingsModalTitle">⚙️ Display &amp; Reading Settings</span>
                 </h3>
                 <button id="btnCloseSettings" style="background: none; border: none; color: #9CA3AF; font-size: 24px; font-weight: bold; cursor: pointer; padding: 0 6px; line-height: 1;">✕</button>
             </div>
@@ -1325,7 +1356,7 @@
                         <!-- Visual Aid Mode -->
                         <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.35); padding: 10px 12px; border-radius: 8px;">
                             <div>
-                                <span style="font-size: 13.5px; font-weight: 700; color: #38BDF8; display: block;">👁️ Visual Aid Mode</span>
+                                <span id="lblVisualAid" style="font-size: 13.5px; font-weight: 700; color: #38BDF8; display: block;">👁️ Visual Aid Mode</span>
                                 <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Expanded letter spacing (0.06em), word spacing (0.15em), line height (1.65x)</span>
                             </div>
                             <input type="checkbox" id="chkDisplayA11y" style="width: 20px; height: 20px; cursor: pointer; accent-color: #38BDF8;">
@@ -1334,7 +1365,7 @@
                         <!-- Slow Down Text Mode -->
                         <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.35); padding: 10px 12px; border-radius: 8px;">
                             <div>
-                                <span style="font-size: 13.5px; font-weight: 700; color: #FBBF24; display: block;">🐢 Slow Down Text</span>
+                                <span id="lblSlowDown" style="font-size: 13.5px; font-weight: 700; color: #FBBF24; display: block;">🐢 Slow Down Text</span>
                                 <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Paces words steadily at 140 WPM and holds text on screen 3x longer</span>
                             </div>
                             <input type="checkbox" id="chkDisplayPacing" style="width: 20px; height: 20px; cursor: pointer; accent-color: #F59E0B;">
@@ -1343,7 +1374,7 @@
                         <!-- Bionic Reading Mode -->
                         <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.35); padding: 10px 12px; border-radius: 8px;">
                             <div>
-                                <span style="font-size: 13.5px; font-weight: 700; color: #C084FC; display: block;">⚡ Bionic Reading (Guided Word Focus)</span>
+                                <span id="lblBionic" style="font-size: 13.5px; font-weight: 700; color: #C084FC; display: block;">⚡ Bionic Reading (Guided Word Focus)</span>
                                 <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Bolds initial letters of each word for rapid eye fixation and ADHD focus</span>
                             </div>
                             <input type="checkbox" id="chkDisplayBionic" style="width: 20px; height: 20px; cursor: pointer; accent-color: #A855F7;">
@@ -1352,7 +1383,7 @@
                         <!-- Finalized Only Mode -->
                         <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.35); padding: 10px 12px; border-radius: 8px;">
                             <div>
-                                <span style="font-size: 13.5px; font-weight: 700; color: #34D399; display: block;">✨ Final Sentences Only</span>
+                                <span id="lblFinalOnly" style="font-size: 13.5px; font-weight: 700; color: #34D399; display: block;">✨ Final Sentences Only</span>
                                 <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Waits until speech is fully prepared &amp; punctuated. Completely hides live in-progress guessing.</span>
                             </div>
                             <input type="checkbox" id="chkDisplayFinalOnly" style="width: 20px; height: 20px; cursor: pointer; accent-color: #10B981;">
@@ -1361,7 +1392,7 @@
                         <!-- Disable Text Shadow / Border on Words -->
                         <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(148, 163, 184, 0.1); border: 1px solid rgba(148, 163, 184, 0.35); padding: 10px 12px; border-radius: 8px;">
                             <div>
-                                <span style="font-size: 13.5px; font-weight: 700; color: #CBD5E1; display: block;">🔤 Flat Text (No Word Shadow / Outline)</span>
+                                <span id="lblFlatText" style="font-size: 13.5px; font-weight: 700; color: #CBD5E1; display: block;">🔤 Flat Text (No Word Shadow / Outline)</span>
                                 <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Removes the drop shadow and halo effect around caption words for completely flat, crisp, borderless typography.</span>
                             </div>
                             <input type="checkbox" id="chkDisableTextShadow" style="width: 20px; height: 20px; cursor: pointer; accent-color: #94A3B8;">
@@ -1390,7 +1421,7 @@
 
                 <!-- SECTION 2: Typography -->
                 <div>
-                    <label for="fontSelect" style="display: block; font-size: 12px; margin-bottom: 5px; color: #94A3B8; font-weight: 700;">🔤 Typography / Font Family</label>
+                    <label id="lblTypeface" for="fontSelect" style="display: block; font-size: 12px; margin-bottom: 5px; color: #94A3B8; font-weight: 700;">🔤 Typography / Font Family</label>
                     <select class="theme-select" id="fontSelect" style="width: 100%; padding: 9px 12px; font-size: 13.5px;">
                         <option value="'Inter', system-ui, -apple-system, sans-serif" selected>Inter (Modern Sans)</option>
                         <option value="'OpenDyslexic', sans-serif">📖 OpenDyslexic (Dyslexia Aid)</option>
@@ -1408,7 +1439,7 @@
 
                 <!-- SECTION 3: Color Theme -->
                 <div>
-                    <label for="themeSelect" style="display: block; font-size: 12px; margin-bottom: 5px; color: #94A3B8; font-weight: 700;">🎨 Color Theme</label>
+                    <label id="lblTheme" for="themeSelect" style="display: block; font-size: 12px; margin-bottom: 5px; color: #94A3B8; font-weight: 700;">🎨 Color Theme</label>
                     <select class="theme-select" id="themeSelect" style="width: 100%; padding: 9px 12px; font-size: 13.5px;">
                         <optgroup label="── DARK THEMES ──">
                             <option value="theme-oled" selected>🌑 Pure Black (OLED)</option>
@@ -1493,7 +1524,7 @@
 
                 <!-- SECTION 4: Caption Font Size (Essential for Mobile & Customization) -->
                 <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px;">
-                    <div style="font-size: 11.5px; font-weight: 800; color: #93C5FD; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 10px;">
+                    <div id="lblFontSize" style="font-size: 11.5px; font-weight: 800; color: #93C5FD; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 10px;">
                         🔤 Caption Text Size
                     </div>
                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
@@ -1568,7 +1599,7 @@
     <main class="stage-container" id="stageContainer">
         <div class="transcript-content" id="transcriptContent">
             <div class="empty-indicator" id="emptyNotice">
-                Listening for speech... Captions will appear here in real-time.
+                Waiting for live speech...
             </div>
         </div>
     </main>
@@ -1613,6 +1644,457 @@
         let isFinalOnlyMode = false;
         let isScriptureOverlayEnabled = true;
 
+        // UI Localization dictionaries: viewer language (langSelect / ?lang=XX)
+        // drives caption translation AND full chrome translation via applyUiLanguage().
+        const UI_LOCALIZATIONS = {
+            en: {
+                settings: 'Settings',
+                display_mode: 'Display Mode',
+                scrollable: '📜 Scrollable History',
+                live_prompter: '⚡ Live Prompter',
+                listen_live: '🎧 Listen Live',
+                listening: '🔊 Listening (Tap to Mute)',
+                muted: '🔇 Muted (Tap to Listen)',
+                audio_banner: '🎧 Audio translation live — Tap to listen',
+                clear: 'Clear History',
+                fullscreen: 'Toggle Fullscreen',
+                reading_settings: 'Display & Reading Settings',
+                visual_aid: 'Visual Aid Mode',
+                slow_down: 'Slow Down Text',
+                bionic: 'Bionic Reading',
+                final_only: 'Final Sentences Only',
+                flat_text: 'Flat Text',
+                done: 'Done',
+                font_size: 'Font Size',
+                theme: 'Color Theme',
+                typeface: 'Typeface Font',
+                waiting_speech: 'Waiting for live speech...'
+            },
+            es: {
+                settings: 'Configuración',
+                display_mode: 'Modo de visualización',
+                scrollable: '📜 Historial desplazable',
+                live_prompter: '⚡ Teleprompter en vivo',
+                listen_live: '🎧 Escuchar en Vivo',
+                listening: '🔊 Escuchando (Tocar para Silenciar)',
+                muted: '🔇 Silenciado (Tocar para Escuchar)',
+                clear: 'Borrar historial',
+                fullscreen: 'Pantalla completa',
+                reading_settings: 'Configuración de lectura y visualización',
+                visual_aid: 'Modo de ayuda visual',
+                slow_down: 'Texto pausado',
+                bionic: 'Lectura biónica',
+                final_only: 'Solo frases finales',
+                flat_text: 'Texto plano',
+                done: 'Listo',
+                font_size: 'Tamaño de letra',
+                theme: 'Tema de color',
+                typeface: 'Tipo de fuente',
+                waiting_speech: 'Esperando voz en vivo...'
+            },
+            fr: {
+                settings: 'Paramètres',
+                display_mode: 'Mode d’affichage',
+                scrollable: '📜 Historique défilant',
+                live_prompter: '⚡ Prompteur en direct',
+                listen_live: '🎧 Écouter en Direct',
+                listening: '🔊 Écoute en cours (Appuyer pour couper)',
+                muted: '🔇 Coupé (Appuyer pour écouter)',
+                audio_banner: '🎧 Traduction audio en direct — Toucher pour écouter',
+                clear: 'Effacer l’historique',
+                fullscreen: 'Plein écran',
+                reading_settings: 'Paramètres d’affichage et de lecture',
+                visual_aid: 'Mode d’aide visuelle',
+                slow_down: 'Ralentir le texte',
+                bionic: 'Lecture bionique',
+                final_only: 'Phrases finales uniquement',
+                flat_text: 'Texte brut',
+                done: 'Terminé',
+                font_size: 'Taille de police',
+                theme: 'Thème de couleur',
+                typeface: 'Police de caractères',
+                waiting_speech: 'En attente de la parole en direct...'
+            },
+            de: {
+                settings: 'Einstellungen',
+                display_mode: 'Anzeigemodus',
+                scrollable: '📜 Scrollbarer Verlauf',
+                live_prompter: '⚡ Live-Prompter',
+                listen_live: '🎧 Live Anhören',
+                listening: '🔊 Hören (Tippen zum Stummschalten)',
+                muted: '🔇 Stummgeschaltet (Tippen zum Hören)',
+                clear: 'Verlauf löschen',
+                fullscreen: 'Vollbild',
+                reading_settings: 'Anzeige- & Leseeinstellungen',
+                visual_aid: 'Sehhilfe-Modus',
+                slow_down: 'Text verlangsamen',
+                bionic: 'Bionisches Lesen',
+                final_only: 'Nur fertige Sätze',
+                flat_text: 'Flacher Text',
+                done: 'Fertig',
+                font_size: 'Schriftgröße',
+                theme: 'Farbthema',
+                typeface: 'Schriftart',
+                waiting_speech: 'Warte auf Live-Sprache...'
+            },
+            pt: {
+                settings: 'Configurações',
+                display_mode: 'Modo de exibição',
+                scrollable: '📜 Histórico rolável',
+                live_prompter: '⚡ Prompter ao vivo',
+                listen_live: '🎧 Ouvir ao Vivo',
+                listening: '🔊 Ouvindo (Toque para silenciar)',
+                muted: '🔇 Silenciado (Toque para ouvir)',
+                clear: 'Limpar histórico',
+                fullscreen: 'Tela cheia',
+                reading_settings: 'Configurações de exibição e leitura',
+                visual_aid: 'Modo de ajuda visual',
+                slow_down: 'Texto mais lento',
+                bionic: 'Leitura biônica',
+                final_only: 'Somente frases finais',
+                flat_text: 'Texto simples',
+                done: 'Concluído',
+                font_size: 'Tamanho da fonte',
+                theme: 'Tema de cores',
+                typeface: 'Fonte',
+                waiting_speech: 'Aguardando fala ao vivo...'
+            },
+            it: {
+                settings: 'Impostazioni',
+                display_mode: 'Modalità di visualizzazione',
+                scrollable: '📜 Cronologia scorrevole',
+                live_prompter: '⚡ Gobbo live',
+                listen_live: '🎧 Ascolta dal vivo',
+                listening: '🔊 In ascolto (Tocca per silenziare)',
+                muted: '🔇 Silenziato (Tocca per ascoltare)',
+                clear: 'Cancella cronologia',
+                fullscreen: 'Schermo intero',
+                reading_settings: 'Impostazioni di visualizzazione e lettura',
+                visual_aid: 'Modalità aiuto visivo',
+                slow_down: 'Rallenta testo',
+                bionic: 'Lettura bionica',
+                final_only: 'Solo frasi finali',
+                flat_text: 'Testo semplice',
+                done: 'Fatto',
+                font_size: 'Dimensione carattere',
+                theme: 'Tema colore',
+                typeface: 'Carattere',
+                waiting_speech: 'In attesa del parlato dal vivo...'
+            },
+            zh: {
+                settings: '设置',
+                display_mode: '显示模式',
+                scrollable: '📜 可滚动历史',
+                live_prompter: '⚡ 实时提词器',
+                listen_live: '🎧 实时收听',
+                listening: '🔊 正在收听（点击静音）',
+                muted: '🔇 已静音（点击收听）',
+                clear: '清除历史',
+                fullscreen: '全屏切换',
+                reading_settings: '显示和阅读设置',
+                visual_aid: '视觉辅助模式',
+                slow_down: '放慢文本',
+                bionic: '仿生阅读',
+                final_only: '仅显示完整句子',
+                flat_text: '纯文本',
+                done: '完成',
+                font_size: '字体大小',
+                theme: '颜色主题',
+                typeface: '字体',
+                waiting_speech: '等待实时语音...'
+            },
+            ja: {
+                settings: '設定',
+                display_mode: '表示モード',
+                scrollable: '📜 スクロール可能な履歴',
+                live_prompter: '⚡ ライブプロンプター',
+                listen_live: '🎧 ライブで聴く',
+                listening: '🔊 聴取中（タップでミュート）',
+                muted: '🔇 ミュート中（タップで聴取）',
+                clear: '履歴をクリア',
+                fullscreen: '全画面切替',
+                reading_settings: '表示と読み上げ設定',
+                visual_aid: '視覚補助モード',
+                slow_down: 'テキストをゆっくり',
+                bionic: 'バイオニックリーディング',
+                final_only: '確定文のみ',
+                flat_text: 'フラットテキスト',
+                done: '完了',
+                font_size: 'フォントサイズ',
+                theme: 'カラーテーマ',
+                typeface: '書体',
+                waiting_speech: 'ライブ音声を待機中...'
+            },
+            ko: {
+                settings: '설정',
+                display_mode: '표시 모드',
+                scrollable: '📜 스크롤 가능한 기록',
+                live_prompter: '⚡ 라이브 프롬프터',
+                listen_live: '🎧 실시간 듣기',
+                listening: '🔊 듣는 중 (탭하여 음소거)',
+                muted: '🔇 음소거됨 (탭하여 듣기)',
+                clear: '기록 지우기',
+                fullscreen: '전체 화면 전환',
+                reading_settings: '표시 및 읽기 설정',
+                visual_aid: '시각 보조 모드',
+                slow_down: '텍스트 천천히',
+                bionic: '바이오닉 리딩',
+                final_only: '완성된 문장만',
+                flat_text: '일반 텍스트',
+                done: '완료',
+                font_size: '글자 크기',
+                theme: '색상 테마',
+                typeface: '서체',
+                waiting_speech: '실시간 음성 대기 중...'
+            },
+            ru: {
+                settings: 'Настройки',
+                display_mode: 'Режим отображения',
+                scrollable: '📜 Прокручиваемая история',
+                live_prompter: '⚡ Живой суфлёр',
+                listen_live: '🎧 Слушать вживую',
+                listening: '🔊 Прослушивание (нажмите, чтобы выключить звук)',
+                muted: '🔇 Без звука (нажмите, чтобы слушать)',
+                clear: 'Очистить историю',
+                fullscreen: 'Полноэкранный режим',
+                reading_settings: 'Настройки отображения и чтения',
+                visual_aid: 'Режим визуальной помощи',
+                slow_down: 'Замедлить текст',
+                bionic: 'Бионическое чтение',
+                final_only: 'Только готовые предложения',
+                flat_text: 'Обычный текст',
+                done: 'Готово',
+                font_size: 'Размер шрифта',
+                theme: 'Цветовая тема',
+                typeface: 'Шрифт',
+                waiting_speech: 'Ожидание живой речи...'
+            },
+            ar: {
+                settings: 'الإعدادات',
+                display_mode: 'وضع العرض',
+                scrollable: '📜 السجل القابل للتمرير',
+                live_prompter: '⚡ الملقن المباشر',
+                listen_live: '🎧 استمع مباشرة',
+                listening: '🔊 جارٍ الاستماع (انقر لكتم الصوت)',
+                muted: '🔇 مكتوم (انقر للاستماع)',
+                clear: 'مسح السجل',
+                fullscreen: 'ملء الشاشة',
+                reading_settings: 'إعدادات العرض والقراءة',
+                visual_aid: 'وضع المساعدة البصرية',
+                slow_down: 'إبطاء النص',
+                bionic: 'القراءة الحيوية',
+                final_only: 'الجمل النهائية فقط',
+                flat_text: 'نص عادي',
+                done: 'تم',
+                font_size: 'حجم الخط',
+                theme: 'سمة اللون',
+                typeface: 'نوع الخط',
+                waiting_speech: 'في انتظار الكلام المباشر...'
+            },
+            hi: {
+                settings: 'सेटिंग्स',
+                display_mode: 'प्रदर्शन मोड',
+                scrollable: '📜 स्क्रॉल करने योग्य इतिहास',
+                live_prompter: '⚡ लाइव प्रॉम्प्टर',
+                listen_live: '🎧 लाइव सुनें',
+                listening: '🔊 सुन रहे हैं (म्यूट के लिए टैप करें)',
+                muted: '🔇 म्यूट (सुनने के लिए टैप करें)',
+                clear: 'इतिहास साफ़ करें',
+                fullscreen: 'पूर्ण स्क्रीन',
+                reading_settings: 'प्रदर्शन और पठन सेटिंग्स',
+                visual_aid: 'दृश्य सहायता मोड',
+                slow_down: 'टेक्स्ट धीमा करें',
+                bionic: 'बायोनिक रीडिंग',
+                final_only: 'केवल अंतिम वाक्य',
+                flat_text: 'सादा टेक्स्ट',
+                done: 'हो गया',
+                font_size: 'फ़ॉन्ट आकार',
+                theme: 'रंग थीम',
+                typeface: 'फ़ॉन्ट',
+                waiting_speech: 'लाइव भाषण की प्रतीक्षा...'
+            },
+            nl: {
+                settings: 'Instellingen',
+                display_mode: 'Weergavemodus',
+                scrollable: '📜 Scrollbare geschiedenis',
+                live_prompter: '⚡ Live prompter',
+                listen_live: '🎧 Live luisteren',
+                listening: '🔊 Luisteren (Tik om te dempen)',
+                muted: '🔇 Gedempt (Tik om te luisteren)',
+                clear: 'Geschiedenis wissen',
+                fullscreen: 'Volledig scherm',
+                reading_settings: 'Weergave- en leesinstellingen',
+                visual_aid: 'Visuele hulpmiddelmodus',
+                slow_down: 'Tekst vertragen',
+                bionic: 'Bionisch lezen',
+                final_only: 'Alleen voltooide zinnen',
+                flat_text: 'Platte tekst',
+                done: 'Gereed',
+                font_size: 'Tekengrootte',
+                theme: 'Kleurthema',
+                typeface: 'Lettertype',
+                waiting_speech: 'Wachten op live spraak...'
+            },
+            pl: {
+                settings: 'Ustawienia',
+                display_mode: 'Tryb wyświetlania',
+                scrollable: '📜 Przewijana historia',
+                live_prompter: '⚡ Prompter na żywo',
+                listen_live: '🎧 Słuchaj na żywo',
+                listening: '🔊 Słuchanie (dotknij, aby wyciszyć)',
+                muted: '🔇 Wyciszono (dotknij, aby słuchać)',
+                clear: 'Wyczyść historię',
+                fullscreen: 'Pełny ekran',
+                reading_settings: 'Ustawienia wyświetlania i czytania',
+                visual_aid: 'Tryb pomocy wizualnej',
+                slow_down: 'Spowolnij tekst',
+                bionic: 'Czytanie bioniczne',
+                final_only: 'Tylko ukończone zdania',
+                flat_text: 'Zwykły tekst',
+                done: 'Gotowe',
+                font_size: 'Rozmiar czcionki',
+                theme: 'Motyw kolorów',
+                typeface: 'Krój pisma',
+                waiting_speech: 'Oczekiwanie na mowę na żywo...'
+            },
+            sv: {
+                settings: 'Inställningar',
+                display_mode: 'Visningsläge',
+                scrollable: '📜 Rullningsbar historik',
+                live_prompter: '⚡ Live-prompter',
+                listen_live: '🎧 Lyssna live',
+                listening: '🔊 Lyssnar (Tryck för att stänga av ljudet)',
+                muted: '🔇 Avstängd (Tryck för att lyssna)',
+                clear: 'Rensa historik',
+                fullscreen: 'Helskärm',
+                reading_settings: 'Visnings- och läsinställningar',
+                visual_aid: 'Synhjälpsläge',
+                slow_down: 'Sakta ner text',
+                bionic: 'Bionisk läsning',
+                final_only: 'Endast färdiga meningar',
+                flat_text: 'Platt text',
+                done: 'Klar',
+                font_size: 'Teckenstorlek',
+                theme: 'Färgtema',
+                typeface: 'Typsnitt',
+                waiting_speech: 'Väntar på direkttal...'
+            },
+            tr: {
+                settings: 'Ayarlar',
+                display_mode: 'Görüntüleme Modu',
+                scrollable: '📜 Kaydırılabilir Geçmiş',
+                live_prompter: '⚡ Canlı Prompter',
+                listen_live: '🎧 Canlı Dinle',
+                listening: '🔊 Dinleniyor (Sessize almak için dokunun)',
+                muted: '🔇 Sessizde (Dinlemek için dokunun)',
+                clear: 'Geçmişi Temizle',
+                fullscreen: 'Tam Ekran',
+                reading_settings: 'Görüntü ve Okuma Ayarları',
+                visual_aid: 'Görsel Yardım Modu',
+                slow_down: 'Metni Yavaşlat',
+                bionic: 'Biyonik Okuma',
+                final_only: 'Yalnızca Tamamlanan Cümleler',
+                flat_text: 'Düz Metin',
+                done: 'Bitti',
+                font_size: 'Yazı Tipi Boyutu',
+                theme: 'Renk Teması',
+                typeface: 'Yazı Tipi',
+                waiting_speech: 'Canlı konuşma bekleniyor...'
+            },
+            uk: {
+                settings: 'Налаштування',
+                display_mode: 'Режим відображення',
+                scrollable: '📜 Історія з прокручуванням',
+                live_prompter: '⚡ Живий суфлер',
+                listen_live: '🎧 Слухати наживо',
+                listening: '🔊 Прослуховування (торкніться, щоб вимкнути звук)',
+                muted: '🔇 Без звуку (торкніться, щоб слухати)',
+                clear: 'Очистити історію',
+                fullscreen: 'Повноекранний режим',
+                reading_settings: 'Налаштування відображення та читання',
+                visual_aid: 'Режим візуальної допомоги',
+                slow_down: 'Уповільнити текст',
+                bionic: 'Біонічне читання',
+                final_only: 'Лише готові речення',
+                flat_text: 'Звичайний текст',
+                done: 'Готово',
+                font_size: 'Розмір шрифту',
+                theme: 'Кольорова тема',
+                typeface: 'Шрифт',
+                waiting_speech: 'Очікування живого мовлення...'
+            },
+            vi: {
+                settings: 'Cài đặt',
+                display_mode: 'Chế độ hiển thị',
+                scrollable: '📜 Lịch sử cuộn',
+                live_prompter: '⚡ Máy nhắc chữ trực tiếp',
+                listen_live: '🎧 Nghe trực tiếp',
+                listening: '🔊 Đang nghe (Chạm để tắt tiếng)',
+                muted: '🔇 Đã tắt tiếng (Chạm để nghe)',
+                clear: 'Xóa lịch sử',
+                fullscreen: 'Toàn màn hình',
+                reading_settings: 'Cài đặt hiển thị & đọc',
+                visual_aid: 'Chế độ hỗ trợ thị giác',
+                slow_down: 'Chữ chạy chậm',
+                bionic: 'Đọc Bionic',
+                final_only: 'Chỉ câu hoàn chỉnh',
+                flat_text: 'Văn bản phẳng',
+                done: 'Xong',
+                font_size: 'Cỡ chữ',
+                theme: 'Chủ đề màu',
+                typeface: 'Phông chữ',
+                waiting_speech: 'Đang chờ lời nói trực tiếp...'
+            },
+            tl: {
+                settings: 'Mga Setting',
+                display_mode: 'Display Mode',
+                scrollable: '📜 Nai-scroll na Kasaysayan',
+                live_prompter: '⚡ Live Prompter',
+                listen_live: '🎧 Makinig nang Live',
+                listening: '🔊 Nakikinig (Tap para i-Mute)',
+                muted: '🔇 Naka-mute (Tap para Makinig)',
+                clear: 'Burahin ang Kasaysayan',
+                fullscreen: 'Fullscreen',
+                reading_settings: 'Mga Setting sa Display at Pagbasa',
+                visual_aid: 'Visual Aid Mode',
+                slow_down: 'Bagalan ang Teksto',
+                bionic: 'Bionic Reading',
+                final_only: 'Mga Buong Pangungusap Lamang',
+                flat_text: 'Payak na Teksto',
+                done: 'Tapos',
+                font_size: 'Laki ng Font',
+                theme: 'Kulay na Tema',
+                typeface: 'Font',
+                waiting_speech: 'Naghihintay ng live na pagsasalita...'
+            },
+            he: {
+                settings: 'הגדרות',
+                display_mode: 'מצב תצוגה',
+                scrollable: '📜 היסטוריה נגללת',
+                live_prompter: '⚡ פרומפטר חי',
+                listen_live: '🎧 האזנה חיה',
+                listening: '🔊 מאזין (הקש כדי להשתיק)',
+                muted: '🔇 מושתק (הקש כדי להאזין)',
+                clear: 'ניקוי היסטוריה',
+                fullscreen: 'מסך מלא',
+                reading_settings: 'הגדרות תצוגה וקריאה',
+                visual_aid: 'מצב סיוע חזותי',
+                slow_down: 'האטת טקסט',
+                bionic: 'קריאה ביונית',
+                final_only: 'משפטים סופיים בלבד',
+                flat_text: 'טקסט שטוח',
+                done: 'סיום',
+                font_size: 'גודל גופן',
+                theme: 'ערכת צבעים',
+                typeface: 'גופן',
+                waiting_speech: 'ממתין לדיבור חי...'
+            }
+        };
+
+        function getUiStrings(lang) {
+            return UI_LOCALIZATIONS[lang] || UI_LOCALIZATIONS.en;
+        }
+
         // DOM Elements
         const stageContainer = document.getElementById('stageContainer');
         const transcriptContent = document.getElementById('transcriptContent');
@@ -1644,6 +2126,84 @@
         let isAudioMuted = false;
         let nextAudioTime = 0;
 
+        function refreshAudioListenBtnText() {
+            if (!audioListenBtn) return;
+            const t = getUiStrings(currentLang);
+            if (!isAudioListening) {
+                audioListenBtn.textContent = t.listen_live;
+            } else if (isAudioMuted) {
+                audioListenBtn.textContent = t.muted;
+            } else {
+                audioListenBtn.textContent = t.listening;
+            }
+            audioListenBtn.title = audioListenBtn.textContent;
+            audioListenBtn.setAttribute('aria-label', audioListenBtn.textContent);
+        }
+
+        function applyUiLanguage(lang) {
+            document.documentElement.lang = lang;
+            document.documentElement.dir = (lang === 'ar' || lang === 'he') ? 'rtl' : 'ltr';
+            const t = getUiStrings(lang);
+            const setText = (id, value) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = value;
+            };
+            if (btnOpenSettings) {
+                btnOpenSettings.title = t.reading_settings + ' (S)';
+                btnOpenSettings.setAttribute('aria-label', t.settings);
+                const settingsLabel = btnOpenSettings.querySelector('.settings-label');
+                if (settingsLabel) settingsLabel.textContent = t.settings;
+            }
+            if (displayModeSelect) {
+                displayModeSelect.title = t.display_mode;
+                displayModeSelect.setAttribute('aria-label', t.display_mode);
+                const optScrollable = displayModeSelect.querySelector('option[value="scrollable"]');
+                if (optScrollable) optScrollable.textContent = t.scrollable;
+                const optLive = displayModeSelect.querySelector('option[value="live"]');
+                if (optLive) optLive.textContent = t.live_prompter;
+            }
+            refreshAudioListenBtnText();
+            refreshAudioListenBannerText();
+            const btnClearEl = document.getElementById('btnClear');
+            if (btnClearEl) {
+                btnClearEl.title = t.clear + ' (C)';
+                btnClearEl.setAttribute('aria-label', t.clear);
+            }
+            const btnFullscreenEl = document.getElementById('btnFullscreen');
+            if (btnFullscreenEl) {
+                btnFullscreenEl.title = t.fullscreen + ' (F11)';
+                btnFullscreenEl.setAttribute('aria-label', t.fullscreen);
+            }
+            const btnFontDecEl = document.getElementById('btnFontDec');
+            if (btnFontDecEl) {
+                btnFontDecEl.title = t.font_size + ' (-)';
+                btnFontDecEl.setAttribute('aria-label', t.font_size + ' (-)');
+            }
+            const btnFontIncEl = document.getElementById('btnFontInc');
+            if (btnFontIncEl) {
+                btnFontIncEl.title = t.font_size + ' (+)';
+                btnFontIncEl.setAttribute('aria-label', t.font_size + ' (+)');
+            }
+            setText('settingsModalTitle', '⚙️ ' + t.reading_settings);
+            setText('lblVisualAid', '👁️ ' + t.visual_aid);
+            setText('lblSlowDown', '🐢 ' + t.slow_down);
+            setText('lblBionic', '⚡ ' + t.bionic);
+            setText('lblFinalOnly', '✨ ' + t.final_only);
+            setText('lblFlatText', '🔤 ' + t.flat_text);
+            setText('lblTheme', '🎨 ' + t.theme);
+            setText('lblTypeface', '🔤 ' + t.typeface);
+            setText('lblFontSize', '🔤 ' + t.font_size);
+            setText('btnDoneSettings', '✓ ' + t.done);
+            setText('btnDoneShare', t.done);
+            setText('btnModalClearHistory', '🗑️ ' + t.clear);
+            const modalVal = document.getElementById('modalFontSizeVal');
+            if (modalVal) modalVal.setAttribute('aria-label', t.font_size);
+            if (transcriptContent) {
+                const emptyEl = transcriptContent.querySelector('.empty-indicator');
+                if (emptyEl) emptyEl.textContent = t.waiting_speech;
+            }
+        }
+
         function updateAudioButtonVisibility() {
             if (!audioListenBtn) return;
             if (currentLang !== 'en') {
@@ -1658,9 +2218,10 @@
             isAudioListening = false;
             isAudioMuted = false;
             nextAudioTime = 0;
+            hideAudioListenBanner();
             if (audioListenBtn) {
                 audioListenBtn.classList.remove('active', 'muted');
-                audioListenBtn.textContent = '🎧 Listen Live';
+                refreshAudioListenBtnText();
             }
             if (audioCtx) {
                 try {
@@ -1670,24 +2231,56 @@
             }
         }
 
+        function refreshAudioListenBannerText() {
+            const banner = document.getElementById('audioListenBanner');
+            if (!banner) return;
+            const t = getUiStrings(currentLang);
+            banner.textContent = t.audio_banner || getUiStrings('en').audio_banner;
+            banner.setAttribute('aria-label', banner.textContent);
+        }
+
+        function showAudioListenBanner() {
+            if (isAudioListening) return;
+            updateAudioButtonVisibility();
+            const banner = document.getElementById('audioListenBanner');
+            if (!banner) return;
+            refreshAudioListenBannerText();
+            banner.style.display = 'block';
+        }
+
+        function hideAudioListenBanner() {
+            const banner = document.getElementById('audioListenBanner');
+            if (banner) banner.style.display = 'none';
+        }
+
+        async function startAudioListening() {
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            if (!audioCtx || audioCtx.state === 'closed') {
+                // Never force a sampleRate here: WebKit/Safari throws
+                // NotSupportedError on non-hardware rates. 24kHz PCM buffers
+                // are resampled natively by createBuffer() instead.
+                audioCtx = new AudioContextClass();
+            }
+            if (audioCtx.state === 'suspended') {
+                await audioCtx.resume();
+            }
+            isAudioListening = true;
+            isAudioMuted = false;
+            nextAudioTime = audioCtx.currentTime;
+            hideAudioListenBanner();
+            if (audioListenBtn) {
+                audioListenBtn.classList.remove('muted');
+                audioListenBtn.classList.add('active');
+                refreshAudioListenBtnText();
+            }
+        }
+
         if (audioListenBtn) {
             audioListenBtn.addEventListener('click', async () => {
                 if (!isAudioListening) {
                     // Activate listening
                     try {
-                        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-                        if (!audioCtx || audioCtx.state === 'closed') {
-                            audioCtx = new AudioContextClass({ sampleRate: 24000 });
-                        }
-                        if (audioCtx.state === 'suspended') {
-                            await audioCtx.resume();
-                        }
-                        isAudioListening = true;
-                        isAudioMuted = false;
-                        nextAudioTime = audioCtx.currentTime;
-                        audioListenBtn.classList.remove('muted');
-                        audioListenBtn.classList.add('active');
-                        audioListenBtn.textContent = '🔊 Listening (Tap to Mute)';
+                        await startAudioListening();
                     } catch (err) {
                         console.error('Failed to initialize AudioContext:', err);
                     }
@@ -1696,7 +2289,7 @@
                     isAudioMuted = true;
                     audioListenBtn.classList.remove('active');
                     audioListenBtn.classList.add('muted');
-                    audioListenBtn.textContent = '🔇 Muted (Tap to Listen)';
+                    refreshAudioListenBtnText();
                 } else {
                     // Unmute
                     isAudioMuted = false;
@@ -1708,7 +2301,26 @@
                     }
                     audioListenBtn.classList.remove('muted');
                     audioListenBtn.classList.add('active');
-                    audioListenBtn.textContent = '🔊 Listening (Tap to Mute)';
+                    refreshAudioListenBtnText();
+                }
+            });
+        }
+
+        // Banner pill tap behaves exactly like the listen button.
+        const audioListenBanner = document.getElementById('audioListenBanner');
+        if (audioListenBanner) {
+            const activateFromBanner = async () => {
+                try {
+                    await startAudioListening();
+                } catch (err) {
+                    console.error('Failed to initialize AudioContext:', err);
+                }
+            };
+            audioListenBanner.addEventListener('click', activateFromBanner);
+            audioListenBanner.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    activateFromBanner();
                 }
             });
         }
@@ -1758,11 +2370,13 @@
         if (langSelect) {
             langSelect.value = currentLang;
             updateAudioButtonVisibility();
+            applyUiLanguage(currentLang);
             langSelect.addEventListener('change', async (e) => {
                 const newLang = e.target.value;
                 currentLang = newLang;
                 localStorage.setItem('voxstream_display_lang', currentLang);
                 updateAudioButtonVisibility();
+                applyUiLanguage(currentLang);
 
                 const newUrl = currentLang === 'en'
                     ? window.location.pathname
@@ -1811,7 +2425,7 @@
                 toast.className = 'font-size-toast';
                 document.body.appendChild(toast);
             }
-            toast.textContent = `Font Size: ${size}px`;
+            toast.textContent = `${getUiStrings(currentLang).font_size}: ${size}px`;
             toast.classList.add('show');
             if (fontSizeToastTimer) clearTimeout(fontSizeToastTimer);
             fontSizeToastTimer = setTimeout(() => {
@@ -2338,6 +2952,37 @@
         const btnModalFontDec = document.getElementById('btnModalFontDec');
         if (btnModalFontDec) btnModalFontDec.addEventListener('click', () => setFontSize(currentFontSize - (isMobile ? 2 : 4), true));
 
+        // Two-Finger Pinch to Resize Text (Mobile Accessibility)
+        let initialPinchDist = null;
+        let initialPinchFontSize = currentFontSize;
+        window.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 2) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                initialPinchDist = Math.hypot(dx, dy);
+                initialPinchFontSize = currentFontSize;
+            }
+        }, { passive: true });
+
+        window.addEventListener('touchmove', (e) => {
+            if (e.touches.length === 2 && initialPinchDist) {
+                const dx = e.touches[0].clientX - e.touches[1].clientX;
+                const dy = e.touches[0].clientY - e.touches[1].clientY;
+                const dist = Math.hypot(dx, dy);
+                if (dist > 10) {
+                    const scale = dist / initialPinchDist;
+                    const targetSize = Math.round(initialPinchFontSize * scale);
+                    setFontSize(targetSize, true);
+                }
+            }
+        }, { passive: true });
+
+        window.addEventListener('touchend', (e) => {
+            if (e.touches.length < 2) {
+                initialPinchDist = null;
+            }
+        }, { passive: true });
+
         const btnClear = document.getElementById('btnClear');
         if (btnClear) {
             btnClear.addEventListener('click', () => {
@@ -2651,7 +3296,7 @@
             finalSentences = [];
             interimText = "";
             if (transcriptContent) {
-                transcriptContent.innerHTML = '<div class="empty-indicator">Listening for speech... Captions will appear here in real-time.</div>';
+                transcriptContent.innerHTML = '<div class="empty-indicator">' + escapeHtml(getUiStrings(currentLang).waiting_speech) + '</div>';
             }
             getInterimNode();
         }
@@ -2660,7 +3305,7 @@
             if (!transcriptContent) return;
             transcriptContent.innerHTML = '';
             if (finalSentences.length === 0 && !interimText) {
-                transcriptContent.innerHTML = '<div class="empty-indicator">Listening for speech... Captions will appear here in real-time.</div>';
+                transcriptContent.innerHTML = '<div class="empty-indicator">' + escapeHtml(getUiStrings(currentLang).waiting_speech) + '</div>';
                 getInterimNode();
                 return;
             }
@@ -2686,19 +3331,22 @@
         }
 
         // Fetch session transcript history from server so Scrollable History is immediately populated
-        async function loadServerHistory() {
-            if (currentMode === 'live') return;
-            const beforeCount = finalSentences.length;
+        async function loadServerHistory(forceSync = false) {
+            if (currentMode === 'live' && !forceSync) return;
             try {
-                const res = await fetch('/api/transcript/history?limit=100');
+                const langParam = (currentLang && currentLang !== 'en') ? `&lang=${encodeURIComponent(currentLang)}` : '';
+                const res = await fetch(`/api/transcript/history?limit=100${langParam}`);
                 if (res.ok) {
                     const data = await res.json();
                     if (data.history && data.history.length > 0) {
                         const chronological = [...data.history].reverse();
                         const lines = chronological.map(e => (e.text || '').trim()).filter(Boolean);
                         if (lines.length > 0) {
-                            if (finalSentences.length !== beforeCount) return;
-                            finalSentences = lines;
+                            if (currentMode === 'live') {
+                                finalSentences = lines.slice(-2);
+                            } else {
+                                finalSentences = lines;
+                            }
                             renderCaptions();
                             scrollToBottom(false);
                         }
@@ -2714,6 +3362,7 @@
         // -------------------------------------------------------------
         let reconnectDelayMs = 2000;
         const maxReconnectDelayMs = 10000;
+        let hasConnectedOnce = false;
 
         function connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -2728,6 +3377,11 @@
                     statusPill.classList.remove('offline');
                     statusPill.title = "Connected to Live Caption Stream";
                 }
+                if (hasConnectedOnce) {
+                    // Reconnected after Wi-Fi drop or sleeping phone: pull any missed transcript lines!
+                    loadServerHistory(true);
+                }
+                hasConnectedOnce = true;
             };
 
             ws.onmessage = async (event) => {
@@ -2748,10 +3402,14 @@
                                 if (l && typeof l.utterance_id === 'number' && l.utterance_id > lastFinalUtteranceId) lastFinalUtteranceId = l.utterance_id;
                             }
                         }
-                        if (currentMode !== 'live' && data.lines && data.lines.length > 0 && finalSentences.length === 0) {
+                        if (data.lines && data.lines.length > 0 && finalSentences.length === 0) {
                             const snapshotTexts = data.lines.map(l => (typeof l === 'string' ? l : (l.text || ''))).map(t => t.trim()).filter(Boolean);
                             if (snapshotTexts.length > 0) {
-                                finalSentences = snapshotTexts;
+                                if (currentMode === 'live') {
+                                    finalSentences = snapshotTexts.slice(-2);
+                                } else {
+                                    finalSentences = snapshotTexts;
+                                }
                                 renderCaptions();
                                 scrollToBottom(false);
                             }
@@ -2760,30 +3418,35 @@
                     }
 
                     if (data.type === 'translated_audio') {
-                        if (!isAudioListening || isAudioMuted || !data.data) return;
+                        if (!data.data) return;
+                        if (!isAudioListening) {
+                            showAudioListenBanner();
+                            return;
+                        }
+                        if (isAudioMuted) return;
                         try {
                             const AudioContextClass = window.AudioContext || window.webkitAudioContext;
                             if (!audioCtx || audioCtx.state === 'closed') {
-                                audioCtx = new AudioContextClass({ sampleRate: 24000 });
+                                // Hardware-rate context; 24kHz PCM is resampled
+                                // natively by createBuffer() below.
+                                audioCtx = new AudioContextClass();
                             }
                             if (audioCtx.state === 'suspended') {
                                 await audioCtx.resume();
                             }
 
-                            // Decode base64 to binary byte string -> Int16Array -> Float32Array
+                            // Decode base64 to 16-bit linear PCM little-endian,
+                            // sample by sample (avoids byteOffset alignment bugs).
                             const binaryStr = window.atob(data.data);
                             const len = binaryStr.length;
-                            const bytes = new Uint8Array(len);
-                            for (let i = 0; i < len; i++) {
-                                bytes[i] = binaryStr.charCodeAt(i);
-                            }
-
-                            // 16-bit linear PCM little-endian
-                            const numSamples = Math.floor(bytes.length / 2);
-                            const int16 = new Int16Array(bytes.buffer, bytes.byteOffset, numSamples);
+                            const numSamples = Math.floor(len / 2);
                             const float32 = new Float32Array(numSamples);
                             for (let i = 0; i < numSamples; i++) {
-                                float32[i] = int16[i] / 32768.0;
+                                const low = binaryStr.charCodeAt(i * 2);
+                                const high = binaryStr.charCodeAt(i * 2 + 1);
+                                let sample = (high << 8) | low;
+                                if (sample >= 0x8000) sample -= 0x10000;
+                                float32[i] = sample / 32768.0;
                             }
 
                             if (float32.length > 0) {
@@ -2794,8 +3457,12 @@
                                 source.buffer = audioBuf;
                                 source.connect(audioCtx.destination);
 
+                                // Schedule gaplessly but re-anchor when the clock
+                                // drifts (tab sleep, backlog) to prevent latency drift.
                                 const currentTime = audioCtx.currentTime;
-                                const startTime = Math.max(currentTime + 0.02, nextAudioTime);
+                                const startTime = (nextAudioTime < currentTime || nextAudioTime > currentTime + 0.4)
+                                    ? (currentTime + 0.02)
+                                    : nextAudioTime;
                                 source.start(startTime);
                                 nextAudioTime = startTime + audioBuf.duration;
                             }
@@ -2845,7 +3512,7 @@
                         // with original English in data.original_text. Fallback to HTTP translation only if text is untranslated.
                         // Fetches are chained so captions still render in arrival order — a slower
                         // caption waits its turn instead of being dropped.
-                        if (currentLang !== 'en' && !data.original_text && text) {
+                        if (currentLang !== 'en' && data.is_final && !data.original_text && text) {
                             const sourceText = text;
                             const job = captionTranslateChain.then(async () => {
                                 try {
@@ -2957,9 +3624,16 @@
                             if (banner && link) {
                                 link.textContent = d.welcome_banner_text;
                                 if (d.welcome_banner_url) {
-                                    link.href = d.welcome_banner_url;
-                                    link.style.pointerEvents = 'auto';
-                                    link.style.cursor = 'pointer';
+                                    const safeUrl = /^(https?:\/\/|\/)/i.test(String(d.welcome_banner_url).trim()) ? String(d.welcome_banner_url).trim() : "";
+                                    if (safeUrl) {
+                                        link.href = safeUrl;
+                                        link.style.pointerEvents = 'auto';
+                                        link.style.cursor = 'pointer';
+                                    } else {
+                                        link.removeAttribute('href');
+                                        link.style.pointerEvents = 'none';
+                                        link.style.cursor = 'default';
+                                    }
                                 } else {
                                     link.removeAttribute('href');
                                     link.style.pointerEvents = 'none';

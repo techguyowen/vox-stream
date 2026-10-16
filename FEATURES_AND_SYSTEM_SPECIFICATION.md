@@ -74,14 +74,14 @@ VoxStream provides a pluggable engine architecture supporting local offline exec
      - `GTX 1660 / 6GB VRAM` (float16 / int8 quantization)
      - `RTX 3060/4070+ / 8GB+ VRAM` (large-v3 model)
      - `CPU Fast` (int8 optimized)
-4. **Google Gemini 3.5 Transcribe Live (`gemini`)**:
+4. **Google Gemini 3.5 Transcribe Live (`gemini_live`)**:
    - Conversational speech understanding with system instructions for automatic filler-word removal (*"um"*, *"ah"*, *"like"*).
    - High-accuracy context-aware spelling.
-5. **Google Cloud Speech-to-Text v2 (`google_cloud`)**:
+5. **Google Cloud Speech-to-Text v2 (`google_stt`)**:
    - Enterprise streaming recognition using service account credentials.
 6. **Bandwidth Labs Live STT (`bandwidth`)**:
    - Real-time cloud streaming STT over WebSockets.
-7. **Free Google Speech Recognition (`google`)**:
+7. **Free Google Speech Recognition (`google_web`)**:
    - Zero-setup, API-key-free cloud fallback.
 
 ### Voice Activity Detection (VAD)
@@ -301,41 +301,41 @@ http://127.0.0.1:8765/
 
 ```json
 {
-  "engine": "vosk",
-  "language": "en",
+  "general": {
+    "engine": "vosk",
+    "language": "en-US",
+    "church_mode": true,
+    "church_name": "Waypoint Church"
+  },
   "audio": {
     "device_index": null,
     "sample_rate": 16000,
-    "channels": 1,
-    "energy_threshold": 300,
-    "vad_enabled": true
-  },
-  "web": {
-    "host": "0.0.0.0",
-    "port": 8765,
-    "auth_token": null
-  },
-  "obs": {
-    "websocket_enabled": true,
-    "host": "localhost",
-    "port": 4455,
-    "password": "",
-    "send_cea608_captions": true,
-    "caption_source_name": "Live Captions"
-  },
-  "display": {
-    "mode": "scrollable",
-    "theme": "theme-oled",
-    "font_family": "Inter",
-    "font_size": 48,
-    "visual_aid_mode": false,
-    "slow_down_pacing": false,
-    "bionic_reading": false
+    "enable_vad": true,
+    "sentence_break_ms": 650
   },
   "censor": {
     "enabled": true,
-    "church_mode": true,
-    "censor_char": "*"
+    "mode": "replacement",
+    "filter_standard_profanity": true,
+    "filter_church_blasphemy": true,
+    "filter_crude_terms": true
+  },
+  "obs": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 4455,
+    "update_text_source": true,
+    "text_source_name": "Live Captions",
+    "send_cea608_captions": true
+  },
+  "overlay": {
+    "enabled": true,
+    "host": "0.0.0.0",
+    "port": 8765
+  },
+  "api": {
+    "enabled": true,
+    "api_key": ""
   },
   "bible": {
     "enabled": true,

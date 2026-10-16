@@ -183,16 +183,26 @@ class ContentFilter:
         # Sort terms by length descending so multi-word phrases match before individual words
         sorted_terms = sorted(list(terms), key=lambda x: len(x), reverse=True)
 
+        def _bounds(t: str) -> Tuple[str, str]:
+            # \b requires a \w <-> \W transition, so it fails for terms
+            # starting/ending with symbols (e.g. "@$$", "f*ck"). Use
+            # whitespace/punctuation lookarounds for symbol edges instead.
+            left = r"\b" if (t[0].isalnum() or t[0] == "_") else r"""(?:^|(?<=[\s.,!?;:"'()\[\]{}]))"""
+            right = r"\b" if (t[-1].isalnum() or t[-1] == "_") else r"""(?=$|[\s.,!?;:"'()\[\]{}])"""
+            return left, right
+
         self._blacklist_patterns = []
         for term in sorted_terms:
             # Match term with word boundaries, handling optional punctuation inside terms
             escaped = re.escape(term)
-            pattern = re.compile(rf"\b{escaped}\b", re.IGNORECASE)
+            left, right = _bounds(term)
+            pattern = re.compile(rf"{left}{escaped}{right}", re.IGNORECASE)
             self._blacklist_patterns.append((pattern, term))
 
         if sorted_terms:
+            parts = [f"{_bounds(t)[0]}{re.escape(t)}{_bounds(t)[1]}" for t in sorted_terms]
             self._combined_blacklist_pattern = re.compile(
-                rf"\b({'|'.join(re.escape(t) for t in sorted_terms)})\b",
+                f"(?:{'|'.join(parts)})",
                 re.IGNORECASE,
             )
         else:

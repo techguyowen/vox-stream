@@ -113,8 +113,22 @@ _CITATION_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _PSALM_PATTERN = re.compile(r"\b(psalms?)\s+(\d+)\b", re.IGNORECASE)
+# Short/ambiguous aliases ("my ex 2 years ago", "act 1 of the play",
+# "new job 2 weeks ago") must say "chapter" explicitly when no :verse is
+# given; explicit Book Chapter:Verse stays handled by _CITATION_PATTERN.
+STRICT_CHAP_ALIASES = sorted(
+    [b for b in BOOK_ALIASES.keys() if len(b) <= 2 or b in {"act", "job", "sos", "tit"}],
+    key=len,
+    reverse=True,
+)
+RELAXED_CHAP_ALIASES = sorted(
+    [b for b in BOOK_ALIASES.keys() if not (len(b) <= 2 or b in {"act", "job", "sos", "tit"})],
+    key=len,
+    reverse=True,
+)
 _BOOK_CHAP_PATTERN = re.compile(
-    rf"\b({'|'.join(re.escape(b) for b in BOOK_ALIASES.keys())})\s+(?:chapter\s+)?(\d+)\b",
+    rf"\b(?:({'|'.join(re.escape(b) for b in STRICT_CHAP_ALIASES)})\s+chapter\s+(\d+)"
+    rf"|({'|'.join(re.escape(b) for b in RELAXED_CHAP_ALIASES)})\s+(?:chapter\s+)?(\d+))\b",
     re.IGNORECASE,
 )
 _CHAP_V_PATTERN = re.compile(
@@ -478,11 +492,13 @@ class BibleEngine:
         if not results:
             match = _BOOK_CHAP_PATTERN.search(formatted)
             if match:
-                raw_book = match.group(1).strip()
+                # Groups 1/2 = strict branch (alias + "chapter" + N);
+                # groups 3/4 = relaxed branch (alias + optional "chapter" + N).
+                raw_book = (match.group(1) or match.group(3) or "").strip()
+                chap = match.group(2) or match.group(4)
                 canonical = cls.normalize_book_name(raw_book)
-                if canonical:
-                    ch = int(match.group(2))
-                    results.append((canonical, ch, 1, None))
+                if canonical and chap:
+                    results.append((canonical, int(chap), 1, None))
 
         return results
 

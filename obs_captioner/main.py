@@ -6,6 +6,7 @@ import signal
 import subprocess
 import sys
 import time
+from pathlib import Path
 if sys.platform == "win32":
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -18,7 +19,7 @@ if __name__ == "__main__" and not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     __package__ = "obs_captioner"
 
-from .config import load_config, AppConfig
+from .config import load_config, get_config_path, AppConfig
 from .audio_capture import AudioCapture, list_audio_devices
 from .engines import create_engine
 from .history import TranscriptHistory
@@ -28,6 +29,7 @@ from .web import WebOverlayServer
 from .updater import UpdateManager
 from .subtitle_recorder import SubtitleRecorder
 from .scheduler import CaptionScheduler
+from .propresenter import ProPresenterClient
 
 logger = logging.getLogger("obs_captioner")
 
@@ -72,8 +74,13 @@ async def main_async(args):
     logger.info(f"   Language: {config.general.language}")
     logger.info("==================================================")
 
-    # Shared Transcript History
-    history = TranscriptHistory()
+    # Shared Transcript History (rolling session transcript persisted across hot-restarts)
+    if getattr(config.general, "persist_session_transcript", True):
+        session_dir = Path(get_config_path()).resolve().parent / "transcripts"
+        session_file = session_dir / f"session_{time.strftime('%Y-%m-%d')}.jsonl"
+        history = TranscriptHistory(persist_path=session_file)
+    else:
+        history = TranscriptHistory()
 
     # Synchronized Subtitle Sidecar Recorder (.srt / .vtt)
     subtitle_recorder = SubtitleRecorder(
@@ -96,6 +103,7 @@ async def main_async(args):
     pipeline_task = None
     loop = asyncio.get_running_loop()
     is_paused = False
+    auto_muted_by_automation = False
     is_restart = False
     is_switching_engine = False
     engine_lock = asyncio.Lock()
@@ -337,12 +345,16 @@ async def main_async(args):
     active_sensevoice_threads = config.sensevoice.num_threads
     active_sensevoice_events = config.sensevoice.detect_events
     active_sensevoice_language = config.sensevoice.language
+    active_interpreter_mode = getattr(config.translation, 'interpreter_mode', False)
+    active_translation_target = getattr(config.translation, 'target_language', 'es')
+    propresenter_client = None  # Created after the web server starts; stays None until then.
 
     def on_config_updated(new_cfg: AppConfig):
         nonlocal config, active_preferred_gpu, active_engine_type, active_vosk_model, active_whisper_model, active_moonshine_model, active_gemini_key, active_gemini_model, active_bandwidth_key
         nonlocal active_sherpa_model, active_sherpa_path, active_sherpa_threads, active_sherpa_device
         nonlocal active_parakeet_model, active_parakeet_device, active_parakeet_threads
         nonlocal active_sensevoice_model, active_sensevoice_device, active_sensevoice_threads, active_sensevoice_events, active_sensevoice_language
+        nonlocal active_interpreter_mode, active_translation_target
 
         config = new_cfg
         if sink:
@@ -351,6 +363,25 @@ async def main_async(args):
             subtitle_recorder.update_config(new_cfg.obs)
         if obs_client:
             obs_client.config = new_cfg.obs
+        if propresenter_client is not None:
+            try:
+                was_enabled = bool(getattr(propresenter_client.config, "enabled", False))
+            except Exception:
+                was_enabled = False
+            propresenter_client.config = new_cfg.propresenter
+            now_enabled = bool(getattr(new_cfg.propresenter, "enabled", False))
+            if now_enabled and not was_enabled:
+                logger.info("Presentation sync enabled via config update — starting ProPresenter/Proclaim client...")
+                try:
+                    asyncio.run_coroutine_threadsafe(propresenter_client.start(), loop)
+                except Exception as pe:
+                    logger.warning(f"Could not start ProPresenter/Proclaim sync: {pe}")
+            elif was_enabled and not now_enabled:
+                logger.info("Presentation sync disabled via config update — stopping ProPresenter/Proclaim client...")
+                try:
+                    asyncio.run_coroutine_threadsafe(propresenter_client.stop(), loop)
+                except Exception as pe:
+                    logger.warning(f"Could not stop ProPresenter/Proclaim sync: {pe}")
         if audio_capture:
             audio_capture.update_device(new_cfg.audio)
         if engine:
@@ -373,13 +404,20 @@ async def main_async(args):
             or (new_cfg.general.engine in ("sensevoice", "funasr") and (new_cfg.sensevoice.model_name != active_sensevoice_model or new_cfg.sensevoice.device != active_sensevoice_device or new_cfg.sensevoice.num_threads != active_sensevoice_threads or new_cfg.sensevoice.detect_events != active_sensevoice_events or new_cfg.sensevoice.language != active_sensevoice_language))
             or (engine_switch_error is not None)
         )
+        if (new_cfg.general.engine == 'gemini_live' and (getattr(new_cfg.translation, 'interpreter_mode', False) != active_interpreter_mode or (getattr(new_cfg.translation, 'interpreter_mode', False) and getattr(new_cfg.translation, 'target_language', 'es') != active_translation_target))):
+            needs_engine_reload = True
+        active_interpreter_mode = getattr(new_cfg.translation, 'interpreter_mode', False)
+        active_translation_target = getattr(new_cfg.translation, 'target_language', 'es')
 
         if needs_engine_reload:
             logger.info(f"STT engine change requested: {active_engine_type} -> {new_cfg.general.engine}. Hot-switching engine...")
             asyncio.run_coroutine_threadsafe(switch_engine_async(new_cfg), loop)
 
-    def on_start_requested():
-        nonlocal is_paused
+    def on_start_requested(_from_automation: bool = False):
+        nonlocal is_paused, auto_muted_by_automation
+        if not _from_automation:
+            # Manual operator action overrides any automation mute state.
+            auto_muted_by_automation = False
         is_paused = False
         # Drain any stale audio queued while stopped so the engine
         # doesn't process stale audio on resume.
@@ -390,8 +428,11 @@ async def main_async(args):
             pass
         logger.info("Captioning started via API.")
 
-    def on_stop_requested():
-        nonlocal is_paused
+    def on_stop_requested(_from_automation: bool = False):
+        nonlocal is_paused, auto_muted_by_automation
+        if not _from_automation:
+            # Manual operator action overrides any automation mute state.
+            auto_muted_by_automation = False
         is_paused = True
         # CRITICAL: Stop the active cloud engine streaming session immediately
         # to prevent cloud token waste (Gemini Live, Bandwidth, Google STT).
@@ -402,6 +443,24 @@ async def main_async(args):
             except Exception as _e:
                 logger.debug(f"engine.stop() during pause: {_e}")
         logger.info("Captioning stopped via API — cloud streaming session terminated.")
+
+    def _apply_automation_mute(should_pause: bool, source_label: str):
+        """Apply scene/slide automation mute without overriding manual pauses.
+
+        Automation mutes stop the cloud engine (via on_stop_requested) so no
+        tokens stream during muted worship scenes/slides, and auto-resume only
+        when the pause originated from automation — never overriding an
+        operator's manual pause.
+        """
+        nonlocal auto_muted_by_automation
+        if should_pause and not is_paused:
+            auto_muted_by_automation = True
+            on_stop_requested(_from_automation=True)
+            logger.info(f"🔇 Automation muted captioning ({source_label}).")
+        elif not should_pause and is_paused and auto_muted_by_automation:
+            auto_muted_by_automation = False
+            on_start_requested(_from_automation=True)
+            logger.info(f"🔊 Automation resumed captioning ({source_label}).")
 
     def on_restart_requested():
         nonlocal is_restart
@@ -418,16 +477,32 @@ async def main_async(args):
     # 3. Initialize Web Overlay, Dashboard Server, and GitHub Updater
     web_server = None
     updater = UpdateManager(on_restart_requested=on_restart_requested)
+
+    def on_trim_memory() -> float:
+        nonlocal engine
+        if engine is not None and hasattr(engine, "trim_memory"):
+            try:
+                engine.trim_memory()
+            except Exception as te:
+                logger.debug(f"Engine trim_memory error: {te}")
+        from .hardware import release_stt_memory
+        return release_stt_memory(log_details=True)
+
+    async def _periodic_memory_watchdog():
+        """Periodically release cached allocator pages and trim OS working set (especially on Windows)."""
+        while not shutdown_event.is_set():
+            try:
+                await asyncio.sleep(600.0)  # Auto-trim every 10 minutes
+                if shutdown_event.is_set():
+                    break
+                freed = on_trim_memory()
+                logger.debug(f"🧹 Periodic memory trim completed (freed {freed:.1f} MB)")
+            except asyncio.CancelledError:
+                break
+            except Exception as me:
+                logger.debug(f"Periodic memory trim error: {me}")
+
     if config.overlay.enabled:
-        def on_trim_memory() -> float:
-            nonlocal engine
-            if engine is not None and hasattr(engine, "trim_memory"):
-                try:
-                    engine.trim_memory()
-                except Exception as te:
-                    logger.debug(f"Engine trim_memory error: {te}")
-            from .hardware import release_stt_memory
-            return release_stt_memory(log_details=True)
 
         web_server = WebOverlayServer(
             config=config,
@@ -486,20 +561,20 @@ async def main_async(args):
 
         audio_capture.on_level_meter = on_vu_level
 
-        def on_recovery_status(status: str, device_name: str):
-            logger.info(f"Audio recovery status changed: status={status}, device='{device_name}'")
-            if web_server:
-                try:
-                    asyncio.run_coroutine_threadsafe(
-                        web_server.broadcast_control({
-                            "type": "audio_recovery_status",
-                            "status": status,
-                            "device": device_name,
-                        }),
-                        loop,
-                    )
-                except Exception:
-                    pass
+    def on_recovery_status(status: str, device_name: str):
+        logger.info(f"Audio recovery status changed: status={status}, device='{device_name}'")
+        if web_server:
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    web_server.broadcast_control({
+                        "type": "audio_recovery_status",
+                        "status": status,
+                        "device": device_name,
+                    }),
+                    loop,
+                )
+            except Exception:
+                pass
 
     # 4. Initialize System Tray Applet (automatic by default on Windows and macOS menu bar)
     tray_app = None
@@ -527,7 +602,7 @@ async def main_async(args):
         except Exception as te:
             logger.warning(f"Could not initialize system tray applet: {te}")
 
-        audio_capture.on_recovery_status = on_recovery_status
+    audio_capture.on_recovery_status = on_recovery_status
 
     # 4. Initialize Twitch Chat Bot
     twitch_bot = None
@@ -669,7 +744,6 @@ async def main_async(args):
                     subtitle_recorder.stop_recording()
 
         def on_scene_changed(scene_name: str):
-            nonlocal is_paused
             if not config.obs.scene_auto_mute_enabled or not scene_name:
                 return
             clean_name = scene_name.strip()
@@ -691,8 +765,11 @@ async def main_async(args):
                 elif cur_lower in active_scenes:
                     should_pause = False
 
-            if should_pause is not None and should_pause != is_paused:
-                is_paused = should_pause
+            if should_pause is not None:
+                was_paused = is_paused
+                _apply_automation_mute(should_pause, f"OBS scene '{clean_name}'")
+                if was_paused == is_paused:
+                    return
                 action = "Auto-Muted (Paused)" if is_paused else "Auto-Resumed (Active)"
                 logger.info(f"🎬 OBS Scene changed to '{clean_name}' -> Captions {action}.")
                 if web_server:
@@ -708,6 +785,36 @@ async def main_async(args):
         obs_client.on_stream_state_changed = on_stream_state
         obs_client.on_record_state_changed = on_record_state
         obs_client.on_scene_changed = on_scene_changed
+
+    # 6b. ProPresenter / Faithlife Proclaim lyrics sync (auto-mute worship slides)
+    def on_propresenter_lyrics_changed(is_lyrics: bool, source_label: str):
+        _apply_automation_mute(is_lyrics, f"presentation lyrics ({source_label})")
+        if web_server:
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    web_server.broadcast_control({
+                        "type": "propresenter_lyrics_state",
+                        "is_lyrics": is_lyrics,
+                        "source": source_label,
+                        "is_paused": is_paused,
+                    }),
+                    loop,
+                )
+            except Exception:
+                pass
+
+    propresenter_client = ProPresenterClient(
+        config.propresenter,
+        on_lyrics_state_changed=on_propresenter_lyrics_changed,
+    )
+    if web_server:
+        web_server.propresenter_client = propresenter_client
+    if config.propresenter.enabled:
+        try:
+            await propresenter_client.start()
+            logger.info(f"ProPresenter/Proclaim sync enabled (provider={config.propresenter.provider}).")
+        except Exception as pe:
+            logger.warning(f"Could not start ProPresenter/Proclaim sync: {pe}")
 
     # 7. Run streaming pipeline
     def signal_handler():
@@ -763,6 +870,67 @@ async def main_async(args):
     # initialization so the pipeline connects automatically once the network
     # is up instead of stalling forever on `initialized == False`.
     ENGINE_INIT_RETRY_INTERVAL = 5.0
+
+    async def _fallback_recovery_watcher():
+        """Probe the primary engine in the background while fallback streams.
+
+        `engine.start_streaming()` blocks for the whole fallback session, so the
+        in-loop recovery probe is unreachable while streaming — this watcher
+        keeps probing every 15s instead. Restoring the primary stops the
+        fallback engine, which lets its `start_streaming()` return so
+        `run_pipeline()` loops straight into streaming on the restored primary.
+        """
+        nonlocal engine, fallback_active, engine_switch_status
+        while fallback_active and not is_paused and not shutdown_event.is_set():
+            await asyncio.sleep(15.0)
+            if not (fallback_active and not is_paused and not shutdown_event.is_set()):
+                break
+            probe_eng = None
+            try:
+                probe_eng = create_engine(config, override_engine=config.general.engine)
+                try:
+                    restored = await probe_eng.initialize()
+                except asyncio.CancelledError:
+                    try:
+                        await probe_eng.stop()
+                    except Exception:
+                        pass
+                    probe_eng = None
+                    raise
+                except Exception:
+                    restored = False
+                if restored:
+                    logger.info(f"✅ Primary cloud engine ({config.general.engine}) is back online! Restoring from emergency fallback...")
+                    async with engine_lock:
+                        if engine:
+                            try:
+                                await engine.stop()
+                            except Exception:
+                                pass
+                        engine = probe_eng
+                        probe_eng = None  # Ownership transferred; skip stop in finally.
+                        wire_engine_callbacks(engine)
+                        fallback_active = False
+                        engine_switch_status = f"✅ {engine.name} restored and ready!"
+                        logger.info(f"STT primary restored: {engine.name}")
+                        if web_server:
+                            await web_server.broadcast_control({
+                                "type": "emergency_fallback_restored",
+                                "primary_engine": config.general.engine,
+                                "primary_name": engine.name,
+                                "status_text": engine_switch_status,
+                            })
+                    break
+            except asyncio.CancelledError:
+                break
+            except Exception as pe:
+                logger.debug(f"Primary engine background probe: {pe}")
+            finally:
+                if probe_eng is not None:
+                    try:
+                        await probe_eng.stop()
+                    except Exception:
+                        pass
 
     async def run_pipeline():
         nonlocal initialized, engine_switch_status, engine, fallback_active
@@ -859,10 +1027,18 @@ async def main_async(args):
                 await asyncio.sleep(0.5)
                 continue
             try:
-                await engine.start_streaming(
-                    audio_stream=audio_capture.stream_generator(),
-                    on_transcript=sink.handle_transcript,
-                )
+                probe_task = asyncio.create_task(_fallback_recovery_watcher())
+                try:
+                    await engine.start_streaming(
+                        audio_stream=audio_capture.stream_generator(),
+                        on_transcript=sink.handle_transcript,
+                    )
+                finally:
+                    probe_task.cancel()
+                    try:
+                        await probe_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -886,6 +1062,11 @@ async def main_async(args):
                         try:
                             fallback_eng = create_engine(config, override_engine=fallback_target)
                             if await fallback_eng.initialize():
+                                if engine:
+                                    try:
+                                        await engine.stop()
+                                    except Exception:
+                                        pass
                                 engine = fallback_eng
                                 wire_engine_callbacks(engine)
                                 fallback_active = True
@@ -905,25 +1086,32 @@ async def main_async(args):
                 await asyncio.sleep(1.0)
 
     pipeline_task = asyncio.create_task(run_pipeline())
+    memory_watchdog_task = asyncio.create_task(_periodic_memory_watchdog())
 
     async def cleanup_all():
         logger.info("Cleaning up resources...")
+        if memory_watchdog_task:
+            memory_watchdog_task.cancel()
+            try:
+                await asyncio.wait_for(memory_watchdog_task, timeout=0.5)
+            except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
+                pass
         if pipeline_task:
             pipeline_task.cancel()
             try:
                 await asyncio.wait_for(pipeline_task, timeout=0.5)
             except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
                 pass
-        if 'obs_reconnect_task' in locals():
-            try:
-                obs_reconnect_task.cancel()
-            except Exception:
-                pass
         if scheduler:
             try:
                 scheduler.stop()
             except Exception as e:
                 logger.debug(f"Error stopping scheduler: {e}")
+        if propresenter_client:
+            try:
+                await asyncio.wait_for(propresenter_client.stop(), timeout=0.8)
+            except Exception as e:
+                logger.debug(f"Error stopping ProPresenter client: {e}")
         if twitch_bot:
             try:
                 await asyncio.wait_for(twitch_bot.stop(), timeout=0.8)

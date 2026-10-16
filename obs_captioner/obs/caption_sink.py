@@ -515,7 +515,10 @@ class CaptionSink:
         # 4. Live Translation if enabled
         translated_text = None
         if getattr(event, "translated_text", None):
-            # Directly provided by live speech translation engine (e.g. gemini-3.5-live-translate-preview)
+            # Directly provided by live speech translation engine (e.g. gemini-3.5-live-translate-preview).
+            # Interpreter mode runs independently of OBS dual subtitles: keep OBS/display
+            # text in the original language unless translation.enabled is on, while
+            # broadcast_caption below still forwards translated_text to /display rooms.
             translated_text = event.translated_text
             display_text = clean_text
         elif clean_text and self.config.translation.enabled and event.is_final:
@@ -560,7 +563,7 @@ class CaptionSink:
             self._last_final_time = sentence_end
             self._last_final_text = re.sub(r"\s+", " ", clean_text).strip().casefold()
             recorded_text = clean_text
-            if translated_text:
+            if translated_text and getattr(self.config.translation, "enabled", False):
                 dual_fmt = getattr(self.config.translation, "dual_subtitle_format", "clean")
                 if dual_fmt == "parentheses":
                     recorded_text = f"{clean_text} ({translated_text})"
@@ -587,7 +590,7 @@ class CaptionSink:
             # Synchronized Subtitle Sidecar Recording (.srt / .vtt)
             if self.subtitle_recorder and getattr(self.subtitle_recorder, "is_recording", False):
                 self.subtitle_recorder.add_caption(
-                    text=clean_text,
+                    text=recorded_text if getattr(self.config.translation, "enabled", False) and translated_text else display_text,
                     start_time=sentence_start,
                     end_time=sentence_end,
                 )
@@ -624,7 +627,7 @@ class CaptionSink:
             if not self.obs_client:
                 return
             obs_out_text = display_text
-            if translated_text and self.config.translation.display_mode == "dual":
+            if translated_text and getattr(self.config.translation, "enabled", False) and self.config.translation.display_mode == "dual":
                 dual_fmt = getattr(self.config.translation, "dual_subtitle_format", "clean")
                 if dual_fmt == "parentheses":
                     obs_out_text = f"{display_text}\n({translated_text})"

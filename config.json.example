@@ -1,6 +1,6 @@
 {
   "general": {
-    "engine": "local_whisper",
+    "engine": "vosk",
     "language": "en-US",
     "log_level": "INFO",
     "auto_capitalization": true,

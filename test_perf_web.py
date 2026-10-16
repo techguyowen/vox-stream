@@ -66,8 +66,8 @@ class TestPerfWeb(unittest.IsolatedAsyncioTestCase):
         await server.broadcast_caption({"text": "Initial message", "is_final": True})
         await asyncio.sleep(0.01)
 
-        # Fill queue to capacity (maxsize=8) with interims
-        for i in range(8):
+        # Fill queue to capacity with interims
+        for i in range(q.maxsize):
             await server.broadcast_caption({"text": f"Interim {i}", "is_final": False})
 
         self.assertTrue(q.full())
@@ -89,8 +89,8 @@ class TestPerfWeb(unittest.IsolatedAsyncioTestCase):
         await server.broadcast_caption({"text": "Initial final", "is_final": True})
         await asyncio.sleep(0.01)
 
-        # Fill queue to capacity (maxsize=8) with finals
-        for i in range(8):
+        # Fill queue to capacity with finals
+        for i in range(q.maxsize):
             await server.broadcast_caption({"text": f"Final line {i}", "is_final": True})
 
         self.assertTrue(q.full())
@@ -254,6 +254,9 @@ class TestPerfWeb(unittest.IsolatedAsyncioTestCase):
         server.caption_sockets[ws_es] = "es"
         server.caption_sockets[ws_en] = "en"
         server.caption_sockets[ws_fr] = "fr"
+        server.socket_roles[ws_es] = "display"
+        server.socket_roles[ws_en] = "display"
+        server.socket_roles[ws_fr] = "display"
 
         server._ensure_caption_queue(ws_es)
         server._ensure_caption_queue(ws_en)

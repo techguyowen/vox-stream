@@ -339,13 +339,15 @@ function renderFinalLines(activeInterim = false) {
                 const color = item.dual_color || config.dual_subtitle_color || "#FFD700";
                 const scale = item.dual_scale || config.dual_subtitle_scale || 0.85;
                 const fmt = item.dual_format || config.dual_subtitle_format || "clean";
+                const safeColor = String(color).replace(/["'<>\;]/g, "");
+                const safeScale = parseFloat(scale) || 0.85;
                 const transText = (fmt === "parentheses")
                     ? `(${escapeHtml(item.translated)})`
                     : escapeHtml(item.translated);
                 return `
                     <div class="final-line-item">
                         <div class="primary-text">${escapeHtml(item.text)}</div>
-                        <div class="translated-subtitle" style="color: ${color}; font-size: calc(var(--font-size) * ${scale});">${transText}</div>
+                        <div class="translated-subtitle" style="color: ${safeColor}; font-size: calc(var(--font-size) * ${safeScale});">${transText}</div>
                     </div>
                 `;
             }

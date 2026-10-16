@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import sys
 import threading
 import time
@@ -92,8 +93,14 @@ class SubtitleRecorder:
             self.output_format = (getattr(obs_config, "record_subtitles_format", "srt") or "srt").lower()
             self.output_dir = getattr(obs_config, "record_subtitles_directory", "") or ""
 
-    def start_recording(self, video_path: Optional[str] = None) -> Optional[Path]:
-        """Start synchronized recording session."""
+    def start_recording(self, video_path: Optional[str] = None, allow_arbitrary_video_path: bool = True) -> Optional[Path]:
+        """Start synchronized recording session.
+
+        When ``allow_arbitrary_video_path`` is False (untrusted callers such
+        as HTTP ``POST /api/recording/start``), directory components in
+        ``video_path`` are ignored and only a sanitized stem is used inside
+        the configured output directory.
+        """
         with self._lock:
             if self.is_recording:
                 logger.debug("Subtitle recorder already running. Restarting session...")
@@ -111,7 +118,7 @@ class SubtitleRecorder:
 
             # Determine destination directory & basename
             timestamp_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(now_wall))
-            if video_path and video_path.strip():
+            if video_path and video_path.strip() and allow_arbitrary_video_path:
                 v_path = Path(video_path.strip())
                 base_dir = v_path.parent
                 stem = v_path.stem
@@ -120,7 +127,14 @@ class SubtitleRecorder:
                     base_dir = Path(self.output_dir)
                 else:
                     base_dir = get_default_recordings_dir()
-                stem = f"VoxStream_{timestamp_str}"
+                if video_path and video_path.strip():
+                    # Untrusted caller: drop directory components and sanitize
+                    # the stem so HTTP input can't traverse the filesystem.
+                    stem = re.sub(r"[^\w\-]+", "_", Path(video_path.strip()).stem)
+                    if not stem:
+                        stem = f"VoxStream_{timestamp_str}"
+                else:
+                    stem = f"VoxStream_{timestamp_str}"
 
             base_dir.mkdir(parents=True, exist_ok=True)
             self.current_file_path = base_dir / f"{stem}.srt"
@@ -317,7 +331,10 @@ class SubtitleRecorder:
         """Return current recording session telemetry."""
         with self._lock:
             elapsed = max(0.0, time.monotonic() - self.record_start_mono) if self.is_recording else 0.0
-            primary_path = str(self.current_file_path) if self.current_file_path else ""
+            if self.output_format == "vtt" and self.current_vtt_path:
+                primary_path = str(self.current_vtt_path)
+            else:
+                primary_path = str(self.current_file_path) if self.current_file_path else ""
             return {
                 "is_recording": self.is_recording,
                 "elapsed_seconds": round(elapsed, 1),
