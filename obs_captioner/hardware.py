@@ -25,6 +25,8 @@ logger = logging.getLogger("obs_captioner.hardware")
 _CACHED_AVAILABLE_GPUS: Optional[List[Dict[str, Any]]] = None
 _CACHED_GPU_INFO: Optional[Dict[str, Any]] = None
 _CACHED_RAM_USAGE: Tuple[float, float] = (0.0, 0.0)
+_CAFFEINATE_PROCESS: Optional[subprocess.Popen] = None
+_IS_KEEP_AWAKE: bool = False
 
 
 def _parse_vram_bytes(raw_val: Any) -> int:
@@ -669,3 +671,115 @@ def get_local_ip() -> str:
         pass
 
     return "127.0.0.1"
+
+
+def set_os_keep_awake(active: bool) -> bool:
+    """Prevent host OS sleep and macOS App Nap during active live captioning sessions.
+
+    On Windows:
+        Uses SetThreadExecutionState with ES_CONTINUOUS | ES_SYSTEM_REQUIRED when active,
+        and clears it back to ES_CONTINUOUS when inactive.
+    On macOS:
+        Spawns or cleans up a background `caffeinate -i -w <pid>` process.
+    """
+    global _CAFFEINATE_PROCESS, _IS_KEEP_AWAKE
+
+    if sys.platform == "win32":
+        try:
+            ES_CONTINUOUS = 0x80000000
+            ES_SYSTEM_REQUIRED = 0x00000001
+            flags = (ES_CONTINUOUS | ES_SYSTEM_REQUIRED) if active else ES_CONTINUOUS
+            if hasattr(ctypes, "windll"):
+                ctypes.windll.kernel32.SetThreadExecutionState(flags)
+                _IS_KEEP_AWAKE = active
+                logger.debug(f"Windows OS keep-awake set to {active} (flags=0x{flags:08x})")
+                return True
+            return False
+        except Exception as e:
+            logger.debug(f"Failed to set Windows keep-awake state: {e}")
+            return False
+
+    elif sys.platform == "darwin":
+        try:
+            if active:
+                if _CAFFEINATE_PROCESS is None or _CAFFEINATE_PROCESS.poll() is not None:
+                    _CAFFEINATE_PROCESS = subprocess.Popen(
+                        ["caffeinate", "-i", "-w", str(os.getpid())],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    _IS_KEEP_AWAKE = True
+                    logger.debug(f"macOS caffeinate spawned (PID={_CAFFEINATE_PROCESS.pid})")
+                return True
+            else:
+                if _CAFFEINATE_PROCESS is not None:
+                    try:
+                        if _CAFFEINATE_PROCESS.poll() is None:
+                            _CAFFEINATE_PROCESS.terminate()
+                            try:
+                                _CAFFEINATE_PROCESS.wait(timeout=1.0)
+                            except subprocess.TimeoutExpired:
+                                _CAFFEINATE_PROCESS.kill()
+                    except Exception as pe:
+                        logger.debug(f"Error terminating caffeinate: {pe}")
+                    finally:
+                        _CAFFEINATE_PROCESS = None
+                _IS_KEEP_AWAKE = False
+                logger.debug("macOS caffeinate stopped")
+                return True
+        except Exception as e:
+            logger.debug(f"Failed to set macOS keep-awake state: {e}")
+            return False
+
+    _IS_KEEP_AWAKE = active
+    return True
+
+
+def send_os_notification(title: str, message: str, tray_icon: Any = None) -> bool:
+    """Send a native OS or system tray desktop notification.
+
+    Priority:
+    1. If `tray_icon` (pystray.Icon) is provided and supports `notify()`, call `tray_icon.notify(message, title)`.
+    2. On macOS (`darwin`), if no tray icon is active, use `subprocess.Popen(["osascript", "-e", ...])`.
+    3. On Windows (`win32`), if no tray icon is active, fallback safely without blocking.
+    """
+    if tray_icon is not None and hasattr(tray_icon, "notify"):
+        try:
+            tray_icon.notify(message, title)
+            return True
+        except Exception as e:
+            logger.debug(f"tray_icon.notify error: {e}")
+
+    if sys.platform == "darwin":
+        try:
+            safe_title = title.replace("\\", "\\\\").replace('"', '\\"')
+            safe_msg = message.replace("\\", "\\\\").replace('"', '\\"')
+            script = f'display notification "{safe_msg}" with title "{safe_title}"'
+            subprocess.Popen(
+                ["osascript", "-e", script],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            return True
+        except Exception as e:
+            logger.debug(f"macOS osascript notification error: {e}")
+            return False
+
+    if sys.platform == "win32":
+        # Safe non-blocking fallback on Windows when no tray icon is present
+        return True
+
+    if sys.platform.startswith("linux"):
+        try:
+            import shutil
+            if shutil.which("notify-send"):
+                subprocess.Popen(
+                    ["notify-send", title, message],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                return True
+        except Exception:
+            pass
+
+    return True

@@ -137,15 +137,31 @@ def _create_fallback_icon(size: int = 64) -> "Image.Image":
     return img
 
 
-def get_tray_icon_image(size: Optional[int] = None) -> Optional["Image.Image"]:
-    """Load VoxStream branding icon from static web assets or generate fallback.
+def get_tray_icon_image(
+    size_or_status: Any = None,
+    status: str = "RUNNING",
+    size: Optional[int] = None,
+) -> Optional["Image.Image"]:
+    """Load VoxStream branding icon from static web assets or generate fallback,
+    with a dynamic status badge dot in the bottom-right corner.
 
-    On macOS (darwin) the returned image is downscaled to menu-bar size
-    (:data:`MACOS_MENU_BAR_ICON_SIZE`) unless an explicit ``size`` is given,
-    since NSStatusItem icons must be small template images.
+    Args:
+        size_or_status: An integer size (e.g. 32) or status string (e.g. 'RUNNING').
+        status: Status string: 'RUNNING', 'LIVE', 'PAUSED', 'STARTING', 'STOPPED', or 'ERROR'.
+        size: Target pixel size if specified.
     """
     if not HAS_PYSTRAY:
         return None
+
+    actual_size = size
+    actual_status = status
+
+    if isinstance(size_or_status, int):
+        actual_size = size_or_status
+    elif isinstance(size_or_status, str):
+        actual_status = size_or_status
+    elif size_or_status is not None:
+        actual_size = size_or_status
 
     static_dirs = [Path(__file__).parent / "web" / "static"]
     meipass = getattr(sys, "_MEIPASS", None)
@@ -173,10 +189,34 @@ def get_tray_icon_image(size: Optional[int] = None) -> Optional["Image.Image"]:
     if img is None:
         img = _create_fallback_icon(64)
 
-    target = size if size is not None else (MACOS_MENU_BAR_ICON_SIZE if is_macos() else None)
+    target = actual_size if actual_size is not None else (MACOS_MENU_BAR_ICON_SIZE if is_macos() else None)
     if target is not None and max(img.size) > target:
         img = img.copy()
         img.thumbnail((target, target), Image.LANCZOS)
+
+    # Overlay dynamic status indicator dot in bottom-right corner
+    img = img.copy()
+    w, h = img.size
+    radius = max(3, int(min(w, h) * 0.22))
+    cx = w - radius - 1
+    cy = h - radius - 1
+
+    st = (actual_status or "RUNNING").upper()
+    if st in ("RUNNING", "LIVE"):
+        dot_color = (16, 185, 129, 255)  # #10b981 Emerald Green
+    elif st in ("PAUSED", "STARTING"):
+        dot_color = (245, 158, 11, 255)  # #f59e0b Amber
+    elif st == "ERROR":
+        dot_color = (239, 68, 68, 255)   # #ef4444 Red
+    else:  # "STOPPED"
+        dot_color = (100, 116, 139, 255) # #64748b Slate
+
+    draw = ImageDraw.Draw(img)
+    # 1px dark border for contrast
+    draw.ellipse([cx - radius - 1, cy - radius - 1, cx + radius + 1, cy + radius + 1], fill=(15, 23, 42, 255))
+    # Filled status dot
+    draw.ellipse([cx - radius, cy - radius, cx + radius, cy + radius], fill=dot_color)
+
     return img
 
 
@@ -217,9 +257,17 @@ class VoxStreamTray:
         if self._icon and self._running:
             try:
                 self._icon.title = f"VoxStream - {'Paused' if self.is_paused else 'Live Captions Active'}"
+                new_icon = get_tray_icon_image(status="PAUSED" if self.is_paused else "RUNNING")
+                if new_icon:
+                    self._icon.icon = new_icon
                 self._icon.update_menu()
             except Exception as e:
                 logger.debug(f"Failed updating tray menu: {e}")
+
+    def notify(self, title: str, message: str) -> bool:
+        """Send a desktop notification via tray icon or OS notification center."""
+        from .hardware import send_os_notification
+        return send_os_notification(title, message, tray_icon=self._icon)
 
     def _open_url(self, path: str):
         """Open a VoxStream web interface in default browser."""

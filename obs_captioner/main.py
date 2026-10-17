@@ -203,6 +203,11 @@ async def cleanup_resources(
             tray_app.stop()
         except Exception:
             pass
+    try:
+        from .hardware import set_os_keep_awake
+        set_os_keep_awake(False)
+    except Exception as e:
+        logger.debug(f"Error resetting keep-awake in cleanup: {e}")
     if getattr(config, "caddy", None) and config.caddy.enabled:
         try:
             from .caddy_manager import stop_caddy
@@ -587,6 +592,11 @@ async def main_async(args):
             # Manual operator action overrides any automation mute state.
             auto_muted_by_automation = False
         is_paused = False
+        try:
+            from .hardware import set_os_keep_awake
+            set_os_keep_awake(True)
+        except Exception as _e:
+            logger.debug(f"set_os_keep_awake(True) error: {_e}")
         # Drain any stale audio queued while stopped so the engine
         # doesn't process stale audio on resume.
         try:
@@ -602,6 +612,11 @@ async def main_async(args):
             # Manual operator action overrides any automation mute state.
             auto_muted_by_automation = False
         is_paused = True
+        try:
+            from .hardware import set_os_keep_awake
+            set_os_keep_awake(False)
+        except Exception as _e:
+            logger.debug(f"set_os_keep_awake(False) error: {_e}")
         # CRITICAL: Stop the active cloud engine streaming session immediately
         # to prevent cloud token waste (Gemini Live, Bandwidth, Google STT).
         # run_pipeline() will automatically restart the stream when is_paused becomes False.
@@ -837,6 +852,15 @@ async def main_async(args):
                     fallback_active = True
                     engine_switch_status = f"⚠️ Emergency offline engine active: {engine.name} (Primary offline)"
                     logger.info(f"✅ Emergency offline fallback activated: {engine.name}")
+                    try:
+                        from .hardware import send_os_notification
+                        send_os_notification(
+                            "VoxStream Emergency Failover",
+                            f"Primary engine '{config.general.engine}' failed on startup. Using offline fallback {engine.name}.",
+                            tray_icon=getattr(tray_app, "_icon", None) if tray_app else None,
+                        )
+                    except Exception:
+                        pass
                     if web_server:
                         asyncio.run_coroutine_threadsafe(
                             web_server.broadcast_control({
@@ -1077,6 +1101,15 @@ async def main_async(args):
                         fallback_active = False
                         engine_switch_status = f"✅ {engine.name} restored and ready!"
                         logger.info(f"STT primary restored: {engine.name}")
+                        try:
+                            from .hardware import send_os_notification
+                            send_os_notification(
+                                "VoxStream Engine Restored",
+                                f"Primary engine ({config.general.engine}) is back online and restored.",
+                                tray_icon=getattr(tray_app, "_icon", None) if tray_app else None,
+                            )
+                        except Exception:
+                            pass
                         if web_server:
                             await web_server.broadcast_control({
                                 "type": "emergency_fallback_restored",
@@ -1122,6 +1155,15 @@ async def main_async(args):
                                 fallback_active = False
                                 engine_switch_status = f"✅ {engine.name} restored and ready!"
                                 logger.info(f"STT primary restored: {engine.name}")
+                                try:
+                                    from .hardware import send_os_notification
+                                    send_os_notification(
+                                        "VoxStream Engine Restored",
+                                        f"Primary engine ({config.general.engine}) is back online and restored.",
+                                        tray_icon=getattr(tray_app, "_icon", None) if tray_app else None,
+                                    )
+                                except Exception:
+                                    pass
                                 if web_server:
                                     await web_server.broadcast_control({
                                         "type": "emergency_fallback_restored",
@@ -1171,6 +1213,15 @@ async def main_async(args):
                                         initialized = True
                                         fallback_active = True
                                         engine_switch_status = f"⚠️ Emergency offline engine active: {engine.name}"
+                                        try:
+                                            from .hardware import send_os_notification
+                                            send_os_notification(
+                                                "VoxStream Emergency Failover",
+                                                f"Primary engine retry failed. Activated emergency fallback ({engine.name}).",
+                                                tray_icon=getattr(tray_app, "_icon", None) if tray_app else None,
+                                            )
+                                        except Exception:
+                                            pass
                                         if web_server:
                                             asyncio.run_coroutine_threadsafe(
                                                 web_server.broadcast_control({
@@ -1235,6 +1286,15 @@ async def main_async(args):
                                 wire_engine_callbacks(engine)
                                 fallback_active = True
                                 engine_switch_status = f"⚠️ Emergency offline engine active: {engine.name}"
+                                try:
+                                    from .hardware import send_os_notification
+                                    send_os_notification(
+                                        "VoxStream Emergency Failover",
+                                        f"Primary engine failed during streaming. Activated emergency fallback ({engine.name}).",
+                                        tray_icon=getattr(tray_app, "_icon", None) if tray_app else None,
+                                    )
+                                except Exception:
+                                    pass
                                 if web_server:
                                     asyncio.run_coroutine_threadsafe(
                                         web_server.broadcast_control({
@@ -1249,10 +1309,22 @@ async def main_async(args):
                             logger.error(f"Emergency failover error: {fe}")
                 await asyncio.sleep(1.0)
 
+    if not is_paused:
+        try:
+            from .hardware import set_os_keep_awake
+            set_os_keep_awake(True)
+        except Exception as _e:
+            logger.debug(f"Initial keep-awake error: {_e}")
+
     pipeline_task = asyncio.create_task(run_pipeline())
     memory_watchdog_task = asyncio.create_task(_periodic_memory_watchdog())
 
     async def cleanup_all():
+        try:
+            from .hardware import set_os_keep_awake
+            set_os_keep_awake(False)
+        except Exception as _e:
+            logger.debug(f"cleanup_all keep-awake error: {_e}")
         await cleanup_resources(
             memory_watchdog_task=memory_watchdog_task,
             pipeline_task=pipeline_task,
