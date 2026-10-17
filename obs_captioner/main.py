@@ -1053,6 +1053,21 @@ async def main_async(args):
             logger.info(f"📱 Mobile & Stage Display: http://{lan_ip}:{port}/display")
     logger.info("═" * 60)
 
+    if (
+        config.overlay.enabled
+        and getattr(config.overlay, "auto_open_browser", True)
+        and not getattr(args, "no_browser", False)
+        and not os.environ.get("PYTEST_CURRENT_TEST")
+    ):
+        dashboard_url = f"http://127.0.0.1:{port}/dashboard"
+        def _open_default_dashboard(url: str = dashboard_url):
+            try:
+                import webbrowser
+                webbrowser.open(url)
+            except Exception as _be:
+                logger.debug(f"Could not auto-open browser: {_be}")
+        threading.Thread(target=_open_default_dashboard, daemon=True).start()
+
     # Background recovery: if the engine failed its initial startup handshake
     # (e.g. transient network/DNS after reboot or update), keep retrying
     # initialization so the pipeline connects automatically once the network
@@ -1369,6 +1384,7 @@ def main():
     parser.add_argument("--caddy", action="store_true", help="Enable Caddy reverse proxy with SSL")
     parser.add_argument("--tray", dest="tray", action="store_true", default=None, help="Enable system tray icon (Windows taskbar / macOS menu bar; default: auto-enabled on Windows and macOS)")
     parser.add_argument("--no-tray", dest="tray", action="store_false", help="Disable system tray icon")
+    parser.add_argument("--no-browser", action="store_true", help="Do not automatically open the dashboard in the default web browser on startup")
 
     args = parser.parse_args()
 

@@ -202,6 +202,7 @@ class OverlayConfig:
     box_layout: str = "banner"  # "banner", "pill", "boxless", "bar"
     accent_line: str = "none"  # "none", "top_divider", "bottom_divider", "left_marker"
     accent_color: str = "#38BDF8"  # Accent divider line color
+    auto_open_browser: bool = True  # Automatically open /dashboard in default web browser on startup
 
     def apply_theme(self, theme_id: str, custom_presets: Optional[Dict[str, dict]] = None) -> bool:
         """Apply attributes from a known theme preset or custom user preset."""
