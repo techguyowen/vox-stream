@@ -48,7 +48,7 @@ def bump_version(bump_type: str = "patch", custom_version: str = None, dry_run: 
         content = re.sub(r'VERSION_INFO\s*=\s*\([^\)]+\)', f"VERSION_INFO = ({major}, {minor}, {patch})", content)
         content = re.sub(r'RELEASE_DATE\s*=\s*"[^"]+"', f'RELEASE_DATE = "{today}"', content)
         version_py_path.write_text(content, encoding="utf-8")
-        print(f"  ✓ Updated {version_py_path.relative_to(PROJECT_ROOT)}")
+        print(f"  [OK] Updated {version_py_path.relative_to(PROJECT_ROOT)}")
 
     # 2. Update version.json
     version_json_path = PROJECT_ROOT / "version.json"
@@ -64,7 +64,7 @@ def bump_version(bump_type: str = "patch", custom_version: str = None, dry_run: 
     data["patch"] = patch
     data["release_date"] = today
     version_json_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    print(f"  ✓ Updated {version_json_path.relative_to(PROJECT_ROOT)}")
+    print(f"  [OK] Updated {version_json_path.relative_to(PROJECT_ROOT)}")
 
     # 3. Update build_release.sh
     build_sh_path = PROJECT_ROOT / "build_release.sh"
@@ -72,9 +72,9 @@ def bump_version(bump_type: str = "patch", custom_version: str = None, dry_run: 
         sh_content = build_sh_path.read_text(encoding="utf-8")
         sh_content = re.sub(r'VERSION="[^"]+"', f'VERSION="{new_v}"', sh_content)
         build_sh_path.write_text(sh_content, encoding="utf-8")
-        print(f"  ✓ Updated {build_sh_path.relative_to(PROJECT_ROOT)}")
+        print(f"  [OK] Updated {build_sh_path.relative_to(PROJECT_ROOT)}")
 
-    print(f"🎉 Successfully bumped to version {new_v}!")
+    print(f"Successfully bumped to version {new_v}!")
     return new_v
 
 

@@ -1,9 +1,9 @@
 {
-  "version": "1.2.0",
+  "version": "1.2.1",
   "major": 1,
   "minor": 2,
-  "patch": 0,
-  "release_date": "2026-10-15",
-  "codename": "Live Translate & Real-Time Performance",
-  "notes": "Gemini Live Translate with in-ear audio interpretation, CEA-608 closed captions, decoupled asynchronous queues, constant-time API security, and profile preservation."
+  "patch": 1,
+  "release_date": "2026-10-17",
+  "codename": "Windows & macOS Booth UX, RAM Watchdog & Multi-User Scaling",
+  "notes": "Windows K32EmptyWorkingSet RAM watchdog, graceful nightly shutdown & Startup auto-boot, native Windows dark title bar & macOS LaunchAgent, single-instance launcher guard, dynamic system tray status badge, strict multi-language audio isolation, and ProPresenter/Proclaim lyrics sync."
 }

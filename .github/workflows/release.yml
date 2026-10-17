@@ -3,6 +3,9 @@ name: Build and Upload Release
 on:
   release:
     types: [published]
+  push:
+    tags:
+      - 'v*'
 
 jobs:
   build-release:
@@ -22,6 +25,8 @@ jobs:
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
+          name: VoxStream ${{ github.ref_name }}
+          generate_release_notes: true
           files: voxstream-v*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

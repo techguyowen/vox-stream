@@ -3623,7 +3623,7 @@ class TestVersioningAndSemanticUpdater(unittest.TestCase):
 
     def test_bump_version_cli_dry_run(self):
         from scripts.bump_version import bump_version
-        self.assertEqual(bump_version(bump_type="patch", dry_run=True), "1.2.1")
+        self.assertEqual(bump_version(bump_type="patch", dry_run=True), "1.2.2")
         self.assertEqual(bump_version(bump_type="minor", dry_run=True), "1.3.0")
         self.assertEqual(bump_version(bump_type="major", dry_run=True), "2.0.0")
         self.assertEqual(bump_version(custom_version="3.5.0", dry_run=True), "3.5.0")
