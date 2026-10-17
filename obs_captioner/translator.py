@@ -5,10 +5,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+from pathlib import Path
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Dict, Any, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, Dict, Any, Optional, Tuple, Union
 
 if TYPE_CHECKING:
     from obs_captioner.engines.nllb_translator import NLLBTranslator
@@ -69,12 +71,69 @@ class SubtitleTranslator:
         api_key_resolver: Optional[Callable[[], str]] = None,
         nllb_translator: Optional[NLLBTranslator] = None,
         disk_cache: Optional[Any] = None,
+        json_cache_path: Optional[Union[str, Path]] = None,
     ):
         self.config = config or TranslationConfig()
         self.api_key_resolver = api_key_resolver
         self._cache: Dict[str, str] = {}
         self._nllb_translator: Optional[NLLBTranslator] = nllb_translator
         self._disk_cache = disk_cache
+        self.json_cache_path: Path = Path(json_cache_path or "translation_cache.json")
+        self._load_disk_cache()
+
+    def _load_disk_cache(self, path: Optional[Union[str, Path]] = None) -> None:
+        """Load persistent JSON translation cache from disk into in-memory cache."""
+        target_path = Path(path) if path else self.json_cache_path
+        if not target_path.is_file():
+            return
+        try:
+            with open(target_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    self._cache.update(data)
+        except Exception as e:
+            logger.debug(f"Failed to load translation JSON cache from {target_path}: {e}")
+
+    def _save_disk_cache(self, path: Optional[Union[str, Path]] = None) -> bool:
+        """Flush in-memory translation cache atomically to disk as JSON.
+
+        Writes to a temporary .tmp file first, flushes, and atomically replaces
+        the target file so sudden shutdown or power cut cannot corrupt the cache.
+        """
+        if self._disk_cache and hasattr(self._disk_cache, "flush"):
+            try:
+                self._disk_cache.flush()
+            except Exception as e:
+                logger.debug(f"Error flushing SQLite disk cache: {e}")
+
+        target_path = Path(path) if path else self.json_cache_path
+        tmp_path = target_path.with_suffix(".tmp")
+        try:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(self._cache, f, indent=2, ensure_ascii=False)
+                f.flush()
+                try:
+                    os.fsync(f.fileno())
+                except Exception:
+                    pass
+
+            try:
+                os.chmod(tmp_path, 0o600)
+            except Exception:
+                pass
+
+            tmp_path.replace(target_path)
+            logger.debug(f"Flushed {len(self._cache)} translations to disk cache: {target_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save translation cache to {target_path}: {e}")
+            if tmp_path.is_file():
+                try:
+                    tmp_path.unlink()
+                except Exception:
+                    pass
+            return False
 
     @property
     def disk_cache(self) -> Any:

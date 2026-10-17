@@ -51,6 +51,167 @@ def setup_logging(log_level: str = "INFO"):
     )
 
 
+_win_ctrl_handler_ref = None
+
+
+def register_shutdown_handlers(loop: asyncio.AbstractEventLoop, shutdown_event: asyncio.Event, signal_handler=None):
+    """Register graceful shutdown handlers with signal fallback and Windows SetConsoleCtrlHandler.
+
+    loop.add_signal_handler raises NotImplementedError on Windows (ProactorEventLoop).
+    Falls back to signal.signal (SIGINT, SIGTERM, SIGBREAK) calling loop.call_soon_threadsafe.
+    On Windows, also registers a SetConsoleCtrlHandler to handle CTRL_CLOSE_EVENT (2),
+    CTRL_LOGOFF_EVENT (5), and CTRL_SHUTDOWN_EVENT (6).
+    """
+    global _win_ctrl_handler_ref
+    if signal_handler is None:
+        def signal_handler():
+            logger.info("Shutdown signal received. Stopping captioner...")
+            shutdown_event.set()
+
+    registered = False
+    try:
+        for s in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(s, signal_handler)
+        registered = True
+    except (NotImplementedError, AttributeError, Exception):
+        registered = False
+
+    if not registered:
+        def _sync_signal_handler(signum, frame):
+            try:
+                loop.call_soon_threadsafe(signal_handler)
+            except Exception:
+                signal_handler()
+
+        for sig_name in ("SIGINT", "SIGTERM", "SIGBREAK"):
+            sig = getattr(signal, sig_name, None)
+            if sig is not None:
+                try:
+                    signal.signal(sig, _sync_signal_handler)
+                except Exception:
+                    pass
+
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            CTRL_HANDLER_T = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.DWORD)
+
+            def _win_ctrl_handler(ctrl_type: int):
+                # 2: CTRL_CLOSE_EVENT, 5: CTRL_LOGOFF_EVENT, 6: CTRL_SHUTDOWN_EVENT
+                if ctrl_type in (2, 5, 6):
+                    logger.info(f"Windows console control event ({ctrl_type}) received. Initiating graceful shutdown...")
+                    try:
+                        loop.call_soon_threadsafe(signal_handler)
+                    except Exception:
+                        signal_handler()
+                    return True
+                return False
+
+            _win_ctrl_handler_ref = CTRL_HANDLER_T(_win_ctrl_handler)
+            ctypes.windll.kernel32.SetConsoleCtrlHandler(_win_ctrl_handler_ref, True)
+        except Exception as e:
+            logger.debug(f"Failed to register Windows SetConsoleCtrlHandler: {e}")
+
+    return signal_handler
+
+
+async def cleanup_resources(
+    memory_watchdog_task=None,
+    pipeline_task=None,
+    scheduler=None,
+    propresenter_client=None,
+    twitch_bot=None,
+    subtitle_recorder=None,
+    engine=None,
+    audio_capture=None,
+    sink=None,
+    obs_client=None,
+    web_server=None,
+    tray_app=None,
+    config=None,
+):
+    """Gracefully stop and flush all captioning pipeline resources."""
+    logger.info("Cleaning up resources...")
+    if memory_watchdog_task:
+        memory_watchdog_task.cancel()
+        try:
+            await asyncio.wait_for(memory_watchdog_task, timeout=0.5)
+        except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
+            pass
+    if pipeline_task:
+        pipeline_task.cancel()
+        try:
+            await asyncio.wait_for(pipeline_task, timeout=0.5)
+        except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
+            pass
+    if scheduler:
+        try:
+            scheduler.stop()
+        except Exception as e:
+            logger.debug(f"Error stopping scheduler: {e}")
+    if propresenter_client:
+        try:
+            await asyncio.wait_for(propresenter_client.stop(), timeout=0.8)
+        except Exception as e:
+            logger.debug(f"Error stopping ProPresenter client: {e}")
+    if twitch_bot:
+        try:
+            await asyncio.wait_for(twitch_bot.stop(), timeout=0.8)
+        except Exception as e:
+            logger.debug(f"Error stopping Twitch bot: {e}")
+    if subtitle_recorder and getattr(subtitle_recorder, "is_recording", False):
+        try:
+            logger.info("Stopping subtitle recorder and flushing files...")
+            subtitle_recorder.stop_recording()
+        except Exception as e:
+            logger.debug(f"Error stopping subtitle recorder: {e}")
+    if engine:
+        try:
+            await asyncio.wait_for(engine.stop(), timeout=0.8)
+        except Exception as e:
+            logger.debug(f"Error stopping engine: {e}")
+    if audio_capture:
+        try:
+            audio_capture.stop()
+        except Exception as e:
+            logger.debug(f"Error stopping audio capture: {e}")
+    if sink:
+        try:
+            await asyncio.wait_for(sink.stop(), timeout=0.8)
+        except Exception as e:
+            logger.debug(f"Error stopping caption sink: {e}")
+    if obs_client:
+        try:
+            await asyncio.wait_for(obs_client.close(), timeout=0.8)
+        except Exception as e:
+            logger.debug(f"Error closing OBS client: {e}")
+    if web_server:
+        if getattr(web_server, "translator", None) and hasattr(web_server.translator, "_save_disk_cache"):
+            try:
+                logger.info("Flushing translation cache to disk...")
+                web_server.translator._save_disk_cache()
+            except Exception as e:
+                logger.debug(f"Error saving translator disk cache: {e}")
+        try:
+            await asyncio.wait_for(web_server.stop(), timeout=1.5)
+        except Exception as e:
+            logger.debug(f"Error stopping web server: {e}")
+    if tray_app:
+        try:
+            tray_app.stop()
+        except Exception:
+            pass
+    if getattr(config, "caddy", None) and config.caddy.enabled:
+        try:
+            from .caddy_manager import stop_caddy
+            stop_caddy()
+        except Exception as e:
+            logger.debug(f"Error stopping Caddy: {e}")
+    logger.info("OBS Live Captioner stopped gracefully.")
+
+
 async def main_async(args):
     """Main async execution loop."""
     config: AppConfig = load_config(args.config)
@@ -828,11 +989,7 @@ async def main_async(args):
         logger.info("Shutdown signal received. Stopping captioner...")
         shutdown_event.set()
 
-    try:
-        for s in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(s, signal_handler)
-    except Exception:
-        pass
+    register_shutdown_handlers(loop, shutdown_event, signal_handler)
 
     # 7b. Optional Caddy Reverse Proxy supervision
     caddy_cfg = getattr(config, "caddy", None)
@@ -1096,76 +1253,21 @@ async def main_async(args):
     memory_watchdog_task = asyncio.create_task(_periodic_memory_watchdog())
 
     async def cleanup_all():
-        logger.info("Cleaning up resources...")
-        if memory_watchdog_task:
-            memory_watchdog_task.cancel()
-            try:
-                await asyncio.wait_for(memory_watchdog_task, timeout=0.5)
-            except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
-                pass
-        if pipeline_task:
-            pipeline_task.cancel()
-            try:
-                await asyncio.wait_for(pipeline_task, timeout=0.5)
-            except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
-                pass
-        if scheduler:
-            try:
-                scheduler.stop()
-            except Exception as e:
-                logger.debug(f"Error stopping scheduler: {e}")
-        if propresenter_client:
-            try:
-                await asyncio.wait_for(propresenter_client.stop(), timeout=0.8)
-            except Exception as e:
-                logger.debug(f"Error stopping ProPresenter client: {e}")
-        if twitch_bot:
-            try:
-                await asyncio.wait_for(twitch_bot.stop(), timeout=0.8)
-            except Exception as e:
-                logger.debug(f"Error stopping Twitch bot: {e}")
-        if subtitle_recorder and getattr(subtitle_recorder, "is_recording", False):
-            try:
-                subtitle_recorder.stop_recording()
-            except Exception as e:
-                logger.debug(f"Error stopping subtitle recorder: {e}")
-        if engine:
-            try:
-                await asyncio.wait_for(engine.stop(), timeout=0.8)
-            except Exception as e:
-                logger.debug(f"Error stopping engine: {e}")
-        if audio_capture:
-            try:
-                audio_capture.stop()
-            except Exception as e:
-                logger.debug(f"Error stopping audio capture: {e}")
-        if sink:
-            try:
-                await asyncio.wait_for(sink.stop(), timeout=0.8)
-            except Exception as e:
-                logger.debug(f"Error stopping caption sink: {e}")
-        if obs_client:
-            try:
-                await asyncio.wait_for(obs_client.close(), timeout=0.8)
-            except Exception as e:
-                logger.debug(f"Error closing OBS client: {e}")
-        if web_server:
-            try:
-                await asyncio.wait_for(web_server.stop(), timeout=1.5)
-            except Exception as e:
-                logger.debug(f"Error stopping web server: {e}")
-        if tray_app:
-            try:
-                tray_app.stop()
-            except Exception:
-                pass
-        if getattr(config, "caddy", None) and config.caddy.enabled:
-            try:
-                from .caddy_manager import stop_caddy
-                stop_caddy()
-            except Exception as e:
-                logger.debug(f"Error stopping Caddy: {e}")
-        logger.info("OBS Live Captioner stopped gracefully.")
+        await cleanup_resources(
+            memory_watchdog_task=memory_watchdog_task,
+            pipeline_task=pipeline_task,
+            scheduler=scheduler,
+            propresenter_client=propresenter_client,
+            twitch_bot=twitch_bot,
+            subtitle_recorder=subtitle_recorder,
+            engine=engine,
+            audio_capture=audio_capture,
+            sink=sink,
+            obs_client=obs_client,
+            web_server=web_server,
+            tray_app=tray_app,
+            config=config,
+        )
 
     # Wait until shutdown requested
     try:

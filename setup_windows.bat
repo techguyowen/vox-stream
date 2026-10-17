@@ -307,7 +307,7 @@ echo.
 :: ---------------------------------------------------------------------------
 :: STEP 8: Pre-cache Offline AI Models & Create Desktop Shortcut
 :: ---------------------------------------------------------------------------
-echo [8/8] Pre-caching default offline AI models and creating Desktop & Taskbar shortcuts...
+echo [8/8] Pre-caching default offline AI models and creating Desktop, Start Menu & Startup shortcuts...
 call "%VENV_PY%" -m obs_captioner.model_downloader --preload-defaults
 
 call "%VENV_PY%" -m obs_captioner.launcher --create-shortcuts
@@ -346,7 +346,7 @@ for /f "tokens=*" %%i in ('call "%VENV_PY%" -c "from obs_captioner.config import
 echo =======================================================
 echo   [SUCCESS] 100%% Turnkey Setup Complete!
 echo.
-echo   1. Shortcuts created on Desktop and in Start Menu!
+echo   1. Shortcuts created on Desktop, Start Menu, and Startup folder!
 echo      To Pin to Taskbar: Click Start -> search 'VoxStream' -> right-click -> 'Pin to taskbar'!
 if /i "!CADDY_ON!"=="True" (
     echo   2. Local Dashboard:   https://127.0.0.1/dashboard (or http://127.0.0.1:8765/dashboard)

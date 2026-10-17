@@ -98,10 +98,11 @@ def find_python_executable(root_dir: Optional[Path] = None) -> str:
     return sys.executable
 
 
-def create_windows_shortcuts(root_dir: Optional[Path] = None) -> Dict[str, Any]:
-    """Create Windows Desktop and Start Menu shortcuts pointing to VoxStream.vbs or VoxStream.exe.
+def create_windows_shortcuts(root_dir: Optional[Path] = None, include_startup: bool = True) -> Dict[str, Any]:
+    """Create Windows Desktop, Start Menu, and optionally Startup shortcuts.
     
-    This enables zero-console execution and allows pinning to the Windows Taskbar.
+    This enables zero-console execution, allows pinning to the Windows Taskbar,
+    and supports morning auto-boot on user logon.
     """
     if sys.platform != "win32":
         return {"success": False, "error": "Shortcuts can only be generated on Windows."}
@@ -134,6 +135,23 @@ def create_windows_shortcuts(root_dir: Optional[Path] = None) -> Dict[str, Any]:
     else:
         return {"success": False, "error": f"Neither VoxStream.exe nor VoxStream.vbs found in {root_dir}"}
 
+    startup_block = ""
+    if include_startup:
+        startup_block = f"""
+# 3. Startup Folder Shortcut (Morning Auto-Boot)
+$Startup = [System.Environment]::GetFolderPath('Startup')
+if (!(Test-Path $Startup)) {{
+    New-Item -ItemType Directory -Path $Startup -Force | Out-Null
+}}
+$StartupShortcut = $WshShell.CreateShortcut("$Startup\\VoxStream.lnk")
+$StartupShortcut.TargetPath = "{target_path}"
+$StartupShortcut.Arguments = '{target_args}'
+$StartupShortcut.WorkingDirectory = "{str(root_dir)}"
+$StartupShortcut.IconLocation = "{icon_loc}"
+$StartupShortcut.Description = "VoxStream Live Captioner Control Center"
+$StartupShortcut.Save()
+"""
+
     ps_script = f"""
 $WshShell = New-Object -ComObject WScript.Shell
 
@@ -160,6 +178,7 @@ $StartShortcut.WorkingDirectory = "{str(root_dir)}"
 $StartShortcut.IconLocation = "{icon_loc}"
 $StartShortcut.Description = "VoxStream Live Captioner Control Center"
 $StartShortcut.Save()
+{startup_block}
 """
     try:
         creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
@@ -171,14 +190,15 @@ $StartShortcut.Save()
             creationflags=creationflags,
         )
         if res.returncode == 0:
-            return {"success": True, "message": "Shortcuts created on Desktop and in Start Menu!"}
+            msg = "Shortcuts created on Desktop, in Start Menu, and Startup folder!" if include_startup else "Shortcuts created on Desktop and in Start Menu!"
+            return {"success": True, "message": msg}
         return {"success": False, "error": res.stderr or res.stdout}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
 
 def remove_windows_shortcuts(root_dir: Optional[Path] = None) -> Dict[str, Any]:
-    """Remove Windows Desktop and Start Menu shortcuts created for VoxStream."""
+    """Remove Windows Desktop, Start Menu, and Startup shortcuts created for VoxStream."""
     if sys.platform != "win32":
         return {"success": False, "error": "Shortcuts can only be removed on Windows."}
 
@@ -192,6 +212,12 @@ if (Test-Path $lnk2) { Remove-Item -Force $lnk2 }
 $Programs = [System.Environment]::GetFolderPath('Programs')
 $StartDir = Join-Path $Programs 'VoxStream'
 if (Test-Path $StartDir) { Remove-Item -Recurse -Force $StartDir }
+
+$Startup = [System.Environment]::GetFolderPath('Startup')
+$s1 = Join-Path $Startup 'VoxStream.lnk'
+$s2 = Join-Path $Startup 'VoxStream Live Captioner.lnk'
+if (Test-Path $s1) { Remove-Item -Force $s1 }
+if (Test-Path $s2) { Remove-Item -Force $s2 }
 """
     try:
         creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
@@ -203,7 +229,107 @@ if (Test-Path $StartDir) { Remove-Item -Recurse -Force $StartDir }
             creationflags=creationflags,
         )
         if res.returncode == 0:
-            return {"success": True, "message": "Shortcuts removed from Desktop and Start Menu."}
+            return {"success": True, "message": "Shortcuts removed from Desktop, Start Menu, and Startup."}
+        return {"success": False, "error": res.stderr or res.stdout}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def is_windows_startup_enabled() -> bool:
+    """Check if VoxStream startup shortcut exists in Windows Startup folder."""
+    if sys.platform != "win32":
+        return False
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        p1 = Path(appdata) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup" / "VoxStream.lnk"
+        p2 = Path(appdata) / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup" / "VoxStream Live Captioner.lnk"
+        if p1.is_file() or p2.is_file():
+            return True
+    return False
+
+
+def set_windows_startup(enabled: bool, root_dir: Optional[Path] = None) -> Dict[str, Any]:
+    """Enable or disable auto-start of VoxStream upon Windows user login."""
+    if sys.platform != "win32":
+        return {"success": False, "error": "Windows startup can only be configured on Windows."}
+
+    if root_dir is None:
+        root_dir = get_project_root()
+
+    if not enabled:
+        ps_script = """
+$Startup = [System.Environment]::GetFolderPath('Startup')
+$s1 = Join-Path $Startup 'VoxStream.lnk'
+$s2 = Join-Path $Startup 'VoxStream Live Captioner.lnk'
+if (Test-Path $s1) { Remove-Item -Force $s1 }
+if (Test-Path $s2) { Remove-Item -Force $s2 }
+"""
+        try:
+            creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+            res = subprocess.run(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                creationflags=creationflags,
+            )
+            if res.returncode == 0:
+                return {"success": True, "enabled": False, "message": "Startup shortcut removed."}
+            return {"success": False, "error": res.stderr or res.stdout}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    # Enabled:
+    exe_path = root_dir / "VoxStream.exe"
+    vbs_path = root_dir / "VoxStream.vbs"
+    ico_path = root_dir / "obs_captioner" / "web" / "static" / "favicon.ico"
+
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass and not ico_path.is_file():
+        cand = Path(meipass) / "obs_captioner" / "web" / "static" / "favicon.ico"
+        if cand.is_file():
+            ico_path = cand
+
+    if getattr(sys, "frozen", False) and Path(sys.executable).is_file():
+        target_path = str(Path(sys.executable).resolve())
+        target_args = ""
+        icon_loc = f"{target_path}, 0"
+    elif exe_path.is_file():
+        target_path = str(exe_path.resolve())
+        target_args = ""
+        icon_loc = f"{target_path}, 0"
+    elif vbs_path.is_file():
+        target_path = "wscript.exe"
+        target_args = f'"{str(vbs_path)}"'
+        icon_loc = f"{str(ico_path)}, 0" if ico_path.is_file() else "wscript.exe, 0"
+    else:
+        return {"success": False, "error": f"Neither VoxStream.exe nor VoxStream.vbs found in {root_dir}"}
+
+    ps_script = f"""
+$WshShell = New-Object -ComObject WScript.Shell
+$Startup = [System.Environment]::GetFolderPath('Startup')
+if (!(Test-Path $Startup)) {{
+    New-Item -ItemType Directory -Path $Startup -Force | Out-Null
+}}
+$StartupShortcut = $WshShell.CreateShortcut("$Startup\\VoxStream.lnk")
+$StartupShortcut.TargetPath = "{target_path}"
+$StartupShortcut.Arguments = '{target_args}'
+$StartupShortcut.WorkingDirectory = "{str(root_dir)}"
+$StartupShortcut.IconLocation = "{icon_loc}"
+$StartupShortcut.Description = "VoxStream Live Captioner Control Center"
+$StartupShortcut.Save()
+"""
+    try:
+        creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        res = subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            creationflags=creationflags,
+        )
+        if res.returncode == 0:
+            return {"success": True, "enabled": True, "message": "Startup shortcut created in Windows Startup folder."}
         return {"success": False, "error": res.stderr or res.stdout}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -776,6 +902,21 @@ class VoxStreamLauncherGUI:
             )
             btn_shortcuts.pack(side=tk.LEFT, padx=(0, 6))
 
+            self.startup_var = tk.BooleanVar(value=is_windows_startup_enabled())
+            chk_startup = tk.Checkbutton(
+                footer_frame,
+                text="🚀 Run at Startup",
+                variable=self.startup_var,
+                bg="#0f172a",
+                fg="#94a3b8",
+                selectcolor="#1e293b",
+                activebackground="#0f172a",
+                activeforeground="#f8fafc",
+                font=("Segoe UI", 8),
+                command=self._toggle_windows_startup,
+            )
+            chk_startup.pack(side=tk.LEFT, padx=(0, 6))
+
         self.minimize_on_close_var = tk.BooleanVar(value=True)
         chk_close_tray = tk.Checkbutton(
             footer_frame,
@@ -844,12 +985,14 @@ class VoxStreamLauncherGUI:
             logger.debug(f"Could not initialize system tray: {e}")
 
     def _create_shortcuts_action(self):
-        """Create Windows Desktop and Start Menu / Taskbar shortcuts."""
-        res = create_windows_shortcuts(self.root_dir)
+        """Create Windows Desktop, Start Menu, and Startup shortcuts."""
+        res = create_windows_shortcuts(self.root_dir, include_startup=True)
+        if hasattr(self, "startup_var"):
+            self.startup_var.set(True)
         if res.get("success"):
             messagebox.showinfo(
                 "VoxStream Shortcuts Created",
-                "VoxStream shortcuts have been created on your Desktop and in the Start Menu!\n\n"
+                "VoxStream shortcuts have been created on your Desktop, Start Menu, and Startup folder!\n\n"
                 "📌 To Pin to Taskbar:\n"
                 "1. Click the Windows Start button\n"
                 "2. Type 'VoxStream'\n"
@@ -859,6 +1002,23 @@ class VoxStreamLauncherGUI:
             messagebox.showerror(
                 "Shortcut Creation Error",
                 f"Failed to create shortcuts:\n{res.get('error')}",
+            )
+
+    def _toggle_windows_startup(self):
+        """Toggle Windows Startup shortcut."""
+        enabled = self.startup_var.get()
+        res = set_windows_startup(enabled, self.root_dir)
+        if not res.get("success"):
+            self.startup_var.set(not enabled)
+            messagebox.showerror(
+                "Windows Startup Error",
+                f"Failed to update Windows Startup configuration:\n{res.get('error')}",
+            )
+        else:
+            status_msg = "enabled" if enabled else "disabled"
+            messagebox.showinfo(
+                "Windows Startup Updated",
+                f"VoxStream auto-boot at Windows login has been {status_msg}.",
             )
 
     def start_backend(self):
@@ -1092,14 +1252,16 @@ def main():
     parser = argparse.ArgumentParser(description="VoxStream Standalone Launcher & Control Center")
     parser.add_argument("--no-autostart", action="store_true", help="Do not start backend automatically on launcher open")
     parser.add_argument("--minimized", action="store_true", help="Start launcher minimized to system tray")
-    parser.add_argument("--create-shortcuts", action="store_true", help="Generate Windows Desktop and Start Menu shortcuts and exit")
-    parser.add_argument("--remove-shortcuts", action="store_true", help="Remove Windows Desktop and Start Menu shortcuts and exit")
+    parser.add_argument("--create-shortcuts", action="store_true", help="Generate Windows Desktop, Start Menu, and Startup shortcuts and exit")
+    parser.add_argument("--remove-shortcuts", action="store_true", help="Remove Windows Desktop, Start Menu, and Startup shortcuts and exit")
+    parser.add_argument("--enable-startup", action="store_true", help="Enable auto-boot in Windows Startup folder and exit")
+    parser.add_argument("--disable-startup", action="store_true", help="Disable auto-boot in Windows Startup folder and exit")
     args = parser.parse_args()
 
     if args.create_shortcuts:
         res = create_windows_shortcuts()
         if res.get("success"):
-            print("✅ Windows shortcuts successfully created on Desktop and Start Menu!")
+            print("✅ Windows shortcuts successfully created on Desktop, Start Menu, and Startup!")
             sys.exit(0)
         else:
             print(f"❌ Error creating shortcuts: {res.get('error')}")
@@ -1108,10 +1270,28 @@ def main():
     if args.remove_shortcuts:
         res = remove_windows_shortcuts()
         if res.get("success"):
-            print("✅ Windows shortcuts successfully removed from Desktop and Start Menu!")
+            print("✅ Windows shortcuts successfully removed from Desktop, Start Menu, and Startup!")
             sys.exit(0)
         else:
             print(f"❌ Error removing shortcuts: {res.get('error')}")
+            sys.exit(1)
+
+    if args.enable_startup:
+        res = set_windows_startup(True)
+        if res.get("success"):
+            print("✅ Windows startup shortcut successfully enabled!")
+            sys.exit(0)
+        else:
+            print(f"❌ Error enabling startup shortcut: {res.get('error')}")
+            sys.exit(1)
+
+    if args.disable_startup:
+        res = set_windows_startup(False)
+        if res.get("success"):
+            print("✅ Windows startup shortcut successfully disabled!")
+            sys.exit(0)
+        else:
+            print(f"❌ Error disabling startup shortcut: {res.get('error')}")
             sys.exit(1)
 
     if not HAS_TKINTER:
