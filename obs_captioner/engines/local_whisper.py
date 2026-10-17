@@ -24,7 +24,7 @@ logger = logging.getLogger("obs_captioner.engine.local_whisper")
 
 
 def _setup_windows_cuda_dlls():
-    """Ensure Windows Python 3.8+ finds NVIDIA CUDA/cuDNN DLLs installed in site-packages."""
+    """Ensure Windows Python 3.8+ finds NVIDIA CUDA/cuDNN and DirectML/ONNX DLLs installed in site-packages."""
     if sys.platform != "win32":
         return
     import site
@@ -52,7 +52,10 @@ def _setup_windows_cuda_dlls():
     for root in search_roots:
         if not root:
             continue
-        nv_path = Path(root) / "nvidia"
+        root_path = Path(root)
+
+        # 1. NVIDIA CUDA & cuDNN DLLs (cublas, cudnn, cuda_nvrtc, etc.)
+        nv_path = root_path / "nvidia"
         if nv_path.is_dir():
             for bin_dir in nv_path.glob("*/bin"):
                 bin_str = str(bin_dir.resolve())
@@ -67,6 +70,23 @@ def _setup_windows_cuda_dlls():
                         logger.debug(f"Added NVIDIA DLL directory: {bin_str}")
                     except Exception as e:
                         logger.debug(f"Failed adding DLL dir {bin_str}: {e}")
+
+        # 2. DirectML & ONNX Runtime DLLs (torch_directml, onnxruntime/capi)
+        for sub in ("torch_directml", "onnxruntime/capi"):
+            cand = root_path / sub
+            if cand.is_dir():
+                cand_str = str(cand.resolve())
+                if cand_str not in seen_dirs:
+                    seen_dirs.add(cand_str)
+                    try:
+                        if hasattr(os, "add_dll_directory"):
+                            os.add_dll_directory(cand_str)
+                        current_path = os.environ.get("PATH", "")
+                        if cand_str not in current_path:
+                            os.environ["PATH"] = cand_str + os.pathsep + current_path
+                        logger.debug(f"Added DirectML/ONNX DLL directory: {cand_str}")
+                    except Exception as e:
+                        logger.debug(f"Failed adding DLL dir {cand_str}: {e}")
 
 
 class LocalWhisperEngine(BaseSTTEngine):

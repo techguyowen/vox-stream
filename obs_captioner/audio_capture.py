@@ -3,7 +3,9 @@
 import asyncio
 import logging
 import math
+import os
 import queue
+import sys
 import threading
 import time
 from typing import AsyncGenerator, Callable, Dict, List, Optional, Tuple
@@ -23,6 +25,20 @@ from .config import AudioConfig
 logger = logging.getLogger("obs_captioner.audio")
 
 
+def _hostapi_priority(hostapi_name: str) -> int:
+    """Prioritize audio host APIs: WASAPI (lowest latency) > DirectSound > MME > WDM-KS."""
+    h = (hostapi_name or "").upper()
+    if "WASAPI" in h:
+        return 4
+    if "DIRECTSOUND" in h:
+        return 3
+    if "MME" in h:
+        return 2
+    if "WDM" in h or "KS" in h:
+        return 1
+    return 0
+
+
 def list_audio_devices() -> List[Dict]:
     """Query and return all available audio input devices."""
     if sd is None:
@@ -36,26 +52,16 @@ def list_audio_devices() -> List[Dict]:
         for idx, dev in enumerate(device_list):
             api_name = hostapis[dev["hostapi"]]["name"] if dev.get("hostapi") < len(hostapis) else "Unknown"
             
-            # 1. Standard Input Devices (Microphones, Line-in, Virtual Cables)
+            # Standard Input Devices (Microphones, Line-in, Virtual Cables, Stereo Mix)
             if dev.get("max_input_channels", 0) > 0:
+                is_loop = any(k in dev["name"].lower() for k in ("stereo mix", "what u hear", "wave out mix", "loopback", "cable output"))
                 devices.append({
                     "index": idx,
                     "name": dev["name"],
                     "hostapi": api_name,
                     "channels": dev["max_input_channels"],
                     "default_samplerate": dev["default_samplerate"],
-                    "is_loopback": False,
-                })
-            
-            # 2. Windows WASAPI Loopback (Monitors, HDMI Displays, TVs, Speakers)
-            elif "WASAPI" in api_name.upper() and dev.get("max_output_channels", 0) > 0:
-                devices.append({
-                    "index": idx,
-                    "name": f"{dev['name']} [Display/Speaker Loopback]",
-                    "hostapi": api_name,
-                    "channels": dev["max_output_channels"],
-                    "default_samplerate": dev["default_samplerate"],
-                    "is_loopback": True,
+                    "is_loopback": is_loop,
                 })
     except Exception as e:
         logger.error(f"Error querying audio devices: {e}")
@@ -96,8 +102,8 @@ def find_audio_device(config: AudioConfig, wait_settle: bool = True) -> Tuple[Op
             if query and query != "default":
                 matches = [d for d in devices if query in d["name"].lower()]
                 if matches:
-                    wasapi_matches = [d for d in matches if "wasapi" in d["hostapi"].lower()]
-                    selected = wasapi_matches[0] if wasapi_matches else matches[0]
+                    matches.sort(key=lambda d: _hostapi_priority(d.get("hostapi", "")), reverse=True)
+                    selected = matches[0]
                     if attempts > 1:
                         logger.info(
                             f"✅ Audio device '{selected['name']}' ready after {time.monotonic() - start_time:.1f}s settle delay."
@@ -118,7 +124,19 @@ def find_audio_device(config: AudioConfig, wait_settle: bool = True) -> Tuple[Op
             f"not found after {settle_sec:.1f}s boot settle window. Falling back to system default input."
         )
 
-    # 3. Default input device
+    # 3. Default input device (prioritize modern low-latency WASAPI on Windows)
+    if sys.platform == "win32":
+        try:
+            for h in sd.query_hostapis():
+                if "WASAPI" in h.get("name", "").upper():
+                    w_def = h.get("default_input_device", -1)
+                    if w_def is not None and w_def >= 0:
+                        for d in devices:
+                            if d["index"] == w_def:
+                                return d["index"], d
+        except Exception:
+            pass
+
     try:
         default_idx = sd.default.device[0]
         if default_idx is not None and default_idx >= 0:
@@ -128,7 +146,8 @@ def find_audio_device(config: AudioConfig, wait_settle: bool = True) -> Tuple[Op
     except Exception:
         pass
 
-    return devices[0]["index"], devices[0]
+    devices_sorted = sorted(devices, key=lambda d: _hostapi_priority(d.get("hostapi", "")), reverse=True)
+    return devices_sorted[0]["index"], devices_sorted[0]
 
 
 async def find_audio_device_async(config: AudioConfig, wait_settle: bool = True) -> Tuple[Optional[int], Optional[Dict]]:
@@ -165,8 +184,8 @@ async def find_audio_device_async(config: AudioConfig, wait_settle: bool = True)
             if query and query != "default":
                 matches = [d for d in devices if query in d["name"].lower()]
                 if matches:
-                    wasapi_matches = [d for d in matches if "wasapi" in d["hostapi"].lower()]
-                    selected = wasapi_matches[0] if wasapi_matches else matches[0]
+                    matches.sort(key=lambda d: _hostapi_priority(d.get("hostapi", "")), reverse=True)
+                    selected = matches[0]
                     if attempts > 1:
                         logger.info(
                             f"✅ Audio device '{selected['name']}' ready after {time.monotonic() - start_time:.1f}s settle delay."
@@ -187,7 +206,19 @@ async def find_audio_device_async(config: AudioConfig, wait_settle: bool = True)
             f"not found after {settle_sec:.1f}s boot settle window. Falling back to system default input."
         )
 
-    # 3. Default input device
+    # 3. Default input device (prioritize modern low-latency WASAPI on Windows)
+    if sys.platform == "win32":
+        try:
+            for h in sd.query_hostapis():
+                if "WASAPI" in h.get("name", "").upper():
+                    w_def = h.get("default_input_device", -1)
+                    if w_def is not None and w_def >= 0:
+                        for d in devices:
+                            if d["index"] == w_def:
+                                return d["index"], d
+        except Exception:
+            pass
+
     try:
         default_idx = sd.default.device[0]
         if default_idx is not None and default_idx >= 0:
@@ -197,7 +228,8 @@ async def find_audio_device_async(config: AudioConfig, wait_settle: bool = True)
     except Exception:
         pass
 
-    return devices[0]["index"], devices[0]
+    devices_sorted = sorted(devices, key=lambda d: _hostapi_priority(d.get("hostapi", "")), reverse=True)
+    return devices_sorted[0]["index"], devices_sorted[0]
 
 
 class AudioCapture:
@@ -317,13 +349,14 @@ class AudioCapture:
         max_in = int(self.device_info.get("channels", 1)) if self.device_info else 1
 
         extra_settings = None
-        if is_loopback:
+        if "WASAPI" in dev_api.upper():
             try:
                 if hasattr(sd, "WasapiSettings"):
-                    extra_settings = sd.WasapiSettings(loopback=True)
-                    logger.info(f"🔊 WASAPI Loopback active: capturing audio playing to '{dev_name}' ({max_in}ch @ {native_rate}Hz)")
+                    extra_settings = sd.WasapiSettings(auto_convert=True)
+                    if is_loopback:
+                        logger.info(f"🔊 WASAPI Loopback/Stereo Mix active: capturing on '{dev_name}' ({max_in}ch @ {native_rate}Hz)")
             except Exception as we:
-                logger.debug(f"WASAPI loopback settings exception: {we}")
+                logger.debug(f"WASAPI auto_convert settings exception: {we}")
 
         # Tiered attempts:
         # Tier 1: 16kHz Mono int16 (Standard / lowest overhead)

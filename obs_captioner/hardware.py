@@ -176,7 +176,8 @@ def get_available_gpus(force_refresh: bool = False) -> List[Dict[str, Any]]:
                     "-Command",
                     "Get-CimInstance Win32_VideoController | Select-Object -Property Name, AdapterRAM | ConvertTo-Json",
                 ]
-                res = subprocess.run(cmd, capture_output=True, text=True, timeout=2.5)
+                creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=2.5, creationflags=creationflags)
                 if res.returncode == 0 and res.stdout.strip():
                     data = json.loads(res.stdout.strip())
                     items = data if isinstance(data, list) else [data]

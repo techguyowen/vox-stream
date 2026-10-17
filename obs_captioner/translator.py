@@ -169,6 +169,12 @@ class SubtitleTranslator:
         except Exception:
             return None
 
+    def _evict_cache_if_needed(self) -> None:
+        """Evict oldest ~10% of cache items when cache size exceeds 3000."""
+        if len(self._cache) > 3000:
+            for old_key in list(self._cache.keys())[:300]:
+                self._cache.pop(old_key, None)
+
     async def translate_to_language(
         self, text: str, target_lang: str, source_lang: str = "auto", provider_override: Optional[str] = None
     ) -> str:
@@ -197,6 +203,7 @@ class SubtitleTranslator:
             cached_disk = await asyncio.to_thread(self.disk_cache.get, cache_key)
             if cached_disk:
                 self._cache[cache_key] = cached_disk
+                self._evict_cache_if_needed()
                 return cached_disk
 
         translated = None
@@ -237,10 +244,7 @@ class SubtitleTranslator:
                     source_lang=source_lang,
                     target_lang=resolved_target,
                 )
-            if len(self._cache) > 3000:
-                # Evict oldest ~10% (dicts keep insertion order) instead of wiping everything
-                for old_key in list(self._cache.keys())[:300]:
-                    self._cache.pop(old_key, None)
+            self._evict_cache_if_needed()
             return translated
 
         return clean_text

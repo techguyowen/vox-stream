@@ -147,13 +147,19 @@ def get_tray_icon_image(size: Optional[int] = None) -> Optional["Image.Image"]:
     if not HAS_PYSTRAY:
         return None
 
-    static_dir = Path(__file__).parent / "web" / "static"
-    candidates = [
-        static_dir / "favicon-48x48.png",
-        static_dir / "favicon-32x32.png",
-        static_dir / "apple-touch-icon.png",
-        static_dir / "favicon.ico",
-    ]
+    static_dirs = [Path(__file__).parent / "web" / "static"]
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        static_dirs.insert(0, Path(meipass) / "obs_captioner" / "web" / "static")
+
+    candidates = []
+    for s_dir in static_dirs:
+        candidates.extend([
+            s_dir / "favicon-48x48.png",
+            s_dir / "favicon-32x32.png",
+            s_dir / "apple-touch-icon.png",
+            s_dir / "favicon.ico",
+        ])
 
     img: Optional["Image.Image"] = None
     for candidate in candidates:

@@ -161,7 +161,7 @@ def download_caddy() -> Tuple[bool, str]:
             data = json.loads(resp.read().decode("utf-8"))
             for asset in data.get("assets", []):
                 name = asset.get("name", "")
-                if f"_{os_str}_{arch}.{ext}" in name and not name.endswith(".sig") and not name.endswith(".pem"):
+                if name.endswith(f"_{os_str}_{arch}.{ext}"):
                     download_url = asset.get("browser_download_url")
                     asset_name = name
                     break
@@ -184,16 +184,39 @@ def download_caddy() -> Tuple[bool, str]:
         with urllib.request.urlopen(req, timeout=45) as resp, open(archive_path, "wb") as out_file:
             shutil.copyfileobj(resp, out_file)
 
-        # Extract binary
-        if asset_name.endswith(".zip"):
-            with zipfile.ZipFile(archive_path, "r") as zf:
-                zf.extract(exe_name, path=bin_dir)
-        elif asset_name.endswith(".tar.gz"):
-            with tarfile.open(archive_path, "r:gz") as tf:
+        # Stop Caddy prior to extracting to avoid Windows file-locking conflicts
+        if target_path.is_file():
+            try:
+                stop_caddy()
+            except Exception:
+                pass
+
+        # Extract binary with Windows file locking resilience
+        try:
+            if asset_name.endswith(".zip"):
+                with zipfile.ZipFile(archive_path, "r") as zf:
+                    zf.extract(exe_name, path=bin_dir)
+            elif asset_name.endswith(".tar.gz"):
+                with tarfile.open(archive_path, "r:gz") as tf:
+                    try:
+                        tf.extract(exe_name, path=bin_dir, filter="data")
+                    except TypeError:
+                        tf.extract(exe_name, path=bin_dir)
+        except (PermissionError, OSError) as extract_err:
+            if sys.platform == "win32" and target_path.is_file():
+                bak = target_path.with_name(f"{target_path.name}.old_{int(time.time())}")
                 try:
-                    tf.extract(exe_name, path=bin_dir, filter="data")
-                except TypeError:
-                    tf.extract(exe_name, path=bin_dir)
+                    target_path.rename(bak)
+                    if asset_name.endswith(".zip"):
+                        with zipfile.ZipFile(archive_path, "r") as zf:
+                            zf.extract(exe_name, path=bin_dir)
+                    elif asset_name.endswith(".tar.gz"):
+                        with tarfile.open(archive_path, "r:gz") as tf:
+                            tf.extract(exe_name, path=bin_dir)
+                except Exception:
+                    raise extract_err
+            else:
+                raise extract_err
 
         # Ensure executable permissions
         target_path.chmod(0o755)
@@ -259,7 +282,15 @@ def trust_caddy_ca() -> Tuple[bool, str]:
     elif system == "windows":
         cmd = ["certutil", "-addstore", "-user", "Root", str(ca_crt)]
         try:
-            res = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
+            creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+            res = subprocess.run(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                creationflags=creationflags,
+            )
             if res.returncode == 0:
                 logger.info("Caddy local Root CA installed into Windows User Root store.")
                 return True, "Caddy Root CA trusted successfully in Windows Certificate Store"
@@ -270,12 +301,14 @@ def trust_caddy_ca() -> Tuple[bool, str]:
     caddy_bin = find_caddy_binary()
     if caddy_bin:
         try:
+            creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
             res = subprocess.run(
                 [str(caddy_bin), "trust"],
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
                 timeout=10,
+                creationflags=creationflags,
             )
             if res.returncode == 0:
                 return True, "Caddy Root CA trusted successfully"
@@ -304,8 +337,16 @@ def start_caddy(config_file: Optional[str] = None) -> Tuple[bool, str]:
     try:
         logger.info(f"Starting Caddy with configuration: {caddyfile}")
         cmd = [str(caddy_bin), "start", "--config", str(caddyfile)]
+        creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         with open(log_file, "a") as out:
-            res = subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=out, stderr=out, timeout=10)
+            res = subprocess.run(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                stdout=out,
+                stderr=out,
+                timeout=10,
+                creationflags=creationflags,
+            )
         if res.returncode == 0:
             logger.info("Caddy reverse proxy started successfully.")
             return True, "Caddy started successfully"
@@ -332,7 +373,15 @@ def stop_caddy() -> Tuple[bool, str]:
     try:
         logger.info("Stopping Caddy reverse proxy...")
         cmd = [str(caddy_bin), "stop"]
-        res = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=10)
+        creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        res = subprocess.run(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            creationflags=creationflags,
+        )
         if res.returncode == 0:
             logger.info("Caddy stopped successfully.")
             return True, "Caddy stopped successfully"

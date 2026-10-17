@@ -206,6 +206,12 @@ class NLLBTranslator:
                 return False
 
             try:
+                if os.name == "nt":
+                    try:
+                        from .local_whisper import _setup_windows_cuda_dlls
+                        _setup_windows_cuda_dlls()
+                    except Exception:
+                        pass
                 import ctranslate2
                 logger.info(f"Loading Meta NLLB-200 from {model_path} (device={self.device}, compute_type={self.compute_type})...")
                 self._translator = ctranslate2.Translator(

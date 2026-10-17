@@ -94,12 +94,14 @@ class UpdateManager:
         git_cmd = self.get_git_cmd()
         if self.is_git_repo() and git_cmd:
             try:
+                creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
                 res = subprocess.run(
                     [git_cmd, "rev-parse", "--short", "HEAD"],
                     cwd=str(self.app_root),
                     capture_output=True,
                     text=True,
                     timeout=5,
+                    creationflags=creationflags,
                 )
                 if res.returncode == 0 and res.stdout.strip():
                     return res.stdout.strip()
@@ -112,12 +114,14 @@ class UpdateManager:
         git_cmd = self.get_git_cmd()
         if self.is_git_repo() and git_cmd:
             try:
+                creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
                 res = subprocess.run(
                     [git_cmd, "rev-parse", "HEAD"],
                     cwd=str(self.app_root),
                     capture_output=True,
                     text=True,
                     timeout=5,
+                    creationflags=creationflags,
                 )
                 if res.returncode == 0 and res.stdout.strip():
                     return res.stdout.strip()
@@ -203,12 +207,14 @@ class UpdateManager:
         git_cmd = self.get_git_cmd()
         if is_git and git_cmd:
             try:
+                creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
                 res = subprocess.run(
                     [git_cmd, "ls-remote", "origin", f"refs/heads/{GITHUB_BRANCH}"],
                     cwd=str(self.app_root),
                     capture_output=True,
                     text=True,
                     timeout=8,
+                    creationflags=creationflags,
                 )
                 if res.returncode == 0 and res.stdout.strip():
                     remote_full = res.stdout.strip().split()[0]
@@ -261,12 +267,14 @@ class UpdateManager:
             git_cmd = self.get_git_cmd()
             if git_cmd:
                 try:
+                    creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
                     chk = subprocess.run(
                         [git_cmd, "merge-base", "--is-ancestor", latest_sha, "HEAD"],
                         cwd=str(self.app_root),
                         capture_output=True,
                         text=True,
                         timeout=5,
+                        creationflags=creationflags,
                     )
                     if chk.returncode == 0:
                         is_ancestor = True

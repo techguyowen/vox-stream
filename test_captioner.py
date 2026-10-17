@@ -3477,7 +3477,7 @@ class TestHardwareAndMemoryManagement(unittest.IsolatedAsyncioTestCase):
                     break
 
         task = asyncio.create_task(_test_watchdog())
-        await asyncio.sleep(0.03)
+        await asyncio.sleep(0.1)
         shutdown_event.set()
         task.cancel()
         try:

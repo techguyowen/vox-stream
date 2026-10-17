@@ -2802,6 +2802,11 @@
             if (typeof updateCustomPreview === "function") updateCustomPreview();
         }
 
+        function applyBionicReading(enabled) {
+            return applyDisplayBionicMode(enabled);
+        }
+        window.applyBionicReading = applyBionicReading;
+
         try {
             const savedBionic = localStorage.getItem("voxstream_display_bionic") === "true";
             if (savedBionic) applyDisplayBionicMode(true);
@@ -3335,7 +3340,12 @@
             if (currentMode === 'live' && !forceSync) return;
             try {
                 const langParam = (currentLang && currentLang !== 'en') ? `&lang=${encodeURIComponent(currentLang)}` : '';
-                const res = await fetch(`/api/transcript/history?limit=100${langParam}`);
+                // Pull recent history or catch up since last seen on reconnect (/api/history?since=)
+                const sinceParam = forceSync ? `&since=${lastFinalUtteranceId || lastSeenSeq || 0}` : '';
+                let res = await fetch(`/api/history?since=${lastFinalUtteranceId || 0}${langParam}`);
+                if (!res.ok) {
+                    res = await fetch(`/api/transcript/history?limit=100${langParam}`);
+                }
                 if (res.ok) {
                     const data = await res.json();
                     if (data.history && data.history.length > 0) {

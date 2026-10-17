@@ -41,7 +41,8 @@ def check_firewall_rule(rule_name: str = DEFAULT_RULE_NAME, port: int = DEFAULT_
 
     try:
         cmd = ["netsh", "advfirewall", "firewall", "show", "rule", f"name={rule_name}"]
-        proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        proc = subprocess.run(cmd, capture_output=True, text=True, check=False, creationflags=creationflags)
         if proc.returncode == 0:
             out = proc.stdout.lower()
             if "enabled:" in out and "yes" in out:
@@ -72,9 +73,10 @@ def add_firewall_rule(
         f'name="{rule_name}" dir=in action=allow protocol=TCP localport={port} profile=any description="Allows inbound connections to VoxStream overlay, stage display, and control dashboard"'
     )
 
+    creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
     if is_admin():
         try:
-            res = subprocess.run(netsh_cmd, shell=True, capture_output=True, text=True)
+            res = subprocess.run(netsh_cmd, shell=True, capture_output=True, text=True, creationflags=creationflags)
             if res.returncode == 0 or "ok." in res.stdout.lower():
                 return True, f"Successfully created firewall rule '{rule_name}' for TCP port {port}."
             return False, f"netsh returned code {res.returncode}: {res.stderr or res.stdout}"
@@ -84,12 +86,17 @@ def add_firewall_rule(
     if not elevate_if_needed:
         return False, "Administrator privileges required to add firewall rules."
 
-    # Request UAC elevation via PowerShell Start-Process
+    # Request UAC elevation via PowerShell Start-Process (window hidden)
     ps_cmd = (
-        f"Start-Process cmd.exe -ArgumentList '/c \"{netsh_cmd}\"' -Verb RunAs -Wait"
+        f"Start-Process cmd.exe -ArgumentList '/c \"{netsh_cmd}\"' -WindowStyle Hidden -Verb RunAs -Wait"
     )
     try:
-        proc = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True)
+        proc = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", ps_cmd],
+            capture_output=True,
+            text=True,
+            creationflags=creationflags,
+        )
         if proc.returncode == 0:
             if check_firewall_rule(rule_name, port):
                 return True, f"Elevated firewall configuration succeeded for TCP port {port}."
@@ -112,9 +119,10 @@ def remove_firewall_rule(
 
     del_cmd = f'netsh advfirewall firewall delete rule name="{rule_name}"'
 
+    creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
     if is_admin():
         try:
-            res = subprocess.run(del_cmd, shell=True, capture_output=True, text=True)
+            res = subprocess.run(del_cmd, shell=True, capture_output=True, text=True, creationflags=creationflags)
             if res.returncode == 0:
                 return True, f"Successfully removed firewall rule '{rule_name}'."
             return False, f"netsh delete returned code {res.returncode}: {res.stderr or res.stdout}"
@@ -124,9 +132,14 @@ def remove_firewall_rule(
     if not elevate_if_needed:
         return False, "Administrator privileges required to remove firewall rules."
 
-    ps_cmd = f"Start-Process cmd.exe -ArgumentList '/c \"{del_cmd}\"' -Verb RunAs -Wait"
+    ps_cmd = f"Start-Process cmd.exe -ArgumentList '/c \"{del_cmd}\"' -WindowStyle Hidden -Verb RunAs -Wait"
     try:
-        proc = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True)
+        proc = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", ps_cmd],
+            capture_output=True,
+            text=True,
+            creationflags=creationflags,
+        )
         if proc.returncode == 0:
             return True, f"Firewall rule '{rule_name}' deleted."
         return False, f"Elevation request cancelled or failed (code {proc.returncode})."

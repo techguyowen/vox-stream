@@ -83,12 +83,23 @@ def find_python_executable(root_dir: Optional[Path] = None) -> str:
             if found:
                 return found
 
+        if sys.platform == "win32":
+            local_app_data = os.environ.get("LOCALAPPDATA")
+            if local_app_data:
+                for py_cand in (
+                    Path(local_app_data) / "Programs" / "Python" / "Python311" / "python.exe",
+                    Path(local_app_data) / "Programs" / "Python" / "Python312" / "python.exe",
+                    Path(local_app_data) / "Programs" / "Python" / "Python310" / "python.exe",
+                ):
+                    if py_cand.is_file():
+                        return str(py_cand)
+
     # Fallback to current running interpreter
     return sys.executable
 
 
 def create_windows_shortcuts(root_dir: Optional[Path] = None) -> Dict[str, Any]:
-    """Create Windows Desktop and Start Menu shortcuts pointing to VoxStream.vbs.
+    """Create Windows Desktop and Start Menu shortcuts pointing to VoxStream.vbs or VoxStream.exe.
     
     This enables zero-console execution and allows pinning to the Windows Taskbar.
     """
@@ -98,11 +109,30 @@ def create_windows_shortcuts(root_dir: Optional[Path] = None) -> Dict[str, Any]:
     if root_dir is None:
         root_dir = get_project_root()
 
+    exe_path = root_dir / "VoxStream.exe"
     vbs_path = root_dir / "VoxStream.vbs"
     ico_path = root_dir / "obs_captioner" / "web" / "static" / "favicon.ico"
 
-    if not vbs_path.is_file():
-        return {"success": False, "error": f"Launcher script not found: {vbs_path}"}
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass and not ico_path.is_file():
+        cand = Path(meipass) / "obs_captioner" / "web" / "static" / "favicon.ico"
+        if cand.is_file():
+            ico_path = cand
+
+    if getattr(sys, "frozen", False) and Path(sys.executable).is_file():
+        target_path = str(Path(sys.executable).resolve())
+        target_args = ""
+        icon_loc = f"{target_path}, 0"
+    elif exe_path.is_file():
+        target_path = str(exe_path.resolve())
+        target_args = ""
+        icon_loc = f"{target_path}, 0"
+    elif vbs_path.is_file():
+        target_path = "wscript.exe"
+        target_args = f'"{str(vbs_path)}"'
+        icon_loc = f"{str(ico_path)}, 0" if ico_path.is_file() else "wscript.exe, 0"
+    else:
+        return {"success": False, "error": f"Neither VoxStream.exe nor VoxStream.vbs found in {root_dir}"}
 
     ps_script = f"""
 $WshShell = New-Object -ComObject WScript.Shell
@@ -110,10 +140,10 @@ $WshShell = New-Object -ComObject WScript.Shell
 # 1. Desktop Shortcut
 $Desktop = [System.Environment]::GetFolderPath('Desktop')
 $DesktopShortcut = $WshShell.CreateShortcut("$Desktop\\VoxStream.lnk")
-$DesktopShortcut.TargetPath = "wscript.exe"
-$DesktopShortcut.Arguments = "`"{str(vbs_path)}`""
+$DesktopShortcut.TargetPath = "{target_path}"
+$DesktopShortcut.Arguments = '{target_args}'
 $DesktopShortcut.WorkingDirectory = "{str(root_dir)}"
-$DesktopShortcut.IconLocation = "{str(ico_path)}, 0"
+$DesktopShortcut.IconLocation = "{icon_loc}"
 $DesktopShortcut.Description = "VoxStream Live Captioner Control Center"
 $DesktopShortcut.Save()
 
@@ -124,22 +154,56 @@ if (!(Test-Path $StartDir)) {{
     New-Item -ItemType Directory -Path $StartDir -Force | Out-Null
 }}
 $StartShortcut = $WshShell.CreateShortcut("$StartDir\\VoxStream.lnk")
-$StartShortcut.TargetPath = "wscript.exe"
-$StartShortcut.Arguments = "`"{str(vbs_path)}`""
+$StartShortcut.TargetPath = "{target_path}"
+$StartShortcut.Arguments = '{target_args}'
 $StartShortcut.WorkingDirectory = "{str(root_dir)}"
-$StartShortcut.IconLocation = "{str(ico_path)}, 0"
+$StartShortcut.IconLocation = "{icon_loc}"
 $StartShortcut.Description = "VoxStream Live Captioner Control Center"
 $StartShortcut.Save()
 """
     try:
+        creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
         res = subprocess.run(
             ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
             capture_output=True,
             text=True,
             timeout=10,
+            creationflags=creationflags,
         )
         if res.returncode == 0:
             return {"success": True, "message": "Shortcuts created on Desktop and in Start Menu!"}
+        return {"success": False, "error": res.stderr or res.stdout}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def remove_windows_shortcuts(root_dir: Optional[Path] = None) -> Dict[str, Any]:
+    """Remove Windows Desktop and Start Menu shortcuts created for VoxStream."""
+    if sys.platform != "win32":
+        return {"success": False, "error": "Shortcuts can only be removed on Windows."}
+
+    ps_script = """
+$Desktop = [System.Environment]::GetFolderPath('Desktop')
+$lnk1 = Join-Path $Desktop 'VoxStream.lnk'
+$lnk2 = Join-Path $Desktop 'VoxStream Live Captioner.lnk'
+if (Test-Path $lnk1) { Remove-Item -Force $lnk1 }
+if (Test-Path $lnk2) { Remove-Item -Force $lnk2 }
+
+$Programs = [System.Environment]::GetFolderPath('Programs')
+$StartDir = Join-Path $Programs 'VoxStream'
+if (Test-Path $StartDir) { Remove-Item -Recurse -Force $StartDir }
+"""
+    try:
+        creationflags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+        res = subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_script],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            creationflags=creationflags,
+        )
+        if res.returncode == 0:
+            return {"success": True, "message": "Shortcuts removed from Desktop and Start Menu."}
         return {"success": False, "error": res.stderr or res.stdout}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -230,6 +294,8 @@ class BackendProcessManager:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 bufsize=1,
                 creationflags=creationflags,
             )
@@ -284,8 +350,19 @@ class BackendProcessManager:
 
         # Wait for exit
         t_start = time.time()
-        while self.is_running and (time.time() - t_start < timeout_sec):
-            time.sleep(0.2)
+        if was_attached:
+            while time.time() - t_start < timeout_sec:
+                try:
+                    req = urllib.request.Request("http://127.0.0.1:8765/api/status")
+                    with urllib.request.urlopen(req, timeout=0.5) as resp:
+                        if resp.status == 200:
+                            time.sleep(0.2)
+                            continue
+                except Exception:
+                    break
+        else:
+            while self.is_running and (time.time() - t_start < timeout_sec):
+                time.sleep(0.2)
 
         # Force terminate if still running
         if self.is_running and self.process:
@@ -376,6 +453,7 @@ class VoxStreamLauncherGUI:
 
         self.log_queue = queue.Queue()
         self._status_queue: queue.Queue = queue.Queue()
+        self._lifecycle_queue: queue.Queue = queue.Queue()
         self._status_fetch_inflight = False
         self.last_status_data: Dict[str, Any] = {}
         self.is_paused = False
@@ -423,6 +501,15 @@ class VoxStreamLauncherGUI:
         # Window Icon
         ico_file = self.root_dir / "obs_captioner" / "web" / "static" / "favicon.ico"
         png_file = self.root_dir / "obs_captioner" / "web" / "static" / "favicon-32x32.png"
+
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            cand_ico = Path(meipass) / "obs_captioner" / "web" / "static" / "favicon.ico"
+            if cand_ico.is_file():
+                ico_file = cand_ico
+            cand_png = Path(meipass) / "obs_captioner" / "web" / "static" / "favicon-32x32.png"
+            if cand_png.is_file():
+                png_file = cand_png
 
         if sys.platform == "win32" and ico_file.is_file():
             try:
@@ -824,7 +911,14 @@ class VoxStreamLauncherGUI:
         self.log_queue.put(line)
 
     def _drain_logs(self):
-        """Drain queued log lines and append to Text widget without blocking GUI."""
+        """Drain queued lifecycle updates and log lines on the UI thread."""
+        try:
+            while not self._lifecycle_queue.empty():
+                state = self._lifecycle_queue.get_nowait()
+                self._update_ui_state(state)
+        except Exception:
+            pass
+
         lines = []
         try:
             while not self.log_queue.empty():
@@ -840,8 +934,11 @@ class VoxStreamLauncherGUI:
         self.root.after(100, self._drain_logs)
 
     def _on_backend_status_change(self, state: str):
-        """Callback from backend manager when process lifecycle changes."""
-        self.root.after(0, lambda: self._update_ui_state(state))
+        """Callback from backend manager when process lifecycle changes.
+        
+        Enqueues state for thread-safe UI update on the Tk main thread.
+        """
+        self._lifecycle_queue.put(state)
 
     def _update_ui_state(self, state: str):
         """Update buttons and badges based on process state."""
@@ -996,6 +1093,7 @@ def main():
     parser.add_argument("--no-autostart", action="store_true", help="Do not start backend automatically on launcher open")
     parser.add_argument("--minimized", action="store_true", help="Start launcher minimized to system tray")
     parser.add_argument("--create-shortcuts", action="store_true", help="Generate Windows Desktop and Start Menu shortcuts and exit")
+    parser.add_argument("--remove-shortcuts", action="store_true", help="Remove Windows Desktop and Start Menu shortcuts and exit")
     args = parser.parse_args()
 
     if args.create_shortcuts:
@@ -1005,6 +1103,15 @@ def main():
             sys.exit(0)
         else:
             print(f"❌ Error creating shortcuts: {res.get('error')}")
+            sys.exit(1)
+
+    if args.remove_shortcuts:
+        res = remove_windows_shortcuts()
+        if res.get("success"):
+            print("✅ Windows shortcuts successfully removed from Desktop and Start Menu!")
+            sys.exit(0)
+        else:
+            print(f"❌ Error removing shortcuts: {res.get('error')}")
             sys.exit(1)
 
     if not HAS_TKINTER:

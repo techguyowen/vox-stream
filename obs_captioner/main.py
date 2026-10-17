@@ -19,6 +19,13 @@ if __name__ == "__main__" and not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     __package__ = "obs_captioner"
 
+if sys.platform == "win32":
+    try:
+        from .engines.local_whisper import _setup_windows_cuda_dlls
+        _setup_windows_cuda_dlls()
+    except Exception:
+        pass
+
 from .config import load_config, get_config_path, AppConfig
 from .audio_capture import AudioCapture, list_audio_devices
 from .engines import create_engine

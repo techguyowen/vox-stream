@@ -319,6 +319,7 @@ class WebOverlayServer:
         
         # Transcript, Chapters, Summary, Translation & Export
         self.app.router.add_get("/api/transcript/history", self._handle_get_history)
+        self.app.router.add_get("/api/history", self._handle_get_history)
         self.app.router.add_post("/api/transcript/clear", self._handle_clear_history)
         self.app.router.add_post("/api/history/clear", self._handle_clear_history)
         self.app.router.add_get("/api/transcript/stats", self._handle_get_transcript_stats)
@@ -1706,6 +1707,13 @@ class WebOverlayServer:
         except ValueError:
             limit = 100
         entries = self.history.get_history(limit=limit, search=search)
+        since_param = request.query.get("since")
+        if since_param is not None:
+            try:
+                since_val = float(since_param)
+                entries = [e for e in entries if e.get("id", 0) > since_val or e.get("timestamp", 0) > since_val]
+            except ValueError:
+                pass
         lang = sanitize_text(request.query.get("lang", "")).strip().lower()
         if lang and lang not in ("en", "original", "none", "") and self.translator:
             async def _translate_entry(entry: dict) -> dict:
@@ -2421,6 +2429,9 @@ class WebOverlayServer:
                                     t = line.get("text", "")
                                     if not t:
                                         return line
+                                    target_cfg_lang = getattr(getattr(self.config, "translation", None), "target_language", "")
+                                    if lang == target_cfg_lang and line.get("translated_text"):
+                                        return {**line, "text": line["translated_text"]}
                                     try:
                                         t_text = await self.translator.translate_to_language(t, target_lang=lang)
                                         return {**line, "text": t_text}
@@ -2571,7 +2582,9 @@ class WebOverlayServer:
                     target_cfg_lang = getattr(getattr(self.config, "translation", None), "target_language", "")
                     if lang == target_cfg_lang and payload.get("translated_text"):
                         return payload["translated_text"]
-                    if self._caption_translate_seq > my_seq and (time.monotonic() - queued_at) > 3.0:
+                    if (self._caption_translate_seq - my_seq >= 5) or (
+                        self._caption_translate_seq > my_seq and (time.monotonic() - queued_at) > 3.0
+                    ):
                         return raw_text
                     try:
                         return await asyncio.wait_for(
@@ -2618,22 +2631,16 @@ class WebOverlayServer:
         if not self.caption_sockets or not audio_bytes:
             return
         target = target_lang or getattr(getattr(self.config, "translation", None), "target_language", "es") or "es"
-        # First preference: non-English display clients whose lang matches target
+        # First preference: non-English display clients whose lang strictly matches target
         matching_sockets = [
             ws for ws, lang in self.caption_sockets.items()
             if lang == target and lang not in ("en", "original", "none", "") and self.socket_roles.get(ws) == "display"
         ]
         if not matching_sockets:
-            # Second preference: any non-English display clients connected
+            # Second preference: any client whose lang strictly matches target
             matching_sockets = [
                 ws for ws, lang in self.caption_sockets.items()
-                if lang not in ("en", "original", "none", "") and self.socket_roles.get(ws) == "display"
-            ]
-        if not matching_sockets:
-            # Third preference: any non-English socket
-            matching_sockets = [
-                ws for ws, lang in self.caption_sockets.items()
-                if lang not in ("en", "original", "none", "")
+                if lang == target and lang not in ("en", "original", "none", "")
             ]
         if not matching_sockets:
             return
@@ -2984,7 +2991,7 @@ class WebOverlayServer:
         """Return the ProPresenter/Proclaim client, lazily instantiating a fallback."""
         if self.propresenter_client is None:
             try:
-                from ..presenter import ProPresenterClient, ProPresenterConfig
+                from ..propresenter import ProPresenterClient, ProPresenterConfig
                 cfg = getattr(self.config, "propresenter", None) or ProPresenterConfig()
                 self.propresenter_client = ProPresenterClient(cfg)
             except Exception:
@@ -3018,8 +3025,14 @@ class WebOverlayServer:
         except Exception:
             body = {}
         provider = sanitize_text(str(body.get("provider", "propresenter") or "propresenter")).strip().lower() or "propresenter"
-        slide_text = str(body.get("slide_text", "") or "")
-        slide_label = str(body.get("slide_label", "") or body.get("item_type", "") or "")
+        slide_text = str(body.get("slide_text") or body.get("text") or "")
+        slide_label = str(
+            body.get("slide_label")
+            or body.get("label")
+            or body.get("item_type")
+            or body.get("itemType")
+            or ""
+        )
         client = self._get_presenter_client()
         is_lyrics = client.update_slide_state(slide_text, slide_label, source=provider)
         if asyncio.iscoroutine(is_lyrics):
