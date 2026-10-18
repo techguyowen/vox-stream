@@ -6899,9 +6899,8 @@ class TestCumulativeInterimNoDuplication(unittest.IsolatedAsyncioTestCase):
         sink, _ = self._make_sink()
         await sink.handle_transcript(TranscriptEvent(text="Hello world", is_final=True))
         await sink.handle_transcript(TranscriptEvent(text="Hello world today", is_final=True))
-        self.assertEqual(len(sink.history.entries), 2)
-        self.assertEqual(sink.history.entries[0].text, "Hello world.")
-        self.assertEqual(sink.history.entries[1].text, "Hello world today.")
+        self.assertEqual(len(sink.history.entries), 1)
+        self.assertEqual(sink.history.entries[0].text, "Hello world today.")
 
     async def test_genuine_repeat_with_fresh_interim_is_preserved(self):
         # A verbatim repeat preceded by fresh interim hypotheses is genuine
@@ -8575,6 +8574,207 @@ class TestGeminiIncrementalSentenceFinalization(unittest.TestCase):
         self.assertIsNotNone(extended_silence)
         self.assertTrue(extended_silence.is_final)
         self.assertEqual(extended_silence.text, "Because God so loved the world")
+
+
+
+class TestQuoteFormattingConcatenationAndScripture(unittest.IsolatedAsyncioTestCase):
+    """Unit tests for quote formatting, concatenated words, quote echoes, scripture boundaries, and in-place extensions."""
+
+    def test_quotation_mark_formatting_no_double_period(self):
+        from obs_captioner.formatter import TextFormatter
+
+        fmt = TextFormatter(auto_capitalization=True, auto_punctuation=True)
+
+        # 1. Terminal punctuation inside quotes must not receive double period
+        res1 = fmt.format_text('He said, "Give me my share of the estate."', is_final=True)
+        self.assertEqual(res1, 'He said, "Give me my share of the estate."')
+        self.assertNotIn('".', res1)
+        self.assertNotIn('.".', res1)
+
+        res2 = fmt.format_text('He shouted, "Rejoice with me for I have found my sheep!"', is_final=True)
+        self.assertEqual(res2, 'He shouted, "Rejoice with me for I have found my sheep!"')
+        self.assertNotIn('!.', res2)
+
+        # 2. Terminal punctuation needed before closing quotes
+        res3 = fmt.format_text('He said, "give me my share of the estate"', is_final=True)
+        self.assertEqual(res3, 'He said, "give me my share of the estate."')
+
+        # 3. Question inside closing quotes
+        res4 = fmt.format_text('what did he mean by "the estate"', is_final=True)
+        self.assertEqual(res4, 'What did he mean by "the estate?"')
+
+        # 4. Exclamation inside closing quotes
+        res5 = fmt.format_text('wow this is "awesome"', is_final=True)
+        self.assertEqual(res5, 'Wow this is "awesome!"')
+
+    def test_concatenated_words_splitting_and_whitelist(self):
+        from obs_captioner.formatter import TextFormatter, fix_concatenated_words
+
+        fmt = TextFormatter()
+
+        # Concatenated words splitting
+        test_cases = [
+            ("toraise", "to raise"),
+            ("theangels", "the angels"),
+            ("sendlaborers", "send laborers"),
+            ("isrejoicing", "is rejoicing"),
+            ("formy", "for my"),
+            ("givehim", "give him"),
+            ("histhat", "his that"),
+            ("inthe", "in the"),
+            ("ofthe", "of the"),
+            ("tothe", "to the"),
+            ("andthe", "and the"),
+        ]
+        for src, expected in test_cases:
+            self.assertEqual(fix_concatenated_words(src), expected)
+            self.assertEqual(fmt.fix_concatenated_words(src), expected)
+
+        # In-sentence formatting
+        res_sent = fmt.format_text("he came toraise up theangels inthe church formy salvation", is_final=True)
+        self.assertEqual(res_sent, "He came to raise up the angels in the church for my Salvation.")
+
+        # Whitelist - legitimate single words must NEVER be split
+        whitelist_words = [
+            "today", "together", "towards", "forward", "island", "into", "onto", "inside",
+            "often", "history", "formal", "format", "forbid", "forget", "forgive", "forest",
+            "forever", "theme", "theory", "theater", "there", "their", "these", "those",
+            "they", "then", "them", "other", "another", "otherwise",
+            "one", "ones", "only", "once", "too",
+        ]
+        for w in whitelist_words:
+            self.assertEqual(fix_concatenated_words(w), w, f"Whitelisted word was split: {w}")
+            self.assertEqual(fmt.fix_concatenated_words(w), w, f"Whitelisted word was split: {w}")
+
+    def test_single_word_quote_echo_gemini_live(self):
+        from obs_captioner.engines.gemini_live import _split_final_paragraph
+
+        # Trailing dangling quote fragment is discarded when previous quotes are balanced
+        text = 'He said to him, "Give me the portion of goods that falleth to me." And he divided unto them his living and some goods. Estate.\'\"'
+        parts = _split_final_paragraph(text)
+        self.assertEqual(len(parts), 2)
+        self.assertEqual(parts[0], 'He said to him, "Give me the portion of goods that falleth to me."')
+        self.assertEqual(parts[1], 'And he divided unto them his living and some goods.')
+
+        # If previous sentence has an unclosed quote, fragment is stitched to close it
+        unclosed = 'He said to him, "Give me the portion of goods that falleth to me and he divided unto them his living. Estate.\'\"'
+        parts_unclosed = _split_final_paragraph(unclosed)
+        self.assertEqual(len(parts_unclosed), 1)
+        self.assertIn('Estate', parts_unclosed[0])
+
+    async def test_single_word_quote_echo_caption_sink(self):
+        from unittest.mock import AsyncMock, MagicMock
+        from obs_captioner.obs.caption_sink import CaptionSink
+        from obs_captioner.config import AppConfig
+        from obs_captioner.engines.base import TranscriptEvent
+
+        cfg = AppConfig()
+        cfg.overlay.auto_hide_seconds = 0
+        if hasattr(cfg, "bible") and cfg.bible:
+            cfg.bible.enabled = False
+        cfg.translation.enabled = False
+        sink = CaptionSink(cfg)
+        mock_web = MagicMock()
+        mock_web.broadcast_caption = AsyncMock()
+        sink.web_server = mock_web
+
+        # Initial sentence
+        await sink.handle_transcript(TranscriptEvent(text="He divided unto them his living and the estate.", is_final=True))
+        self.assertEqual(len(sink.history.entries), 1)
+
+        # Single-word quote echo matching trailing word must be suppressed
+        await sink.handle_transcript(TranscriptEvent(text="Estate.'\".", is_final=True))
+        self.assertEqual(len(sink.history.entries), 1)
+
+        # Pure punctuation/quote fragment must also be suppressed
+        await sink.handle_transcript(TranscriptEvent(text="'\".", is_final=True))
+        self.assertEqual(len(sink.history.entries), 1)
+
+    async def test_in_place_extension_trailing_word_addition(self):
+        from unittest.mock import AsyncMock, MagicMock
+        from obs_captioner.obs.caption_sink import CaptionSink
+        from obs_captioner.config import AppConfig
+        from obs_captioner.engines.base import TranscriptEvent
+
+        cfg = AppConfig()
+        cfg.overlay.auto_hide_seconds = 0
+        if hasattr(cfg, "bible") and cfg.bible:
+            cfg.bible.enabled = False
+        cfg.translation.enabled = False
+        sink = CaptionSink(cfg)
+        mock_web = MagicMock()
+        mock_web.broadcast_caption = AsyncMock()
+        sink.web_server = mock_web
+
+        # 1. Base sentence
+        await sink.handle_transcript(TranscriptEvent(text="So, go ahead and pray for Nate and Diane.", is_final=True))
+        self.assertEqual(len(sink.history.entries), 1)
+        self.assertIn("Nate and Diane", sink.history.entries[0].text)
+
+        # 2. Extending final arriving within 4.0s replaces previous entry in place
+        await sink.handle_transcript(TranscriptEvent(text="So go ahead and pray for Nate and Diane now.", is_final=True))
+        self.assertEqual(len(sink.history.entries), 1)
+        self.assertIn("Nate and Diane now", sink.history.entries[0].text)
+
+        # Check broadcast payload received replace_last: True
+        last_call_payload = mock_web.broadcast_caption.call_args[0][0]
+        self.assertTrue(last_call_payload.get("replace_last"))
+        self.assertIn("now", last_call_payload.get("text"))
+
+    async def test_scripture_reference_expansion_and_cross_boundary_lookup(self):
+        from obs_captioner.bible_engine import BibleEngine
+        from unittest.mock import AsyncMock, MagicMock
+        from obs_captioner.obs.caption_sink import CaptionSink
+        from obs_captioner.config import AppConfig
+        from obs_captioner.engines.base import TranscriptEvent
+
+        b = BibleEngine()
+
+        # 1. Book aliases
+        self.assertEqual(b.normalize_book_name("Luke's Gospel"), "Luke")
+        self.assertEqual(b.normalize_book_name("Lukes Gospel"), "Luke")
+        self.assertEqual(b.normalize_book_name("Gospel of Luke"), "Luke")
+        self.assertEqual(b.normalize_book_name("Book of Luke"), "Luke")
+        self.assertEqual(b.normalize_book_name("Lukes"), "Luke")
+        self.assertEqual(b.normalize_book_name("Matthew's Gospel"), "Matthew")
+        self.assertEqual(b.normalize_book_name("Mark's Gospel"), "Mark")
+        self.assertEqual(b.normalize_book_name("John's Gospel"), "John")
+        self.assertEqual(b.normalize_book_name("Acts of the Apostles"), "Acts")
+        self.assertEqual(b.normalize_book_name("Book of Romans"), "Romans")
+        self.assertEqual(b.normalize_book_name("Book of Genesis"), "Genesis")
+        self.assertEqual(b.normalize_book_name("Book of Exodus"), "Exodus")
+
+        # 2. Chapter-only contextual lookup
+        b.clear_context()
+        b.recent_book = "Luke"
+        res_chap = b.parse_and_lookup_first("Chapter 15.")
+        self.assertIsNotNone(res_chap)
+        self.assertEqual(res_chap.book, "Luke")
+        self.assertEqual(res_chap.chapter, 15)
+
+        # 3. Cross-sentence boundary scripture lookup in CaptionSink
+        cfg = AppConfig()
+        cfg.bible.enabled = True
+        cfg.bible.display_mode = "auto"
+        sink = CaptionSink(cfg)
+        mock_web = MagicMock()
+        mock_web.broadcast_caption = AsyncMock()
+        mock_web.trigger_scripture_lookup = AsyncMock()
+        mock_web.bible_engine = BibleEngine()
+        sink.web_server = mock_web
+
+        # Sentence 1: Gospel mentioned without chapter
+        await sink.handle_transcript(TranscriptEvent(text="Hear the word of the Lord of Jesus from Luke's Gospel.", is_final=True))
+        self.assertEqual(len(sink.history.entries), 1)
+
+        # Sentence 2: Chapter mentioned alone
+        await sink.handle_transcript(TranscriptEvent(text="Chapter 15.", is_final=True))
+        self.assertEqual(len(sink.history.entries), 2)
+
+        # Verify trigger_scripture_lookup received combined reference
+        last_lookup_call = mock_web.trigger_scripture_lookup.call_args[0][0]
+        self.assertIn("Luke's Gospel", last_lookup_call)
+        self.assertIn("Chapter 15", last_lookup_call)
 
 
 if __name__ == "__main__":

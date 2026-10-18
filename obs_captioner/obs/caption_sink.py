@@ -426,6 +426,139 @@ class CaptionSink:
                     )
                 return
 
+        # Echo suppression for single-word / punctuation fragments matching trailing words of previous final
+        if event.is_final and clean_text and self.history.entries:
+            words = clean_text.split()
+            if len(words) <= 2:
+                norm_w = lambda w: re.sub(r"[^\w]+", "", w).casefold()
+                clean_norm_words = [norm_w(w) for w in words if norm_w(w)]
+                prev_entry = self.history.entries[-1]
+                prev_words = prev_entry.text.split()
+                prev_norm_words = [norm_w(w) for w in prev_words if norm_w(w)]
+                is_echo = False
+                if not clean_norm_words:
+                    # Pure punctuation or quote fragment
+                    is_echo = True
+                elif prev_norm_words and prev_norm_words[-len(clean_norm_words):] == clean_norm_words:
+                    is_echo = True
+
+                if is_echo:
+                    logger.info(f"✓ [FINAL]   [ECHO SUPPRESSED] {clean_text}")
+                    # If previous entry had an unclosed quote and this fragment closes it, seal it
+                    prev_text = prev_entry.text
+                    if (prev_text.count('"') % 2 == 1 or prev_text.count("'") % 2 == 1) and re.search(r'["\'”’]', clean_text):
+                        quote_char = '"' if prev_text.count('"') % 2 == 1 else "'"
+                        prev_entry.text = prev_text.rstrip(".,?!;:… ") + "." + quote_char
+
+                    self._utterance_active = False
+                    self._sentence_start_time = time.time()
+                    if self.web_server:
+                        await self.web_server.broadcast_caption(
+                            self._stamp_payload(
+                                {"text": "", "is_final": False, "is_censored": False, "timestamp": event.timestamp},
+                                utterance_id,
+                            )
+                        )
+                    return
+
+        # In-place extension for trailing word additions (e.g. "So, pray for Nate and Diane." -> "So, pray for Nate and Diane now.")
+        if event.is_final and clean_text and self.history.entries:
+            now = time.time()
+            prev_entry = self.history.entries[-1]
+            dt = now - self._last_final_time
+            if dt <= 4.0:
+                prev_clean_base = re.sub(r"[.,?!;:…\"'”’\s]+$", "", prev_entry.text).casefold()
+                new_clean_base = re.sub(r"[.,?!;:…\"'”’\s]+$", "", clean_text).casefold()
+                is_extension = False
+                if new_clean_base.startswith(prev_clean_base) and len(new_clean_base) > len(prev_clean_base):
+                    is_extension = True
+                else:
+                    norm_w = lambda w: re.sub(r"[^\w]+", "", w).casefold()
+                    prev_norm_words = [norm_w(w) for w in prev_entry.text.split() if norm_w(w)]
+                    new_norm_words = [norm_w(w) for w in clean_text.split() if norm_w(w)]
+                    if prev_norm_words and len(new_norm_words) > len(prev_norm_words):
+                        matches = sum(1 for a, b in zip(prev_norm_words, new_norm_words[:len(prev_norm_words)]) if a == b)
+                        if (matches / len(prev_norm_words)) >= 0.85:
+                            is_extension = True
+
+                if is_extension:
+                    logger.info(f"✓ [FINAL EXTENSION UPDATED] '{clean_text}' replaced previous entry in place")
+                    translated_text = None
+                    if getattr(event, "translated_text", None):
+                        translated_text = event.translated_text
+                        display_text = clean_text
+                    elif clean_text and self.config.translation.enabled:
+                        primary_text, translated_text = await self.translator.translate_text(clean_text)
+                        display_text = primary_text
+                    else:
+                        display_text = clean_text
+
+                    recorded_text = clean_text
+                    if translated_text and getattr(self.config.translation, "enabled", False):
+                        dual_fmt = getattr(self.config.translation, "dual_subtitle_format", "clean")
+                        if dual_fmt == "parentheses":
+                            recorded_text = f"{clean_text} ({translated_text})"
+                        else:
+                            recorded_text = f"{clean_text} / {translated_text}"
+
+                    prev_entry.text = recorded_text
+                    prev_entry.end_time = now
+                    prev_entry.is_censored = was_censored
+                    self._last_final_time = now
+                    self._last_final_text = re.sub(r"\s+", " ", clean_text).strip().casefold()
+                    self._utterance_active = False
+                    self._sentence_start_time = now
+
+                    if self.web_server:
+                        await self.web_server.broadcast_caption(
+                            self._stamp_payload(
+                                {
+                                    "text": display_text,
+                                    "translated_text": translated_text,
+                                    "dual_color": getattr(self.config.translation, "dual_subtitle_color", "#FFD700"),
+                                    "dual_scale": getattr(self.config.translation, "dual_subtitle_scale", 0.85),
+                                    "dual_format": getattr(self.config.translation, "dual_subtitle_format", "clean"),
+                                    "is_final": True,
+                                    "is_censored": was_censored,
+                                    "timestamp": event.timestamp,
+                                    "replace_last": True,
+                                },
+                                utterance_id,
+                            )
+                        )
+
+                    if self.obs_client:
+                        obs_out_text = display_text
+                        if translated_text and getattr(self.config.translation, "enabled", False) and self.config.translation.display_mode == "dual":
+                            dual_fmt = getattr(self.config.translation, "dual_subtitle_format", "clean")
+                            obs_out_text = f"{display_text}\n({translated_text})" if dual_fmt == "parentheses" else f"{display_text}\n{translated_text}"
+                        if self.config.obs.update_text_source and self.config.obs.text_source_name:
+                            self._enqueue_obs_text(
+                                self.config.obs.text_source_name,
+                                obs_out_text,
+                                is_final=True,
+                            )
+                        if self.config.obs.send_cea608_captions and clean_text:
+                            self._enqueue_obs_cea(clean_text)
+
+                    if self.subtitle_recorder and getattr(self.subtitle_recorder, "is_recording", False):
+                        self.subtitle_recorder.update_last_caption(
+                            recorded_text if getattr(self.config.translation, "enabled", False) and translated_text else display_text,
+                            end_time=now,
+                        )
+
+                    if self.web_server and hasattr(self.web_server, "trigger_scripture_lookup") and getattr(self.config, "bible", None) and self.config.bible.enabled:
+                        if self.config.bible.display_mode == "auto":
+                            asyncio.create_task(self.web_server.trigger_scripture_lookup(clean_text))
+
+                    if self.config.overlay.auto_hide_seconds > 0:
+                        if self._auto_clear_task:
+                            self._auto_clear_task.cancel()
+                        self._auto_clear_task = asyncio.create_task(self._auto_clear_worker())
+
+                    await asyncio.sleep(0)
+                    return
+
         # Boundary Stitcher for split chunks
         if event.is_final and clean_text:
             prev_entry_text = self.history.entries[-1].text if self.history.entries else None
@@ -581,7 +714,28 @@ class CaptionSink:
             # Auto Scripture Lookup & Broadcast Trigger
             if self.web_server and hasattr(self.web_server, "trigger_scripture_lookup") and getattr(self.config, "bible", None) and self.config.bible.enabled:
                 if self.config.bible.display_mode == "auto":
-                    asyncio.create_task(self.web_server.trigger_scripture_lookup(clean_text))
+                    lookup_text = clean_text
+                    bible_engine = getattr(self.web_server, "bible_engine", None)
+                    if bible_engine:
+                        res = bible_engine.parse_and_lookup_first(clean_text)
+                        if not res and len(self.history.entries) >= 2:
+                            prev_raw = self.history.entries[-2].text
+                            prev_text_only = re.sub(r"\s*\([^)]*\)$", "", prev_raw).strip()
+                            combined = f"{prev_text_only} {clean_text}"
+                            if bible_engine.parse_and_lookup_first(combined):
+                                lookup_text = combined
+                    elif len(self.history.entries) >= 2:
+                        try:
+                            from ..bible_engine import BibleEngine
+                            if not BibleEngine.extract_citations_from_text(clean_text):
+                                prev_raw = self.history.entries[-2].text
+                                prev_text_only = re.sub(r"\s*\([^)]*\)$", "", prev_raw).strip()
+                                combined = f"{prev_text_only} {clean_text}"
+                                if BibleEngine.extract_citations_from_text(combined):
+                                    lookup_text = combined
+                        except Exception:
+                            pass
+                    asyncio.create_task(self.web_server.trigger_scripture_lookup(lookup_text))
 
             # Broadcast to Twitch Chat if enabled
             if self.twitch_bot and self.twitch_bot.is_connected:

@@ -1,5 +1,6 @@
+from pathlib import Path
 import re
-from typing import Dict, Set, Tuple
+from typing import Dict, Optional, Set, Tuple
 from .church_lexicon import ChurchLexiconFormatter
 
 
@@ -29,6 +30,154 @@ _STUTTER_PATTERN = re.compile(r"\b(\w+(?:[^\w\n]+(?:\w+)){1,5})\s*[,;]?\s+\1\b",
 
 # Precompiled camelCase missing spaces pattern
 _CAMELCASE_PATTERN = re.compile(r"\b([a-z]+)([A-Z][a-z]+)\b")
+
+# Prefixes for concatenated word repair
+_CONCAT_PREFIXES: Tuple[str, ...] = (
+    "with", "give", "send", "from",
+    "the", "for", "and", "his", "her", "our",
+    "to", "is", "in", "of", "my", "at", "on", "by",
+)
+
+# Legitimate single words starting with these prefixes that must NEVER be split
+_CONCAT_WHITELIST: Set[str] = {
+    # Prompt explicitly specified words
+    "today", "together", "towards", "forward", "island", "into", "onto", "inside",
+    "often", "history", "formal", "format", "forbid", "forget", "forgive", "forest",
+    "forever", "theme", "theory", "theater", "there", "their", "these", "those",
+    "they", "then", "them", "other", "another", "otherwise",
+    # Additional common single words and inflections
+    "one", "ones", "only", "once", "onto", "too", "inn", "inns",
+    "toward", "tonight", "tomorrow", "total", "totally", "touch", "touched", "touching",
+    "tough", "tour", "tourist", "tournament", "towel", "tower", "town", "toxic", "toy",
+    "toast", "toad", "topic", "topics", "tone", "tones", "tongue", "torch",
+    "forbear", "forbade", "force", "forces", "forced", "forcing", "foreign", "foreigner",
+    "forevermore", "forgetful", "forgets", "forgetting", "forgot", "forgotten", "forgives",
+    "forgiving", "forgiven", "forgave", "forge", "forged", "forgery", "fork", "form",
+    "forms", "formed", "forming", "formation", "former", "formerly", "formula", "forth",
+    "fortress", "fortresses", "fortune", "forty", "forwards",
+    "within", "without", "withdraw", "withdrawal", "withdrawn", "withdrew", "withhold",
+    "withheld", "withstand", "withstood", "wither", "withered",
+    "myself", "ourselves", "ourself", "herself", "himself",
+    "indeed", "income", "insight", "instead", "inward", "inwards", "involve", "involved",
+    "involvement", "involving", "intend", "intended", "intent", "intents", "intention",
+    "intact", "invent", "invention", "inform", "information", "informed", "interest",
+    "interested", "interesting", "interests", "injury", "injuries", "injured", "incident",
+    "incidents", "include", "included", "including", "includes", "inclusive", "increase",
+    "increased", "increases", "increasing", "indicate", "indicated", "indicates",
+    "indication", "individual", "individuals", "industry", "industrial", "influence",
+    "influenced", "influences", "initial", "initially", "initiative", "innocent", "innocence",
+    "input", "inputs", "inquiry", "inquiries", "inquire", "inside", "insides", "insist",
+    "insisted", "insists", "inspect", "inspection", "inspector", "inspire", "inspired",
+    "inspiration", "install", "installed", "installation", "instance", "instances", "instant",
+    "instantly", "institute", "institution", "instruct", "instruction", "instructions",
+    "instructor", "instrument", "instruments", "insurance", "integrate", "integrated",
+    "integration", "integrity", "intellect", "intelligence", "intelligent", "intense",
+    "intensity", "interact", "interaction", "interactive", "interior", "internal", "interpret",
+    "interpretation", "interval", "intervals", "interview", "interviews", "intimate",
+    "introduce", "introduced", "introduction", "invade", "invalid", "invest", "invested",
+    "investing", "investment", "investigate", "investigation", "invitation", "invitations",
+    "invite", "invited", "inviting", "invites", "invoke", "invoked", "invoking",
+    "attempt", "attempted", "attempts", "attend", "attended", "attending", "attends",
+    "attention", "attitude", "attorney", "attract", "attracted", "attraction", "attribute",
+    "atmosphere", "atom", "atomic", "attach", "attached", "attack", "attacked", "attacks",
+    "onset", "ongoing", "online", "oneself", "only", "onion", "onward", "onwards",
+    "bypass", "bypassed", "byway", "byways", "byword", "bywords", "bystander", "bystanders",
+    "byline", "byproduct",
+    "given", "gives", "giver", "givers", "giving",
+    "sends", "sender", "senders", "sending",
+    "hero", "heroes", "heroic", "herb", "herbs", "herd", "herds", "heritage", "here", "hers",
+    "historic", "historical", "historian", "hiss", "hissed", "hissing",
+    "islands", "isle", "isles", "isolate", "isolated", "isolation", "issue", "issues", "issued",
+}
+
+_CONCAT_WORD_PATTERN = re.compile(r"\b([A-Za-z]+)\b")
+_KNOWN_WORDS: Set[str] = set()
+
+
+def _get_known_words() -> Set[str]:
+    """Lazy-load master English word list from common vocabulary and bible.db."""
+    global _KNOWN_WORDS
+    if _KNOWN_WORDS:
+        return _KNOWN_WORDS
+
+    _KNOWN_WORDS.update({
+        "raise", "angels", "laborers", "rejoicing", "my", "him", "that", "the", "a", "i",
+        "to", "of", "in", "and", "is", "for", "with", "his", "her", "our", "give", "send",
+        "from", "at", "on", "by", "you", "we", "they", "me", "us", "he", "she", "it", "them",
+        "good", "all", "god", "lord", "church", "father", "son", "jesus", "christ", "spirit",
+        "holy", "faith", "love", "grace", "peace", "hope", "glory", "kingdom", "word", "heart",
+        "life", "light", "truth", "cross", "blood", "body", "soul", "name", "way", "world",
+        "house", "heaven", "earth", "day", "time", "man", "men", "woman", "women", "child",
+        "children", "people", "sheep", "lamb", "shepherd", "pastor", "servant", "disciple",
+        "disciples", "apostle", "apostles", "brother", "brothers", "sister", "sisters",
+        "friend", "friends", "enemy", "enemies", "king", "kings", "priest", "priests",
+        "prophet", "prophets", "gospel", "bible", "scripture", "scriptures", "verse",
+        "verses", "chapter", "chapters", "book", "books", "prayer", "prayers", "pray",
+        "praying", "worship", "worshiping", "praise", "praises", "sing", "singing",
+        "song", "songs", "bread", "wine", "cup", "table", "resurrection", "eternal",
+        "forever", "salvation", "saved", "save", "mercy", "covenant", "blessing",
+        "blessed", "bless", "righteousness", "righteous", "sin", "sins", "sinner",
+        "sinners", "forgive", "forgiveness", "repent", "repentance", "power", "honor",
+        "majesty", "throne", "crown", "reign", "reigns", "come", "comes", "came",
+        "coming", "go", "goes", "went", "going", "gone", "see", "sees", "saw", "seeing",
+        "seen", "hear", "hears", "heard", "hearing", "know", "knows", "knew", "knowing",
+        "known", "think", "thinks", "thought", "say", "says", "said", "saying", "speak",
+        "speaks", "spoke", "spoken", "speaking", "tell", "tells", "told", "telling",
+        "ask", "asks", "asked", "asking", "take", "takes", "took", "taken", "taking",
+        "make", "makes", "made", "making", "do", "does", "did", "done", "doing",
+        "get", "gets", "got", "gotten", "getting", "put", "puts", "putting", "bring",
+        "brings", "brought", "bringing", "lead", "leads", "led", "leading", "find",
+        "finds", "found", "finding", "seek", "seeks", "sought", "seeking", "stand",
+        "stands", "stood", "standing", "walk", "walks", "walked", "walking", "run",
+        "runs", "ran", "running", "follow", "follows", "followed", "following", "hold",
+        "holds", "held", "holding", "keep", "keeps", "kept", "keeping", "live", "lives",
+        "lived", "living", "die", "dies", "died", "dying", "rise", "rises", "rose",
+        "risen", "rising", "call", "calls", "called", "calling", "answer", "answers",
+        "answered", "answering", "open", "opens", "opened", "opening", "close", "closes",
+        "closed", "closing", "great", "small", "high", "low", "first", "last", "new",
+        "old", "true", "false", "just", "evil", "wicked", "pure", "clean", "free",
+        "many", "few", "much", "little", "more", "most", "less", "least", "every",
+        "each", "any", "some", "no", "none", "one", "two", "three", "four", "five",
+        "six", "seven", "eight", "nine", "ten", "now", "here", "where", "when", "how",
+        "why", "what", "who", "whom", "whose", "which",
+    })
+
+    db_path = Path(__file__).parent / "data" / "bible.db"
+    if db_path.exists():
+        try:
+            import sqlite3
+            conn = sqlite3.connect(str(db_path))
+            cur = conn.cursor()
+            cur.execute("SELECT text FROM verses")
+            for row in cur:
+                for w in re.findall(r"[a-zA-Z]+", row[0]):
+                    _KNOWN_WORDS.add(w.lower())
+            conn.close()
+        except Exception:
+            pass
+
+    return _KNOWN_WORDS
+
+
+def _split_concat_token(m: re.Match) -> str:
+    w = m.group(1)
+    low = w.lower()
+    if low in _CONCAT_WHITELIST or len(low) < 3:
+        return w
+    known = _get_known_words()
+    for p in _CONCAT_PREFIXES:
+        if low.startswith(p):
+            rem = low[len(p):]
+            if len(rem) == 1 and rem not in ("a", "i"):
+                continue
+            if rem in known or rem in ("a", "i"):
+                if w.isupper():
+                    return f"{w[:len(p)]} {w[len(p):]}"
+                elif w[0].isupper():
+                    return f"{w[:len(p)]} {w[len(p):]}"
+                else:
+                    return f"{w[:len(p)]} {w[len(p):]}"
+    return w
 
 # Precompiled punctuation spacing normalization patterns
 _KNOWN_TLDS_STR = r"(?:com|org|net|edu|gov|io|co|tv|app|dev|church|ai|info|xyz|us|uk|ca)"
@@ -453,6 +602,9 @@ class TextFormatter:
         # 1d. Fix camelCase missing spaces (e.g. "areOther" -> "are Other", "peopleTo" -> "people To")
         text = self.fix_camelcase_missing_spaces(text)
 
+        # 1e. Fix concatenated common words (e.g. "toraise" -> "to raise", "theangels" -> "the angels")
+        text = self.fix_concatenated_words(text)
+
         # 2. Single-pass unified dictionary substitution
         if self._master_pattern:
             text = self._master_pattern.sub(lambda m: self._lookup.get(m.group(0).lower(), m.group(0)), text)
@@ -489,6 +641,13 @@ class TextFormatter:
         if not text:
             return ""
         return _CAMELCASE_PATTERN.sub(r"\1 \2", text)
+
+    @classmethod
+    def fix_concatenated_words(cls, text: str) -> str:
+        """Detect and split concatenated common words (e.g. 'toraise' -> 'to raise')."""
+        if not text:
+            return ""
+        return _CONCAT_WORD_PATTERN.sub(_split_concat_token, text)
 
     @classmethod
     def normalize_punctuation_spacing(cls, text: str) -> str:
@@ -584,17 +743,34 @@ class TextFormatter:
                     flags=re.IGNORECASE,
                 )
 
-        # Check if text ends on a dangling connector word (conjunction/preposition)
-        last_word_clean = words[-1].lower().rstrip(".,?!;:…")
-
         # Determine terminal punctuation (? or ! or .)
         if self.QUESTION_STARTERS.search(text) or self.QUESTION_ENDINGS.search(text):
-            return text.rstrip(".,?!;:…") + "?"
+            terminal_punct = "?"
         elif self.EXCLAMATION_STARTERS.search(text):
-            return text.rstrip(".,?!;:…") + "!"
-        elif last_word_clean in self.DANGLING_CONNECTORS:
+            terminal_punct = "!"
+        else:
+            terminal_punct = "."
+
+        # Check if text ends on a dangling connector word (conjunction/preposition)
+        last_word_clean = words[-1].lower().rstrip(".,?!;:…\"'”’)]}")
+        if last_word_clean in self.DANGLING_CONNECTORS and terminal_punct == ".":
             # Strip false terminal punctuation if model appended it to a dangling connector
             return text.rstrip(".,?!;:…")
+
+        # If terminal punctuation already exists inside closing quotation marks or parens/brackets
+        if re.search(r'[.?!]["\'”’\)\]\}]+$', text):
+            return text
+
+        # If text ends with closing quotation marks or parens/brackets without terminal punctuation inside
+        closing_quote_match = re.search(r'(["\'”’\)\]\}]+)$', text)
+        if closing_quote_match:
+            quotes = closing_quote_match.group(1)
+            prefix = text[:-len(quotes)].rstrip(".,?!;:… \t")
+            return f"{prefix}{terminal_punct}{quotes}"
+
+        # Standard terminal punctuation
+        if terminal_punct in ("?", "!"):
+            return text.rstrip(".,?!;:…") + terminal_punct
         elif text[-1] in ".?!,:;…":
             return text
         else:
@@ -627,4 +803,7 @@ def is_hallucinated_or_leaked_text(text: str) -> bool:
     if _LEAK_TOKEN_REPETITION_PATTERN.search(s):
         return True
     return False
+
+
+fix_concatenated_words = TextFormatter.fix_concatenated_words
 

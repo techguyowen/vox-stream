@@ -38,8 +38,8 @@ VERSION_METADATA: Dict[str, Dict[str, str]] = {
 
 BOOK_ALIASES: Dict[str, str] = {
     # Old Testament
-    "genesis": "Genesis", "gen": "Genesis", "gn": "Genesis",
-    "exodus": "Exodus", "ex": "Exodus", "exo": "Exodus",
+    "genesis": "Genesis", "gen": "Genesis", "gn": "Genesis", "book of genesis": "Genesis",
+    "exodus": "Exodus", "ex": "Exodus", "exo": "Exodus", "book of exodus": "Exodus",
     "leviticus": "Leviticus", "lev": "Leviticus", "lv": "Leviticus",
     "numbers": "Numbers", "num": "Numbers", "nm": "Numbers",
     "deuteronomy": "Deuteronomy", "deut": "Deuteronomy", "dt": "Deuteronomy",
@@ -68,7 +68,7 @@ BOOK_ALIASES: Dict[str, str] = {
     "hosea": "Hosea", "hos": "Hosea", "ho": "Hosea",
     "joel": "Joel", "jl": "Joel",
     "amos": "Amos",
-    "obadiah": "Obadiah", "obad": "Obadiah", "ob": "Obadiah",
+    "obadiah": "Obadiah", "obad": "Obadiah", "obad": "Obadiah", "ob": "Obadiah",
     "jonah": "Jonah", "jon": "Jonah", "jnh": "Jonah",
     "micah": "Micah", "mic": "Micah", "mc": "Micah",
     "nahum": "Nahum", "nah": "Nahum", "na": "Nahum",
@@ -79,11 +79,15 @@ BOOK_ALIASES: Dict[str, str] = {
     "malachi": "Malachi", "mal": "Malachi", "ml": "Malachi",
     # New Testament
     "matthew": "Matthew", "matt": "Matthew", "mt": "Matthew",
+    "matthew's gospel": "Matthew", "matthew’s gospel": "Matthew", "matthews gospel": "Matthew", "gospel of matthew": "Matthew", "book of matthew": "Matthew", "matthews": "Matthew",
     "mark": "Mark", "mrk": "Mark", "mk": "Mark",
+    "mark's gospel": "Mark", "mark’s gospel": "Mark", "marks gospel": "Mark", "gospel of mark": "Mark", "book of mark": "Mark", "marks": "Mark",
     "luke": "Luke", "luk": "Luke", "lk": "Luke",
+    "luke's gospel": "Luke", "luke’s gospel": "Luke", "lukes gospel": "Luke", "gospel of luke": "Luke", "book of luke": "Luke", "lukes": "Luke",
     "john": "John", "jhn": "John", "jn": "John",
-    "acts": "Acts", "act": "Acts",
-    "romans": "Romans", "rom": "Romans", "ro": "Romans", "rm": "Romans",
+    "john's gospel": "John", "john’s gospel": "John", "johns gospel": "John", "gospel of john": "John", "book of john": "John", "johns": "John",
+    "acts": "Acts", "act": "Acts", "book of acts": "Acts", "acts of the apostles": "Acts",
+    "romans": "Romans", "rom": "Romans", "ro": "Romans", "rm": "Romans", "book of romans": "Romans",
     "1 corinthians": "1 Corinthians", "1st corinthians": "1 Corinthians", "first corinthians": "1 Corinthians", "1cor": "1 Corinthians", "1 cor": "1 Corinthians",
     "2 corinthians": "2 Corinthians", "2nd corinthians": "2 Corinthians", "second corinthians": "2 Corinthians", "2cor": "2 Corinthians", "2 cor": "2 Corinthians",
     "galatians": "Galatians", "gal": "Galatians", "ga": "Galatians",
@@ -109,7 +113,7 @@ BOOK_ALIASES: Dict[str, str] = {
 
 # Pre-compiled module-level regexes for citation extraction and cleanup
 _CITATION_PATTERN = re.compile(
-    r"\b((?:(?:1st|2nd|3rd|first|second|third|[1-3])\s+)?[A-Za-z]+(?:\s+of\s+[A-Za-z]+)?)\s+(\d+)[:\.](\d+)(?:[-–—](\d+))?\b",
+    r"\b((?:(?:1st|2nd|3rd|first|second|third|[1-3])\s+)?(?:gospel\s+of\s+[A-Za-z]+|book\s+of\s+[A-Za-z]+|acts\s+of\s+the\s+apostles|[A-Za-z'’]+\s+gospel|[A-Za-z]+(?:\s+of\s+[A-Za-z]+)?))\s+(\d+)[:\.](\d+)(?:[-–—](\d+))?\b",
     re.IGNORECASE,
 )
 _PSALM_PATTERN = re.compile(r"\b(psalms?)\s+(\d+)\b", re.IGNORECASE)
@@ -127,8 +131,8 @@ RELAXED_CHAP_ALIASES = sorted(
     reverse=True,
 )
 _BOOK_CHAP_PATTERN = re.compile(
-    rf"\b(?:({'|'.join(re.escape(b) for b in STRICT_CHAP_ALIASES)})\s+chapter\s+(\d+)"
-    rf"|({'|'.join(re.escape(b) for b in RELAXED_CHAP_ALIASES)})\s+(?:chapter\s+)?(\d+))\b",
+    rf"\b(?:({'|'.join(re.escape(b) for b in STRICT_CHAP_ALIASES)})(?:[.,;:!?]?\s+)chapter\s+(\d+)"
+    rf"|({'|'.join(re.escape(b) for b in RELAXED_CHAP_ALIASES)})(?:[.,;:!?]?\s+)(?:chapter\s+)?(\d+))\b",
     re.IGNORECASE,
 )
 _CHAP_V_PATTERN = re.compile(
@@ -275,9 +279,10 @@ class BibleEngine:
     def normalize_book_name(cls, raw_book: str) -> Optional[str]:
         if not raw_book:
             return None
-        clean = raw_book.strip().lower()
-        clean = re.sub(r"[^\w\s]", "", clean)
-        return BOOK_ALIASES.get(clean)
+        clean = raw_book.strip().lower().replace("’", "'")
+        clean_with_apos = re.sub(r"[^\w\s']", "", clean).strip()
+        clean_no_apos = clean_with_apos.replace("'", "")
+        return BOOK_ALIASES.get(clean_with_apos) or BOOK_ALIASES.get(clean_no_apos)
 
     def lookup_citation(
         self,
@@ -372,7 +377,25 @@ class BibleEngine:
                 return res
 
         # If no explicit full citation match, attempt contextual verse lookup (e.g. "verse 8")
-        return self.lookup_contextual_verse(text, version=version)
+        res = self.lookup_contextual_verse(text, version=version)
+        if res:
+            return res
+
+        # Support chapter-only contextual lookup (e.g. "Chapter 15." when recent_book is set)
+        target_book = self.recent_book or self.primary_book
+        if target_book and text:
+            m = re.search(r"\bchapter\s+(\d+|[a-z]+)\b", text, re.IGNORECASE)
+            if m:
+                ch = self.parse_spoken_num(m.group(1))
+                if ch:
+                    res = self.lookup_citation(target_book, ch, 1, None, version=version)
+                    if res:
+                        res.inferred_context = f"{target_book} {ch}"
+                        self.recent_book = target_book
+                        self.recent_chapter = ch
+                        return res
+
+        return None
 
     def lookup_contextual_verse(self, text: str, version: str = "bsb") -> Optional[ScriptureLookupResult]:
         if not text:

@@ -386,7 +386,20 @@ def _split_final_paragraph(text: str, max_words: int = 24) -> List[str]:
                 break
         if not split_done:
             if remaining:
-                sentences.append(remaining)
+                rem_words = remaining.split()
+                if sentences and len(rem_words) < 3:
+                    prev = sentences[-1]
+                    has_unclosed_quote = (
+                        (prev.count('"') % 2 == 1)
+                        or (prev.count("'") % 2 == 1)
+                        or (prev.count("“") > prev.count("”"))
+                        or (prev.count("‘") > prev.count("’"))
+                    )
+                    if has_unclosed_quote:
+                        sentences[-1] = f"{prev} {remaining}".strip()
+                    # Otherwise discard dangling quote/word fragment echo
+                else:
+                    sentences.append(remaining)
             break
 
     # 2. Enforce word ceiling on any remaining long segments
