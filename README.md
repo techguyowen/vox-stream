@@ -11,7 +11,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](#quick-start--installation)
 [![PWA Ready](https://img.shields.io/badge/PWA-Ready-10b981.svg)](#2-live-read-along-display--stage-monitor-display)
 
-[**Quick Start**](#quick-start--installation) • [**Core Features**](#core-features) • [**Speech Engines**](#1-multi-tier-speech-recognition-engines) • [**OBS Setup**](#obs-studio-integration) • [**API Reference**](#rest--websocket-api) • [**User Manual**](USER_MANUAL.md)
+[**Quick Start**](#quick-start--installation) • [**Core Features**](#core-features) • [**Speech Engines**](#1-multi-tier-speech-recognition-engines) • [**OBS Setup**](#obs-studio-integration--control) • [**API Reference**](#rest--websocket-api) • [**User Manual**](USER_MANUAL.md)
 
 </div>
 
@@ -44,7 +44,7 @@ It combines **10 hot-switchable speech recognition engines** (offline & cloud), 
   - [6. Accessibility Suite (WCAG 2.2 AAA)](#6-accessibility-suite-wcag-22-aaa)
   - [7. Native Desktop Launcher, System Tray & OS Lifecycle](#7-native-desktop-launcher-system-tray--os-lifecycle)
   - [8. Post-Production: YouTube Chapters, AI Summaries & SRT/VTT](#8-post-production-youtube-chapters-ai-summaries--srtvtt)
-- [OBS Studio Integration](#obs-studio-integration)
+- [OBS Studio Integration & Control](#obs-studio-integration--control)
 - [Hardware & GPU Acceleration](#hardware--gpu-acceleration)
 - [REST & WebSocket API](#rest--websocket-api)
 - [Documentation & Guides](#documentation--guides)
@@ -275,16 +275,24 @@ Built for unattended 24/7 or nightly-shutdown church booth computers on Windows 
 
 ---
 
-## OBS Studio Integration
+## OBS Studio Integration & Control
 
+### Setup in OBS
 1. **In-OBS Control Dock**:
-   * In OBS, open **Docks → Custom Browser Docks...**
-   * Name: `VoxStream` | URL: `http://127.0.0.1:8765/dashboard`
+   * In OBS, open **Docks → Custom Browser Docks...** $\rightarrow$ Name: `VoxStream` | URL: `http://127.0.0.1:8765/dashboard`
 2. **Transparent Stream Overlay**:
    * Add a **Browser Source** to your scene $\rightarrow$ URL: `http://127.0.0.1:8765/` (`1920x1080`).
-3. **Native YouTube & Twitch Closed Captions (`[CC]` Button)**:
-   * In OBS, enable **Tools → WebSocket Server Settings** (Port `4455`).
-   * VoxStream injects native **CEA-608/708** caption packets directly into your stream encode so viewers can toggle `[CC]` on YouTube Live and Twitch.
+3. **Enable OBS WebSocket v5**:
+   * In OBS, open **Tools → WebSocket Server Settings** and enable the server (default port `4455`).
+
+### Built-In OBS Control & Automation
+* **WebSocket Connection Manager**: Live connection telemetry, host/port/password configuration, and 1-click reconnect directly from the Dashboard.
+* **Stream & Recording Lifecycle Sync**: Automatically starts captioning when OBS starts streaming or recording (`auto_start_on_stream` / `auto_start_on_record`) and optionally auto-stops when the stream/recording ends (`auto_stop_on_stream` / `auto_stop_on_record`) to prevent cloud token usage after service.
+* **Scene-Based Auto-Mute**: Configure muted vs. active OBS scenes so switching to *Worship / Prelude / Video* scenes automatically pauses captioning, and switching to *Sermon / Podium* resumes it.
+* **Remote Projector Control & 24/7 Monitor Keeper**:
+  * Trigger Fullscreen Projectors (*Preview, Program, Multiview, or specific Source*) onto any physical monitor index directly from the Dashboard.
+  * **Persistent Projector Watchdog (`projector_persistent_lock`)**: Periodically verifies and re-opens your stage/sanctuary projector monitor 24/7 or within a custom weekly schedule window (e.g., Sundays `07:00–14:00`) if a TV or OBS restarts.
+* **Dual Native OBS Outputs**: Simultaneously updates any native OBS GDI+/FreeType2 Text Source (`Live Captions`) and injects **CEA-608/708** closed caption packets into your H.264/HEVC stream for the YouTube Live and Twitch `[CC]` button.
 
 ---
 
