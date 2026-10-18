@@ -33,10 +33,17 @@ _CAMELCASE_PATTERN = re.compile(r"\b([a-z]+)([A-Z][a-z]+)\b")
 
 # Prefixes for concatenated word repair
 _CONCAT_PREFIXES: Tuple[str, ...] = (
-    "with", "give", "send", "from",
-    "the", "for", "and", "his", "her", "our",
-    "to", "is", "in", "of", "my", "at", "on", "by",
+    # 5 chars
+    "hired", "takes", "there", "whole",
+    # 4 chars
+    "dead", "feed", "from", "give", "said", "send", "that", "they", "this", "took", "with",
+    # 3 chars
+    "all", "and", "for", "her", "his", "not", "our", "she", "the", "you",
+    # 2 chars
+    "as", "at", "by", "he", "if", "in", "is", "it", "my", "no", "of", "on", "or", "so", "to", "we",
 )
+
+_CONCAT_SUFFIXES: Tuple[str, ...] = ("there", "here", "again", "also", "now", "away")
 
 # Legitimate single words starting with these prefixes that must NEVER be split
 _CONCAT_WHITELIST: Set[str] = {
@@ -88,6 +95,47 @@ _CONCAT_WHITELIST: Set[str] = {
     "hero", "heroes", "heroic", "herb", "herbs", "herd", "herds", "heritage", "here", "hers",
     "historic", "historical", "historian", "hiss", "hissed", "hissing",
     "islands", "isle", "isles", "isolate", "isolated", "isolation", "issue", "issues", "issued",
+    # Guard words for expanded prefixes:
+    # For 'not' / 'no':
+    "notice", "nothing", "notify", "notion", "noble", "normal", "north", "novel", "nostril",
+    "notable", "notch", "note", "noted", "notes", "notorious", "notwithstanding", "now",
+    "nowhere", "nobody", "nod", "none", "noon",
+    # For 'as':
+    "asleep", "aside", "ask", "asked", "asking", "ashes", "aspect", "aspire", "assert",
+    "assist", "assume", "assure", "astonish", "astray",
+    # For 'so':
+    "solar", "solid", "solve", "sought", "soul", "sound", "sour", "source", "south",
+    "sovereign", "sorry", "sorrow", "soap", "sober", "some", "someone", "something",
+    "somewhere", "sometimes", "somewhat", "somebody", "soon", "sole",
+    # For 'all':
+    "always", "allay", "allege", "allow", "alloy", "allude", "allure", "ally", "almost",
+    "alone", "along", "already", "also", "altar", "alter", "although", "altogether", "alley",
+    # For 'it':
+    "item", "items", "itself", "iterate", "itinerary", "its",
+    # For 'he':
+    "help", "held", "hello", "heavy", "heart", "heat", "head", "health", "healthy",
+    "heaven", "hearing", "height", "heal", "heals", "healing", "heel", "heels", "heavens",
+    # For 'she':
+    "sheep", "sheet", "shelter", "shepherd", "shed", "shell", "shelf", "shelves",
+    # For 'we':
+    "wear", "went", "wedding", "week", "weekend", "welcome", "weight", "west", "western", "wealth",
+    # For 'they':
+    "they're", "they've",
+    # For 'this':
+    "thistle",
+    # For 'there':
+    "thereby", "therefore", "therein", "thereof", "thereon", "thereto", "thereupon", "therewith",
+    # For 'you':
+    "young", "youth", "your", "yours", "yourself", "yourselves",
+    # For 'away' / suffixes:
+    "runaway", "castaway", "giveaway", "straightaway",
+    # For 'or':
+    "order", "ordered", "ordering", "orders", "ordinance", "ordinary", "organ", "origin", "original", "orphan", "orphans",
+    # Calendar & broadcasting compound words:
+    "broadcast", "broadcasting", "broadcasts", "broadcaster", "broadcasters", "broadcasted",
+    "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
+    "yesterday", "tomorrow", "tonight", "weekend", "weekdays", "weekday",
+    "background", "foreground", "underground", "anyway", "anyhow", "anymore",
 }
 
 _CONCAT_WORD_PATTERN = re.compile(r"\b([A-Za-z]+)\b")
@@ -140,6 +188,17 @@ def _get_known_words() -> Set[str]:
         "each", "any", "some", "no", "none", "one", "two", "three", "four", "five",
         "six", "seven", "eight", "nine", "ten", "now", "here", "where", "when", "how",
         "why", "what", "who", "whom", "whose", "which",
+        # Broadcasting / live church / sermon domain vocabulary
+        "country", "feed", "pigs", "dead", "said", "there", "whole", "even", "care",
+        "hired", "himself", "wild", "self", "bread", "pods", "estate", "prodigal",
+        "famine", "servants", "parable", "parables", "pastor", "pastors", "balcony",
+        "window", "earthquake", "courtyard", "babysitter", "dowry", "communion",
+        "doxology", "benediction", "can", "have", "has", "had", "will", "would",
+        "could", "should", "are", "were", "been",
+        # Broadcasting & calendar vocabulary
+        "broadcast", "broadcasting", "broadcasts", "broadcaster", "broadcasters",
+        "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
+        "yesterday", "tomorrow", "tonight", "weekend", "weekdays", "weekday",
     })
 
     db_path = Path(__file__).parent / "data" / "bible.db"
@@ -159,24 +218,53 @@ def _get_known_words() -> Set[str]:
     return _KNOWN_WORDS
 
 
+def _format_split(w: str, idx: int) -> str:
+    """Format a 2-part word split preserving original casing according to grammar rules."""
+    low = w.lower()
+    part1 = low[:idx]
+    part2 = low[idx:]
+    if w.isupper():
+        return f"{part1.upper()} {part2.upper()}"
+    elif w[0].isupper():
+        return f"{part1.capitalize()} {part2}"
+    else:
+        return f"{part1} {part2}"
+
+
 def _split_concat_token(m: re.Match) -> str:
     w = m.group(1)
     low = w.lower()
     if low in _CONCAT_WHITELIST or len(low) < 3:
         return w
     known = _get_known_words()
+    if low in known:
+        return w
+
+    # 1. Prefix-based split
     for p in _CONCAT_PREFIXES:
         if low.startswith(p):
             rem = low[len(p):]
+            if not rem:
+                continue
             if len(rem) == 1 and rem not in ("a", "i"):
                 continue
             if rem in known or rem in ("a", "i"):
-                if w.isupper():
-                    return f"{w[:len(p)]} {w[len(p):]}"
-                elif w[0].isupper():
-                    return f"{w[:len(p)]} {w[len(p):]}"
-                else:
-                    return f"{w[:len(p)]} {w[len(p):]}"
+                return _format_split(w, len(p))
+
+    # 2. Suffix-based split (adverbial / locative trailing words)
+    for s in _CONCAT_SUFFIXES:
+        if low.endswith(s):
+            pref = low[:-len(s)]
+            if len(pref) >= 3 and pref in known and low not in _CONCAT_WHITELIST:
+                return _format_split(w, len(pref))
+
+    # 3. General 2-word compound fallback for unknown tokens
+    if low not in known:
+        for i in range(3, len(low) - 2):
+            w1, w2 = low[:i], low[i:]
+            if w1 in known and w2 in known:
+                return _format_split(w, i)
+
     return w
 
 # Precompiled punctuation spacing normalization patterns

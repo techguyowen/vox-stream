@@ -1,8 +1,8 @@
 {
-  "version": "1.2.3",
+  "version": "1.2.4",
   "major": 1,
   "minor": 2,
-  "patch": 3,
+  "patch": 4,
   "release_date": "2026-10-18",
   "codename": "Windows & macOS Booth UX, RAM Watchdog & Multi-User Scaling",
   "notes": "Windows K32EmptyWorkingSet RAM watchdog, graceful nightly shutdown & Startup auto-boot, native Windows dark title bar & macOS LaunchAgent, single-instance launcher guard, dynamic system tray status badge, strict multi-language audio isolation, and ProPresenter/Proclaim lyrics sync."

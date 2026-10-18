@@ -8647,6 +8647,62 @@ class TestQuoteFormattingConcatenationAndScripture(unittest.IsolatedAsyncioTestC
             self.assertEqual(fix_concatenated_words(w), w, f"Whitelisted word was split: {w}")
             self.assertEqual(fmt.fix_concatenated_words(w), w, f"Whitelisted word was split: {w}")
 
+    def test_fix_concatenated_words_comprehensive(self):
+        """Verify comprehensive concatenated word repair from live church sermon logs."""
+        from obs_captioner.formatter import TextFormatter, fix_concatenated_words
+
+        fmt = TextFormatter()
+
+        # All merged words from real sermon logs
+        sermon_cases = [
+            ("countrythere", "country there"),
+            ("wholecountry", "whole country"),
+            ("feedpigs", "feed pigs"),
+            ("withpods", "with pods"),
+            ("hiredhimself", "hired himself"),
+            ("andto", "and to"),
+            ("hisfather", "his father"),
+            ("noteven", "not even"),
+            ("takescare", "takes care"),
+            ("deadand", "dead and"),
+            ("hesaid", "he said"),
+            ("Ifnot", "If not"),
+            ("thewild", "the wild"),
+            ("theself", "the self"),
+            ("thereis", "there is"),
+            ("heis", "he is"),
+            ("itis", "it is"),
+            ("thisis", "this is"),
+            ("theyare", "they are"),
+        ]
+        for src, expected in sermon_cases:
+            self.assertEqual(fix_concatenated_words(src), expected)
+            self.assertEqual(fmt.fix_concatenated_words(src), expected)
+
+        # Uppercase & capitalized cases
+        casing_cases = [
+            ("Ifnot", "If not"),
+            ("HESAID", "HE SAID"),
+            ("COUNTRYTHERE", "COUNTRY THERE"),
+            ("Countrythere", "Country there"),
+            ("FEEDPIGS", "FEED PIGS"),
+            ("Feedpigs", "Feed pigs"),
+        ]
+        for src, expected in casing_cases:
+            self.assertEqual(fix_concatenated_words(src), expected)
+            self.assertEqual(fmt.fix_concatenated_words(src), expected)
+
+        # Whitelist words are preserved without splitting
+        whitelist_words = [
+            "together", "into", "onto", "inside", "often", "history", "forever", "there",
+            "their", "these", "those", "always", "almost", "already", "also", "although",
+            "altogether", "notice", "nothing", "himself", "herself", "itself", "without",
+            "within", "welcome", "solid", "sound", "soul", "ask", "item",
+        ]
+        for w in whitelist_words:
+            self.assertEqual(fix_concatenated_words(w), w, f"Whitelisted word was split: {w}")
+            self.assertEqual(fmt.fix_concatenated_words(w), w, f"Whitelisted word was split: {w}")
+
     def test_single_word_quote_echo_gemini_live(self):
         from obs_captioner.engines.gemini_live import _split_final_paragraph
 
