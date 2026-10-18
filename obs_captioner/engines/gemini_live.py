@@ -218,11 +218,15 @@ _ABBREV_WORDS = {
     "dr.", "mr.", "mrs.", "ms.", "prof.", "rev.", "st.", "jr.", "sr.",
     "vs.", "etc.", "e.g.", "i.e.", "u.s.", "u.s.a.", "u.k.", "a.m.", "p.m.",
     "no.", "fig.", "inc.", "ltd.", "co.", "corp.", "gen.", "col.", "lt.", "sgt.",
+    "ch.", "chap.", "v.", "vss.", "ver.", "ps.", "matt.", "heb.", "cor.",
+    "rom.", "deut.", "lev.", "num.", "ex.", "exod.", "chron.", "sam.",
+    "tim.", "thess.", "pet.", "phil.", "col.", "eph.", "gal.", "cf.",
+    "approx.", "est.", "min.", "sec.",
 }
 
 _SENTENCE_BOUNDARY_RE = re.compile(r'([.?!]+["\'”’)]*)\s+')
-_CLAUSE_JOINERS = {",", ";", "—", "-", "–"}
-_CONJUNCTION_WORDS = {"and", "but", "so", "because", "or", "yet", "for", "while", "where", "when", "that", "which", "who"}
+_CLAUSE_JOINERS = {";", "—", "–", "--"}
+_CONJUNCTION_WORDS = {"and", "but", "so"}
 
 
 def _split_completed_sentences(
@@ -235,18 +239,20 @@ def _split_completed_sentences(
     Rule A (Punctuated sentence boundary):
       Split on terminal sentence punctuation (`.`, `?`, `!`) when:
       - The completed sentence has at least 4 words (and does not end on a common
-        abbreviation or single-letter initial), AND
+        abbreviation, verse citation, digit, or single-letter initial), AND
+      - The trailing text does not start with a lowercase letter, AND
       - There are at least `require_trailing_words` (default 3) trailing words
         after the punctuation mark, proving the speaker has moved on and ASR
         punctuation has stabilized.
 
     Rule B (Word ceiling split):
-      If the remaining unfinalized text exceeds `max_words` (min 12) and has at
-      least `max_words + max(3, require_trailing_words)` words:
-      - Prefer splitting at the last clause boundary (`, `, `; `, `— `, ` - `, or
-        coordinating conjunctions `and`, `but`, `so`, `because`) between word
-        `max_words // 2` and `max_words`.
-      - Otherwise split cleanly at `max_words`, leaving at least 3 trailing words.
+      If remaining contains ANY terminal sentence punctuation ([.?!]), Rule B
+      is skipped to allow sentence boundary stabilization or turn completion.
+      For true unpunctuated run-on speech (no period anywhere):
+      - Only triggers when word count >= max(32, effective_max + 8).
+      - Splits on true clause breaks (`;`, `—`, or coordinating conjunctions
+        `and`, `but`, `so` preceded by >= 10 words).
+      - Otherwise splits cleanly at `effective_max`.
     """
     effective_max = max(12, int(max_words or 24))
     completed: List[str] = []
@@ -275,6 +281,17 @@ def _split_completed_sentences(
             # Avoid splitting on single-letter initials like "J. R. Tolkien"
             if re.match(r"^[a-z]\.$", last_token):
                 continue
+            # Ignore numbers with periods ("3. 5 percent", "15.") or verse citations ("15:1-3.", "15:1.")
+            if re.match(r"^\d+\.?$", last_token) or re.match(r"^\d+:\d+", last_token):
+                continue
+
+            if not trail_words:
+                continue
+
+            # In English, a new sentence never begins with a lowercase letter
+            first_trail_char = trail_words[0].lstrip("\"'“‘([{\u201c\u2018")
+            if first_trail_char and first_trail_char[0].islower():
+                continue
 
             if len(trail_words) >= require_trailing_words:
                 completed.append(candidate_sent)
@@ -286,25 +303,32 @@ def _split_completed_sentences(
             break
 
     # Rule B: Word ceiling split for continuous unpunctuated run-on speech
-    min_trail = max(3, require_trailing_words)
+    # If remaining contains any terminal sentence punctuation ([.?!]), DO NOT RUN RULE B.
+    # Wait for the sentence boundary to stabilize or the turn to complete.
+    if re.search(r"[.?!]", remaining):
+        return completed, remaining
+
+    threshold = max(32, effective_max + 8)
     while remaining:
         word_matches = list(re.finditer(r"\S+", remaining))
-        if len(word_matches) < effective_max + min_trail:
+        if len(word_matches) < threshold:
             break
 
-        half_idx = max(4, effective_max // 2)
+        min_preceding_words = 10
         split_word_idx: Optional[int] = None
 
-        # Search backwards from effective_max down to half_idx for the last clause boundary
-        for i in range(effective_max, half_idx - 1, -1):
+        # Search backwards from effective_max down to min_preceding_words for the last clause boundary
+        for i in range(effective_max, min_preceding_words - 1, -1):
+            if i >= len(word_matches):
+                continue
             prev_word = word_matches[i - 1].group(0)
             curr_word_clean = _norm_word(word_matches[i].group(0))
 
-            # Punctuation clause break at end of word i-1 (comma, semicolon, dash)
+            # Punctuation clause break at end of word i-1 (semicolon, dash)
             if prev_word[-1] in _CLAUSE_JOINERS or prev_word in _CLAUSE_JOINERS:
                 split_word_idx = i
                 break
-            # Conjunction at start of word i
+            # Coordinating conjunction at start of word i preceded by >= 10 words
             if curr_word_clean in _CONJUNCTION_WORDS:
                 split_word_idx = i
                 break
@@ -314,8 +338,8 @@ def _split_completed_sentences(
 
         char_cut = word_matches[split_word_idx - 1].end()
         chunk_sent = remaining[:char_cut].strip()
-        # Strip trailing standalone dash if split right after it
-        chunk_sent = re.sub(r"\s+[-–—]$", "", chunk_sent).strip()
+        # Strip trailing standalone dash/semicolon if split right after it
+        chunk_sent = re.sub(r"\s+[-–—;]$", "", chunk_sent).strip()
         if chunk_sent:
             completed.append(chunk_sent)
         remaining = remaining[word_matches[split_word_idx].start():].strip()
@@ -348,6 +372,13 @@ def _split_final_paragraph(text: str, max_words: int = 24) -> List[str]:
             last_token = cand_words[-1].lower().lstrip("\"'“‘(")
             if last_token in _ABBREV_WORDS or re.match(r"^[a-z]\.$", last_token):
                 continue
+            if re.match(r"^\d+\.?$", last_token) or re.match(r"^\d+:\d+", last_token):
+                continue
+            trail_words = trail.split()
+            if trail_words:
+                first_trail_char = trail_words[0].lstrip("\"'“‘([{\u201c\u2018")
+                if first_trail_char and first_trail_char[0].islower():
+                    continue
             if trail:
                 sentences.append(cand)
                 remaining = trail
@@ -367,7 +398,27 @@ def _split_final_paragraph(text: str, max_words: int = 24) -> List[str]:
             chunks, tail = _split_completed_sentences(seg, max_words=effective_max, require_trailing_words=1)
             final_parts.extend(chunks)
             if tail:
-                final_parts.append(tail)
+                # If tail is still over effective_max, chunk it into <= effective_max pieces
+                curr_tail = tail
+                while curr_tail:
+                    t_matches = list(re.finditer(r"\S+", curr_tail))
+                    if len(t_matches) <= effective_max:
+                        final_parts.append(curr_tail)
+                        break
+                    cut_idx = effective_max
+                    for i in range(effective_max, max(9, effective_max // 2), -1):
+                        if i >= len(t_matches):
+                            continue
+                        prev = t_matches[i - 1].group(0)
+                        curr_c = _norm_word(t_matches[i].group(0))
+                        if prev[-1] in _CLAUSE_JOINERS or prev in _CLAUSE_JOINERS or curr_c in _CONJUNCTION_WORDS:
+                            cut_idx = i
+                            break
+                    c_sent = curr_tail[:t_matches[cut_idx - 1].end()].strip()
+                    c_sent = re.sub(r"\s+[-–—;]$", "", c_sent).strip()
+                    if c_sent:
+                        final_parts.append(c_sent)
+                    curr_tail = curr_tail[t_matches[cut_idx].start():].strip()
 
     return [p for p in final_parts if p]
 
@@ -939,21 +990,51 @@ class GeminiLiveEngine(BaseSTTEngine):
         pause_threshold: float,
         mono_now: Optional[float] = None,
     ) -> Optional[TranscriptEvent]:
-        """Finalize pending interim text when Hybrid VAD detects a pause >= pause_threshold."""
-        if speech_active or silence_duration < pause_threshold:
+        """Finalize pending interim text when Hybrid VAD detects a pause.
+
+        Requires terminal sentence punctuation (. ? !) for standard pauses (>= pause_threshold).
+        Unpunctuated text is NEVER finalized on a short breath/pause (0.6s); it requires an
+        extended dead silence (>= 2.5s) to ensure the speaker has truly finished speaking.
+        """
+        if speech_active:
             return None
         if not self._latest_interim_text:
             return None
 
-        words = self._latest_interim_text.strip().split()
+        raw = self._latest_interim_text.strip()
+        words = raw.split()
         if len(words) < 3:
             return None
 
         now_m = mono_now if mono_now is not None else time.monotonic()
-        if self._last_interim_change_mono > 0.0 and (now_m - self._last_interim_change_mono) < pause_threshold:
-            return None
 
-        text_to_finalize = self._latest_interim_text.strip()
+        # Check if latest interim ends with terminal sentence punctuation
+        has_terminal_punct = bool(re.search(r'[.?!]["\'”’)]*$', raw))
+        if has_terminal_punct:
+            last_token = words[-1].lower().lstrip("\"'“‘(")
+            if (
+                last_token in _ABBREV_WORDS
+                or re.match(r"^\d+\.?$", last_token)
+                or re.match(r"^\d+:\d+\.?$", last_token)
+                or re.match(r"^[a-z]\.$", last_token)
+            ):
+                has_terminal_punct = False
+
+        if has_terminal_punct:
+            if silence_duration < pause_threshold:
+                return None
+            if self._last_interim_change_mono > 0.0 and (now_m - self._last_interim_change_mono) < pause_threshold:
+                return None
+        else:
+            # DO NOT finalize unpunctuated text on a short pause (0.6s).
+            # ONLY finalize unpunctuated text if silence_duration >= 2.5 seconds (true extended dead silence)
+            unpunct_threshold = max(2.5, pause_threshold)
+            if silence_duration < unpunct_threshold:
+                return None
+            if self._last_interim_change_mono > 0.0 and (now_m - self._last_interim_change_mono) < unpunct_threshold:
+                return None
+
+        text_to_finalize = raw
         self._append_finalized_prefix(text_to_finalize)
         self._latest_interim_text = None
         self._last_interim_change_mono = now_m

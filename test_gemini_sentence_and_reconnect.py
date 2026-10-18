@@ -499,3 +499,124 @@ async def test_mid_utterance_ws_drop_fast_reconnect_and_dedup():
     finally:
         await sink.stop()
         await server.stop()
+
+
+def test_mid_sentence_breath_pause_vs_terminal_punct_vs_extended_silence():
+    """Verify 600ms breath mid-sentence does not finalize, punctuated pause does, and 2.5s silence does."""
+    cfg = AppConfig()
+    cfg.gemini_live.api_key = "test-live-key"
+    engine = GeminiLiveEngine(cfg)
+    pause_threshold = 0.60  # 600ms
+
+    # 1. 600ms breath mid-sentence without terminal punctuation -> must NOT finalize!
+    engine._latest_interim_text = "Because God so loved the world"
+    engine._last_interim_change_mono = 100.0
+    breath_res = engine._maybe_finalize_on_vad_pause(
+        speech_active=False,
+        silence_duration=0.65,
+        pause_threshold=pause_threshold,
+        mono_now=100.65,
+    )
+    assert breath_res is None, "Mid-sentence 600ms breath without punctuation must NOT finalize!"
+    assert engine._latest_interim_text == "Because God so loved the world"
+
+    # 2. 600ms pause with terminal punctuation -> MUST finalize!
+    engine._latest_interim_text = "Because God so loved the world."
+    engine._last_interim_change_mono = 100.0
+    punct_res = engine._maybe_finalize_on_vad_pause(
+        speech_active=False,
+        silence_duration=0.65,
+        pause_threshold=pause_threshold,
+        mono_now=100.65,
+    )
+    assert punct_res is not None, "600ms pause with terminal punctuation MUST finalize!"
+    assert punct_res.is_final is True
+    assert punct_res.text == "Because God so loved the world."
+    assert engine._latest_interim_text is None
+
+    # 3. 2.5s extended dead silence without punctuation -> MUST finalize!
+    engine._latest_interim_text = "Because God so loved the world"
+    engine._last_interim_change_mono = 100.0
+    extended_res = engine._maybe_finalize_on_vad_pause(
+        speech_active=False,
+        silence_duration=2.55,
+        pause_threshold=pause_threshold,
+        mono_now=102.55,
+    )
+    assert extended_res is not None, "2.5s extended dead silence without punctuation MUST finalize!"
+    assert extended_res.is_final is True
+    assert extended_res.text == "Because God so loved the world"
+    assert engine._latest_interim_text is None
+
+    # 4. Interim ending in abbreviation or digit+period does NOT finalize on 600ms pause
+    for text in (
+        "Let us open our Bibles to Luke ch.",
+        "We are reading from Matt. chap.",
+        "Please turn in your copies of Scripture to verse 15.",
+    ):
+        engine._latest_interim_text = text
+        engine._last_interim_change_mono = 100.0
+        res = engine._maybe_finalize_on_vad_pause(
+            speech_active=False,
+            silence_duration=0.65,
+            pause_threshold=pause_threshold,
+            mono_now=100.65,
+        )
+        assert res is None, f"Interim ending in '{text}' should not finalize on 600ms pause!"
+
+
+def test_biblical_abbreviations_and_lowercase_continuations_no_premature_split():
+    """Verify biblical abbreviations, numbers with periods, and lowercase continuations do not split."""
+    # 1. Biblical abbreviations followed by words
+    sample_abbr = "We are reading from Gen. ch. 12 and Matt. chap. 5 and Rom. v. 8 with Dr. Sproul today."
+    comp, rem = _split_completed_sentences(sample_abbr, max_words=24, require_trailing_words=3)
+    assert comp == [], f"Should not split inside abbreviations: comp={comp}, rem={rem}"
+
+    # 2. Lowercase continuation after a period (e.g. Luke 15. we read ...)
+    sample_lower = "Let's turn to Luke 15. we read about the parable of the lost sheep."
+    comp_lower, rem_lower = _split_completed_sentences(sample_lower, max_words=24, require_trailing_words=3)
+    assert comp_lower == [], f"Sentence followed by lowercase continuation must not split: comp={comp_lower}"
+
+    # 3. Number/decimal followed by continuation
+    sample_decimal = "We had an increase of 3. 5 percent in our attendance this morning."
+    comp_dec, rem_dec = _split_completed_sentences(sample_decimal, max_words=24, require_trailing_words=3)
+    assert comp_dec == [], f"Decimal number must not split: comp={comp_dec}"
+
+    # 4. Real sentence with legitimate terminal punctuation followed by capital letter
+    sample_real = (
+        "Let's turn to Luke chapter 15 right now. "
+        "We read about the parable of the lost sheep together."
+    )
+    comp_real, rem_real = _split_completed_sentences(sample_real, max_words=24, require_trailing_words=3)
+    assert comp_real == ["Let's turn to Luke chapter 15 right now."]
+    assert rem_real == "We read about the parable of the lost sheep together."
+
+
+def test_subordinate_clauses_not_chopped_mid_sentence():
+    """Verify 25-35 word sentences with subordinate clauses ('who', 'that', 'which') are not chopped."""
+    # 27 words with subordinate clauses "that", "whoever", "for"
+    sent_1 = (
+        "Because God so loved the world that He gave His only begotten Son "
+        "that whoever believes in Him should not perish but have everlasting life for all generations."
+    )
+    comp1, rem1 = _split_completed_sentences(sent_1, max_words=24, require_trailing_words=3)
+    assert comp1 == [], f"Sentence 1 should remain intact without premature chop: comp={comp1}"
+    assert rem1 == sent_1
+
+    # 27 words with subordinate clauses "that", "who"
+    sent_2 = (
+        "And we remember all the blessings that have been poured out upon our families "
+        "who love Him and who walk according to His wonderful purpose in our community."
+    )
+    comp2, rem2 = _split_completed_sentences(sent_2, max_words=24, require_trailing_words=3)
+    assert comp2 == [], f"Sentence 2 should remain intact without premature chop: comp={comp2}"
+    assert rem2 == sent_2
+
+    # 29 words with "which", "where", "because"
+    sent_3 = (
+        "This is the sacred covenant which was established in ancient times "
+        "where faithful people gathered because they knew that the grace of the Lord would sustain them."
+    )
+    comp3, rem3 = _split_completed_sentences(sent_3, max_words=24, require_trailing_words=3)
+    assert comp3 == [], f"Sentence 3 should remain intact without premature chop: comp={comp3}"
+    assert rem3 == sent_3

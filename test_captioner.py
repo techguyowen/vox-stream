@@ -8485,10 +8485,11 @@ class TestGeminiIncrementalSentenceFinalization(unittest.TestCase):
     def test_word_ceiling_split_for_unpunctuated_sermon_speech(self):
         engine = self._make_engine(max_words=14)
 
-        # 20 words without terminal punctuation, containing a clause boundary (", and ")
+        # 35 words without terminal punctuation, containing a clause boundary (", and ")
         run_on = (
             "when we walk through the valley of the shadow of death, "
-            "and we trust in the promises of God every single day"
+            "and we trust in the promises of God every single day of our lives "
+            "and we know that His mercy and goodness will follow us forever"
         )
         evs = engine._segment_streaming_event(run_on, is_final=False, mono_now=20.0)
         finals = [e for e in evs if e.is_final]
@@ -8497,21 +8498,28 @@ class TestGeminiIncrementalSentenceFinalization(unittest.TestCase):
         self.assertEqual(len(finals), 1)
         self.assertEqual(finals[0].text, "when we walk through the valley of the shadow of death,")
         self.assertEqual(len(interims), 1)
-        self.assertEqual(interims[0].text, "and we trust in the promises of God every single day")
+        self.assertEqual(
+            interims[0].text,
+            "and we trust in the promises of God every single day of our lives and we know that His mercy and goodness will follow us forever",
+        )
 
         # When Google finalizes the full run-on turn, only the unfinalized tail is emitted
         evs_final = engine._segment_streaming_event(run_on, is_final=True, mono_now=22.0)
-        self.assertEqual(len(evs_final), 1)
-        self.assertTrue(evs_final[0].is_final)
-        self.assertEqual(evs_final[0].text, "and we trust in the promises of God every single day")
+        self.assertEqual(len(evs_final), 2)
+        for ef in evs_final:
+            self.assertTrue(ef.is_final)
+            self.assertLessEqual(len(ef.text.split()), 14)
+        rejoined = " ".join([finals[0].text] + [ef.text for ef in evs_final]).split()
+        self.assertEqual(rejoined, run_on.split())
 
     def test_hybrid_vad_pause_finalization(self):
         engine = self._make_engine(max_words=24, sentence_break_ms=500)
         pause_threshold = 0.50
 
-        # Interim arrives at t=100.0
+        # Case 1: Terminal punctuation present -> finalizes on 0.6s pause
+        # Interim arrives at t=100.0 with terminal punctuation
         evs = engine._segment_streaming_event(
-            "Grace and peace be with you all", is_final=False, mono_now=100.0
+            "Grace and peace be with you all.", is_final=False, mono_now=100.0
         )
         self.assertEqual(len(evs), 1)
         self.assertFalse(evs[0].is_final)
@@ -8534,7 +8542,7 @@ class TestGeminiIncrementalSentenceFinalization(unittest.TestCase):
         )
         self.assertIsNotNone(finalized)
         self.assertTrue(finalized.is_final)
-        self.assertEqual(finalized.text, "Grace and peace be with you all")
+        self.assertEqual(finalized.text, "Grace and peace be with you all.")
         self.assertIsNone(engine._latest_interim_text)
 
         # When Google later sends inputTranscription for the same utterance, it is suppressed (no duplicate)
@@ -8542,6 +8550,31 @@ class TestGeminiIncrementalSentenceFinalization(unittest.TestCase):
             "Grace and peace be with you all.", is_final=True, mono_now=101.5
         )
         self.assertEqual(after_final, [])
+
+        # Case 2: Unpunctuated text mid-sentence pause (0.6s) -> does NOT finalize!
+        engine_unpunct = self._make_engine(max_words=24, sentence_break_ms=500)
+        evs_unpunct = engine_unpunct._segment_streaming_event(
+            "Because God so loved the world", is_final=False, mono_now=200.0
+        )
+        self.assertEqual(len(evs_unpunct), 1)
+        breath_pause = engine_unpunct._maybe_finalize_on_vad_pause(
+            speech_active=False,
+            silence_duration=0.60,
+            pause_threshold=pause_threshold,
+            mono_now=200.60,
+        )
+        self.assertIsNone(breath_pause)
+
+        # At 2.5s extended dead silence, MUST finalize!
+        extended_silence = engine_unpunct._maybe_finalize_on_vad_pause(
+            speech_active=False,
+            silence_duration=2.55,
+            pause_threshold=pause_threshold,
+            mono_now=202.55,
+        )
+        self.assertIsNotNone(extended_silence)
+        self.assertTrue(extended_silence.is_final)
+        self.assertEqual(extended_silence.text, "Because God so loved the world")
 
 
 if __name__ == "__main__":

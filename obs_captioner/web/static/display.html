@@ -3131,30 +3131,45 @@
 
         let isSmoothScrollingToBottom = false;
         let smoothScrollTimer = null;
+        let scrollRafPending = false;
+        let pendingScrollSmooth = false;
 
         function scrollToBottom(smooth = false) {
             if (!stageContainer) return;
             if (smooth) {
-                isSmoothScrollingToBottom = true;
-                if (smoothScrollTimer) clearTimeout(smoothScrollTimer);
-                stageContainer.scrollTo({
-                    top: stageContainer.scrollHeight,
-                    behavior: 'smooth'
-                });
-                smoothScrollTimer = setTimeout(() => {
-                    isSmoothScrollingToBottom = false;
-                    const dist = stageContainer.scrollHeight - stageContainer.scrollTop - stageContainer.clientHeight;
-                    autoScroll = dist <= 45;
-                    updateFloatingButtons();
-                }, 400);
-            } else {
-                if (smoothScrollTimer) {
-                    clearTimeout(smoothScrollTimer);
-                    smoothScrollTimer = null;
-                }
-                isSmoothScrollingToBottom = false;
-                stageContainer.scrollTop = stageContainer.scrollHeight;
+                pendingScrollSmooth = true;
             }
+            if (scrollRafPending) return;
+            scrollRafPending = true;
+
+            requestAnimationFrame(() => {
+                scrollRafPending = false;
+                const useSmooth = pendingScrollSmooth;
+                pendingScrollSmooth = false;
+                if (!stageContainer) return;
+
+                if (useSmooth) {
+                    isSmoothScrollingToBottom = true;
+                    if (smoothScrollTimer) clearTimeout(smoothScrollTimer);
+                    stageContainer.scrollTo({
+                        top: stageContainer.scrollHeight,
+                        behavior: 'smooth'
+                    });
+                    smoothScrollTimer = setTimeout(() => {
+                        isSmoothScrollingToBottom = false;
+                        const dist = stageContainer.scrollHeight - stageContainer.scrollTop - stageContainer.clientHeight;
+                        autoScroll = dist <= 45;
+                        updateFloatingButtons();
+                    }, 400);
+                } else {
+                    if (smoothScrollTimer) {
+                        clearTimeout(smoothScrollTimer);
+                        smoothScrollTimer = null;
+                    }
+                    isSmoothScrollingToBottom = false;
+                    stageContainer.scrollTop = stageContainer.scrollHeight;
+                }
+            });
         }
 
         function escapeHtml(text) {
@@ -3214,7 +3229,6 @@
 
         function appendFinalSentence(text) {
             if (!text || !transcriptContent) return;
-            pendingInterimText = null;
             interimGen++;
             removeEmptyIndicator();
             wakeLiveDisplay();
@@ -3239,9 +3253,23 @@
             finalSentences.push(text);
             while (finalSentences.length > maxHistorySentences) finalSentences.shift();
 
+            if (pendingInterimText) {
+                const normPending = pendingInterimText.replace(/[^\w\s]/g, "").trim().toLowerCase();
+                const normFinal = (text || "").replace(/[^\w\s]/g, "").trim().toLowerCase();
+                if (normPending === normFinal || normFinal.startsWith(normPending)) {
+                    pendingInterimText = null;
+                }
+            }
+
+            // Do not abruptly collapse #liveInterimNode if interim text is pending or active
             if (interimNode) {
-                interimNode.textContent = '';
-                interimNode.style.display = 'none';
+                if (pendingInterimText) {
+                    interimNode.textContent = normalizePunctuationSpacing(pendingInterimText);
+                    interimNode.style.display = 'block';
+                } else {
+                    interimNode.textContent = '';
+                    interimNode.style.display = 'none';
+                }
             }
 
             if (autoScroll) scrollToBottom(false);
@@ -3251,7 +3279,6 @@
 
         function replaceLastFinalSentence(text) {
             if (!text || !transcriptContent) return;
-            pendingInterimText = null;
             interimGen++;
             removeEmptyIndicator();
             wakeLiveDisplay();
@@ -3274,13 +3301,11 @@
             pendingInterimText = text;
             if (interimRafPending) return;
             interimRafPending = true;
-            const gen = interimGen;
 
             requestAnimationFrame(() => {
                 interimRafPending = false;
-                if (gen !== interimGen) return;
                 const curText = pendingInterimText;
-                if (!curText && curText !== '') return;
+                if (curText === null || curText === undefined) return;
                 removeEmptyIndicator();
                 wakeLiveDisplay();
 
@@ -3542,8 +3567,8 @@
                             if (typeof data.utterance_id === 'number' && data.utterance_id > 0) {
                                 lastFinalUtteranceId = Math.max(lastFinalUtteranceId, data.utterance_id);
                             }
-                            clearInterimLine();
                             if (data.replace_last) {
+                                clearInterimLine();
                                 lastFinalTextAt = Date.now();
                                 replaceLastFinalSentence(text);
                             } else {
