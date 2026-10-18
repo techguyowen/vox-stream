@@ -8197,7 +8197,6 @@ class TestV120AuditRemediationAndFeatures(AioHTTPTestCase):
         self.assertEqual(resp.status, 200)
         bundle = await resp.json()
         self.assertEqual(bundle["voxstream_backup"]["app_version"], VERSION)
-        self.assertEqual(bundle["voxstream_backup"]["app_version"], "1.2.0")
         blob = json.dumps(bundle)
         for raw in ("live-gemini-secret-xyz", "live-summary-secret-abc", "secret-admin-key"):
             self.assertNotIn(raw, blob)
