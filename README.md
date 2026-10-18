@@ -4,7 +4,7 @@
 
 **Real-Time OBS Live Captioning, Multi-Language Translation & Church Broadcast Suite**
 
-[![Release](https://img.shields.io/badge/release-v1.2.1-0ea5e9.svg)](https://github.com/techguyowen/vox-stream/releases)
+[![Release](https://img.shields.io/badge/release-v1.2.3-0ea5e9.svg)](https://github.com/techguyowen/vox-stream/releases)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-3776ab.svg)](https://www.python.org/)
 [![OBS Studio](https://img.shields.io/badge/OBS%20Studio-28.0%2B-darkgreen.svg)](https://obsproject.com/)

@@ -6,9 +6,9 @@ import re
 from typing import Tuple
 
 # Current application version
-VERSION = "1.2.1"
-VERSION_INFO = (1, 2, 1)
-RELEASE_DATE = "2026-10-17"
+VERSION = "1.2.3"
+VERSION_INFO = (1, 2, 3)
+RELEASE_DATE = "2026-10-18"
 CODENAME = "Windows & macOS Booth UX, RAM Watchdog & Multi-User Scaling"
 
 

@@ -4,7 +4,7 @@
 # ==============================================================================
 
 # Dynamically extract version from obs_captioner
-VERSION=$(python3 -c "import json; print(json.load(open('version.json'))['version'])" 2>/dev/null || python3 -c "from obs_captioner.version import VERSION; print(VERSION)" 2>/dev/null || echo "1.2.1")
+VERSION=$(python3 -c "import json; print(json.load(open('version.json'))['version'])" 2>/dev/null || python3 -c "from obs_captioner.version import VERSION; print(VERSION)" 2>/dev/null || echo "1.2.3")
 RELEASE_NAME="voxstream-v$VERSION"
 ZIP_NAME="$RELEASE_NAME.zip"
 
