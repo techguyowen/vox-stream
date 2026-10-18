@@ -1256,6 +1256,22 @@ class VoxStreamLauncherGUI:
         )
         btn_min_tray.pack(side=tk.RIGHT)
 
+        btn_github = tk.Button(
+            footer_frame,
+            text="🌐 GitHub",
+            font=(self.sans_font, 8),
+            bg="#1e293b",
+            fg="#38bdf8",
+            activebackground="#334155",
+            activeforeground="#f8fafc",
+            relief="flat",
+            padx=8,
+            pady=3,
+            cursor="hand2",
+            command=lambda: webbrowser.open("https://github.com/techguyowen/vox-stream"),
+        )
+        btn_github.pack(side=tk.RIGHT, padx=(0, 6))
+
     def copy_display_url(self, event=None):
         """Copy the LAN Stage Display URL to system clipboard and flash confirmation."""
         url = getattr(self, "current_display_url", "http://localhost:8765/display")
