@@ -145,6 +145,7 @@ tests/
 !test_multi_user_proof.py
 !test_translation_and_interpreter.py
 !test_reconnect_history.py
+!test_gemini_sentence_and_reconnect.py
 .coverage
 .coverage.*
 htmlcov/

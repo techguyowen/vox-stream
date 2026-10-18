@@ -8376,6 +8376,174 @@ class TestInterpreterModeNoPollution(unittest.IsolatedAsyncioTestCase):
             await sink.stop()
 
 
+class TestGeminiIncrementalSentenceFinalization(unittest.TestCase):
+    """Verify Gemini Live incremental sentence splitting, prefix stripping, word ceiling, and Hybrid VAD pause finalization."""
+
+    def _make_engine(self, max_words=24, sentence_break_ms=600):
+        cfg = AppConfig()
+        cfg.gemini_live.api_key = "dummy-test-key"
+        cfg.gemini_live.enable_hybrid_vad = True
+        cfg.audio.max_sentence_words = max_words
+        cfg.audio.sentence_break_ms = sentence_break_ms
+        return GeminiLiveEngine(cfg)
+
+    def test_strip_finalized_prefix_exact_and_fuzzy(self):
+        from obs_captioner.engines.gemini_live import _strip_finalized_prefix
+
+        # 1. Exact case-insensitive prefix match
+        rem = _strip_finalized_prefix(
+            "Welcome to church this morning. Please open your Bibles to Romans chapter 8.",
+            "Welcome to church this morning.",
+        )
+        self.assertEqual(rem, "Please open your Bibles to Romans chapter 8.")
+
+        # 2. Minor ASR word revision / punctuation tweak inside already-finalized prefix (>=75% overlap)
+        rem_fuzzy = _strip_finalized_prefix(
+            "Welcome to our church this morning, please open your Bibles now.",
+            "Welcome to the church this morning.",
+        )
+        self.assertEqual(rem_fuzzy, "please open your Bibles now.")
+
+        # 3. Complete match returns empty string so nothing is double-emitted
+        rem_empty = _strip_finalized_prefix(
+            "Welcome to church this morning.",
+            "Welcome to church this morning.",
+        )
+        self.assertEqual(rem_empty, "")
+
+    def test_split_completed_sentences_punctuated_and_abbreviations(self):
+        from obs_captioner.engines.gemini_live import _split_completed_sentences
+
+        # Do NOT split when fewer than 3 trailing words follow punctuation
+        sents, rem = _split_completed_sentences("Welcome to church this morning. Please open", max_words=24)
+        self.assertEqual(sents, [])
+        self.assertEqual(rem, "Welcome to church this morning. Please open")
+
+        # Split once 3+ trailing words confirm the sentence boundary
+        sents2, rem2 = _split_completed_sentences(
+            "Welcome to church this morning. Please open your Bibles", max_words=24
+        )
+        self.assertEqual(sents2, ["Welcome to church this morning."])
+        self.assertEqual(rem2, "Please open your Bibles")
+
+        # Do NOT split on short abbreviations like Dr., Mr., U.S.
+        sents_abbr, rem_abbr = _split_completed_sentences(
+            "We welcomed Rev. Dr. Martin Luther King Jr. to the stage today", max_words=24
+        )
+        self.assertEqual(sents_abbr, [])
+        self.assertIn("Rev. Dr.", rem_abbr)
+
+    def test_incremental_multi_sentence_interim_then_final_no_duplicates(self):
+        engine = self._make_engine(max_words=24)
+
+        # Step 1: Speaker starts first sentence
+        ev1 = engine._segment_streaming_event(
+            "Welcome to Sunday service everyone.", is_final=False, mono_now=10.0
+        )
+        self.assertEqual(len(ev1), 1)
+        self.assertFalse(ev1[0].is_final)
+        self.assertEqual(ev1[0].text, "Welcome to Sunday service everyone.")
+
+        # Step 2: Speaker continues into second sentence without pausing long enough for Google turn end
+        ev2 = engine._segment_streaming_event(
+            "Welcome to Sunday service everyone. We are so glad you joined us today.",
+            is_final=False,
+            mono_now=11.0,
+        )
+        # First sentence must be finalized immediately, second stays interim
+        self.assertEqual(len(ev2), 2)
+        self.assertTrue(ev2[0].is_final)
+        self.assertEqual(ev2[0].text, "Welcome to Sunday service everyone.")
+        self.assertFalse(ev2[1].is_final)
+        self.assertEqual(ev2[1].text, "We are so glad you joined us today.")
+
+        # Step 3: Speaker continues into third sentence while ASR slightly revises first sentence ("everybody" vs "everyone")
+        ev3 = engine._segment_streaming_event(
+            "Welcome to Sunday service everybody. We are so glad you joined us today. Let us pray together right now.",
+            is_final=False,
+            mono_now=12.5,
+        )
+        self.assertEqual(len(ev3), 2)
+        self.assertTrue(ev3[0].is_final)
+        self.assertEqual(ev3[0].text, "We are so glad you joined us today.")
+        self.assertFalse(ev3[1].is_final)
+        self.assertEqual(ev3[1].text, "Let us pray together right now.")
+
+        # Step 4: Google finally emits authoritative inputTranscription for the whole 3-sentence turn
+        ev4 = engine._segment_streaming_event(
+            "Welcome to Sunday service everybody. We are so glad you joined us today. Let us pray together right now.",
+            is_final=True,
+            mono_now=14.0,
+        )
+        # Only the remaining 3rd sentence should be emitted as final! No duplicates of sentence 1 or 2!
+        self.assertEqual(len(ev4), 1)
+        self.assertTrue(ev4[0].is_final)
+        self.assertEqual(ev4[0].text, "Let us pray together right now.")
+        self.assertEqual(engine._finalized_turn_prefix, "")
+        self.assertIsNone(engine._latest_interim_text)
+
+    def test_word_ceiling_split_for_unpunctuated_sermon_speech(self):
+        engine = self._make_engine(max_words=14)
+
+        # 20 words without terminal punctuation, containing a clause boundary (", and ")
+        run_on = (
+            "when we walk through the valley of the shadow of death, "
+            "and we trust in the promises of God every single day"
+        )
+        evs = engine._segment_streaming_event(run_on, is_final=False, mono_now=20.0)
+        finals = [e for e in evs if e.is_final]
+        interims = [e for e in evs if not e.is_final]
+
+        self.assertEqual(len(finals), 1)
+        self.assertEqual(finals[0].text, "when we walk through the valley of the shadow of death,")
+        self.assertEqual(len(interims), 1)
+        self.assertEqual(interims[0].text, "and we trust in the promises of God every single day")
+
+        # When Google finalizes the full run-on turn, only the unfinalized tail is emitted
+        evs_final = engine._segment_streaming_event(run_on, is_final=True, mono_now=22.0)
+        self.assertEqual(len(evs_final), 1)
+        self.assertTrue(evs_final[0].is_final)
+        self.assertEqual(evs_final[0].text, "and we trust in the promises of God every single day")
+
+    def test_hybrid_vad_pause_finalization(self):
+        engine = self._make_engine(max_words=24, sentence_break_ms=500)
+        pause_threshold = 0.50
+
+        # Interim arrives at t=100.0
+        evs = engine._segment_streaming_event(
+            "Grace and peace be with you all", is_final=False, mono_now=100.0
+        )
+        self.assertEqual(len(evs), 1)
+        self.assertFalse(evs[0].is_final)
+
+        # At t=100.3 (silence 0.3s < 0.5s threshold), should NOT finalize yet
+        early = engine._maybe_finalize_on_vad_pause(
+            speech_active=False,
+            silence_duration=0.30,
+            pause_threshold=pause_threshold,
+            mono_now=100.30,
+        )
+        self.assertIsNone(early)
+
+        # At t=100.6 (silence 0.6s >= 0.5s threshold and interim unchanged for 0.6s), MUST finalize
+        finalized = engine._maybe_finalize_on_vad_pause(
+            speech_active=False,
+            silence_duration=0.60,
+            pause_threshold=pause_threshold,
+            mono_now=100.60,
+        )
+        self.assertIsNotNone(finalized)
+        self.assertTrue(finalized.is_final)
+        self.assertEqual(finalized.text, "Grace and peace be with you all")
+        self.assertIsNone(engine._latest_interim_text)
+
+        # When Google later sends inputTranscription for the same utterance, it is suppressed (no duplicate)
+        after_final = engine._segment_streaming_event(
+            "Grace and peace be with you all.", is_final=True, mono_now=101.5
+        )
+        self.assertEqual(after_final, [])
+
+
 if __name__ == "__main__":
     unittest.main()
 

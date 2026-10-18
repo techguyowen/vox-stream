@@ -50,9 +50,13 @@ INIT_CONNECT_TIMEOUT = 10.0
 INIT_TOTAL_TIMEOUT = 10.0
 INIT_RECEIVE_TIMEOUT = 10.0
 
-# Streaming reconnection uses exponential backoff capped at this maximum.
+# Streaming reconnection uses exponential backoff capped at this maximum,
+# with fast reconnect (150ms) when an already-healthy session drops mid-stream.
+FAST_RECONNECT_DELAY = 0.15
+HEALTHY_SESSION_MIN_UPTIME_SEC = 3.0
 STREAM_RECONNECT_INITIAL_DELAY = 2.0
 STREAM_RECONNECT_MAX_DELAY = 15.0
+DISCONNECT_DEDUP_WINDOW_SEC = 5.0
 
 # Session duration thresholds for proactive graceful rotation (Google 600s ceiling)
 SESSION_ROTATION_THRESHOLD_SEC = 510.0  # (~8.5 minutes) natural pause rotation threshold
@@ -108,6 +112,266 @@ def _is_duplicate_of_events(text: str, events: Sequence[Tuple[Any, ...]]) -> boo
     return False
 
 
+_WORD_NORM_RE = re.compile(r"[^\w']+", re.UNICODE)
+
+
+def _norm_word(w: str) -> str:
+    return _WORD_NORM_RE.sub("", w).casefold()
+
+
+def _strip_finalized_prefix(text: str, finalized_prefix: str) -> str:
+    """Strip already-finalized prefix text from cumulative turn transcriptions.
+
+    Matches normalized word tokens from the start of `text` against the words
+    of `finalized_prefix`, tolerating minor ASR word revisions (>= 70% word
+    overlap or exact 2-word tail anchor at the prefix boundary) as well as
+    case/punctuation differences.
+    """
+    if not text or not finalized_prefix:
+        return (text or "").strip()
+
+    raw_text = text.strip()
+    raw_prefix = finalized_prefix.strip()
+    if not raw_text or not raw_prefix:
+        return raw_text
+
+    # Fast exact case-insensitive prefix check
+    if raw_text.casefold().startswith(raw_prefix.casefold()):
+        remainder = raw_text[len(raw_prefix):]
+        return re.sub(r"^[\s.,;!?:\"')\]—\-]+", "", remainder).strip()
+
+    prefix_tokens = [_norm_word(t) for t in raw_prefix.split()]
+    prefix_tokens = [t for t in prefix_tokens if t]
+    if not prefix_tokens:
+        return raw_text
+
+    text_matches = list(re.finditer(r"\S+", raw_text))
+    text_tokens = [_norm_word(m.group(0)) for m in text_matches]
+
+    n_pref = len(prefix_tokens)
+    n_text = len(text_tokens)
+
+    # If text is shorter than or equal to prefix and shares >= 70% of words, it is completely covered
+    if n_text <= n_pref:
+        overlap = sum(1 for a, b in zip(text_tokens, prefix_tokens[:n_text]) if a and a == b)
+        if n_text > 0 and (overlap / n_text) >= 0.70:
+            return ""
+
+    # Search candidate cut positions around n_pref (+/- 4 words for ASR insertions/deletions)
+    best_cut_idx = 0
+    best_score = 0.0
+    min_k = max(1, n_pref - 4)
+    max_k = min(n_text, n_pref + 4)
+
+    # First check exact token sequence match
+    if n_text >= n_pref and text_tokens[:n_pref] == prefix_tokens:
+        best_cut_idx = n_pref
+        best_score = 1.0
+    else:
+        from collections import Counter
+        pref_counts = Counter(prefix_tokens)
+        for k in range(min_k, max_k + 1):
+            cand_tokens = [t for t in text_tokens[:k] if t]
+            if not cand_tokens:
+                continue
+            cand_counts = Counter(cand_tokens)
+            common = sum(min(pref_counts[w], cand_counts[w]) for w in pref_counts)
+            # Check boundary alignment (last words of prefix vs candidate end, or punctuation boundary)
+            raw_cand_last = text_matches[k - 1].group(0)
+            raw_pref_last = raw_prefix.split()[-1]
+            punct_end_match = (
+                raw_cand_last[-1] in ".?!,;:" and raw_pref_last[-1] in ".?!,;:"
+            )
+            exact_two_tail = (
+                len(cand_tokens) >= 2
+                and len(prefix_tokens) >= 2
+                and cand_tokens[-2:] == prefix_tokens[-2:]
+            )
+            tail_match = (
+                cand_tokens[-1] == prefix_tokens[-1]
+                or (len(cand_tokens) >= 2 and len(prefix_tokens) >= 2 and cand_tokens[-2] == prefix_tokens[-2])
+            )
+            score = common / max(n_pref, len(cand_tokens))
+            if exact_two_tail:
+                score += 0.12
+            elif tail_match:
+                score += 0.05
+            if punct_end_match:
+                score += 0.04
+            if k == n_pref:
+                score += 0.02
+            if score > best_score:
+                best_score = score
+                best_cut_idx = k
+
+    if best_score >= 0.72 and best_cut_idx > 0:
+        if best_cut_idx >= len(text_matches):
+            return ""
+        slice_pos = text_matches[best_cut_idx].start()
+        remainder = raw_text[slice_pos:]
+        return re.sub(r"^[\s.,;!?:\"')\]—\-]+", "", remainder).strip()
+
+    return raw_text
+
+
+_ABBREV_WORDS = {
+    "dr.", "mr.", "mrs.", "ms.", "prof.", "rev.", "st.", "jr.", "sr.",
+    "vs.", "etc.", "e.g.", "i.e.", "u.s.", "u.s.a.", "u.k.", "a.m.", "p.m.",
+    "no.", "fig.", "inc.", "ltd.", "co.", "corp.", "gen.", "col.", "lt.", "sgt.",
+}
+
+_SENTENCE_BOUNDARY_RE = re.compile(r'([.?!]+["\'”’)]*)\s+')
+_CLAUSE_JOINERS = {",", ";", "—", "-", "–"}
+_CONJUNCTION_WORDS = {"and", "but", "so", "because", "or", "yet", "for", "while", "where", "when", "that", "which", "who"}
+
+
+def _split_completed_sentences(
+    text: str,
+    max_words: int = 24,
+    require_trailing_words: int = 3,
+) -> Tuple[List[str], str]:
+    """Split cumulative unfinalized text into (completed_sentences, remaining_interim).
+
+    Rule A (Punctuated sentence boundary):
+      Split on terminal sentence punctuation (`.`, `?`, `!`) when:
+      - The completed sentence has at least 4 words (and does not end on a common
+        abbreviation or single-letter initial), AND
+      - There are at least `require_trailing_words` (default 3) trailing words
+        after the punctuation mark, proving the speaker has moved on and ASR
+        punctuation has stabilized.
+
+    Rule B (Word ceiling split):
+      If the remaining unfinalized text exceeds `max_words` (min 12) and has at
+      least `max_words + max(3, require_trailing_words)` words:
+      - Prefer splitting at the last clause boundary (`, `, `; `, `— `, ` - `, or
+        coordinating conjunctions `and`, `but`, `so`, `because`) between word
+        `max_words // 2` and `max_words`.
+      - Otherwise split cleanly at `max_words`, leaving at least 3 trailing words.
+    """
+    effective_max = max(12, int(max_words or 24))
+    completed: List[str] = []
+    remaining = (text or "").strip()
+    if not remaining:
+        return completed, ""
+
+    # Rule A: Punctuated sentence boundaries
+    while remaining:
+        split_done = False
+        for match in _SENTENCE_BOUNDARY_RE.finditer(remaining):
+            end_pos = match.end(1)
+            after_pos = match.end()
+            candidate_sent = remaining[:end_pos].strip()
+            trailing_text = remaining[after_pos:].strip()
+
+            cand_words = candidate_sent.split()
+            trail_words = trailing_text.split()
+
+            if len(cand_words) < 4:
+                continue
+
+            last_token = cand_words[-1].lower().lstrip("\"'“‘(")
+            if last_token in _ABBREV_WORDS:
+                continue
+            # Avoid splitting on single-letter initials like "J. R. Tolkien"
+            if re.match(r"^[a-z]\.$", last_token):
+                continue
+
+            if len(trail_words) >= require_trailing_words:
+                completed.append(candidate_sent)
+                remaining = trailing_text
+                split_done = True
+                break
+
+        if not split_done:
+            break
+
+    # Rule B: Word ceiling split for continuous unpunctuated run-on speech
+    min_trail = max(3, require_trailing_words)
+    while remaining:
+        word_matches = list(re.finditer(r"\S+", remaining))
+        if len(word_matches) < effective_max + min_trail:
+            break
+
+        half_idx = max(4, effective_max // 2)
+        split_word_idx: Optional[int] = None
+
+        # Search backwards from effective_max down to half_idx for the last clause boundary
+        for i in range(effective_max, half_idx - 1, -1):
+            prev_word = word_matches[i - 1].group(0)
+            curr_word_clean = _norm_word(word_matches[i].group(0))
+
+            # Punctuation clause break at end of word i-1 (comma, semicolon, dash)
+            if prev_word[-1] in _CLAUSE_JOINERS or prev_word in _CLAUSE_JOINERS:
+                split_word_idx = i
+                break
+            # Conjunction at start of word i
+            if curr_word_clean in _CONJUNCTION_WORDS:
+                split_word_idx = i
+                break
+
+        if split_word_idx is None:
+            split_word_idx = effective_max
+
+        char_cut = word_matches[split_word_idx - 1].end()
+        chunk_sent = remaining[:char_cut].strip()
+        # Strip trailing standalone dash if split right after it
+        chunk_sent = re.sub(r"\s+[-–—]$", "", chunk_sent).strip()
+        if chunk_sent:
+            completed.append(chunk_sent)
+        remaining = remaining[word_matches[split_word_idx].start():].strip()
+
+    return completed, remaining
+
+
+def _split_final_paragraph(text: str, max_words: int = 24) -> List[str]:
+    """Split a long finalized paragraph into readable caption sentences."""
+    raw = (text or "").strip()
+    if not raw:
+        return []
+    effective_max = max(12, int(max_words or 24))
+    if len(raw.split()) <= effective_max:
+        return [raw]
+
+    sentences: List[str] = []
+    remaining = raw
+    # 1. Split on all legitimate terminal punctuation boundaries
+    while remaining:
+        split_done = False
+        for match in _SENTENCE_BOUNDARY_RE.finditer(remaining):
+            end_pos = match.end(1)
+            after_pos = match.end()
+            cand = remaining[:end_pos].strip()
+            trail = remaining[after_pos:].strip()
+            cand_words = cand.split()
+            if len(cand_words) < 4:
+                continue
+            last_token = cand_words[-1].lower().lstrip("\"'“‘(")
+            if last_token in _ABBREV_WORDS or re.match(r"^[a-z]\.$", last_token):
+                continue
+            if trail:
+                sentences.append(cand)
+                remaining = trail
+                split_done = True
+                break
+        if not split_done:
+            if remaining:
+                sentences.append(remaining)
+            break
+
+    # 2. Enforce word ceiling on any remaining long segments
+    final_parts: List[str] = []
+    for seg in sentences:
+        if len(seg.split()) <= effective_max:
+            final_parts.append(seg)
+        else:
+            chunks, tail = _split_completed_sentences(seg, max_words=effective_max, require_trailing_words=1)
+            final_parts.extend(chunks)
+            if tail:
+                final_parts.append(tail)
+
+    return [p for p in final_parts if p]
+
+
 class GeminiLiveEngine(BaseSTTEngine):
     """Real-time streaming speech transcription using Gemini 3.5 Transcribe Live."""
 
@@ -132,6 +396,14 @@ class GeminiLiveEngine(BaseSTTEngine):
         self._prompt_tokens: int = 0
         self._response_tokens: int = 0
         self._audio_seconds_streamed: float = 0.0
+
+        # Per-turn incremental sentence segmentation & prefix tracking
+        self._finalized_turn_prefix: str = ""
+        self._finalized_turn_words: List[str] = []
+        self._latest_interim_text: Optional[str] = None
+        self._last_interim_change_mono: float = 0.0
+        self._last_disconnect_finalized_text: str = ""
+        self._last_disconnect_mono: float = 0.0
 
         # Client-side VAD for zero-latency Hybrid VAD turn finalization
         self.vad = VoiceActivityDetector(
@@ -548,6 +820,145 @@ class GeminiLiveEngine(BaseSTTEngine):
 
         return events
 
+    def _reset_turn_state(self) -> None:
+        """Reset per-turn prefix tracking and interim state."""
+        self._finalized_turn_prefix = ""
+        self._finalized_turn_words = []
+        self._latest_interim_text = None
+        self._last_interim_change_mono = 0.0
+
+    def _append_finalized_prefix(self, segment: str) -> None:
+        """Append a newly finalized sentence segment to the current turn's finalized prefix."""
+        seg = (segment or "").strip()
+        if not seg:
+            return
+        if self._finalized_turn_prefix:
+            self._finalized_turn_prefix = f"{self._finalized_turn_prefix} {seg}"
+        else:
+            self._finalized_turn_prefix = seg
+        self._finalized_turn_words = self._finalized_turn_prefix.split()
+
+    def _strip_disconnect_replay_prefix(self, text: str, now_m: float) -> str:
+        """Strip any turn prefix finalized right before an unexpected disconnect if replayed within 5s."""
+        if not self._last_disconnect_finalized_text:
+            return text
+        if self._last_disconnect_mono <= 0.0 or (now_m - self._last_disconnect_mono) > DISCONNECT_DEDUP_WINDOW_SEC:
+            self._last_disconnect_finalized_text = ""
+            self._last_disconnect_mono = 0.0
+            return text
+
+        disc_text = self._last_disconnect_finalized_text.strip()
+        if not disc_text:
+            return text
+
+        stripped = _strip_finalized_prefix(text, disc_text)
+        if stripped != text.strip():
+            return stripped
+
+        # Also check if only the last finalized sentence on disconnect was replayed
+        completed, tail = _split_completed_sentences(disc_text, max_words=24, require_trailing_words=1)
+        last_sent = tail if tail else (completed[-1] if completed else "")
+        if last_sent and last_sent != disc_text:
+            stripped_tail = _strip_finalized_prefix(text, last_sent)
+            if stripped_tail != text.strip():
+                return stripped_tail
+
+        return text
+
+    def _segment_streaming_event(
+        self,
+        text: str,
+        is_final: bool,
+        translated_text: Optional[str] = None,
+        mono_now: Optional[float] = None,
+    ) -> List[TranscriptEvent]:
+        """Process a parsed server event through incremental sentence splitting and prefix stripping.
+
+        Maintains per-turn `_finalized_turn_prefix` and `_latest_interim_text` so
+        multi-sentence `interimInputTranscription` bursts are finalized sentence-by-sentence
+        in real time without duplicating text when `inputTranscription` arrives.
+        """
+        now_m = mono_now if mono_now is not None else time.monotonic()
+        max_words = max(12, int(getattr(self.config.audio, "max_sentence_words", 24) or 24))
+        out: List[TranscriptEvent] = []
+
+        if not is_final:
+            deduped_text = self._strip_disconnect_replay_prefix(text, now_m)
+            if not deduped_text:
+                return out
+            remaining_text = _strip_finalized_prefix(deduped_text, self._finalized_turn_prefix)
+            if not remaining_text:
+                return out
+
+            completed_sents, remaining_interim = _split_completed_sentences(
+                remaining_text, max_words=max_words
+            )
+            for sent in completed_sents:
+                self._append_finalized_prefix(sent)
+                out.append(TranscriptEvent(text=sent, is_final=True, translated_text=None))
+
+            if remaining_interim:
+                if remaining_interim != self._latest_interim_text:
+                    self._last_interim_change_mono = now_m
+                self._latest_interim_text = remaining_interim
+                out.append(
+                    TranscriptEvent(
+                        text=remaining_interim,
+                        is_final=False,
+                        translated_text=translated_text,
+                    )
+                )
+            else:
+                self._latest_interim_text = None
+                self._last_interim_change_mono = now_m
+        else:
+            deduped_text = self._strip_disconnect_replay_prefix(text, now_m)
+            remaining_text = _strip_finalized_prefix(deduped_text, self._finalized_turn_prefix) if deduped_text else ""
+            self._reset_turn_state()
+            self._last_disconnect_finalized_text = ""
+            self._last_disconnect_mono = 0.0
+            if not remaining_text:
+                return out
+
+            parts = _split_final_paragraph(remaining_text, max_words=max_words)
+            for idx, part in enumerate(parts):
+                out.append(
+                    TranscriptEvent(
+                        text=part,
+                        is_final=True,
+                        translated_text=translated_text if idx == len(parts) - 1 else None,
+                    )
+                )
+
+        return out
+
+    def _maybe_finalize_on_vad_pause(
+        self,
+        speech_active: bool,
+        silence_duration: float,
+        pause_threshold: float,
+        mono_now: Optional[float] = None,
+    ) -> Optional[TranscriptEvent]:
+        """Finalize pending interim text when Hybrid VAD detects a pause >= pause_threshold."""
+        if speech_active or silence_duration < pause_threshold:
+            return None
+        if not self._latest_interim_text:
+            return None
+
+        words = self._latest_interim_text.strip().split()
+        if len(words) < 3:
+            return None
+
+        now_m = mono_now if mono_now is not None else time.monotonic()
+        if self._last_interim_change_mono > 0.0 and (now_m - self._last_interim_change_mono) < pause_threshold:
+            return None
+
+        text_to_finalize = self._latest_interim_text.strip()
+        self._append_finalized_prefix(text_to_finalize)
+        self._latest_interim_text = None
+        self._last_interim_change_mono = now_m
+        return TranscriptEvent(text=text_to_finalize, is_final=True, translated_text=None)
+
     def reset_token_usage(self) -> None:
         """Reset session token and streamed-audio counters to zero."""
         self._prompt_tokens = 0
@@ -814,7 +1225,16 @@ class GeminiLiveEngine(BaseSTTEngine):
         or lag the primary STT stream.
         """
         sample_rate = self.config.audio.sample_rate or 16000
+        sidecar_reconnect_delay = STREAM_RECONNECT_INITIAL_DELAY
+
+        def _next_sidecar_backoff() -> float:
+            nonlocal sidecar_reconnect_delay
+            d = sidecar_reconnect_delay
+            sidecar_reconnect_delay = min(sidecar_reconnect_delay * 2.0, STREAM_RECONNECT_MAX_DELAY)
+            return d
+
         while self.is_running:
+            sidecar_start_time = 0.0
             try:
                 timeout = aiohttp.ClientTimeout(total=None, connect=INIT_CONNECT_TIMEOUT)
                 ssl_context = self._build_ssl_context()
@@ -830,10 +1250,12 @@ class GeminiLiveEngine(BaseSTTEngine):
                         except (asyncio.TimeoutError, asyncio.CancelledError):
                             if not self.is_running:
                                 return
+                            await asyncio.sleep(_next_sidecar_backoff())
                             continue
                         except Exception:
                             if not self.is_running:
                                 return
+                            await asyncio.sleep(_next_sidecar_backoff())
                             continue
                         if init_msg.type in (
                             aiohttp.WSMsgType.TEXT,
@@ -847,11 +1269,16 @@ class GeminiLiveEngine(BaseSTTEngine):
                             try:
                                 init_data = json.loads(raw)
                             except Exception:
+                                await asyncio.sleep(_next_sidecar_backoff())
                                 continue
                             if "setupComplete" not in init_data:
+                                await asyncio.sleep(_next_sidecar_backoff())
                                 continue
+                            sidecar_start_time = time.monotonic()
+                            sidecar_reconnect_delay = STREAM_RECONNECT_INITIAL_DELAY
                             logger.info("Interpreter audio sidecar connected to gemini-3.5-live-translate-preview.")
                         else:
+                            await asyncio.sleep(_next_sidecar_backoff())
                             continue
 
                         audio_chunk_count = 0
@@ -974,14 +1401,36 @@ class GeminiLiveEngine(BaseSTTEngine):
                             for t in (send_task, recv_task):
                                 if not t.done():
                                     t.cancel()
+
+                        if not self.is_running:
+                            break
+                        was_healthy_sidecar = (
+                            sidecar_start_time > 0.0
+                            and (time.monotonic() - sidecar_start_time) >= HEALTHY_SESSION_MIN_UPTIME_SEC
+                        )
+                        if was_healthy_sidecar:
+                            delay = FAST_RECONNECT_DELAY
+                            sidecar_reconnect_delay = STREAM_RECONNECT_INITIAL_DELAY
+                        else:
+                            delay = _next_sidecar_backoff()
+                        await asyncio.sleep(delay)
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 if not self.is_running:
                     break
-                logger.warning(f"Interpreter sidecar error ({e}); reconnecting...")
+                was_healthy_sidecar = (
+                    sidecar_start_time > 0.0
+                    and (time.monotonic() - sidecar_start_time) >= HEALTHY_SESSION_MIN_UPTIME_SEC
+                )
+                if was_healthy_sidecar:
+                    delay = FAST_RECONNECT_DELAY
+                    sidecar_reconnect_delay = STREAM_RECONNECT_INITIAL_DELAY
+                else:
+                    delay = _next_sidecar_backoff()
+                logger.warning(f"Interpreter sidecar error ({e}); reconnecting in {delay:.2f}s...")
                 try:
-                    await asyncio.sleep(STREAM_RECONNECT_INITIAL_DELAY)
+                    await asyncio.sleep(delay)
                 except asyncio.CancelledError:
                     break
 
@@ -995,7 +1444,7 @@ class GeminiLiveEngine(BaseSTTEngine):
         model = self.config.gemini_live.model or "gemini-3.5-transcribe-live"
         sample_rate = self.config.audio.sample_rate or 16000
         enable_hybrid_vad = getattr(self.config.gemini_live, "enable_hybrid_vad", True)
-        pause_threshold = max(0.60, (getattr(self.config.audio, "sentence_break_ms", 600) or 600) / 1000.0)
+        pause_threshold = max(0.35, (getattr(self.config.audio, "sentence_break_ms", 600) or 600) / 1000.0)
         max_sentence_duration = float(getattr(self.config.audio, "max_sentence_duration_seconds", 7.0) or 7.0)
         reconnect_delay = STREAM_RECONNECT_INITIAL_DELAY
 
@@ -1027,6 +1476,7 @@ class GeminiLiveEngine(BaseSTTEngine):
 
                 logger.info(f"Opening Gemini Live WebSockets connection (model: {model}, Hybrid VAD: {enable_hybrid_vad})...")
                 ws_url = self._get_ws_url()
+                session_start_time = 0.0
 
                 try:
                     timeout = aiohttp.ClientTimeout(total=None, connect=INIT_CONNECT_TIMEOUT)
@@ -1037,7 +1487,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                             self._active_ws = ws
                             session_start_time = 0.0
                             rotation_requested = False
-                            _latest_interim_text: Optional[str] = None
+                            self._reset_turn_state()
                             final_received_event = asyncio.Event()
 
                             # 1. Send official setup payload
@@ -1055,7 +1505,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                                         session_start_time = time.monotonic()
                                         self.session_start_monotonic = session_start_time
                                         rotation_requested = False
-                                        _latest_interim_text = None
+                                        self._reset_turn_state()
                                         final_received_event.clear()
                                         handshake_ms = round((time.perf_counter() - setup_t0) * 1000.0, 1)
                                         self.current_ping_ms = handshake_ms
@@ -1152,15 +1602,37 @@ class GeminiLiveEngine(BaseSTTEngine):
                                     # Track streamed audio duration (16-bit mono PCM).
                                     self._audio_seconds_streamed += len(pcm_chunk) / (sample_rate * 2)
 
-                                    # Track local voice activity for proactive session rotation gating
+                                    # Track local voice activity for Hybrid VAD pause finalization & session rotation
                                     now = time.time()
+                                    mono_now = time.monotonic()
+                                    current_pause_threshold = max(
+                                        0.35, (getattr(self.config.audio, "sentence_break_ms", 600) or 600) / 1000.0
+                                    )
                                     is_voice = self.vad.is_speech(pcm_chunk)
                                     if is_voice:
                                         if not speech_active:
                                             speech_active = True
+                                            speech_start_time = now
                                         last_speech_time = now
-                                    elif speech_active and (now - last_speech_time) >= 0.5:
-                                        speech_active = False
+                                    else:
+                                        silence_dur = (now - last_speech_time) if last_speech_time > 0.0 else 0.0
+                                        if speech_active and silence_dur >= min(0.35, current_pause_threshold):
+                                            speech_active = False
+                                        if getattr(self.config.gemini_live, "enable_hybrid_vad", enable_hybrid_vad):
+                                            vad_event = self._maybe_finalize_on_vad_pause(
+                                                speech_active=speech_active,
+                                                silence_duration=silence_dur,
+                                                pause_threshold=current_pause_threshold,
+                                                mono_now=mono_now,
+                                            )
+                                            if vad_event is not None:
+                                                final_received_event.set()
+                                                try:
+                                                    res = on_transcript(vad_event)
+                                                    if asyncio.iscoroutine(res):
+                                                        await res
+                                                except Exception as ve:
+                                                    logger.debug(f"Hybrid VAD pause finalization error: {ve}")
 
                                     # Proactive Session Rotation Check (prevent Google 10m ceiling drops)
                                     elapsed_session = time.monotonic() - session_start_time
@@ -1210,7 +1682,6 @@ class GeminiLiveEngine(BaseSTTEngine):
 
                             # 3. Worker: receive and dispatch interim and finalized transcripts
                             async def receive_transcripts():
-                                nonlocal _latest_interim_text
                                 try:
                                     async for msg in ws:
                                         if not self.is_running:
@@ -1252,39 +1723,46 @@ class GeminiLiveEngine(BaseSTTEngine):
 
                                                 if suppress_music:
                                                     if (strict_music and getattr(self.vad.music_detector, "music_detected", False)) or is_music_text(text, strict=strict_music):
+                                                        if is_final:
+                                                            self._reset_turn_state()
                                                         logger.debug(f"Gemini Live suppressed singing/music text: {text}")
                                                         continue
 
-                                                if is_final:
-                                                    _latest_interim_text = None
-                                                    final_received_event.set()
-                                                else:
-                                                    _latest_interim_text = text
-                                                    final_received_event.clear()
-
-                                                res = on_transcript(
-                                                    TranscriptEvent(
-                                                        text=text,
-                                                        is_final=is_final,
-                                                        translated_text=translated_text,
-                                                    )
+                                                segmented_events = self._segment_streaming_event(
+                                                    text=text,
+                                                    is_final=is_final,
+                                                    translated_text=translated_text,
                                                 )
-                                                if asyncio.iscoroutine(res):
-                                                    await res
+                                                for seg_ev in segmented_events:
+                                                    if seg_ev.is_final:
+                                                        final_received_event.set()
+                                                    else:
+                                                        final_received_event.clear()
+
+                                                    res = on_transcript(seg_ev)
+                                                    if asyncio.iscoroutine(res):
+                                                        await res
 
                                         elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.ERROR):
                                             logger.warning("Gemini Live WebSocket closed by remote server.")
                                             break
                                 finally:
                                     # In-Flight Interim Preservation on Unexpected Disconnect:
-                                    if not rotation_requested and _latest_interim_text:
-                                        words = _latest_interim_text.strip().split()
-                                        if len(words) >= 2:
+                                    if not rotation_requested:
+                                        text_to_finalize = None
+                                        if self._latest_interim_text:
+                                            words = self._latest_interim_text.strip().split()
+                                            if len(words) >= 2:
+                                                text_to_finalize = self._latest_interim_text.strip()
+                                                self._append_finalized_prefix(text_to_finalize)
+                                        if self._finalized_turn_prefix:
+                                            self._last_disconnect_finalized_text = self._finalized_turn_prefix
+                                            self._last_disconnect_mono = time.monotonic()
+                                        if text_to_finalize:
                                             logger.info(
-                                                f"Gemini Live finalizing in-flight interim on unexpected disconnect: {_latest_interim_text}"
+                                                f"Gemini Live finalizing in-flight interim on unexpected disconnect: {text_to_finalize}"
                                             )
-                                            text_to_finalize = _latest_interim_text
-                                            _latest_interim_text = None
+                                            self._reset_turn_state()
                                             try:
                                                 res = on_transcript(
                                                     TranscriptEvent(
@@ -1297,7 +1775,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                                                     await res
                                             except Exception as ex:
                                                 logger.warning(f"Error finalizing in-flight interim: {ex}")
-                                    _latest_interim_text = None
+                                    self._reset_turn_state()
 
                             # 4. Worker: periodic network latency probe
                             async def ping_probe_loop():
@@ -1343,16 +1821,28 @@ class GeminiLiveEngine(BaseSTTEngine):
                                 for t in pending:
                                     if not t.done():
                                         t.cancel()
+                                if pending:
+                                    await asyncio.gather(*pending, return_exceptions=True)
                                 if not self.is_running:
                                     break
 
                                 close_code = getattr(ws, "close_code", None)
                                 is_clean = rotation_requested or (close_code in (1000, 1001, aiohttp.WSCloseCode.OK, aiohttp.WSCloseCode.GOING_AWAY))
+                                was_healthy_session = (
+                                    session_start_time > 0.0
+                                    and (time.monotonic() - session_start_time) >= HEALTHY_SESSION_MIN_UPTIME_SEC
+                                )
                                 if is_clean:
                                     delay = 0.0
                                     reconnect_delay = STREAM_RECONNECT_INITIAL_DELAY
                                     logger.info(
                                         f"Gemini Live session finished cleanly (rotation={rotation_requested}, code={close_code}); reconnecting immediately (0s delay)..."
+                                    )
+                                elif was_healthy_session:
+                                    delay = FAST_RECONNECT_DELAY
+                                    reconnect_delay = STREAM_RECONNECT_INITIAL_DELAY
+                                    logger.warning(
+                                        f"Gemini Live healthy session dropped (code={close_code}); fast-reconnecting in {delay:.2f}s..."
                                     )
                                 else:
                                     delay = _next_backoff()
@@ -1368,8 +1858,16 @@ class GeminiLiveEngine(BaseSTTEngine):
                         if self._is_invalid_key_failure(str(e)):
                             logger.error("Invalid Gemini API key. Please check your key at aistudio.google.com.")
                             return
-                        delay = _next_backoff()
-                        logger.error(f"Gemini Live error: {e}. Reconnecting in {delay:.0f}s...")
+                        was_healthy_session = (
+                            session_start_time > 0.0
+                            and (time.monotonic() - session_start_time) >= HEALTHY_SESSION_MIN_UPTIME_SEC
+                        )
+                        if was_healthy_session:
+                            delay = FAST_RECONNECT_DELAY
+                            reconnect_delay = STREAM_RECONNECT_INITIAL_DELAY
+                        else:
+                            delay = _next_backoff()
+                        logger.error(f"Gemini Live error: {e}. Reconnecting in {delay:.2f}s...")
                         await asyncio.sleep(delay)
         finally:
             if interp_task is not None and not interp_task.done():
