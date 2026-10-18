@@ -322,7 +322,6 @@ class VoxStreamTray:
             ),
             pystray.MenuItem("🔄 Restart Engine", self._handle_restart),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("🌐 GitHub Repository", lambda: webbrowser.open("https://github.com/techguyowen/vox-stream")),
             pystray.MenuItem("🚪 Exit VoxStream", self._handle_exit),
         )
 
