@@ -996,9 +996,27 @@ async def main_async(args):
             except Exception:
                 pass
 
+    def on_presentation_slide_changed(slide_text: str, slide_label: str, source: str):
+        if not web_server or not getattr(config, "bible", None) or not config.bible.enabled:
+            return
+        if not getattr(config.propresenter, "auto_display_scripture_slides", True):
+            return
+        if propresenter_client and propresenter_client.is_lyrics_slide_active:
+            return
+        target = f"{slide_label}. {slide_text}".strip()
+        if target:
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    web_server.trigger_scripture_lookup(target),
+                    loop,
+                )
+            except Exception:
+                pass
+
     propresenter_client = ProPresenterClient(
         config.propresenter,
         on_lyrics_state_changed=on_propresenter_lyrics_changed,
+        on_slide_changed=on_presentation_slide_changed,
     )
     if web_server:
         web_server.propresenter_client = propresenter_client

@@ -53,6 +53,7 @@ class ProPresenterConfig:
     proclaim_port: int = 52195
     proclaim_password: str = "proclaim"
     auto_mute_on_lyrics: bool = True
+    auto_display_scripture_slides: bool = True
     lyrics_keywords: List[str] = field(default_factory=lambda: ["worship", "song", "lyrics", "chorus", "verse", "bridge", "hymn", "praise"])
 
 
@@ -72,7 +73,7 @@ def classify_slide_as_lyrics(
     label = slide_label or ""
     if not text.strip() and not label.strip():
         return False
-    if _SCRIPTURE_CITATION_RE.search(text):
+    if _SCRIPTURE_CITATION_RE.search(text) or _SCRIPTURE_CITATION_RE.search(label):
         return False
     active_keywords = DEFAULT_LYRICS_KEYWORDS if keywords is None else keywords
     label_lower = label.lower()
@@ -104,9 +105,11 @@ class ProPresenterClient:
         self,
         config: ProPresenterConfig,
         on_lyrics_state_changed: Optional[Callable[[bool, str], None]] = None,
+        on_slide_changed: Optional[Callable[[str, str, str], None]] = None,
     ) -> None:
         self.config = config
         self.on_lyrics_state_changed = on_lyrics_state_changed
+        self.on_slide_changed = on_slide_changed
         self._ws_connected = False
         self._proclaim_connected = False
         self._is_lyrics_slide_active = False
@@ -456,8 +459,12 @@ class ProPresenterClient:
 
     def update_slide_state(self, slide_text: str, slide_label: str = "", source: str = "propresenter") -> bool:
         """Record the current slide and fire the lyrics callback on transitions."""
-        self.current_slide_text = slide_text or ""
-        self.current_slide_label = slide_label or ""
+        clean_text = (slide_text or "").strip()
+        clean_label = (slide_label or "").strip()
+        has_changed = (clean_text != self._current_slide_text or clean_label != self._current_slide_label)
+        self.last_slide_changed = has_changed
+        self.current_slide_text = clean_text
+        self.current_slide_label = clean_label
         is_lyrics = classify_slide_as_lyrics(
             self.current_slide_text, self.current_slide_label, self.config.lyrics_keywords
         )
@@ -465,9 +472,14 @@ class ProPresenterClient:
             self.is_lyrics_slide_active = is_lyrics
             if self.config.auto_mute_on_lyrics and self.on_lyrics_state_changed:
                 try:
-                    self.on_lyrics_state_changed(is_lyrics, f"{source}:{slide_label or 'lyrics'}")
+                    self.on_lyrics_state_changed(is_lyrics, f"{source}:{clean_label or 'lyrics'}")
                 except Exception:
                     logger.debug("on_lyrics_state_changed callback failed.", exc_info=True)
+        if has_changed and self.on_slide_changed and (clean_text or clean_label):
+            try:
+                self.on_slide_changed(clean_text, clean_label, source)
+            except Exception:
+                logger.debug("on_slide_changed callback failed.", exc_info=True)
         return is_lyrics
 
     async def send_stage_message(self, text: str) -> bool:

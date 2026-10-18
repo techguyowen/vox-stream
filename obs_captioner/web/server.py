@@ -3037,6 +3037,11 @@ class WebOverlayServer:
         is_lyrics = client.update_slide_state(slide_text, slide_label, source=provider)
         if asyncio.iscoroutine(is_lyrics):
             is_lyrics = await is_lyrics
+        if not is_lyrics and getattr(self.config, "bible", None) and self.config.bible.enabled and getattr(getattr(self.config, "propresenter", None), "auto_display_scripture_slides", True):
+            if not getattr(client, "on_slide_changed", None) and getattr(client, "last_slide_changed", True):
+                target = f"{slide_label}. {slide_text}".strip()
+                if target:
+                    asyncio.create_task(self.trigger_scripture_lookup(target))
         return web.json_response({"status": "ok", "is_lyrics_slide_active": bool(is_lyrics)})
 
     async def _handle_proclaim_command(self, request: web.Request) -> web.Response:

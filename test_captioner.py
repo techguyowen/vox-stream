@@ -8030,6 +8030,124 @@ class TestV120AuditRemediationAndFeatures(AioHTTPTestCase):
         states = {a for a, _ in events}
         self.assertEqual(states, {True, False})
 
+    async def test_presentation_slide_triggers_formatted_scripture_lookup(self):
+        from obs_captioner.propresenter import ProPresenterClient, ProPresenterConfig, classify_slide_as_lyrics
+        from obs_captioner.bible_engine import ScriptureLookupResult
+
+        self.overlay_server.config.bible.enabled = True
+        self.overlay_server.config.bible.default_version = "bsb"
+        self.overlay_server.config.propresenter.enabled = True
+        self.overlay_server.config.propresenter.auto_display_scripture_slides = True
+
+        broadcasted: List[ScriptureLookupResult] = []
+        orig_broadcast = self.overlay_server.broadcast_scripture
+
+        async def mock_broadcast(res: ScriptureLookupResult, duration_seconds: float = 14.0):
+            broadcasted.append(res)
+            return await orig_broadcast(res, duration_seconds=duration_seconds)
+
+        self.overlay_server.broadcast_scripture = mock_broadcast
+
+        def on_slide_changed(slide_text: str, slide_label: str, source: str):
+            if not self.overlay_server or not getattr(self.overlay_server.config, "bible", None) or not self.overlay_server.config.bible.enabled:
+                return
+            if not getattr(self.overlay_server.config.propresenter, "auto_display_scripture_slides", True):
+                return
+            if client and client.is_lyrics_slide_active:
+                return
+            target = f"{slide_label}. {slide_text}".strip()
+            if target:
+                try:
+                    asyncio.create_task(self.overlay_server.trigger_scripture_lookup(target))
+                except Exception:
+                    pass
+
+        client = ProPresenterClient(
+            self.overlay_server.config.propresenter,
+            on_slide_changed=on_slide_changed,
+        )
+        self.overlay_server.propresenter_client = client
+
+        # 1. Slide with Luke 15:1-3 changes
+        slide_label = "Luke 15:1-3"
+        slide_text = "Now the tax collectors and sinners were all gathering around to hear Jesus."
+
+        # Verify citation in label prevents lyrics classification
+        self.assertFalse(classify_slide_as_lyrics(slide_text, slide_label))
+
+        is_lyrics = client.update_slide_state(slide_text, slide_label, source="propresenter")
+        self.assertFalse(is_lyrics)
+        self.assertFalse(client.is_lyrics_slide_active)
+
+        # Allow async lookup task to execute
+        await asyncio.sleep(0.05)
+
+        # Verify trigger_scripture_lookup extracted Luke 15:1-3 and broadcast_scripture received formatted text from bible.db
+        self.assertEqual(len(broadcasted), 1)
+        res = broadcasted[0]
+        self.assertIsInstance(res, ScriptureLookupResult)
+        self.assertEqual(res.citation, "Luke 15:1-3")
+        self.assertEqual(res.book, "Luke")
+        self.assertEqual(res.chapter, 15)
+        self.assertEqual(res.verse_start, 1)
+        self.assertEqual(res.verse_end, 3)
+        self.assertIn("tax collectors", res.text.lower())
+        self.assertIn("sinners", res.text.lower())
+
+        # 2. Polling identical slide repeatedly (has_changed=False) must NOT trigger duplicate lookups
+        for _ in range(3):
+            dup_lyrics = client.update_slide_state(slide_text, slide_label, source="propresenter")
+            self.assertFalse(dup_lyrics)
+            self.assertFalse(client.last_slide_changed)
+        await asyncio.sleep(0.05)
+        self.assertEqual(len(broadcasted), 1, "Duplicate lookups triggered for unchanged slide")
+
+        # 3. Worship lyrics slides do NOT trigger scripture lookups
+        lyrics_text = "Amazing grace how sweet the sound\nThat saved a wretch like me"
+        lyrics_label = "Worship Song"
+        is_lyrics_slide = client.update_slide_state(lyrics_text, lyrics_label, source="propresenter")
+        self.assertTrue(is_lyrics_slide)
+        self.assertTrue(client.is_lyrics_slide_active)
+        await asyncio.sleep(0.05)
+        self.assertEqual(len(broadcasted), 1, "Lyrics slide incorrectly triggered scripture lookup")
+
+        # 4. HTTP endpoint /api/presentation/slide triggering formatted scripture lookup
+        self._enable_two_tier_auth()
+        resp = await self.client.request(
+            "POST", "/api/presentation/slide",
+            headers={"X-Operator-Pin": "1234"},
+            json={"provider": "propresenter", "slide_text": "In the beginning God created the heavens and the earth.", "slide_label": "Genesis 1:1"},
+        )
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertEqual(data["status"], "ok")
+        self.assertFalse(data["is_lyrics_slide_active"])
+        await asyncio.sleep(0.05)
+        self.assertEqual(len(broadcasted), 2)
+        self.assertEqual(broadcasted[1].citation, "Genesis 1:1")
+
+        # Duplicate slide to /api/presentation/slide should not re-trigger
+        resp_dup = await self.client.request(
+            "POST", "/api/presentation/slide",
+            headers={"X-Operator-Pin": "1234"},
+            json={"provider": "propresenter", "slide_text": "In the beginning God created the heavens and the earth.", "slide_label": "Genesis 1:1"},
+        )
+        self.assertEqual(resp_dup.status, 200)
+        await asyncio.sleep(0.05)
+        self.assertEqual(len(broadcasted), 2)
+
+        # Worship lyrics to /api/presentation/slide should not trigger scripture lookup
+        resp_lyrics = await self.client.request(
+            "POST", "/api/presentation/slide",
+            headers={"X-Operator-Pin": "1234"},
+            json={"provider": "propresenter", "slide_text": "Holy holy holy Lord God Almighty", "slide_label": "Worship"},
+        )
+        self.assertEqual(resp_lyrics.status, 200)
+        lyrics_data = await resp_lyrics.json()
+        self.assertTrue(lyrics_data["is_lyrics_slide_active"])
+        await asyncio.sleep(0.05)
+        self.assertEqual(len(broadcasted), 2)
+
     def test_presentation_sync_tab_is_read_only_monitor(self):
         html = (
             Path(__file__).resolve().parent
