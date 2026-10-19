@@ -285,3 +285,21 @@ class TestPerfWeb(unittest.IsolatedAsyncioTestCase):
 
         await server.stop()
 
+    async def test_display_page_contains_tutorial_and_pwa_helper(self):
+        from aiohttp.test_utils import TestClient, TestServer
+        server = WebOverlayServer(AppConfig())
+        client = TestClient(TestServer(server.app))
+        await client.start_server()
+        try:
+            resp = await client.get("/display")
+            self.assertEqual(resp.status, 200)
+            html = await resp.text()
+            self.assertIn("btnOpenTutorial", html)
+            self.assertIn("btnHeaderPwaInstall", html)
+            self.assertIn("tutorialModal", html)
+            self.assertIn("pwaModal", html)
+        finally:
+            await client.close()
+            await server.stop()
+
+

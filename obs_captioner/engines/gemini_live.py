@@ -59,8 +59,10 @@ STREAM_RECONNECT_MAX_DELAY = 15.0
 DISCONNECT_DEDUP_WINDOW_SEC = 5.0
 
 # Session duration thresholds for proactive graceful rotation (Google 600s ceiling)
-SESSION_ROTATION_THRESHOLD_SEC = 510.0  # (~8.5 minutes) natural pause rotation threshold
-SESSION_HARD_ROTATION_SEC = 550.0       # (~9.16 minutes) forced rotation threshold
+SESSION_PREWARM_THRESHOLD_SEC = 480.0   # (8.0 minutes) start background pre-warm of replacement socket
+SESSION_ROTATION_THRESHOLD_SEC = 510.0  # (~8.5 minutes) preferred natural pause rotation threshold
+SESSION_HARD_ROTATION_SEC = 540.0       # (9.0 minutes) forced handover ceiling
+PREWARM_CONNECT_TIMEOUT = 5.0
 
 
 
@@ -455,6 +457,8 @@ class GeminiLiveEngine(BaseSTTEngine):
         self._go_away_received: bool = False
         self.last_rotation_time: float = 0.0
         self.on_audio_data: Optional[Callable[[bytes, str], Any]] = None
+        self._drain_tasks: set[asyncio.Task] = set()
+        self._on_transcript: Optional[CaptionCallback] = None
 
         # Token usage & cost tracking (usageMetadata maxima + streamed audio duration)
         self._prompt_tokens: int = 0
@@ -764,6 +768,9 @@ class GeminiLiveEngine(BaseSTTEngine):
                     "generationConfig": gen_config,
                     "inputAudioTranscription": {},
                     "outputAudioTranscription": {},
+                    "contextWindowCompression": {
+                        "slidingWindow": {}
+                    },
                 }
             }
 
@@ -775,6 +782,9 @@ class GeminiLiveEngine(BaseSTTEngine):
                 "model": model,
                 "generationConfig": gen_config,
                 "inputAudioTranscription": input_audio_transcription,
+                "contextWindowCompression": {
+                    "slidingWindow": {}
+                },
             }
         }
         if self._resumption_handle:
@@ -1103,6 +1113,148 @@ class GeminiLiveEngine(BaseSTTEngine):
     def _build_ssl_context() -> "ssl.SSLContext":
         """Standard SSL context for aiohttp (LibreSSL / proxy compatible)."""
         return ssl.create_default_context()
+
+    @staticmethod
+    async def _safe_close_session(session: Any) -> None:
+        """Safely close an aiohttp ClientSession or mock."""
+        if session is None:
+            return
+        try:
+            if hasattr(session, "close"):
+                res = session.close()
+                if asyncio.iscoroutine(res) or hasattr(res, "__await__"):
+                    await res
+            elif hasattr(session, "__aexit__"):
+                await session.__aexit__(None, None, None)
+        except Exception:
+            pass
+
+    @staticmethod
+    async def _safe_close_ws(ws: Any) -> None:
+        """Safely close an aiohttp ClientWebSocketResponse or mock."""
+        if ws is None:
+            return
+        try:
+            if hasattr(ws, "close"):
+                res = ws.close()
+                if asyncio.iscoroutine(res) or hasattr(res, "__await__"):
+                    await res
+            elif hasattr(ws, "__aexit__"):
+                await ws.__aexit__(None, None, None)
+        except Exception:
+            pass
+
+    async def _connect_and_setup(
+        self, ws_url: str, ssl_context: Any, setup_payload: Dict[str, Any]
+    ) -> Tuple[aiohttp.ClientSession, aiohttp.ClientWebSocketResponse, float]:
+        """Establish a new WebSocket connection and complete setup handshake."""
+        t0 = time.perf_counter()
+        timeout = aiohttp.ClientTimeout(total=None, connect=PREWARM_CONNECT_TIMEOUT)
+        session = aiohttp.ClientSession(timeout=timeout)
+        try:
+            ws_conn = session.ws_connect(ws_url, heartbeat=20.0, ssl=ssl_context)
+            if hasattr(ws_conn, "__await__") or asyncio.iscoroutine(ws_conn):
+                ws = await ws_conn
+            elif hasattr(ws_conn, "__aenter__"):
+                ws = await ws_conn.__aenter__()
+            else:
+                ws = ws_conn
+
+            await ws.send_str(json.dumps(setup_payload))
+            init_msg = await ws.receive(timeout=INIT_RECEIVE_TIMEOUT)
+            if init_msg.type in (aiohttp.WSMsgType.TEXT, aiohttp.WSMsgType.BINARY):
+                raw = init_msg.data if isinstance(init_msg.data, str) else init_msg.data.decode("utf-8")
+                init_data = json.loads(raw)
+                if "setupComplete" in init_data:
+                    handshake_ms = round((time.perf_counter() - t0) * 1000.0, 1)
+                    return session, ws, handshake_ms
+                raise RuntimeError(f"Unexpected initial message: {raw}")
+            raise RuntimeError(f"WebSocket closed or error during setup: {init_msg.type}")
+        except Exception:
+            await self._safe_close_session(session)
+            raise
+
+    async def _drain_and_close(
+        self,
+        old_session: Any,
+        old_ws: Any,
+        final_received_event: Optional[asyncio.Event] = None,
+        on_transcript: Optional[CaptionCallback] = None,
+    ) -> None:
+        """Listen to old_ws for up to 600ms, parse final inputTranscription, and cleanly close."""
+        cb = on_transcript or getattr(self, "_on_transcript", None)
+        deadline = time.monotonic() + 0.60
+        try:
+            while not getattr(old_ws, "closed", False):
+                rem = deadline - time.monotonic()
+                if rem <= 0:
+                    break
+                try:
+                    msg = await old_ws.receive(timeout=rem)
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    break
+                except Exception as e:
+                    logger.debug(f"Drain receive error on rotated socket: {e}")
+                    break
+
+                if msg.type in (aiohttp.WSMsgType.TEXT, aiohttp.WSMsgType.BINARY):
+                    raw = msg.data if isinstance(msg.data, str) else msg.data.decode("utf-8")
+                    try:
+                        data = json.loads(raw)
+                    except Exception:
+                        continue
+
+                    if "sessionResumptionUpdate" in data:
+                        update = data.get("sessionResumptionUpdate") or {}
+                        if update.get("resumable") and update.get("newHandle"):
+                            self._resumption_handle = update["newHandle"]
+
+                    events = self.parse_server_message(data)
+                    suppress_music = getattr(self.config.audio, "suppress_music", True)
+                    strict_music = getattr(self.config.audio, "suppress_music_strict", False)
+                    for item in events:
+                        if len(item) >= 3:
+                            text, is_final, trans = item[0], item[1], item[2]
+                        else:
+                            text, is_final = item[0], item[1]
+                            trans = None
+
+                        if suppress_music:
+                            if (strict_music and getattr(self.vad.music_detector, "music_detected", False)) or is_music_text(text, strict=strict_music):
+                                if is_final:
+                                    self._reset_turn_state()
+                                continue
+
+                        segmented_events = self._segment_streaming_event(
+                            text=text,
+                            is_final=is_final,
+                            translated_text=trans,
+                        )
+                        for seg_ev in segmented_events:
+                            if seg_ev.is_final and final_received_event is not None:
+                                final_received_event.set()
+                            if cb is not None:
+                                try:
+                                    res = cb(seg_ev)
+                                    if asyncio.iscoroutine(res):
+                                        await res
+                                except Exception as cbe:
+                                    logger.debug(f"Drain on_transcript error: {cbe}")
+
+                elif msg.type in (
+                    aiohttp.WSMsgType.CLOSED,
+                    aiohttp.WSMsgType.CLOSE,
+                    aiohttp.WSMsgType.CLOSING,
+                    aiohttp.WSMsgType.ERROR,
+                ):
+                    break
+        except asyncio.CancelledError:
+            raise
+        except Exception as ex:
+            logger.debug(f"Drain error on rotated socket: {ex}")
+        finally:
+            await self._safe_close_ws(old_ws)
+            await self._safe_close_session(old_session)
 
     @staticmethod
     def _is_invalid_key_failure(reason: str, code: Any = None) -> bool:
@@ -1535,11 +1687,10 @@ class GeminiLiveEngine(BaseSTTEngine):
     ) -> None:
         """Reconnecting Gemini Live session loop fed from a persistent audio queue."""
         self.is_running = True
+        self._on_transcript = on_transcript
         model = self.config.gemini_live.model or "gemini-3.5-transcribe-live"
         sample_rate = self.config.audio.sample_rate or 16000
         enable_hybrid_vad = getattr(self.config.gemini_live, "enable_hybrid_vad", True)
-        pause_threshold = max(0.35, (getattr(self.config.audio, "sentence_break_ms", 600) or 600) / 1000.0)
-        max_sentence_duration = float(getattr(self.config.audio, "max_sentence_duration_seconds", 7.0) or 7.0)
         reconnect_delay = STREAM_RECONNECT_INITIAL_DELAY
 
         def _next_backoff() -> float:
@@ -1570,398 +1721,449 @@ class GeminiLiveEngine(BaseSTTEngine):
 
                 logger.info(f"Opening Gemini Live WebSockets connection (model: {model}, Hybrid VAD: {enable_hybrid_vad})...")
                 ws_url = self._get_ws_url()
+                ssl_context = self._build_ssl_context()
                 session_start_time = 0.0
+                active_session: Optional[aiohttp.ClientSession] = None
+                active_ws: Optional[aiohttp.ClientWebSocketResponse] = None
+                rotation_requested = False
+                is_rotating = False
+                prewarm_task: Optional[asyncio.Task] = None
+                final_received_event = asyncio.Event()
 
                 try:
-                    timeout = aiohttp.ClientTimeout(total=None, connect=INIT_CONNECT_TIMEOUT)
-                    ssl_context = self._build_ssl_context()
-                    async with aiohttp.ClientSession(timeout=timeout) as session:
-                        self._active_session = session
-                        async with session.ws_connect(ws_url, heartbeat=20.0, ssl=ssl_context) as ws:
-                            self._active_ws = ws
-                            session_start_time = 0.0
-                            rotation_requested = False
-                            self._reset_turn_state()
-                            final_received_event = asyncio.Event()
+                    setup_payload = self.build_setup_payload(force_transcribe=use_interp_sidecar)
+                    active_session, active_ws, handshake_ms = await self._connect_and_setup(
+                        ws_url, ssl_context, setup_payload
+                    )
+                    self._active_session = active_session
+                    self._active_ws = active_ws
+                    session_start_time = time.monotonic()
+                    self.session_start_monotonic = session_start_time
+                    self._reset_turn_state()
+                    final_received_event.clear()
+                    self.current_ping_ms = handshake_ms
+                    if self.on_ping:
+                        try:
+                            self.on_ping(handshake_ms)
+                        except Exception:
+                            pass
+                    logger.info(f"Gemini 3.5 Transcribe Live session established and ready ({handshake_ms}ms).")
+                    reconnect_delay = STREAM_RECONNECT_INITIAL_DELAY
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    if not self.is_running:
+                        return
+                    reason = str(e)
+                    if self._is_invalid_key_failure(reason):
+                        logger.error("Invalid Gemini API key. Please check your key at aistudio.google.com.")
+                        return
+                    if self._is_invalid_model_failure(reason):
+                        fallback = getattr(self.config.gemini_live, "fallback_model", "") or get_fallback_model_id(model)
+                        if fallback and fallback != model:
+                            logger.warning(f"⚠️ Model '{model}' rejected during setup ({reason}). Auto-falling back to '{fallback}'...")
+                            self.config.gemini_live.model = fallback
+                            model = fallback
+                            continue
+                    delay = _next_backoff()
+                    logger.warning(f"Gemini connection failed during setup ({reason}); retrying in {delay:.0f}s...")
+                    await asyncio.sleep(delay)
+                    continue
 
-                            # 1. Send official setup payload
-                            setup_payload = self.build_setup_payload(force_transcribe=use_interp_sidecar)
-                            setup_t0 = time.perf_counter()
-                            await ws.send_str(json.dumps(setup_payload))
+                stream_state["finished"] = False
+                is_replaying_backlog = False
+                current_recv_subtask: Optional[asyncio.Task] = None
 
-                            # Await setupComplete confirmation
-                            init_msg = await ws.receive(timeout=INIT_RECEIVE_TIMEOUT)
-                            if init_msg.type in (aiohttp.WSMsgType.TEXT, aiohttp.WSMsgType.BINARY):
-                                raw = init_msg.data if isinstance(init_msg.data, str) else init_msg.data.decode("utf-8")
+                async def receive_loop(target_ws: aiohttp.ClientWebSocketResponse) -> None:
+                    nonlocal prewarm_task
+                    try:
+                        async for msg in target_ws:
+                            if not self.is_running:
+                                break
+                            if msg.type in (aiohttp.WSMsgType.TEXT, aiohttp.WSMsgType.BINARY):
+                                raw_text = msg.data if isinstance(msg.data, str) else msg.data.decode("utf-8")
                                 try:
-                                    init_data = json.loads(raw)
-                                    if "setupComplete" in init_data:
-                                        session_start_time = time.monotonic()
-                                        self.session_start_monotonic = session_start_time
-                                        rotation_requested = False
-                                        self._reset_turn_state()
-                                        final_received_event.clear()
-                                        handshake_ms = round((time.perf_counter() - setup_t0) * 1000.0, 1)
-                                        self.current_ping_ms = handshake_ms
-                                        if self.on_ping:
-                                            try:
-                                                self.on_ping(handshake_ms)
-                                            except Exception:
-                                                pass
-                                        logger.info(f"Gemini 3.5 Transcribe Live session established and ready ({handshake_ms}ms).")
-                                        reconnect_delay = STREAM_RECONNECT_INITIAL_DELAY
+                                    data = json.loads(raw_text)
                                 except Exception:
-                                    pass
-                            elif init_msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.CLOSE):
-                                reason = getattr(init_msg, "extra", "") or f"Close code {init_msg.data}"
-                                if self._is_invalid_key_failure(reason, getattr(init_msg, "data", None)):
-                                    logger.error("Invalid Gemini API key. Please check your key at aistudio.google.com.")
-                                    return
-                                if self._is_invalid_model_failure(reason, getattr(init_msg, "data", None)):
-                                    fallback = getattr(self.config.gemini_live, "fallback_model", "") or get_fallback_model_id(model)
-                                    if fallback and fallback != model:
-                                        logger.warning(f"⚠️ Model '{model}' rejected during setup ({reason}). Auto-falling back to '{fallback}'...")
-                                        self.config.gemini_live.model = fallback
-                                        model = fallback
-                                        continue
-                                delay = _next_backoff()
-                                logger.warning(f"Gemini rejected connection during setup ({reason}); retrying in {delay:.0f}s...")
-                                await asyncio.sleep(delay)
-                                continue
+                                    continue
 
-                            stream_state["finished"] = False
-
-                            # 2. Worker: stream audio chunks & signal Hybrid VAD end-of-speech
-                            async def send_audio():
-                                nonlocal rotation_requested
-                                speech_active = False
-                                speech_start_time = 0.0
-                                last_speech_time = 0.0
-
-                                eof = False
-                                while True:
-                                    chunk = await audio_q.get()
-                                    if chunk is None:
-                                        eof = True
-                                        break
-                                    if not self.is_running or ws.closed:
-                                        break
-                                    if not chunk:
-                                        continue
-
-                                    even_len = len(chunk) & ~1
-                                    pcm_chunk = chunk[:even_len]
-
-                                    # Music suppression gating:
-                                    # When strict music suppression is active and acoustic music is detected,
-                                    # halt streaming audio to Gemini so singing and worship instruments are completely silenced.
-                                    suppress_music = getattr(self.config.audio, "suppress_music", True)
-                                    strict_music = getattr(self.config.audio, "suppress_music_strict", False)
-                                    is_music_active = False
-                                    if suppress_music:
-                                        is_music_active = self.vad.is_music(pcm_chunk, strict=strict_music)
-
-                                    if suppress_music and strict_music and is_music_active:
-                                        if speech_active:
-                                            speech_active = False
-                                            speech_start_time = 0.0
-                                            try:
-                                                await ws.send_str(json.dumps({"realtimeInput": {"audioStreamEnd": True}}))
-                                            except Exception:
-                                                pass
-                                        continue
-
-                                    if interp_q is not None:
-                                        try:
-                                            if interp_q.full():
-                                                try:
-                                                    interp_q.get_nowait()
-                                                except asyncio.QueueEmpty:
-                                                    pass
-                                            interp_q.put_nowait(pcm_chunk)
-                                        except asyncio.QueueFull:
-                                            pass
-
-                                    # Base64 encode raw PCM audio chunk
-                                    b64_audio = base64.b64encode(pcm_chunk).decode("utf-8")
-                                    audio_payload = {
-                                        "realtimeInput": {
-                                            "audio": {
-                                                "data": b64_audio,
-                                                "mimeType": f"audio/pcm;rate={sample_rate}",
-                                            }
-                                        }
-                                    }
-                                    await ws.send_str(json.dumps(audio_payload))
-                                    # Track streamed audio duration (16-bit mono PCM).
-                                    self._audio_seconds_streamed += len(pcm_chunk) / (sample_rate * 2)
-
-                                    # Track local voice activity for Hybrid VAD pause finalization & session rotation
-                                    now = time.time()
-                                    mono_now = time.monotonic()
-                                    current_pause_threshold = max(
-                                        0.35, (getattr(self.config.audio, "sentence_break_ms", 600) or 600) / 1000.0
+                                if "goAway" in data:
+                                    go_away = data.get("goAway") or {}
+                                    time_left = go_away.get("timeLeft", "unknown")
+                                    logger.warning(
+                                        f"Google Gemini Live sent goAway notice (timeLeft={time_left}); rotating preemptively."
                                     )
-                                    is_voice = self.vad.is_speech(pcm_chunk)
-                                    if is_voice:
-                                        if not speech_active:
-                                            speech_active = True
-                                            speech_start_time = now
-                                        last_speech_time = now
-                                    else:
-                                        silence_dur = (now - last_speech_time) if last_speech_time > 0.0 else 0.0
-                                        if speech_active and silence_dur >= min(0.35, current_pause_threshold):
-                                            speech_active = False
-                                        if getattr(self.config.gemini_live, "enable_hybrid_vad", enable_hybrid_vad):
-                                            vad_event = self._maybe_finalize_on_vad_pause(
-                                                speech_active=speech_active,
-                                                silence_duration=silence_dur,
-                                                pause_threshold=current_pause_threshold,
-                                                mono_now=mono_now,
-                                            )
-                                            if vad_event is not None:
-                                                final_received_event.set()
-                                                try:
-                                                    res = on_transcript(vad_event)
-                                                    if asyncio.iscoroutine(res):
-                                                        await res
-                                                except Exception as ve:
-                                                    logger.debug(f"Hybrid VAD pause finalization error: {ve}")
-
-                                    # Proactive Session Rotation Check (prevent Google 10m ceiling drops)
-                                    elapsed_session = time.monotonic() - session_start_time
-                                    if session_start_time > 0.0 and (elapsed_session >= SESSION_ROTATION_THRESHOLD_SEC or self._go_away_received):
-                                        current_silence = (now - last_speech_time) if last_speech_time > 0.0 else elapsed_session
-                                        should_rotate = (
-                                            self._go_away_received
-                                            or (not speech_active)
-                                            or (elapsed_session >= SESSION_HARD_ROTATION_SEC and current_silence >= 0.25)
+                                    self._go_away_received = True
+                                    final_received_event.set()
+                                    if prewarm_task is None:
+                                        pw_payload = self.build_setup_payload(force_transcribe=use_interp_sidecar)
+                                        prewarm_task = asyncio.create_task(
+                                            self._connect_and_setup(ws_url, ssl_context, pw_payload)
                                         )
-                                        if should_rotate:
-                                            logger.info(
-                                                f"Gemini Live proactive session rotation triggered at {elapsed_session:.1f}s "
-                                                f"(speech_active={speech_active}, silence={current_silence:.2f}s, goAway={self._go_away_received})."
-                                            )
-                                            rotation_requested = True
-                                            self.rotation_count += 1
-                                            self.last_rotation_time = time.time()
-                                            self._go_away_received = False
-                                            try:
-                                                await ws.send_str(json.dumps({"realtimeInput": {"audioStreamEnd": True}}))
-                                            except Exception:
-                                                pass
 
-                                            try:
-                                                await asyncio.wait_for(final_received_event.wait(), timeout=0.50)
-                                            except (asyncio.TimeoutError, asyncio.CancelledError):
-                                                pass
+                                if "sessionResumptionUpdate" in data:
+                                    update = data.get("sessionResumptionUpdate") or {}
+                                    if update.get("resumable") and update.get("newHandle"):
+                                        self._resumption_handle = update["newHandle"]
+                                        logger.debug(
+                                            f"Received Gemini session resumption token: {self._resumption_handle[:16]}..."
+                                        )
 
-                                            if not ws.closed:
-                                                try:
-                                                    await ws.close()
-                                                except Exception:
-                                                    pass
-                                            break
+                                events = self.parse_server_message(data)
+                                suppress_music = getattr(self.config.audio, "suppress_music", True)
+                                strict_music = getattr(self.config.audio, "suppress_music_strict", False)
+                                for item in events:
+                                    if len(item) >= 3:
+                                        text, is_final, translated_text = item[0], item[1], item[2]
+                                    else:
+                                        text, is_final = item[0], item[1]
+                                        translated_text = None
 
-                                # Generator exhausted (or stopped) without the socket failing:
-                                # a genuine end of stream, not a connection drop.
-                                stream_state["finished"] = (eof or not self.is_running) and not ws.closed
+                                    if suppress_music:
+                                        if (strict_music and getattr(self.vad.music_detector, "music_detected", False)) or is_music_text(text, strict=strict_music):
+                                            if is_final:
+                                                self._reset_turn_state()
+                                            logger.debug(f"Gemini Live suppressed singing/music text: {text}")
+                                            continue
 
-                                # End of stream signal upon loop exit
-                                if not ws.closed:
+                                    segmented_events = self._segment_streaming_event(
+                                        text=text,
+                                        is_final=is_final,
+                                        translated_text=translated_text,
+                                    )
+                                    for seg_ev in segmented_events:
+                                        if seg_ev.is_final:
+                                            final_received_event.set()
+                                        else:
+                                            final_received_event.clear()
+
+                                        res = on_transcript(seg_ev)
+                                        if asyncio.iscoroutine(res):
+                                            await res
+
+                            elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.ERROR):
+                                logger.warning("Gemini Live WebSocket closed by remote server.")
+                                break
+                    except asyncio.CancelledError:
+                        if is_rotating or (active_ws is not target_ws):
+                            return
+                        raise
+                    finally:
+                        if not is_rotating and not rotation_requested and (active_ws is target_ws):
+                            text_to_finalize = None
+                            if self._latest_interim_text:
+                                words = self._latest_interim_text.strip().split()
+                                if len(words) >= 2:
+                                    text_to_finalize = self._latest_interim_text.strip()
+                                    self._append_finalized_prefix(text_to_finalize)
+                            if self._finalized_turn_prefix:
+                                self._last_disconnect_finalized_text = self._finalized_turn_prefix
+                                self._last_disconnect_mono = time.monotonic()
+                            if text_to_finalize:
+                                logger.info(
+                                    f"Gemini Live finalizing in-flight interim on unexpected disconnect: {text_to_finalize}"
+                                )
+                                self._reset_turn_state()
+                                try:
+                                    res = on_transcript(
+                                        TranscriptEvent(
+                                            text=text_to_finalize,
+                                            is_final=True,
+                                            translated_text=None,
+                                        )
+                                    )
+                                    if asyncio.iscoroutine(res):
+                                        await res
+                                except Exception as ex:
+                                    logger.warning(f"Error finalizing in-flight interim: {ex}")
+                        self._reset_turn_state()
+
+                def switch_receiver(new_target_ws: aiohttp.ClientWebSocketResponse) -> None:
+                    nonlocal current_recv_subtask
+                    if current_recv_subtask is not None and not current_recv_subtask.done():
+                        current_recv_subtask.cancel()
+                    current_recv_subtask = asyncio.create_task(receive_loop(new_target_ws))
+
+                switch_receiver(active_ws)
+
+                async def receive_manager():
+                    while self.is_running and not stream_state["finished"]:
+                        sub = current_recv_subtask
+                        if sub is None:
+                            await asyncio.sleep(0.01)
+                            continue
+                        try:
+                            await sub
+                        except asyncio.CancelledError:
+                            if is_rotating or (current_recv_subtask is not sub):
+                                continue
+                            raise
+                        except Exception as e:
+                            logger.warning(f"Receiver error: {e}")
+                            break
+                        if current_recv_subtask is not sub or is_rotating:
+                            continue
+                        break
+
+                async def send_audio():
+                    nonlocal active_ws, active_session, session_start_time
+                    nonlocal rotation_requested, is_rotating, prewarm_task, is_replaying_backlog
+                    speech_active = False
+                    speech_start_time = 0.0
+                    last_speech_time = 0.0
+
+                    eof = False
+                    while True:
+                        try:
+                            chunk = await asyncio.wait_for(audio_q.get(), timeout=0.05)
+                        except asyncio.TimeoutError:
+                            chunk = b""
+
+                        if chunk is None:
+                            eof = True
+                            break
+                        if not self.is_running or (active_ws and active_ws.closed):
+                            break
+
+                        # Seamless Hot-Handoff Session Rotation Check
+                        elapsed_session = time.monotonic() - session_start_time
+                        prewarm_thresh = min(SESSION_PREWARM_THRESHOLD_SEC, SESSION_ROTATION_THRESHOLD_SEC)
+                        if session_start_time > 0.0 and (elapsed_session >= prewarm_thresh or self._go_away_received):
+                            if prewarm_task is None:
+                                logger.info(
+                                    f"Pre-warming replacement Gemini Live session (session age: {elapsed_session:.1f}s, goAway: {self._go_away_received})..."
+                                )
+                                current_setup = self.build_setup_payload(force_transcribe=use_interp_sidecar)
+                                prewarm_task = asyncio.create_task(
+                                    self._connect_and_setup(ws_url, ssl_context, current_setup)
+                                )
+
+                        if prewarm_task is not None and prewarm_task.done():
+                            prewarm_exc = prewarm_task.exception()
+                            if prewarm_exc is not None:
+                                logger.warning(f"Pre-warm replacement session failed: {prewarm_exc}")
+                                prewarm_task = None
+                            else:
+                                should_rotate = (
+                                    self._go_away_received
+                                    or (elapsed_session >= SESSION_ROTATION_THRESHOLD_SEC and not speech_active)
+                                    or (elapsed_session >= SESSION_HARD_ROTATION_SEC)
+                                )
+                                if should_rotate:
+                                    logger.info(
+                                        f"Gemini Live seamless hot-handoff rotation triggered at {elapsed_session:.1f}s "
+                                        f"(speech_active={speech_active}, goAway={self._go_away_received})."
+                                    )
+                                    is_rotating = True
+                                    old_ws = active_ws
+                                    old_session = active_session
+
                                     try:
-                                        await ws.send_str(json.dumps({"realtimeInput": {"audioStreamEnd": True}}))
+                                        await old_ws.send_str(json.dumps({"realtimeInput": {"audioStreamEnd": True}}))
                                     except Exception:
                                         pass
 
-                            # 3. Worker: receive and dispatch interim and finalized transcripts
-                            async def receive_transcripts():
-                                try:
-                                    async for msg in ws:
-                                        if not self.is_running:
-                                            break
+                                    new_session, new_ws, new_handshake_ms = prewarm_task.result()
 
-                                        if msg.type in (aiohttp.WSMsgType.TEXT, aiohttp.WSMsgType.BINARY):
-                                            raw_text = msg.data if isinstance(msg.data, str) else msg.data.decode("utf-8")
-                                            try:
-                                                data = json.loads(raw_text)
-                                            except Exception:
-                                                continue
+                                    self._active_ws = new_ws
+                                    active_ws = new_ws
+                                    self._active_session = new_session
+                                    active_session = new_session
 
-                                            if "goAway" in data:
-                                                go_away = data.get("goAway") or {}
-                                                time_left = go_away.get("timeLeft", "unknown")
-                                                logger.warning(
-                                                    f"Google Gemini Live sent goAway notice (timeLeft={time_left}); rotating preemptively."
-                                                )
-                                                self._go_away_received = True
-                                                final_received_event.set()
+                                    session_start_time = time.monotonic()
+                                    self.session_start_monotonic = session_start_time
+                                    rotation_requested = False
 
-                                            if "sessionResumptionUpdate" in data:
-                                                update = data.get("sessionResumptionUpdate") or {}
-                                                if update.get("resumable") and update.get("newHandle"):
-                                                    self._resumption_handle = update["newHandle"]
-                                                    logger.debug(
-                                                        f"Received Gemini session resumption token: {self._resumption_handle[:16]}..."
-                                                    )
+                                    self.rotation_count += 1
+                                    self.last_rotation_time = time.time()
+                                    self._go_away_received = False
 
-                                            events = self.parse_server_message(data)
-                                            suppress_music = getattr(self.config.audio, "suppress_music", True)
-                                            strict_music = getattr(self.config.audio, "suppress_music_strict", False)
-                                            for item in events:
-                                                if len(item) >= 3:
-                                                    text, is_final, translated_text = item[0], item[1], item[2]
-                                                else:
-                                                    text, is_final = item[0], item[1]
-                                                    translated_text = None
+                                    switch_receiver(new_ws)
+                                    is_rotating = False
 
-                                                if suppress_music:
-                                                    if (strict_music and getattr(self.vad.music_detector, "music_detected", False)) or is_music_text(text, strict=strict_music):
-                                                        if is_final:
-                                                            self._reset_turn_state()
-                                                        logger.debug(f"Gemini Live suppressed singing/music text: {text}")
-                                                        continue
+                                    drain_t = asyncio.create_task(
+                                        self._drain_and_close(old_session, old_ws, final_received_event, on_transcript)
+                                    )
+                                    self._drain_tasks.add(drain_t)
+                                    drain_t.add_done_callback(self._drain_tasks.discard)
 
-                                                segmented_events = self._segment_streaming_event(
-                                                    text=text,
-                                                    is_final=is_final,
-                                                    translated_text=translated_text,
-                                                )
-                                                for seg_ev in segmented_events:
-                                                    if seg_ev.is_final:
-                                                        final_received_event.set()
-                                                    else:
-                                                        final_received_event.clear()
+                                    prewarm_task = None
 
-                                                    res = on_transcript(seg_ev)
-                                                    if asyncio.iscoroutine(res):
-                                                        await res
+                        if chunk:
+                            even_len = len(chunk) & ~1
+                            pcm_chunk = chunk[:even_len]
 
-                                        elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.ERROR):
-                                            logger.warning("Gemini Live WebSocket closed by remote server.")
-                                            break
-                                finally:
-                                    # In-Flight Interim Preservation on Unexpected Disconnect:
-                                    if not rotation_requested:
-                                        text_to_finalize = None
-                                        if self._latest_interim_text:
-                                            words = self._latest_interim_text.strip().split()
-                                            if len(words) >= 2:
-                                                text_to_finalize = self._latest_interim_text.strip()
-                                                self._append_finalized_prefix(text_to_finalize)
-                                        if self._finalized_turn_prefix:
-                                            self._last_disconnect_finalized_text = self._finalized_turn_prefix
-                                            self._last_disconnect_mono = time.monotonic()
-                                        if text_to_finalize:
-                                            logger.info(
-                                                f"Gemini Live finalizing in-flight interim on unexpected disconnect: {text_to_finalize}"
-                                            )
-                                            self._reset_turn_state()
-                                            try:
-                                                res = on_transcript(
-                                                    TranscriptEvent(
-                                                        text=text_to_finalize,
-                                                        is_final=True,
-                                                        translated_text=None,
-                                                    )
-                                                )
-                                                if asyncio.iscoroutine(res):
-                                                    await res
-                                            except Exception as ex:
-                                                logger.warning(f"Error finalizing in-flight interim: {ex}")
-                                    self._reset_turn_state()
+                            suppress_music = getattr(self.config.audio, "suppress_music", True)
+                            strict_music = getattr(self.config.audio, "suppress_music_strict", False)
+                            is_music_active = False
+                            if suppress_music:
+                                is_music_active = self.vad.is_music(pcm_chunk, strict=strict_music)
 
-                            # 4. Worker: periodic network latency probe
-                            async def ping_probe_loop():
-                                await asyncio.sleep(0.5)
-                                while self.is_running and not ws.closed:
+                            if suppress_music and strict_music and is_music_active:
+                                if speech_active:
+                                    speech_active = False
+                                    speech_start_time = 0.0
                                     try:
-                                        await self.measure_ping()
-                                    except Exception as pe:
-                                        logger.debug(f"Gemini Live ping probe error: {pe}")
-                                    await asyncio.sleep(4.0)
-
-                            send_task = asyncio.create_task(send_audio())
-                            recv_task = asyncio.create_task(receive_transcripts())
-                            ping_task = asyncio.create_task(ping_probe_loop())
-                            self._ping_task = ping_task
-
-                            done, pending = await asyncio.wait(
-                                [send_task, recv_task],
-                                return_when=asyncio.FIRST_COMPLETED,
-                            )
-
-                            if not ping_task.done():
-                                ping_task.cancel()
-                            self._ping_task = None
-
-                            if send_task in done and stream_state["finished"]:
-                                # Audio capture stream completed (genuine end of stream)
-                                if recv_task in pending and self.is_running:
-                                    try:
-                                        await asyncio.wait_for(asyncio.shield(recv_task), timeout=2.0)
-                                    except (asyncio.TimeoutError, asyncio.CancelledError):
+                                        await active_ws.send_str(json.dumps({"realtimeInput": {"audioStreamEnd": True}}))
+                                    except Exception:
                                         pass
-                                for t in pending:
-                                    if not t.done():
-                                        t.cancel()
-                                break
+                                continue
+
+                            if interp_q is not None:
+                                try:
+                                    if interp_q.full():
+                                        try:
+                                            interp_q.get_nowait()
+                                        except asyncio.QueueEmpty:
+                                            pass
+                                    interp_q.put_nowait(pcm_chunk)
+                                except asyncio.QueueFull:
+                                    pass
+
+                            # Paced Backlog Replay on Unexpected Drops (audio_q.qsize() > 5)
+                            if is_replaying_backlog:
+                                chunk_dur = len(pcm_chunk) / (sample_rate * 2)
+                                pace_delay = chunk_dur * 0.5
+                                if pace_delay > 0:
+                                    await asyncio.sleep(pace_delay)
+                                if audio_q.qsize() <= 1:
+                                    is_replaying_backlog = False
+                            elif audio_q.qsize() > 5:
+                                is_replaying_backlog = True
+                                chunk_dur = len(pcm_chunk) / (sample_rate * 2)
+                                pace_delay = chunk_dur * 0.5
+                                if pace_delay > 0:
+                                    await asyncio.sleep(pace_delay)
+
+                            b64_audio = base64.b64encode(pcm_chunk).decode("utf-8")
+                            audio_payload = {
+                                "realtimeInput": {
+                                    "audio": {
+                                        "data": b64_audio,
+                                        "mimeType": f"audio/pcm;rate={sample_rate}",
+                                    }
+                                }
+                            }
+                            await active_ws.send_str(json.dumps(audio_payload))
+                            self._audio_seconds_streamed += len(pcm_chunk) / (sample_rate * 2)
+
+                            now = time.time()
+                            mono_now = time.monotonic()
+                            current_pause_threshold = max(
+                                0.35, (getattr(self.config.audio, "sentence_break_ms", 600) or 600) / 1000.0
+                            )
+                            is_voice = self.vad.is_speech(pcm_chunk)
+                            if is_voice:
+                                if not speech_active:
+                                    speech_active = True
+                                    speech_start_time = now
+                                last_speech_time = now
                             else:
-                                # Remote connection closed, errored, or planned session rotation
-                                if send_task in done and not send_task.cancelled():
-                                    send_exc = send_task.exception()
-                                    if send_exc is not None:
-                                        logger.warning(f"Gemini Live audio sender failed ({send_exc}); reconnecting...")
-                                for t in pending:
-                                    if not t.done():
-                                        t.cancel()
-                                if pending:
-                                    await asyncio.gather(*pending, return_exceptions=True)
-                                if not self.is_running:
-                                    break
-
-                                close_code = getattr(ws, "close_code", None)
-                                is_clean = rotation_requested or (close_code in (1000, 1001, aiohttp.WSCloseCode.OK, aiohttp.WSCloseCode.GOING_AWAY))
-                                was_healthy_session = (
-                                    session_start_time > 0.0
-                                    and (time.monotonic() - session_start_time) >= HEALTHY_SESSION_MIN_UPTIME_SEC
-                                )
-                                if is_clean:
-                                    delay = 0.0
-                                    reconnect_delay = STREAM_RECONNECT_INITIAL_DELAY
-                                    logger.info(
-                                        f"Gemini Live session finished cleanly (rotation={rotation_requested}, code={close_code}); reconnecting immediately (0s delay)..."
+                                silence_dur = (now - last_speech_time) if last_speech_time > 0.0 else 0.0
+                                if speech_active and silence_dur >= min(0.35, current_pause_threshold):
+                                    speech_active = False
+                                if getattr(self.config.gemini_live, "enable_hybrid_vad", enable_hybrid_vad):
+                                    vad_event = self._maybe_finalize_on_vad_pause(
+                                        speech_active=speech_active,
+                                        silence_duration=silence_dur,
+                                        pause_threshold=current_pause_threshold,
+                                        mono_now=mono_now,
                                     )
-                                elif was_healthy_session:
-                                    delay = FAST_RECONNECT_DELAY
-                                    reconnect_delay = STREAM_RECONNECT_INITIAL_DELAY
-                                    logger.warning(
-                                        f"Gemini Live healthy session dropped (code={close_code}); fast-reconnecting in {delay:.2f}s..."
-                                    )
-                                else:
-                                    delay = _next_backoff()
-                                    logger.warning(f"Gemini Live connection dropped (code={close_code}); reconnecting in {delay:.0f}s...")
+                                    if vad_event is not None:
+                                        final_received_event.set()
+                                        try:
+                                            res = on_transcript(vad_event)
+                                            if asyncio.iscoroutine(res):
+                                                await res
+                                        except Exception as ve:
+                                            logger.debug(f"Hybrid VAD pause finalization error: {ve}")
 
-                                if delay > 0:
-                                    await asyncio.sleep(delay)
+                    stream_state["finished"] = (eof or not self.is_running) and (active_ws is not None and not active_ws.closed)
+                    if active_ws is not None and not active_ws.closed:
+                        try:
+                            await active_ws.send_str(json.dumps({"realtimeInput": {"audioStreamEnd": True}}))
+                        except Exception:
+                            pass
 
-                except asyncio.CancelledError:
+                async def ping_probe_loop():
+                    await asyncio.sleep(0.5)
+                    while self.is_running and active_ws and not active_ws.closed:
+                        try:
+                            await self.measure_ping()
+                        except Exception as pe:
+                            logger.debug(f"Gemini Live ping probe error: {pe}")
+                        await asyncio.sleep(4.0)
+
+                send_task = asyncio.create_task(send_audio())
+                recv_mgr_task = asyncio.create_task(receive_manager())
+                ping_task = asyncio.create_task(ping_probe_loop())
+                self._ping_task = ping_task
+
+                done, pending = await asyncio.wait(
+                    [send_task, recv_mgr_task],
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+
+                if not ping_task.done():
+                    ping_task.cancel()
+                self._ping_task = None
+
+                if current_recv_subtask is not None and not current_recv_subtask.done():
+                    current_recv_subtask.cancel()
+
+                if send_task in done and stream_state["finished"]:
+                    if recv_mgr_task in pending and self.is_running:
+                        try:
+                            await asyncio.wait_for(asyncio.shield(recv_mgr_task), timeout=2.0)
+                        except (asyncio.TimeoutError, asyncio.CancelledError):
+                            pass
+                    for t in pending:
+                        if not t.done():
+                            t.cancel()
+                    await self._safe_close_ws(active_ws)
+                    await self._safe_close_session(active_session)
                     break
-                except Exception as e:
-                    if self.is_running:
-                        if self._is_invalid_key_failure(str(e)):
-                            logger.error("Invalid Gemini API key. Please check your key at aistudio.google.com.")
-                            return
-                        was_healthy_session = (
-                            session_start_time > 0.0
-                            and (time.monotonic() - session_start_time) >= HEALTHY_SESSION_MIN_UPTIME_SEC
+                else:
+                    if send_task in done and not send_task.cancelled():
+                        send_exc = send_task.exception()
+                        if send_exc is not None:
+                            logger.warning(f"Gemini Live audio sender failed ({send_exc}); reconnecting...")
+                    for t in pending:
+                        if not t.done():
+                            t.cancel()
+                    if pending:
+                        await asyncio.gather(*pending, return_exceptions=True)
+                    if not self.is_running:
+                        await self._safe_close_ws(active_ws)
+                        await self._safe_close_session(active_session)
+                        break
+
+                    close_code = getattr(active_ws, "close_code", None)
+                    is_clean = rotation_requested or (close_code in (1000, 1001, aiohttp.WSCloseCode.OK, aiohttp.WSCloseCode.GOING_AWAY))
+                    was_healthy_session = (
+                        session_start_time > 0.0
+                        and (time.monotonic() - session_start_time) >= HEALTHY_SESSION_MIN_UPTIME_SEC
+                    )
+                    if is_clean:
+                        delay = 0.0
+                        reconnect_delay = STREAM_RECONNECT_INITIAL_DELAY
+                        logger.info(
+                            f"Gemini Live session finished cleanly (code={close_code}); reconnecting immediately (0s delay)..."
                         )
-                        if was_healthy_session:
-                            delay = FAST_RECONNECT_DELAY
-                            reconnect_delay = STREAM_RECONNECT_INITIAL_DELAY
-                        else:
-                            delay = _next_backoff()
-                        logger.error(f"Gemini Live error: {e}. Reconnecting in {delay:.2f}s...")
+                    elif was_healthy_session:
+                        delay = FAST_RECONNECT_DELAY
+                        reconnect_delay = STREAM_RECONNECT_INITIAL_DELAY
+                        logger.warning(
+                            f"Gemini Live healthy session dropped (code={close_code}); fast-reconnecting in {delay:.2f}s..."
+                        )
+                    else:
+                        delay = _next_backoff()
+                        logger.warning(f"Gemini Live connection dropped (code={close_code}); reconnecting in {delay:.0f}s...")
+
+                    await self._safe_close_ws(active_ws)
+                    await self._safe_close_session(active_session)
+
+                    if delay > 0:
                         await asyncio.sleep(delay)
         finally:
             if interp_task is not None and not interp_task.done():
@@ -1978,12 +2180,21 @@ class GeminiLiveEngine(BaseSTTEngine):
             self._ping_task.cancel()
         self._ping_task = None
         self.current_ping_ms = None
+        for dt in list(self._drain_tasks):
+            if not dt.done():
+                dt.cancel()
+        self._drain_tasks.clear()
         if self._active_ws and not self._active_ws.closed:
             try:
                 await self._active_ws.close()
             except Exception:
                 pass
         self._active_ws = None
+        if self._active_session and not self._active_session.closed:
+            try:
+                await self._active_session.close()
+            except Exception:
+                pass
         self._active_session = None
         logger.info("Gemini 3.5 Transcribe Live engine stopped.")
 

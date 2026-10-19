@@ -1,9 +1,10 @@
 {
-  "version": "1.2.7",
+  "version": "1.2.8",
   "major": 1,
   "minor": 2,
-  "patch": 7,
+  "patch": 8,
   "release_date": "2026-10-19",
   "codename": "Windows & macOS Booth UX, RAM Watchdog & Multi-User Scaling",
-  "notes": "Sliding window caption deduplication, trailing quote punctuation cleanup, and glued word repairs."
+  "notes": "Gemini Live hot-handoff session rotation, context window compression, and zero-downtime streaming."
 }
+

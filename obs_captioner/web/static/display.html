@@ -747,6 +747,13 @@
             }
         }
 
+        /* Narrow screens (<= 768px): hide button labels so header buttons remain compact icon buttons */
+        @media (max-width: 768px) {
+            .settings-label {
+                display: none !important;
+            }
+        }
+
         /* Mobile Phones (<= 640px) */
         @media (max-width: 640px) {
             .settings-label {
@@ -1285,6 +1292,12 @@
             <div class="clock-display" id="clockDisplay">12:00:00 PM</div>
 
             <div class="header-quick-actions">
+                <button class="ctrl-btn" id="btnOpenTutorial" title="Read-Along Tutorial &amp; Guide (?)" aria-label="Tutorial" style="background: rgba(168, 85, 247, 0.18); border-color: rgba(168, 85, 247, 0.45); color: #C084FC;">
+                    💡 <span class="settings-label" style="font-size: 11.5px; margin-left: 2px;">Tutorial</span>
+                </button>
+                <button class="ctrl-btn" id="btnHeaderPwaInstall" title="Install App to Home Screen" aria-label="Install App" style="background: rgba(59, 130, 246, 0.18); border-color: rgba(59, 130, 246, 0.45); color: #60A5FA;">
+                    📲 <span class="settings-label" style="font-size: 11.5px; margin-left: 2px;">Install App</span>
+                </button>
                 <button class="ctrl-btn" id="btnShareDisplay" title="Share Screen / Show QR Code" aria-label="Share Display" style="background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.4); color: #34D399;">
                     📱 <span class="settings-label" style="font-size: 11.5px; margin-left: 2px;">Share</span>
                 </button>
@@ -1545,14 +1558,19 @@
                     🗑️ Clear Caption History
                 </button>
 
+                <!-- Tutorial Guide button inside Settings -->
+                <button type="button" id="btnOpenTutorialFromSettings" class="ctrl-btn" style="padding: 10px; font-weight: 700; width: 100%; justify-content: center; background: rgba(168, 85, 247, 0.18); border: 1px solid rgba(168, 85, 247, 0.45); color: #C084FC; font-size: 13.5px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                    💡 Read-Along Tutorial &amp; Guide
+                </button>
+
                 <!-- Share QR button inside Settings -->
-                <button id="btnSettingsShareQr" class="ctrl-btn" style="padding: 10px; font-weight: 700; width: 100%; justify-content: center; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #7DD3FC; font-size: 13.5px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                <button type="button" id="btnSettingsShareQr" class="ctrl-btn" style="padding: 10px; font-weight: 700; width: 100%; justify-content: center; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #7DD3FC; font-size: 13.5px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
                     📱 Share Live Screen / QR Code
                 </button>
 
                 <!-- Install PWA Button inside Settings -->
-                <button id="btnInstallPwa" class="ctrl-btn" style="display: none; padding: 10px; font-weight: 700; width: 100%; justify-content: center; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.4); color: #60A5FA; font-size: 13px; border-radius: 8px; cursor: pointer;">
-                    📲 Install Stage Display PWA
+                <button type="button" id="btnInstallPwa" class="ctrl-btn" style="padding: 10px; font-weight: 700; width: 100%; justify-content: center; background: rgba(59, 130, 246, 0.18); border: 1px solid rgba(59, 130, 246, 0.45); color: #60A5FA; font-size: 13px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                    📲 Install App / Home Screen
                 </button>
 
                 <div style="margin-top: 6px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.12); display: flex; justify-content: flex-end;">
@@ -1587,6 +1605,151 @@
         </div>
     </div>
 
+    <!-- Tutorial Modal (Structured Quick Start & Reading Guide) -->
+    <div id="tutorialModal" class="modal-backdrop" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);">
+        <div class="modal-content" style="background: #111827; border: 1.5px solid rgba(168, 85, 247, 0.45); border-radius: 16px; padding: max(22px, env(safe-area-inset-top, 22px)) 24px calc(22px + env(safe-area-inset-bottom, 0px)) 24px; width: 92%; max-width: 580px; box-shadow: 0 24px 48px rgba(0,0,0,0.9); color: #F9FAFB; max-height: calc(90vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); overflow-y: auto;">
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.12); padding-bottom: 14px; margin-bottom: 16px;">
+                <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
+                    <span style="color: #C084FC;">💡</span> <span>Read-Along Tutorial &amp; Guide</span>
+                </h3>
+                <button id="btnCloseTutorial" aria-label="Close Tutorial" style="background: none; border: none; color: #9CA3AF; font-size: 24px; font-weight: bold; cursor: pointer; padding: 0 6px; line-height: 1;">✕</button>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                
+                <!-- Card 1: Welcome -->
+                <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px;">
+                    <div style="font-size: 13.5px; font-weight: 700; color: #38BDF8; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                        🎙️ Welcome to Live Read-Along
+                    </div>
+                    <div style="font-size: 12.5px; color: #CBD5E1; line-height: 1.5;">
+                        Real-time spoken captions and prompter for worship services, lectures, conferences, and personal accessibility. Follow along with live speech in real time on any phone, tablet, or monitor.
+                    </div>
+                </div>
+
+                <!-- Card 2: Display Modes -->
+                <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px;">
+                    <div style="font-size: 13.5px; font-weight: 700; color: #FBBF24; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                        📜 Display Modes
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; color: #CBD5E1; line-height: 1.5;">
+                        <div>
+                            <strong style="color: #F8FAFC;">• Scrollable History:</strong> Continuous reading log. Touching or scrolling upward automatically pauses auto-scroll so you never lose your place. Tap the floating <strong style="color: #60A5FA;">"Resume Auto-Scroll"</strong> button to jump back to live speech.
+                        </div>
+                        <div>
+                            <strong style="color: #F8FAFC;">• Live Prompter:</strong> Ultra-large, distraction-free single-line stage prompter for confidence monitors and pulpits.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 3: Reading Comfort & Visual Aids -->
+                <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px;">
+                    <div style="font-size: 13.5px; font-weight: 700; color: #34D399; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                        👁️ Reading Comfort &amp; Visual Aids
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; color: #CBD5E1; line-height: 1.5;">
+                        <div>
+                            <strong style="color: #F8FAFC;">• Visual Aid Mode:</strong> Expanded letter spacing (0.06em), word spacing (0.15em), and line height (1.65x).
+                        </div>
+                        <div>
+                            <strong style="color: #F8FAFC;">• Slow Down Text:</strong> Paces words steadily at 140 WPM and holds text on screen 3x longer.
+                        </div>
+                        <div>
+                            <strong style="color: #F8FAFC;">• Fonts &amp; Themes:</strong> Supports OpenDyslexic, JetBrains Mono, Inter, and 10+ high-contrast themes.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 4: Live Translation & Spoken Audio -->
+                <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px;">
+                    <div style="font-size: 13.5px; font-weight: 700; color: #C084FC; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                        🌐 Live Translation &amp; Spoken Audio
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; color: #CBD5E1; line-height: 1.5;">
+                        <div>
+                            <strong style="color: #F8FAFC;">• 20+ Languages:</strong> Select from 20+ languages in the header bar.
+                        </div>
+                        <div>
+                            <strong style="color: #F8FAFC;">• Spoken Audio:</strong> Tap 🎧 <strong style="color: #34D399;">Listen Live</strong> when interpreter mode is enabled to hear real-time AI spoken translation in your headphones.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 5: Install as App -->
+                <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px;">
+                    <div style="font-size: 13.5px; font-weight: 700; color: #60A5FA; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                        📲 Install as App
+                    </div>
+                    <div style="font-size: 12.5px; color: #CBD5E1; line-height: 1.5;">
+                        Run VoxStream as a native full-screen app without browser address bars, with screen wake lock automatically enabled.
+                    </div>
+                </div>
+
+                <!-- Card 6: Keyboard Shortcuts -->
+                <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px;">
+                    <div style="font-size: 13.5px; font-weight: 700; color: #F43F5E; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                        ⌨️ Keyboard Shortcuts
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; font-size: 12px; color: #CBD5E1;">
+                        <div><kbd style="background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); border-radius: 4px; padding: 2px 6px; font-family: monospace; color: #FFFFFF; font-weight: 700;">?</kbd> or <kbd style="background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); border-radius: 4px; padding: 2px 6px; font-family: monospace; color: #FFFFFF; font-weight: 700;">T</kbd>: Open Tutorial</div>
+                        <div><kbd style="background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); border-radius: 4px; padding: 2px 6px; font-family: monospace; color: #FFFFFF; font-weight: 700;">S</kbd>: Display &amp; Settings</div>
+                        <div><kbd style="background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); border-radius: 4px; padding: 2px 6px; font-family: monospace; color: #FFFFFF; font-weight: 700;">H</kbd>: Hide / Show Header</div>
+                        <div><kbd style="background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); border-radius: 4px; padding: 2px 6px; font-family: monospace; color: #FFFFFF; font-weight: 700;">F11</kbd>: Fullscreen</div>
+                        <div><kbd style="background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); border-radius: 4px; padding: 2px 6px; font-family: monospace; color: #FFFFFF; font-weight: 700;">+</kbd> / <kbd style="background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); border-radius: 4px; padding: 2px 6px; font-family: monospace; color: #FFFFFF; font-weight: 700;">-</kbd>: Adjust Text Size</div>
+                        <div><kbd style="background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); border-radius: 4px; padding: 2px 6px; font-family: monospace; color: #FFFFFF; font-weight: 700;">C</kbd>: Clear History</div>
+                        <div><kbd style="background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); border-radius: 4px; padding: 2px 6px; font-family: monospace; color: #FFFFFF; font-weight: 700;">Space</kbd>: Pause / Resume Scroll</div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 6px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.12);">
+                    <button id="btnDoneTutorial" class="ctrl-btn" style="padding: 10px 20px; font-weight: 700; width: 100%; justify-content: center; background: #9333EA; color: #FFFFFF; border: none; font-size: 14px; border-radius: 8px; cursor: pointer;">
+                        ✓ Got It / Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PWA Helper Modal (Platform Installation Guide) -->
+    <div id="pwaModal" class="modal-backdrop" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);">
+        <div class="modal-content" style="background: #111827; border: 1.5px solid rgba(59, 130, 246, 0.45); border-radius: 16px; padding: max(22px, env(safe-area-inset-top, 22px)) 24px calc(22px + env(safe-area-inset-bottom, 0px)) 24px; width: 92%; max-width: 480px; box-shadow: 0 24px 48px rgba(0,0,0,0.9); color: #F9FAFB; max-height: calc(90vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); overflow-y: auto;">
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.12); padding-bottom: 14px; margin-bottom: 16px;">
+                <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
+                    <span style="color: #60A5FA;">📲</span> <span>Install VoxStream App</span>
+                </h3>
+                <button id="btnClosePwa" aria-label="Close Install Guide" style="background: none; border: none; color: #9CA3AF; font-size: 24px; font-weight: bold; cursor: pointer; padding: 0 6px; line-height: 1;">✕</button>
+            </div>
+
+            <!-- Dynamic platform content container -->
+            <div id="pwaModalBody" style="display: flex; flex-direction: column; gap: 14px;">
+                <!-- Populated dynamically by renderPwaModalContent() -->
+            </div>
+
+            <div style="margin-top: 18px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.12);">
+                <button id="btnDonePwa" class="ctrl-btn" style="padding: 10px 20px; font-weight: 700; width: 100%; justify-content: center; background: #2563EB; color: #FFFFFF; border: none; font-size: 14px; border-radius: 8px; cursor: pointer;">
+                    Done
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating PWA Install Banner for Mobile -->
+    <div id="pwaInstallBanner" style="display: none; position: fixed; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); left: 16px; right: 16px; max-width: 440px; margin: 0 auto; background: rgba(17, 24, 39, 0.95); border: 1.5px solid rgba(59, 130, 246, 0.5); border-radius: 12px; padding: 12px 14px; z-index: 850; box-shadow: 0 10px 30px rgba(0,0,0,0.8); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); color: #F9FAFB; align-items: center; justify-content: space-between; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; line-height: 1.35; flex: 1;">
+            <span>📱 Add to Home Screen for a distraction-free full-screen experience.</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+            <button id="btnBannerPwaInstall" class="ctrl-btn" style="background: #2563EB; color: #FFFFFF; border: none; font-size: 12px; font-weight: 700; padding: 6px 12px; border-radius: 6px; cursor: pointer;">
+                Install
+            </button>
+            <button id="btnDismissPwaBanner" aria-label="Dismiss banner" style="background: none; border: none; color: #9CA3AF; font-size: 16px; font-weight: bold; cursor: pointer; padding: 4px 6px; line-height: 1;">
+                ✕
+            </button>
+        </div>
+    </div>
+
     <div id="scripturePrompterCard" class="scripture-prompter-card" style="display: none;" role="region" aria-label="Scripture Verse">
         <div class="scripture-prompter-header">
             <span class="scripture-prompter-badge" id="stageScriptureCitation">📖 SCRIPTURE PASSAGE</span>
@@ -1609,7 +1772,7 @@
     <button class="top-toggle-btn" id="btnToggleHeader" title="Show Header Controls (H)">⚙️</button>
 
     <!-- 2. Smart 'Jump to Live' Pill (Only visible when scrolled up) -->
-    <button class="jump-live-btn" id="btnScrollBottom" title="Jump to Latest Live Speech">⬇️ Jump to Live</button>
+    <button class="jump-live-btn" id="btnScrollBottom" title="Resume Auto-Scroll / Jump to Latest Live Speech">⬇️ Resume Auto-Scroll</button>
 
     <script>
         // Screen & State
@@ -3074,8 +3237,29 @@
 
         // Keyboard Shortcuts
         window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (tutorialModal) tutorialModal.style.display = 'none';
+                if (pwaModal) pwaModal.style.display = 'none';
+                if (settingsModal) settingsModal.style.display = 'none';
+                if (shareModal) shareModal.style.display = 'none';
+                return;
+            }
             const tag = (e.target && e.target.tagName) || '';
-            if (['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(tag)) return;
+            if (['INPUT', 'SELECT', 'TEXTAREA'].includes(tag)) return;
+            if (e.key === '?' || e.key === 't' || e.key === 'T') {
+                toggleTutorialModal();
+                return;
+            }
+            if (e.code === 'Space' || e.key === ' ') {
+                e.preventDefault();
+                autoScroll = !autoScroll;
+                if (autoScroll) {
+                    scrollToBottom(true);
+                }
+                updateFloatingButtons();
+                return;
+            }
+            if (['BUTTON'].includes(tag)) return;
             if (e.key === '+' || e.key === '=') setFontSize(currentFontSize + 4, true);
             if (e.key === '-' || e.key === '_') setFontSize(currentFontSize - 4, true);
             if (e.key === 's' || e.key === 'S') {
@@ -3964,31 +4148,273 @@
 
         const screenWakeManager = new ScreenWakeLockManager();
 
-        // 1-Click Install App Prompt
-        let deferredInstallPrompt = null;
-        const btnInstallPwa = document.getElementById('btnInstallPwa');
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredInstallPrompt = e;
-            if (btnInstallPwa) btnInstallPwa.style.display = 'inline-flex';
-        });
+        // -------------------------------------------------------------
+        // 💡 Read-Along Tutorial Modal Controller
+        // -------------------------------------------------------------
+        const tutorialModal = document.getElementById('tutorialModal');
+        const btnOpenTutorial = document.getElementById('btnOpenTutorial');
+        const btnCloseTutorial = document.getElementById('btnCloseTutorial');
+        const btnDoneTutorial = document.getElementById('btnDoneTutorial');
+        const btnOpenTutorialFromSettings = document.getElementById('btnOpenTutorialFromSettings');
 
-        if (btnInstallPwa) {
-            btnInstallPwa.addEventListener('click', async () => {
-                if (deferredInstallPrompt) {
-                    deferredInstallPrompt.prompt();
-                    const { outcome } = await deferredInstallPrompt.userChoice;
-                    if (outcome === 'accepted') {
-                        btnInstallPwa.style.display = 'none';
-                    }
-                    deferredInstallPrompt = null;
-                }
+        function openTutorialModal() {
+            if (tutorialModal) tutorialModal.style.display = 'flex';
+        }
+
+        function closeTutorialModal() {
+            if (tutorialModal) tutorialModal.style.display = 'none';
+        }
+
+        function toggleTutorialModal() {
+            if (!tutorialModal) return;
+            if (tutorialModal.style.display === 'flex') {
+                closeTutorialModal();
+            } else {
+                openTutorialModal();
+            }
+        }
+
+        if (btnOpenTutorial) btnOpenTutorial.addEventListener('click', openTutorialModal);
+        if (btnCloseTutorial) btnCloseTutorial.addEventListener('click', closeTutorialModal);
+        if (btnDoneTutorial) btnDoneTutorial.addEventListener('click', closeTutorialModal);
+        if (tutorialModal) {
+            tutorialModal.addEventListener('click', (e) => {
+                if (e.target === tutorialModal) closeTutorialModal();
+            });
+        }
+        if (btnOpenTutorialFromSettings) {
+            btnOpenTutorialFromSettings.addEventListener('click', () => {
+                if (settingsModal) settingsModal.style.display = 'none';
+                openTutorialModal();
             });
         }
 
-        window.addEventListener('appinstalled', () => {
-            if (btnInstallPwa) btnInstallPwa.style.display = 'none';
+        // -------------------------------------------------------------
+        // 📲 PWA Helper Modal & Install Banner Controller
+        // -------------------------------------------------------------
+        let deferredInstallPrompt = null;
+        const pwaModal = document.getElementById('pwaModal');
+        const pwaModalBody = document.getElementById('pwaModalBody');
+        const btnHeaderPwaInstall = document.getElementById('btnHeaderPwaInstall');
+        const btnInstallPwa = document.getElementById('btnInstallPwa');
+        const btnClosePwa = document.getElementById('btnClosePwa');
+        const btnDonePwa = document.getElementById('btnDonePwa');
+        const pwaInstallBanner = document.getElementById('pwaInstallBanner');
+        const btnBannerPwaInstall = document.getElementById('btnBannerPwaInstall');
+        const btnDismissPwaBanner = document.getElementById('btnDismissPwaBanner');
+
+        function isStandaloneMode() {
+            return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+                   window.navigator.standalone === true ||
+                   document.referrer.includes('android-app://');
+        }
+
+        function isIosSafari() {
+            const ua = navigator.userAgent;
+            return (/iPad|iPhone|iPod/.test(ua) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 2 && /Macintosh/.test(ua))) && !window.MSStream;
+        }
+
+        function isMobileDevice() {
+            return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+                   (navigator.maxTouchPoints && navigator.maxTouchPoints > 2 && /Macintosh/i.test(navigator.userAgent)) ||
+                   window.innerWidth <= 768;
+        }
+
+        function renderPwaModalContent() {
+            if (!pwaModalBody) return;
+            
+            if (isStandaloneMode()) {
+                pwaModalBody.innerHTML = `
+                    <div style="background: rgba(16, 185, 129, 0.12); border: 1.5px solid rgba(16, 185, 129, 0.4); border-radius: 12px; padding: 20px; text-align: center;">
+                        <div style="font-size: 32px; margin-bottom: 8px;">✓</div>
+                        <div style="font-size: 15px; font-weight: 700; color: #34D399; margin-bottom: 6px;">
+                            VoxStream is already installed and running as a standalone app!
+                        </div>
+                        <div style="font-size: 12.5px; color: #94A3B8; line-height: 1.45;">
+                            You are experiencing distraction-free full-screen reading with automatic screen wake lock.
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            if (isIosSafari()) {
+                pwaModalBody.innerHTML = `
+                    <div style="display: flex; flex-direction: column; gap: 14px;">
+                        <div style="font-size: 13px; color: #CBD5E1; line-height: 1.45;">
+                            Install VoxStream to your home screen for a <strong>true full-screen prompter</strong> without browser address bars:
+                        </div>
+                        <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+                            <div style="display: flex; align-items: flex-start; gap: 12px;">
+                                <span style="background: #3B82F6; color: #FFFFFF; font-weight: 800; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0;">1</span>
+                                <div style="font-size: 13px; color: #F1F5F9; line-height: 1.4;">
+                                    Tap the Safari <strong>Share button</strong> <span style="font-size: 16px;">⎋</span> at the bottom (iPhone) or top (iPad) of the screen.
+                                </div>
+                            </div>
+                            <div style="display: flex; align-items: flex-start; gap: 12px;">
+                                <span style="background: #3B82F6; color: #FFFFFF; font-weight: 800; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0;">2</span>
+                                <div style="font-size: 13px; color: #F1F5F9; line-height: 1.4;">
+                                    Scroll down and tap <strong>"Add to Home Screen"</strong> <span style="font-size: 16px;">⊞</span>.
+                                </div>
+                            </div>
+                            <div style="display: flex; align-items: flex-start; gap: 12px;">
+                                <span style="background: #3B82F6; color: #FFFFFF; font-weight: 800; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0;">3</span>
+                                <div style="font-size: 13px; color: #F1F5F9; line-height: 1.4;">
+                                    Tap <strong>"Add"</strong> in the top right corner.
+                                </div>
+                            </div>
+                        </div>
+                        <div style="font-size: 12px; color: #94A3B8; background: rgba(59, 130, 246, 0.08); border-left: 3px solid #3B82F6; padding: 10px 12px; border-radius: 6px; line-height: 1.4;">
+                            💡 <strong>Benefits:</strong> True full-screen, no URL bar, and screen stays awake during the entire service.
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            if (deferredInstallPrompt) {
+                pwaModalBody.innerHTML = `
+                    <div style="display: flex; flex-direction: column; gap: 14px; text-align: center;">
+                        <div style="font-size: 13px; color: #CBD5E1; line-height: 1.45;">
+                            Install VoxStream as a standalone app on your device for distraction-free full-screen display and automated screen wake lock.
+                        </div>
+                        <button id="btnPwaPromptInstall" class="ctrl-btn" style="background: #2563EB; color: #FFFFFF; border: none; font-size: 14.5px; font-weight: 700; padding: 12px 20px; border-radius: 8px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 14px rgba(37,99,235,0.4); margin: 4px auto 0 auto; width: 100%; max-width: 260px;">
+                            📲 Install Now
+                        </button>
+                        <div style="font-size: 11.5px; color: #94A3B8; line-height: 1.4;">
+                            Runs instantly from your home screen with fast offline caching support.
+                        </div>
+                    </div>
+                `;
+                const promptBtn = document.getElementById('btnPwaPromptInstall');
+                if (promptBtn) {
+                    promptBtn.addEventListener('click', async () => {
+                        if (deferredInstallPrompt) {
+                            deferredInstallPrompt.prompt();
+                            const { outcome } = await deferredInstallPrompt.userChoice;
+                            if (outcome === 'accepted') {
+                                closePwaModal();
+                            }
+                            deferredInstallPrompt = null;
+                            renderPwaModalContent();
+                        }
+                    });
+                }
+                return;
+            }
+
+            if (isMobileDevice()) {
+                pwaModalBody.innerHTML = `
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <div style="font-size: 13px; color: #CBD5E1; line-height: 1.45;">
+                            Install VoxStream as a standalone app on your mobile device:
+                        </div>
+                        <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; font-size: 12.5px; color: #F1F5F9;">
+                            <div>
+                                1. Tap the browser menu (<strong style="color: #60A5FA;">⋮</strong>) in the top-right corner.
+                            </div>
+                            <div>
+                                2. Select <strong>"Install app"</strong> or <strong>"Add to Home screen"</strong>.
+                            </div>
+                            <div>
+                                3. Tap <strong>"Install"</strong> to confirm.
+                            </div>
+                        </div>
+                        <div style="font-size: 11.5px; color: #94A3B8; background: rgba(59, 130, 246, 0.08); border-left: 3px solid #3B82F6; padding: 10px 12px; border-radius: 6px;">
+                            💡 <strong>Benefits:</strong> True full-screen, no URL bar, and screen stays awake during the entire service.
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            // Desktop
+            pwaModalBody.innerHTML = `
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div style="font-size: 13px; color: #CBD5E1; line-height: 1.45;">
+                        Install VoxStream as a native desktop application for confidence monitors, stage screens, or distraction-free reading:
+                    </div>
+                    <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 10px; font-size: 12.5px; color: #F1F5F9;">
+                        <div>
+                            <strong style="color: #60A5FA;">• Chrome / Edge:</strong> Click the <strong>Install</strong> icon <span style="font-size: 15px;">⤓</span> in the address bar (right side), or open menu (⋮) → <em>"Install VoxStream"</em>.
+                        </div>
+                        <div>
+                            <strong style="color: #60A5FA;">• Safari (macOS Sonoma+):</strong> Click <strong>File</strong> in the top menu bar → <strong>"Add to Dock..."</strong>.
+                        </div>
+                    </div>
+                    <div style="font-size: 11.5px; color: #94A3B8; background: rgba(59, 130, 246, 0.08); border-left: 3px solid #3B82F6; padding: 10px 12px; border-radius: 6px;">
+                        💡 <strong>Stage tip:</strong> Standalone apps open in a dedicated window without browser tabs or address bars, keeping displays clean.
+                    </div>
+                </div>
+            `;
+        }
+
+        function openPwaModal() {
+            renderPwaModalContent();
+            if (pwaModal) pwaModal.style.display = 'flex';
+        }
+
+        function closePwaModal() {
+            if (pwaModal) pwaModal.style.display = 'none';
+        }
+
+        function checkPwaInstallBanner() {
+            if (!pwaInstallBanner) return;
+            if (isStandaloneMode()) {
+                pwaInstallBanner.style.display = 'none';
+                return;
+            }
+            if (localStorage.getItem('voxstream_pwa_banner_dismissed') === '1') {
+                pwaInstallBanner.style.display = 'none';
+                return;
+            }
+            if (isMobileDevice()) {
+                pwaInstallBanner.style.display = 'flex';
+            } else {
+                pwaInstallBanner.style.display = 'none';
+            }
+        }
+
+        if (btnHeaderPwaInstall) btnHeaderPwaInstall.addEventListener('click', openPwaModal);
+        if (btnInstallPwa) {
+            btnInstallPwa.addEventListener('click', () => {
+                if (settingsModal) settingsModal.style.display = 'none';
+                openPwaModal();
+            });
+        }
+        if (btnClosePwa) btnClosePwa.addEventListener('click', closePwaModal);
+        if (btnDonePwa) btnDonePwa.addEventListener('click', closePwaModal);
+        if (pwaModal) {
+            pwaModal.addEventListener('click', (e) => {
+                if (e.target === pwaModal) closePwaModal();
+            });
+        }
+
+        if (btnBannerPwaInstall) btnBannerPwaInstall.addEventListener('click', openPwaModal);
+        if (btnDismissPwaBanner) {
+            btnDismissPwaBanner.addEventListener('click', () => {
+                localStorage.setItem('voxstream_pwa_banner_dismissed', '1');
+                if (pwaInstallBanner) pwaInstallBanner.style.display = 'none';
+            });
+        }
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredInstallPrompt = e;
+            if (pwaModal && pwaModal.style.display === 'flex') {
+                renderPwaModalContent();
+            }
         });
+
+        window.addEventListener('appinstalled', () => {
+            deferredInstallPrompt = null;
+            if (pwaInstallBanner) pwaInstallBanner.style.display = 'none';
+            if (pwaModal && pwaModal.style.display === 'flex') {
+                renderPwaModalContent();
+            }
+        });
+
+        checkPwaInstallBanner();
 
         // Scripture Prompter Card Logic
         const scripturePrompterCard = document.getElementById("scripturePrompterCard");

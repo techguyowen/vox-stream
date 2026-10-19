@@ -620,3 +620,314 @@ def test_subordinate_clauses_not_chopped_mid_sentence():
     comp3, rem3 = _split_completed_sentences(sent_3, max_words=24, require_trailing_words=3)
     assert comp3 == [], f"Sentence 3 should remain intact without premature chop: comp={comp3}"
     assert rem3 == sent_3
+
+
+def test_context_window_compression_in_setup_payload():
+    """Verify contextWindowCompression with slidingWindow is present in setup payload for both modes."""
+    # 1. Standard transcribe mode
+    cfg = AppConfig()
+    cfg.gemini_live.api_key = "test-live-key"
+    engine = GeminiLiveEngine(cfg)
+    payload = engine.build_setup_payload()
+    assert "setup" in payload
+    assert "contextWindowCompression" in payload["setup"]
+    assert payload["setup"]["contextWindowCompression"] == {"slidingWindow": {}}
+
+    # 2. Live translate / interpreter mode
+    cfg_interp = AppConfig()
+    cfg_interp.gemini_live.api_key = "test-live-key"
+    cfg_interp.translation.interpreter_mode = True
+    cfg_interp.translation.target_language = "es"
+    engine_interp = GeminiLiveEngine(cfg_interp)
+    payload_interp = engine_interp.build_setup_payload()
+    assert "setup" in payload_interp
+    assert "contextWindowCompression" in payload_interp["setup"]
+    assert payload_interp["setup"]["contextWindowCompression"] == {"slidingWindow": {}}
+
+
+@pytest.mark.asyncio
+async def test_seamless_hot_handoff_rotation_zero_downtime():
+    """Verify seamless hot-handoff rotation: Socket 2 pre-warms, audio switches with 0ms gap, and Socket 1 drains trailing transcript."""
+    from obs_captioner.engines import gemini_live as gl
+
+    cfg = AppConfig()
+    cfg.gemini_live.api_key = "test-live-key"
+    cfg.gemini_live.enable_hybrid_vad = True
+    cfg.audio.suppress_music = False
+    engine = gl.GeminiLiveEngine(cfg)
+    engine.vad.is_music = lambda *a, **k: False
+    engine.vad.is_speech = lambda *a, **k: False
+
+    connections: List[Any] = []
+    received_transcripts: List[TranscriptEvent] = []
+
+    class _MockLiveMsg:
+        def __init__(self, msg_type, data=None):
+            self.type = msg_type
+            self.data = data
+            self.extra = ""
+
+    class _MockLiveWs:
+        def __init__(self, idx: int):
+            self.idx = idx
+            self.closed = False
+            self.close_code = None
+            self.sent_payloads: List[Dict[str, Any]] = []
+            self._incoming: asyncio.Queue = asyncio.Queue()
+
+        async def send_str(self, s: str):
+            if self.closed:
+                raise ConnectionResetError("Socket closed")
+            payload = json.loads(s)
+            self.sent_payloads.append(payload)
+
+        async def receive(self, timeout=None):
+            if not self._incoming.empty():
+                return self._incoming.get_nowait()
+            if self.closed:
+                return _MockLiveMsg(aiohttp.WSMsgType.CLOSED)
+            try:
+                if timeout:
+                    return await asyncio.wait_for(self._incoming.get(), timeout=timeout)
+                return await self._incoming.get()
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                raise
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            while not self.closed:
+                try:
+                    return await asyncio.wait_for(self._incoming.get(), timeout=0.05)
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    if self.closed:
+                        raise StopAsyncIteration
+            raise StopAsyncIteration
+
+        async def close(self, code=1000):
+            self.closed = True
+            self.close_code = code
+
+    class _MockSession:
+        def __init__(self, *a, **k):
+            self.closed = False
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            self.closed = True
+            return False
+
+        async def close(self):
+            self.closed = True
+
+        def ws_connect(self, *a, **k):
+            ws = _MockLiveWs(len(connections))
+            ws._incoming.put_nowait(
+                _MockLiveMsg(aiohttp.WSMsgType.TEXT, json.dumps({"setupComplete": {}}))
+            )
+            connections.append(ws)
+            return ws
+
+    audio_q: asyncio.Queue = asyncio.Queue()
+    audio_q.put_nowait(b"\x01\x00" * 160)
+    audio_q.put_nowait(b"\x02\x00" * 160)
+
+    def on_transcript(event: TranscriptEvent):
+        received_transcripts.append(event)
+
+    with patch.object(gl.aiohttp, "ClientSession", _MockSession), \
+         patch.object(gl, "SESSION_PREWARM_THRESHOLD_SEC", 0.04), \
+         patch.object(gl, "SESSION_ROTATION_THRESHOLD_SEC", 0.08), \
+         patch.object(gl, "SESSION_HARD_ROTATION_SEC", 0.25):
+
+        stream_task = asyncio.create_task(engine._stream_from_queue(audio_q, on_transcript))
+
+        # Wait for Chunk 1 and Chunk 2 to be processed on Socket 1 and rotation threshold reached
+        await asyncio.sleep(0.12)
+
+        # Verify Socket 2 connected and completed setupComplete
+        assert len(connections) >= 2, "Socket 2 must prewarm and connect"
+        sock1 = connections[0]
+        sock2 = connections[1]
+
+        # Queue a trailing final transcript on Socket 1 before/during handover
+        sock1._incoming.put_nowait(
+            _MockLiveMsg(
+                aiohttp.WSMsgType.TEXT,
+                json.dumps({
+                    "serverContent": {
+                        "inputTranscription": {"text": "Trailing final on socket 1."}
+                    }
+                })
+            )
+        )
+
+        # Feed Chunk 3 to audio_q - this should flow to Socket 2 with 0ms downtime!
+        audio_q.put_nowait(b"\x03\x00" * 160)
+        await asyncio.sleep(0.08)
+
+        # End of stream sentinel
+        audio_q.put_nowait(None)
+        await asyncio.wait_for(stream_task, timeout=2.0)
+
+    # 1. Verify Socket 2 connected and received setupComplete
+    assert len(connections) >= 2
+    assert any("setup" in p for p in sock2.sent_payloads)
+
+    # 2. Verify Socket 1 received audioStreamEnd
+    assert any(p.get("realtimeInput", {}).get("audioStreamEnd") for p in sock1.sent_payloads)
+
+    # 3. Verify audio routing: Chunks 1 & 2 on Socket 1, Chunk 3 on Socket 2
+    sock1_audio = [p for p in sock1.sent_payloads if "audio" in p.get("realtimeInput", {})]
+    sock2_audio = [p for p in sock2.sent_payloads if "audio" in p.get("realtimeInput", {})]
+    assert len(sock1_audio) == 2, f"Expected 2 audio chunks on Socket 1, got {len(sock1_audio)}"
+    assert len(sock2_audio) == 1, f"Expected 1 audio chunk on Socket 2, got {len(sock2_audio)}"
+
+    # 4. Verify trailing final transcript on Socket 1 was received by the drain task
+    trailing_events = [ev for ev in received_transcripts if "Trailing final on socket 1." in ev.text]
+    assert len(trailing_events) >= 1, f"Drain task failed to deliver trailing transcript: {received_transcripts}"
+    assert trailing_events[0].is_final is True
+
+    # 5. Verify Socket 1 is closed cleanly by drain task
+    assert sock1.closed is True
+    assert engine.rotation_count >= 1
+
+
+@pytest.mark.asyncio
+async def test_goaway_triggers_graceful_prewarm_handover():
+    """Verify that receiving a goAway message triggers pre-warming and completes seamless handover."""
+    from obs_captioner.engines import gemini_live as gl
+
+    cfg = AppConfig()
+    cfg.gemini_live.api_key = "test-live-key"
+    cfg.gemini_live.enable_hybrid_vad = True
+    cfg.audio.suppress_music = False
+    engine = gl.GeminiLiveEngine(cfg)
+    engine.vad.is_music = lambda *a, **k: False
+    engine.vad.is_speech = lambda *a, **k: False
+
+    connections: List[Any] = []
+    received_transcripts: List[TranscriptEvent] = []
+
+    class _MockLiveMsg:
+        def __init__(self, msg_type, data=None):
+            self.type = msg_type
+            self.data = data
+            self.extra = ""
+
+    class _MockLiveWs:
+        def __init__(self, idx: int):
+            self.idx = idx
+            self.closed = False
+            self.close_code = None
+            self.sent_payloads: List[Dict[str, Any]] = []
+            self._incoming: asyncio.Queue = asyncio.Queue()
+
+        async def send_str(self, s: str):
+            if self.closed:
+                raise ConnectionResetError("Socket closed")
+            payload = json.loads(s)
+            self.sent_payloads.append(payload)
+
+        async def receive(self, timeout=None):
+            if not self._incoming.empty():
+                return self._incoming.get_nowait()
+            if self.closed:
+                return _MockLiveMsg(aiohttp.WSMsgType.CLOSED)
+            try:
+                if timeout:
+                    return await asyncio.wait_for(self._incoming.get(), timeout=timeout)
+                return await self._incoming.get()
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                raise
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            while not self.closed:
+                try:
+                    return await asyncio.wait_for(self._incoming.get(), timeout=0.05)
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    if self.closed:
+                        raise StopAsyncIteration
+            raise StopAsyncIteration
+
+        async def close(self, code=1000):
+            self.closed = True
+            self.close_code = code
+
+    class _MockSession:
+        def __init__(self, *a, **k):
+            self.closed = False
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            self.closed = True
+            return False
+
+        async def close(self):
+            self.closed = True
+
+        def ws_connect(self, *a, **k):
+            ws = _MockLiveWs(len(connections))
+            ws._incoming.put_nowait(
+                _MockLiveMsg(aiohttp.WSMsgType.TEXT, json.dumps({"setupComplete": {}}))
+            )
+            connections.append(ws)
+            return ws
+
+    audio_q: asyncio.Queue = asyncio.Queue()
+    audio_q.put_nowait(b"\x01\x00" * 160)
+
+    # Standard rotation thresholds remain high (not hit by session age)
+    with patch.object(gl.aiohttp, "ClientSession", _MockSession), \
+         patch.object(gl, "SESSION_PREWARM_THRESHOLD_SEC", 300.0), \
+         patch.object(gl, "SESSION_ROTATION_THRESHOLD_SEC", 400.0), \
+         patch.object(gl, "SESSION_HARD_ROTATION_SEC", 500.0):
+
+        stream_task = asyncio.create_task(engine._stream_from_queue(audio_q, lambda ev: received_transcripts.append(ev)))
+
+        await asyncio.sleep(0.05)
+        assert len(connections) == 1
+        sock1 = connections[0]
+
+        # Send goAway notification to Socket 1
+        sock1._incoming.put_nowait(
+            _MockLiveMsg(
+                aiohttp.WSMsgType.TEXT,
+                json.dumps({"goAway": {"timeLeft": "10s"}})
+            )
+        )
+
+        # Allow goAway message to be processed and trigger prewarm
+        await asyncio.sleep(0.08)
+
+        # Feed Chunk 2 - triggers rotation completion and routes to Socket 2
+        audio_q.put_nowait(b"\x02\x00" * 160)
+        await asyncio.sleep(0.08)
+
+        # End stream
+        audio_q.put_nowait(None)
+        await asyncio.wait_for(stream_task, timeout=2.0)
+
+    # Verify Socket 2 pre-warmed and connected
+    assert len(connections) >= 2, "goAway must trigger pre-warm of replacement socket"
+    sock2 = connections[1]
+
+    # Verify Socket 1 received audioStreamEnd
+    assert any(p.get("realtimeInput", {}).get("audioStreamEnd") for p in sock1.sent_payloads)
+
+    # Verify chunk 2 flowed to Socket 2
+    sock2_audio = [p for p in sock2.sent_payloads if "audio" in p.get("realtimeInput", {})]
+    assert len(sock2_audio) >= 1, "Chunk 2 must flow to Socket 2 after goAway handover"
+
+    # Verify clean rotation and reset of _go_away_received
+    assert engine.rotation_count >= 1
+    assert engine._go_away_received is False
+    assert sock1.closed is True
