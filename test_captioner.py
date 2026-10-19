@@ -1246,6 +1246,48 @@ class TestTextFormatter(unittest.TestCase):
         res_abbr = fmt.format_text("located in the U.S.A. and U.S. territory", is_final=True)
         self.assertEqual(res_abbr, "Located in the U.S.A. And U.S. Territory.")
 
+    def test_sermon_transcript_targeted_fixes(self):
+        """Verify targeted fixes for:
+        1. 90:09 ASR number glitch -> 99
+        2. Unicode curly quote spacing -> .”word to .” word, preserving contractions
+        3. Glued double words / stuttering -> GodGod -> God God, efforteffortless -> effort effortless
+        """
+        from obs_captioner.formatter import TextFormatter, fix_concatenated_words, format_caption
+        fmt = TextFormatter(auto_capitalization=True, auto_punctuation=True)
+
+        # 1. 90:09 ASR number glitch
+        res_glitch = fmt.format_text("leave the 90:09 in the open country", is_final=True)
+        self.assertEqual(res_glitch, "Leave the 99 in the open country.")
+        self.assertEqual(fmt.format_caption("leave the 90:09 in the open country", is_final=True), "Leave the 99 in the open country.")
+        self.assertEqual(format_caption("leave the 90:09 in the open country", is_final=True), "Leave the 99 in the open country.")
+        self.assertEqual(fmt._normalize_spoken_numbers("leave the 90:09 in the open country"), "leave the 99 in the open country")
+
+        # 2. Unicode curly quote spacing
+        self.assertEqual(fmt.normalize_punctuation_spacing("repents.”the angels"), "repents.” the angels")
+        self.assertEqual(fmt.normalize_punctuation_spacing('word."Next'), 'word." Next')
+        self.assertEqual(fmt.normalize_punctuation_spacing("don’t"), "don’t")
+        self.assertEqual(fmt.normalize_punctuation_spacing("father’s"), "father’s")
+        # In full sentence context
+        res_quote = fmt.format_text("when one sinner repents.”the angels rejoice", is_final=True)
+        self.assertIn("repents.” the angels", res_quote)
+        res_cont = fmt.format_text("please don’t touch my father’s Bible", is_final=True)
+        self.assertIn("don’t", res_cont)
+        self.assertIn("father’s", res_cont)
+        self.assertNotIn("don’ t", res_cont)
+        self.assertNotIn("father’ s", res_cont)
+
+        # 3. Glued double words / stuttering
+        self.assertEqual(fix_concatenated_words("GodGod"), "God God")
+        self.assertEqual(fix_concatenated_words("efforteffortless"), "effort effortless")
+        self.assertEqual(fix_concatenated_words("thatthat"), "that that")
+        self.assertEqual(fix_concatenated_words("murmur"), "murmur")
+
+        # In full sentence context
+        res_god = fmt.format_text("praise GodGod for His grace", is_final=True)
+        self.assertIn("God God", res_god)
+        res_effort = fmt.format_text("it was an efforteffortless transition", is_final=True)
+        self.assertIn("effort effortless", res_effort)
+
     def test_church_words_and_scripture(self):
         from obs_captioner.formatter import TextFormatter
         fmt = TextFormatter(auto_capitalization=True, auto_punctuation=True, church_mode=True)

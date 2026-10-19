@@ -45,6 +45,11 @@ _CONCAT_PREFIXES: Tuple[str, ...] = (
 
 _CONCAT_SUFFIXES: Tuple[str, ...] = ("there", "here", "again", "also", "now", "away")
 
+_REPEATED_WORD_WHITELIST: Set[str] = {
+    "murmur", "bonbon", "chacha", "cancan", "froufrou", "couscous", "beriberi",
+    "tartar", "pawpaw", "pompon", "dumdum",
+}
+
 # Legitimate single words starting with these prefixes that must NEVER be split
 _CONCAT_WHITELIST: Set[str] = {
     # Prompt explicitly specified words
@@ -199,6 +204,11 @@ def _get_known_words() -> Set[str]:
         "broadcast", "broadcasting", "broadcasts", "broadcaster", "broadcasters",
         "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
         "yesterday", "tomorrow", "tonight", "weekend", "weekdays", "weekday",
+        # Common -less suffix words
+        "effortless", "endless", "fearless", "flawless", "helpless", "hopeless",
+        "restless", "relentless", "sleepless", "speechless", "tireless", "worthless",
+        "careless", "harmless", "heartless", "nameless", "painless", "powerless",
+        "priceless", "sinless", "timeless", "useless", "weightless",
     })
 
     db_path = Path(__file__).parent / "data" / "bible.db"
@@ -237,6 +247,15 @@ def _split_concat_token(m: re.Match) -> str:
     if low in _CONCAT_WHITELIST or len(low) < 3:
         return w
     known = _get_known_words()
+
+    # Identical repeated-word check (stutter / glued identical word)
+    if len(low) >= 6 and len(low) % 2 == 0:
+        half = len(low) // 2
+        if low[:half] == low[half:] and low[:half] in known and low not in _REPEATED_WORD_WHITELIST:
+            if w[:half].istitle() and w[half:].istitle():
+                return f"{w[:half]} {w[half:]}"
+            return _format_split(w, half)
+
     if low in known:
         return w
 
@@ -275,8 +294,13 @@ _COLON_FOLLOWING_LETTER_PATTERN = re.compile(r"(:)([a-zA-Z])")
 _PERIOD_CAP_PATTERN = re.compile(r"([a-zA-Z0-9]+)(\.)([A-Z])")
 _PERIOD_LOWER_PATTERN = re.compile(r"\b([a-zA-Z]+)\.([a-z]+)\b")
 _KNOWN_TLD_PATTERN = re.compile(rf"^{_KNOWN_TLDS_STR}\b", re.IGNORECASE)
-_PUNCT_QUOTE_PAREN_PATTERN = re.compile(r"([.?!,;:][\"'\)\]])([a-zA-Z])")
+_PUNCT_DOUBLE_QUOTE_PAREN_PATTERN = re.compile(r"((?<=\S)[.?!,;:]?[\"”\)\]\}])([a-zA-Z])")
+_PUNCT_SINGLE_QUOTE_PATTERN = re.compile(r"([.?!,;:][\'’])([a-zA-Z])")
+_PUNCT_QUOTE_PAREN_PATTERN = _PUNCT_DOUBLE_QUOTE_PAREN_PATTERN
 _MULTI_SPACE_PATTERN = re.compile(r"[ \t]+")
+
+# Precompiled ASR glitch patterns
+_NINETY_NINE_GLITCH_PATTERN = re.compile(r"\b90:09\b")
 
 # Precompiled spoken numbers normalization patterns & tables
 _ORDINAL_SUFFIXES = {1: "st", 2: "nd", 3: "rd"}
@@ -669,6 +693,7 @@ class TextFormatter:
         # 0. De-duplicate stutters and clean common acoustic artifacts
         text = self.de_duplicate_phrases(text)
         text = self.cleanup_asr_disfluencies(text)
+        text = _NINETY_NINE_GLITCH_PATTERN.sub("99", text)
 
         # 0b. Normalize all-caps transcription output (e.g. Sherpa-ONNX Zipformer CTC tokens)
         if text.isupper() and len(text) > 4:
@@ -707,6 +732,11 @@ class TextFormatter:
 
         return text
 
+    def format_caption(self, text: str, is_final: bool = True) -> str:
+        """Format caption text, repairing glitches and applying standard normalization."""
+        text = _NINETY_NINE_GLITCH_PATTERN.sub("99", text)
+        return self.format_text(text, is_final=is_final)
+
     def _normalize_spoken_numbers(self, text: str) -> str:
         """Convert spoken ordinals and times to compact numeric form.
 
@@ -716,6 +746,7 @@ class TextFormatter:
           'thirty second Sunday'    → '32nd Sunday'
         Skips tokens already formatted as scripture references (contain ':').
         """
+        text = _NINETY_NINE_GLITCH_PATTERN.sub("99", text)
         text = _COMPOUND_ORDINAL_PATTERN.sub(_replace_compound_ordinal, text)
         text = _STANDALONE_ORDINAL_PATTERN.sub(_replace_ordinal_word, text)
         text = _SPOKEN_TIME_PATTERN.sub(_replace_time, text)
@@ -768,8 +799,12 @@ class TextFormatter:
         # Case 4b: Period followed by a lowercase letter, excluding known web domains and initialisms
         text = _PERIOD_LOWER_PATTERN.sub(_replace_period_lower, text)
 
-        # 5. Punctuation followed by closing quote or paren then letter: e.g. 'end."Next' -> 'end." Next'
-        text = _PUNCT_QUOTE_PAREN_PATTERN.sub(r"\1 \2", text)
+        # 5. Double quotes and closing parens/brackets followed by letter
+        # e.g. 'repents.”the angels' -> 'repents.” the angels', 'end."Next' -> 'end." Next'
+        text = _PUNCT_DOUBLE_QUOTE_PAREN_PATTERN.sub(r"\1 \2", text)
+
+        # 5b. Single quotes when preceded by punctuation (avoiding contractions like don’t, father’s)
+        text = _PUNCT_SINGLE_QUOTE_PATTERN.sub(r"\1 \2", text)
 
         # 6. Normalize multiple consecutive spaces
         text = _MULTI_SPACE_PATTERN.sub(" ", text).strip()
@@ -894,4 +929,9 @@ def is_hallucinated_or_leaked_text(text: str) -> bool:
 
 
 fix_concatenated_words = TextFormatter.fix_concatenated_words
+
+
+def format_caption(text: str, is_final: bool = True) -> str:
+    """Format caption string with default TextFormatter."""
+    return TextFormatter().format_caption(text, is_final=is_final)
 
