@@ -8993,6 +8993,86 @@ class TestQuoteFormattingConcatenationAndScripture(unittest.IsolatedAsyncioTestC
         self.assertIn("Luke's Gospel", last_lookup_call)
         self.assertIn("Chapter 15", last_lookup_call)
 
+    async def test_sliding_window_alternating_duplicate_suppression(self):
+        import collections
+        from unittest.mock import AsyncMock, MagicMock
+        from obs_captioner.obs.caption_sink import CaptionSink
+        from obs_captioner.config import AppConfig
+        from obs_captioner.engines.base import TranscriptEvent
+
+        cfg = AppConfig()
+        cfg.overlay.auto_hide_seconds = 0
+        if hasattr(cfg, "bible") and cfg.bible:
+            cfg.bible.enabled = False
+        cfg.translation.enabled = False
+        sink = CaptionSink(cfg)
+        mock_web = MagicMock()
+        mock_web.broadcast_caption = AsyncMock()
+        sink.web_server = mock_web
+
+        sequence = [
+            "God's word together every Sunday.",
+            "Many people respond by saying thanks be to God.",
+            "God's word together every Sunday.",
+            "Many people respond by saying thanks be to God.",
+        ]
+
+        # Stream sequence within 3 seconds
+        for text in sequence:
+            await sink.handle_transcript(TranscriptEvent(text=text, is_final=True))
+
+        # Verify only 2 entries are added to history (alternating duplicates suppressed)
+        self.assertEqual(len(sink.history.entries), 2)
+        self.assertIn("God's word together every Sunday", sink.history.entries[0].text)
+        self.assertIn("Many people respond by saying thanks be to God", sink.history.entries[1].text)
+
+        # Verify that legitimate repeats outside the 8.0s window are permitted
+        sink._recent_finals = collections.deque(
+            [(t, ts - 10.0) for t, ts in sink._recent_finals],
+            maxlen=10
+        )
+        sink._last_final_time -= 10.0
+
+        await sink.handle_transcript(TranscriptEvent(text="God's word together every Sunday.", is_final=True))
+        self.assertEqual(len(sink.history.entries), 3)
+
+    def test_fix_additional_service_glued_words(self):
+        from obs_captioner.formatter import TextFormatter, fix_concatenated_words
+
+        fmt = TextFormatter()
+
+        # 1. Sermon vocabulary and suffix repairs
+        self.assertEqual(fix_concatenated_words("thesermon"), "the sermon")
+        self.assertEqual(fmt.fix_concatenated_words("thesermon"), "the sermon")
+
+        self.assertEqual(fix_concatenated_words("changeus"), "change us")
+        self.assertEqual(fmt.fix_concatenated_words("changeus"), "change us")
+
+        self.assertEqual(fix_concatenated_words("andfidgets"), "and fidgets")
+        self.assertEqual(fmt.fix_concatenated_words("andfidgets"), "and fidgets")
+
+        # 2. CamelCase single-letter pronoun repair
+        self.assertEqual(fmt.fix_camelcase_missing_spaces("elderI"), "elder I")
+        self.assertEqual(TextFormatter.fix_camelcase_missing_spaces("elderI"), "elder I")
+
+        # 3. Whitelist words ending in 'us' must NOT be split
+        whitelist_us = ["jesus", "focus", "status", "campus"]
+        for w in whitelist_us:
+            self.assertEqual(fix_concatenated_words(w), w, f"Whitelist word ending in 'us' was split: {w}")
+            self.assertEqual(fmt.fix_concatenated_words(w), w, f"Whitelist word ending in 'us' was split: {w}")
+
+    def test_quote_redundant_punctuation_cleanup(self):
+        from obs_captioner.formatter import TextFormatter
+
+        fmt = TextFormatter()
+
+        # Trailing quote punctuation and collision cleanups
+        self.assertEqual(fmt.normalize_punctuation_spacing('estate.".\''), 'estate."\'')
+        self.assertEqual(fmt.normalize_punctuation_spacing("estate.\"."), "estate.\"")
+        self.assertEqual(fmt.normalize_punctuation_spacing("repents.”."), "repents.”")
+        self.assertEqual(fmt.normalize_punctuation_spacing("grace., But"), "grace, But")
+        self.assertEqual(fmt.normalize_punctuation_spacing("starving to death!\"?."), "starving to death!\"?")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,6 +1,7 @@
 """Caption Sink and Dispatcher with Content Filtering, Live Translation, and Twitch Broadcast."""
 
 import asyncio
+import collections
 from collections import deque
 import logging
 import re
@@ -80,6 +81,8 @@ class CaptionSink:
         self._last_final_utterance_id = 0
         self._last_final_text: Optional[str] = None
         self._duplicate_final_window = 0.75
+        self._recent_final_window_sec: float = 8.0
+        self._recent_finals: collections.deque[Tuple[str, float]] = collections.deque(maxlen=10)
         self._saw_interim_since_final = False
         self._history_dedup_window = 5.0
         self._obs_text_queue: deque = deque()
@@ -240,7 +243,8 @@ class CaptionSink:
     def _attempt_boundary_stitch(self, clean_text: str) -> Tuple[str, bool]:
         """Stitch mid-word chunk boundary splits and continuing clauses between consecutive utterances."""
         now = time.time()
-        if not self.history.entries or (now - self._last_final_time > 3.5):
+        last_final_time = self.history.entries[-1].end_time if self.history.entries else self._last_final_time
+        if not self.history.entries or (now - last_final_time > 3.5):
             return clean_text, False
 
         last_entry = self.history.entries[-1]
@@ -396,19 +400,21 @@ class CaptionSink:
             logger.info("✓ [FINAL]   🛡️ [DROPPED]")
             return
 
-        # Drop an immediate identical re-finalization (engine double-emit):
-        # a genuine repeated sentence is virtually always preceded by fresh
-        # interim hypotheses for the new utterance, while a double-emit
-        # arrives back-to-back with no new interim in between. Legitimate
-        # verbatim repetitions also fall outside this sub-second window.
-        # Still clear the interim line.
+        # Sliding window caption deduplication:
+        # Suppress rapid identical re-finalizations and alternating ping-pong duplicate loops
+        # (such as intro videos repeating A -> B -> A -> B) within the recency window.
         if event.is_final and clean_text:
             normalized_final = re.sub(r"\s+", " ", clean_text).strip().casefold()
-            if (
-                normalized_final
-                and normalized_final == self._last_final_text
-                and (time.time() - self._last_final_time) < self._duplicate_final_window
-            ):
+            now_ts = time.time()
+            is_dup = False
+            if normalized_final:
+                for text, ts in self._recent_finals:
+                    effective_ts = min(ts, self._last_final_time)
+                    if text == normalized_final and (now_ts - effective_ts) < self._recent_final_window_sec:
+                        is_dup = True
+                        break
+
+            if is_dup:
                 logger.info(f"✓ [FINAL]   [DUPLICATE SUPPRESSED] {clean_text}")
                 if self._utterance_active:
                     # Active new utterance in progress: keep it active and
@@ -425,6 +431,10 @@ class CaptionSink:
                         )
                     )
                 return
+            else:
+                self._recent_finals.append((normalized_final, now_ts))
+                self._last_final_text = normalized_final
+                self._last_final_time = now_ts
 
         # Echo suppression for single-word / punctuation fragments matching trailing words of previous final
         if event.is_final and clean_text and self.history.entries:
@@ -465,7 +475,7 @@ class CaptionSink:
         if event.is_final and clean_text and self.history.entries:
             now = time.time()
             prev_entry = self.history.entries[-1]
-            dt = now - self._last_final_time
+            dt = now - prev_entry.end_time
             if dt <= 4.0:
                 prev_clean_base = re.sub(r"[.,?!;:…\"'”’\s]+$", "", prev_entry.text).casefold()
                 new_clean_base = re.sub(r"[.,?!;:…\"'”’\s]+$", "", clean_text).casefold()

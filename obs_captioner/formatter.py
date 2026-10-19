@@ -29,7 +29,7 @@ _PUNCT_STRIP_PATTERN = re.compile(r"[^\w\s]")
 _STUTTER_PATTERN = re.compile(r"\b(\w+(?:[^\w\n]+(?:\w+)){1,5})\s*[,;]?\s+\1\b", re.IGNORECASE)
 
 # Precompiled camelCase missing spaces pattern
-_CAMELCASE_PATTERN = re.compile(r"\b([a-z]+)([A-Z][a-z]+)\b")
+_CAMELCASE_PATTERN = re.compile(r"([a-z])([A-Z])")
 
 # Prefixes for concatenated word repair
 _CONCAT_PREFIXES: Tuple[str, ...] = (
@@ -43,7 +43,7 @@ _CONCAT_PREFIXES: Tuple[str, ...] = (
     "as", "at", "by", "he", "if", "in", "is", "it", "my", "no", "of", "on", "or", "so", "to", "we",
 )
 
-_CONCAT_SUFFIXES: Tuple[str, ...] = ("there", "here", "again", "also", "now", "away")
+_CONCAT_SUFFIXES: Tuple[str, ...] = ("there", "here", "again", "also", "now", "away", "us")
 
 _REPEATED_WORD_WHITELIST: Set[str] = {
     "murmur", "bonbon", "chacha", "cancan", "froufrou", "couscous", "beriberi",
@@ -141,6 +141,11 @@ _CONCAT_WHITELIST: Set[str] = {
     "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
     "yesterday", "tomorrow", "tonight", "weekend", "weekdays", "weekday",
     "background", "foreground", "underground", "anyway", "anyhow", "anymore",
+    # Guard words for 'us' suffix:
+    "jesus", "bonus", "status", "focus", "minus", "virus", "chorus", "campus",
+    "census", "fungus", "circus", "walrus", "plus", "thus", "versus", "genus",
+    "sinus", "nexus", "lotus", "bogus", "hubris", "apparatus", "consensus",
+    "impetus", "stimulus", "syllabus", "surplus", "fetus",
 }
 
 _CONCAT_WORD_PATTERN = re.compile(r"\b([A-Za-z]+)\b")
@@ -200,6 +205,7 @@ def _get_known_words() -> Set[str]:
         "window", "earthquake", "courtyard", "babysitter", "dowry", "communion",
         "doxology", "benediction", "can", "have", "has", "had", "will", "would",
         "could", "should", "are", "were", "been",
+        "sermon", "sermons", "fidget", "fidgets",
         # Broadcasting & calendar vocabulary
         "broadcast", "broadcasting", "broadcasts", "broadcaster", "broadcasters",
         "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
@@ -784,6 +790,15 @@ class TextFormatter:
 
         # 1. Strip accidental whitespace before punctuation (e.g. "word ." -> "word.")
         text = _PUNCT_LEADING_SPACE_PATTERN.sub(r"\1", text)
+
+        # 1b. Redundant trailing punctuation after quotes
+        text = re.sub(r'([.?!]["\'”’\)\]\}]+)[.,;:…]+', r'\1', text)
+
+        # 1c. Comma-period collision
+        text = re.sub(r'\.,', r',', text)
+
+        # 1d. Colliding question/exclamation with period
+        text = re.sub(r'([!?]["\'”’]?)\.+', r'\1', text)
 
         # 2. Add space after commas, semicolons, exclamation marks, and question marks
         # when immediately followed by a letter (e.g. "said,yes" -> "said, yes", "amen!Let" -> "amen! Let")
