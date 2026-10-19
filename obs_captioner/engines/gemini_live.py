@@ -1183,10 +1183,12 @@ class GeminiLiveEngine(BaseSTTEngine):
         old_ws: Any,
         final_received_event: Optional[asyncio.Event] = None,
         on_transcript: Optional[CaptionCallback] = None,
+        drain_turn_prefix: str = "",
     ) -> None:
         """Listen to old_ws for up to 600ms, parse final inputTranscription, and cleanly close."""
         cb = on_transcript or getattr(self, "_on_transcript", None)
         deadline = time.monotonic() + 0.60
+        max_words = max(12, int(getattr(self.config.audio, "max_sentence_words", 24) or 24))
         try:
             while not getattr(old_ws, "closed", False):
                 rem = deadline - time.monotonic()
@@ -1224,17 +1226,27 @@ class GeminiLiveEngine(BaseSTTEngine):
 
                         if suppress_music:
                             if (strict_music and getattr(self.vad.music_detector, "music_detected", False)) or is_music_text(text, strict=strict_music):
-                                if is_final:
-                                    self._reset_turn_state()
                                 continue
 
-                        segmented_events = self._segment_streaming_event(
-                            text=text,
-                            is_final=is_final,
-                            translated_text=trans,
+                        if not is_final:
+                            continue
+
+                        stripped = (
+                            _strip_finalized_prefix(text, drain_turn_prefix)
+                            if drain_turn_prefix
+                            else text.strip()
                         )
-                        for seg_ev in segmented_events:
-                            if seg_ev.is_final and final_received_event is not None:
+                        if not stripped:
+                            continue
+
+                        parts = _split_final_paragraph(stripped, max_words=max_words)
+                        for idx, part in enumerate(parts):
+                            seg_ev = TranscriptEvent(
+                                text=part,
+                                is_final=True,
+                                translated_text=trans if idx == len(parts) - 1 else None,
+                            )
+                            if final_received_event is not None:
                                 final_received_event.set()
                             if cb is not None:
                                 try:
@@ -1243,6 +1255,10 @@ class GeminiLiveEngine(BaseSTTEngine):
                                         await res
                                 except Exception as cbe:
                                     logger.debug(f"Drain on_transcript error: {cbe}")
+
+                        self._last_disconnect_finalized_text = stripped
+                        self._last_disconnect_mono = time.monotonic()
+                        continue
 
                 elif msg.type in (
                     aiohttp.WSMsgType.CLOSED,
@@ -1855,9 +1871,12 @@ class GeminiLiveEngine(BaseSTTEngine):
                         if not is_rotating and not rotation_requested and (active_ws is target_ws):
                             text_to_finalize = None
                             if self._latest_interim_text:
-                                words = self._latest_interim_text.strip().split()
+                                candidate = self._latest_interim_text.strip()
+                                candidate = _strip_finalized_prefix(candidate, self._finalized_turn_prefix)
+                                candidate = self._strip_disconnect_replay_prefix(candidate, time.monotonic())
+                                words = candidate.split()
                                 if len(words) >= 2:
-                                    text_to_finalize = self._latest_interim_text.strip()
+                                    text_to_finalize = candidate
                                     self._append_finalized_prefix(text_to_finalize)
                             if self._finalized_turn_prefix:
                                 self._last_disconnect_finalized_text = self._finalized_turn_prefix
@@ -1879,7 +1898,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                                         await res
                                 except Exception as ex:
                                     logger.warning(f"Error finalizing in-flight interim: {ex}")
-                        self._reset_turn_state()
+                            self._reset_turn_state()
 
                 def switch_receiver(new_target_ws: aiohttp.ClientWebSocketResponse) -> None:
                     nonlocal current_recv_subtask
@@ -1982,11 +2001,22 @@ class GeminiLiveEngine(BaseSTTEngine):
                                     self.last_rotation_time = time.time()
                                     self._go_away_received = False
 
+                                    old_prefix = self._finalized_turn_prefix
+                                    if old_prefix:
+                                        self._last_disconnect_finalized_text = old_prefix
+                                        self._last_disconnect_mono = time.monotonic()
+                                    self._reset_turn_state()
                                     switch_receiver(new_ws)
                                     is_rotating = False
 
                                     drain_t = asyncio.create_task(
-                                        self._drain_and_close(old_session, old_ws, final_received_event, on_transcript)
+                                        self._drain_and_close(
+                                            old_session,
+                                            old_ws,
+                                            final_received_event,
+                                            on_transcript,
+                                            drain_turn_prefix=old_prefix,
+                                        )
                                     )
                                     self._drain_tasks.add(drain_t)
                                     drain_t.add_done_callback(self._drain_tasks.discard)

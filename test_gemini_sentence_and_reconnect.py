@@ -931,3 +931,112 @@ async def test_goaway_triggers_graceful_prewarm_handover():
     assert engine.rotation_count >= 1
     assert engine._go_away_received is False
     assert sock1.closed is True
+
+
+@pytest.mark.asyncio
+async def test_drain_and_close_ignores_interim_and_updates_disconnect_prefix():
+    """Verify _drain_and_close ignores interim packets and updates _last_disconnect_finalized_text."""
+    from obs_captioner.engines import gemini_live as gl
+
+    cfg = AppConfig()
+    cfg.gemini_live.api_key = "test-live-key"
+    engine = gl.GeminiLiveEngine(cfg)
+
+    emitted_events: List[TranscriptEvent] = []
+
+    class _MockMsg:
+        def __init__(self, data: str):
+            self.type = aiohttp.WSMsgType.TEXT
+            self.data = data
+
+    class _MockWs:
+        def __init__(self, msgs: List[str]):
+            self._q: asyncio.Queue = asyncio.Queue()
+            for m in msgs:
+                self._q.put_nowait(_MockMsg(m))
+            self.closed = False
+
+        async def receive(self, timeout=None):
+            try:
+                return await asyncio.wait_for(self._q.get(), timeout=timeout or 0.1)
+            except (asyncio.TimeoutError, asyncio.QueueEmpty):
+                self.closed = True
+                raise asyncio.TimeoutError()
+
+        async def close(self):
+            self.closed = True
+
+    class _MockSession:
+        def __init__(self):
+            self.closed = False
+
+        async def close(self):
+            self.closed = True
+
+    mock_ws = _MockWs([
+        # 1. Interim packet - must be IGNORED
+        json.dumps({
+            "serverContent": {
+                "interimInputTranscription": {"text": "Ignore this interim text"}
+            }
+        }),
+        # 2. Trailing final packet - must strip prefix, emit final, update disconnect tracking
+        json.dumps({
+            "serverContent": {
+                "inputTranscription": {"text": "Already finalized prefix. This is the trailing finalized sentence."}
+            }
+        }),
+    ])
+    mock_session = _MockSession()
+    final_ev = asyncio.Event()
+
+    t_before = time.monotonic()
+    await engine._drain_and_close(
+        old_session=mock_session,
+        old_ws=mock_ws,
+        final_received_event=final_ev,
+        on_transcript=lambda ev: emitted_events.append(ev),
+        drain_turn_prefix="Already finalized prefix.",
+    )
+
+    assert final_ev.is_set(), "final_received_event should be set when final transcript is emitted"
+    assert len(emitted_events) == 1, f"Expected exactly 1 final event, got {len(emitted_events)}: {emitted_events}"
+    assert emitted_events[0].is_final is True
+    assert emitted_events[0].text == "This is the trailing finalized sentence."
+    assert engine._last_disconnect_finalized_text == "This is the trailing finalized sentence."
+    assert engine._last_disconnect_mono >= t_before
+    assert mock_ws.closed is True
+    assert mock_session.closed is True
+
+
+@pytest.mark.asyncio
+async def test_receive_loop_disconnect_strips_already_finalized_prefix():
+    """Verify receive_loop unexpected disconnect does not re-emit already finalized words."""
+    from obs_captioner.engines import gemini_live as gl
+
+    cfg = AppConfig()
+    cfg.gemini_live.api_key = "test-live-key"
+    engine = gl.GeminiLiveEngine(cfg)
+
+    # 1. Candidate is already in finalized turn prefix
+    engine._latest_interim_text = "The Lord is my shepherd."
+    engine._finalized_turn_prefix = "The Lord is my shepherd."
+
+    candidate = engine._latest_interim_text.strip()
+    candidate = _strip_finalized_prefix(candidate, engine._finalized_turn_prefix)
+    candidate = engine._strip_disconnect_replay_prefix(candidate, time.monotonic())
+    words = candidate.split()
+    assert len(words) < 2, "Candidate should be fully stripped by _finalized_turn_prefix"
+
+    # 2. Candidate is covered by disconnect replay prefix
+    engine._latest_interim_text = "I shall not want."
+    engine._finalized_turn_prefix = ""
+    engine._last_disconnect_finalized_text = "I shall not want."
+    engine._last_disconnect_mono = time.monotonic()
+
+    candidate = engine._latest_interim_text.strip()
+    candidate = _strip_finalized_prefix(candidate, engine._finalized_turn_prefix)
+    candidate = engine._strip_disconnect_replay_prefix(candidate, time.monotonic())
+    words = candidate.split()
+    assert len(words) < 2, "Candidate should be fully stripped by _strip_disconnect_replay_prefix"
+

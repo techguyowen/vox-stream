@@ -243,7 +243,7 @@ class CaptionSink:
     def _attempt_boundary_stitch(self, clean_text: str) -> Tuple[str, bool]:
         """Stitch mid-word chunk boundary splits and continuing clauses between consecutive utterances."""
         now = time.time()
-        last_final_time = self.history.entries[-1].end_time if self.history.entries else self._last_final_time
+        last_final_time = max(self.history.entries[-1].end_time, self._last_final_time) if self.history.entries else self._last_final_time
         if not self.history.entries or (now - last_final_time > 3.5):
             return clean_text, False
 
@@ -475,7 +475,7 @@ class CaptionSink:
         if event.is_final and clean_text and self.history.entries:
             now = time.time()
             prev_entry = self.history.entries[-1]
-            dt = now - prev_entry.end_time
+            dt = now - max(prev_entry.end_time, self._last_final_time)
             if dt <= 4.0:
                 prev_clean_base = re.sub(r"[.,?!;:…\"'”’\s]+$", "", prev_entry.text).casefold()
                 new_clean_base = re.sub(r"[.,?!;:…\"'”’\s]+$", "", clean_text).casefold()

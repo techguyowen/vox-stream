@@ -643,6 +643,9 @@ class TextFormatter:
         else:
             self._master_pattern = None
 
+        # Pre-warm concatenated word vocabulary so first live utterance incurs zero DB latency
+        _get_known_words()
+
     @staticmethod
     def de_duplicate_phrases(text: str) -> str:
         """Collapse immediate identical sentence repetitions and stuttered phrase loops.
