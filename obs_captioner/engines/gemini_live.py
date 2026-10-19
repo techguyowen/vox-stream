@@ -1151,6 +1151,7 @@ class GeminiLiveEngine(BaseSTTEngine):
         t0 = time.perf_counter()
         timeout = aiohttp.ClientTimeout(total=None, connect=PREWARM_CONNECT_TIMEOUT)
         session = aiohttp.ClientSession(timeout=timeout)
+        ws: Optional[Any] = None
         try:
             ws_conn = session.ws_connect(ws_url, heartbeat=20.0, ssl=ssl_context)
             if hasattr(ws_conn, "__await__") or asyncio.iscoroutine(ws_conn):
@@ -1170,7 +1171,9 @@ class GeminiLiveEngine(BaseSTTEngine):
                     return session, ws, handshake_ms
                 raise RuntimeError(f"Unexpected initial message: {raw}")
             raise RuntimeError(f"WebSocket closed or error during setup: {init_msg.type}")
-        except Exception:
+        except (Exception, asyncio.CancelledError):
+            if ws is not None:
+                await self._safe_close_ws(ws)
             await self._safe_close_session(session)
             raise
 
@@ -1937,6 +1940,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                                 prewarm_task = asyncio.create_task(
                                     self._connect_and_setup(ws_url, ssl_context, current_setup)
                                 )
+                                self._prewarm_task = prewarm_task
 
                         if prewarm_task is not None and prewarm_task.done():
                             prewarm_exc = prewarm_task.exception()
@@ -2180,6 +2184,27 @@ class GeminiLiveEngine(BaseSTTEngine):
             self._ping_task.cancel()
         self._ping_task = None
         self.current_ping_ms = None
+        if getattr(self, "_prewarm_task", None):
+            if not self._prewarm_task.done():
+                self._prewarm_task.cancel()
+            elif not self._prewarm_task.cancelled():
+                try:
+                    p_res = self._prewarm_task.result()
+                    if isinstance(p_res, tuple) and len(p_res) >= 2:
+                        p_session, p_ws = p_res[0], p_res[1]
+                        if p_ws and not p_ws.closed:
+                            try:
+                                await p_ws.close()
+                            except Exception:
+                                pass
+                        if p_session and not p_session.closed:
+                            try:
+                                await p_session.close()
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+            self._prewarm_task = None
         for dt in list(self._drain_tasks):
             if not dt.done():
                 dt.cancel()
