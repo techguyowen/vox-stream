@@ -1190,7 +1190,15 @@
         }
 
         body.has-pwa-banner .jump-live-btn {
-            bottom: calc(84px + env(safe-area-inset-bottom, 16px));
+            bottom: calc(var(--pwa-banner-h, 76px) + 24px + env(safe-area-inset-bottom, 16px));
+        }
+
+        body.has-pwa-banner .transcript-content {
+            padding-bottom: calc(var(--pwa-banner-h, 76px) + 96px + env(safe-area-inset-bottom, 16px));
+        }
+
+        body.has-pwa-banner .stage-container {
+            scroll-padding-bottom: calc(var(--pwa-banner-h, 76px) + 72px + env(safe-area-inset-bottom, 16px));
         }
 
         /* Accessibility (a11y): Reduced Motion Media Query */
@@ -4363,25 +4371,31 @@
             if (pwaModal) pwaModal.style.display = 'none';
         }
 
+        function hidePwaBanner() {
+            if (pwaInstallBanner) pwaInstallBanner.style.display = 'none';
+            document.body.classList.remove('has-pwa-banner');
+            document.documentElement.style.removeProperty('--pwa-banner-h');
+        }
+
+        function syncPwaBannerHeight() {
+            if (!pwaInstallBanner || pwaInstallBanner.style.display === 'none') return;
+            const h = Math.ceil(pwaInstallBanner.getBoundingClientRect().height);
+            if (h > 0) document.documentElement.style.setProperty('--pwa-banner-h', h + 'px');
+        }
+
         function checkPwaInstallBanner() {
             if (!pwaInstallBanner) return;
-            if (isStandaloneMode()) {
-                pwaInstallBanner.style.display = 'none';
-                document.body.classList.remove('has-pwa-banner');
+            if (isStandaloneMode() || localStorage.getItem('voxstream_pwa_banner_dismissed') === '1' || !isMobileDevice()) {
+                hidePwaBanner();
                 return;
             }
-            if (localStorage.getItem('voxstream_pwa_banner_dismissed') === '1') {
-                pwaInstallBanner.style.display = 'none';
-                document.body.classList.remove('has-pwa-banner');
-                return;
-            }
-            if (isMobileDevice()) {
-                pwaInstallBanner.style.display = 'flex';
-                document.body.classList.add('has-pwa-banner');
-            } else {
-                pwaInstallBanner.style.display = 'none';
-                document.body.classList.remove('has-pwa-banner');
-            }
+            pwaInstallBanner.style.display = 'flex';
+            document.body.classList.add('has-pwa-banner');
+            syncPwaBannerHeight();
+        }
+
+        if (pwaInstallBanner && window.ResizeObserver) {
+            new ResizeObserver(syncPwaBannerHeight).observe(pwaInstallBanner);
         }
 
         window.addEventListener('resize', checkPwaInstallBanner);
@@ -4406,8 +4420,7 @@
         if (btnDismissPwaBanner) {
             btnDismissPwaBanner.addEventListener('click', () => {
                 localStorage.setItem('voxstream_pwa_banner_dismissed', '1');
-                if (pwaInstallBanner) pwaInstallBanner.style.display = 'none';
-                document.body.classList.remove('has-pwa-banner');
+                hidePwaBanner();
             });
         }
 
@@ -4421,8 +4434,7 @@
 
         window.addEventListener('appinstalled', () => {
             deferredInstallPrompt = null;
-            if (pwaInstallBanner) pwaInstallBanner.style.display = 'none';
-            document.body.classList.remove('has-pwa-banner');
+            hidePwaBanner();
             if (pwaModal && pwaModal.style.display === 'flex') {
                 renderPwaModalContent();
             }
