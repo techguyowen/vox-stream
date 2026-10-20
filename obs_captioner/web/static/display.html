@@ -3249,7 +3249,8 @@
                 return;
             }
             const tag = (e.target && e.target.tagName) || '';
-            if (['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(tag)) return;
+            if (['INPUT', 'SELECT', 'TEXTAREA'].includes(tag)) return;
+            if (tag === 'BUTTON' && (e.code === 'Space' || e.key === ' ' || e.key === 'Enter')) return;
             if (e.key === '?' || e.key === 't' || e.key === 'T') {
                 toggleTutorialModal();
                 return;
@@ -4382,6 +4383,9 @@
                 document.body.classList.remove('has-pwa-banner');
             }
         }
+
+        window.addEventListener('resize', checkPwaInstallBanner);
+        window.addEventListener('orientationchange', checkPwaInstallBanner);
 
         if (btnHeaderPwaInstall) btnHeaderPwaInstall.addEventListener('click', openPwaModal);
         if (btnInstallPwa) {

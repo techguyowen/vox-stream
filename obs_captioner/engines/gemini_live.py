@@ -161,7 +161,7 @@ def _strip_finalized_prefix(text: str, finalized_prefix: str) -> str:
     # Search candidate cut positions around n_pref (+/- 4 words for ASR insertions/deletions)
     best_cut_idx = 0
     best_score = 0.0
-    min_k = max(1, n_pref - 4)
+    min_k = max(1, min(n_text, n_pref - 4))
     max_k = min(n_text, n_pref + 4)
 
     # First check exact token sequence match
@@ -470,6 +470,8 @@ class GeminiLiveEngine(BaseSTTEngine):
         self._latest_interim_text: Optional[str] = None
         self._last_interim_change_mono: float = 0.0
         self._last_disconnect_finalized_text: str = ""
+        self._rotation_drain_event: Optional[asyncio.Event] = None
+        self._rotation_in_progress: bool = False
         self._last_disconnect_mono: float = 0.0
 
         # Client-side VAD for zero-latency Hybrid VAD turn finalization
@@ -1251,8 +1253,6 @@ class GeminiLiveEngine(BaseSTTEngine):
                             )
                             if final_received_event is not None:
                                 final_received_event.set()
-                            if drain_completed_event is not None:
-                                drain_completed_event.set()
                             if cb is not None:
                                 try:
                                     res = cb(seg_ev)
@@ -1261,8 +1261,13 @@ class GeminiLiveEngine(BaseSTTEngine):
                                 except Exception as cbe:
                                     logger.debug(f"Drain on_transcript error: {cbe}")
 
-                        self._last_disconnect_finalized_text = stripped
+                        existing = self._last_disconnect_finalized_text
+                        self._last_disconnect_finalized_text = (
+                            f"{existing} {stripped}".strip() if existing else stripped
+                        )
                         self._last_disconnect_mono = time.monotonic()
+                        if drain_completed_event is not None:
+                            drain_completed_event.set()
                         continue
 
                 elif msg.type in (
@@ -1286,9 +1291,12 @@ class GeminiLiveEngine(BaseSTTEngine):
             await self._safe_close_ws(old_ws)
             await self._safe_close_session(old_session)
 
-    @staticmethod
-    def _redact_api_key(text: Any) -> str:
-        return re.sub(r'([?&]key=)[^&\s"\']+', r'\1[REDACTED]', str(text or ""))
+    def _redact_api_key(self, text: Any) -> str:
+        out = re.sub(r'([?&]key=)[^&\s"\']+', r'\1[REDACTED]', str(text or ""))
+        key = getattr(self, "api_key", None)
+        if isinstance(key, str) and key:
+            out = out.replace(key, "[REDACTED]")
+        return out
 
     @staticmethod
     def _is_invalid_key_failure(reason: str, code: Any = None) -> bool:
@@ -1864,6 +1872,12 @@ class GeminiLiveEngine(BaseSTTEngine):
                                         translated_text=translated_text,
                                     )
                                     for seg_ev in segmented_events:
+                                        drain_ev = getattr(self, "_rotation_drain_event", None)
+                                        if seg_ev.is_final and drain_ev is not None and not drain_ev.is_set() and active_ws is target_ws:
+                                            try:
+                                                await asyncio.wait_for(drain_ev.wait(), 0.6)
+                                            except asyncio.TimeoutError:
+                                                pass
                                         res = on_transcript(seg_ev)
                                         if asyncio.iscoroutine(res):
                                             await res
@@ -1926,12 +1940,15 @@ class GeminiLiveEngine(BaseSTTEngine):
                             await sub
                         except asyncio.CancelledError:
                             if is_rotating or (current_recv_subtask is not sub):
+                                await asyncio.sleep(0.01)
                                 continue
                             raise
                         except Exception as e:
                             logger.warning(f"Receiver error: {self._redact_api_key(e)}")
                             break
                         if current_recv_subtask is not sub or is_rotating:
+                            if sub.done():
+                                await asyncio.sleep(0.01)
                             continue
                         break
 
@@ -1974,13 +1991,20 @@ class GeminiLiveEngine(BaseSTTEngine):
                             if prewarm_task.cancelled():
                                 prewarm_task = None
                                 self._prewarm_task = None
+                            elif prewarm_task.exception() is not None:
+                                logger.warning(f"Pre-warm replacement session failed: {self._redact_api_key(prewarm_task.exception())}")
+                                prewarm_task = None
+                                self._prewarm_task = None
+                                last_prewarm_fail_time = time.monotonic()
                             else:
-                                prewarm_exc = prewarm_task.exception()
-                                if prewarm_exc is not None:
-                                    logger.warning(f"Pre-warm replacement session failed: {self._redact_api_key(prewarm_exc)}")
+                                new_session, new_ws, new_handshake_ms = prewarm_task.result()
+                                if getattr(new_ws, "closed", False):
+                                    logger.warning("Pre-warmed Gemini Live socket already closed; abandoning rotation.")
+                                    await self._safe_close_ws(new_ws)
+                                    await self._safe_close_session(new_session)
+                                    last_prewarm_fail_time = time.monotonic()
                                     prewarm_task = None
                                     self._prewarm_task = None
-                                    last_prewarm_fail_time = time.monotonic()
                                 else:
                                     should_rotate = (
                                         self._go_away_received
@@ -1993,66 +2017,57 @@ class GeminiLiveEngine(BaseSTTEngine):
                                             f"(speech_active={speech_active}, goAway={self._go_away_received})."
                                         )
                                         is_rotating = True
-                                        old_ws = active_ws
-                                        old_session = active_session
-
+                                        self._rotation_in_progress = True
                                         try:
-                                            await old_ws.send_str(json.dumps({"realtimeInput": {"audioStreamEnd": True}}))
-                                        except Exception:
-                                            pass
+                                            old_ws = active_ws
+                                            old_session = active_session
 
-                                        old_prefix = self._finalized_turn_prefix
-                                        if old_prefix:
-                                            self._last_disconnect_finalized_text = old_prefix
-                                            self._last_disconnect_mono = time.monotonic()
-
-                                        drain_completed_event = asyncio.Event()
-                                        drain_t = asyncio.create_task(
-                                            self._drain_and_close(
-                                                old_session,
-                                                old_ws,
-                                                drain_completed_event,
-                                                on_transcript,
-                                                drain_turn_prefix=old_prefix,
-                                            )
-                                        )
-                                        self._drain_tasks.add(drain_t)
-                                        drain_t.add_done_callback(self._drain_tasks.discard)
-
-                                        if speech_active or self._latest_interim_text:
                                             try:
-                                                await asyncio.wait_for(drain_completed_event.wait(), timeout=0.25)
-                                            except (asyncio.TimeoutError, asyncio.CancelledError, Exception):
+                                                await old_ws.send_str(json.dumps({"realtimeInput": {"audioStreamEnd": True}}))
+                                            except Exception:
                                                 pass
 
-                                        new_session, new_ws, new_handshake_ms = prewarm_task.result()
+                                            old_prefix = self._finalized_turn_prefix
+                                            if old_prefix:
+                                                self._last_disconnect_finalized_text = old_prefix
+                                                self._last_disconnect_mono = time.monotonic()
 
-                                        if getattr(new_ws, "closed", False):
-                                            logger.warning("Pre-warmed Gemini Live socket already closed; abandoning rotation.")
+                                            self._active_ws = new_ws
+                                            active_ws = new_ws
+                                            self._active_session = new_session
+                                            active_session = new_session
+
+                                            session_start_time = time.monotonic()
+                                            self.session_start_monotonic = session_start_time
+                                            rotation_requested = False
+
+                                            self.rotation_count += 1
+                                            self.last_rotation_time = time.time()
+                                            self._go_away_received = False
+
+                                            self._reset_turn_state()
+                                            # Cancel receive_loop(old_ws) first so the drain task is the sole reader.
+                                            switch_receiver(new_ws)
+
+                                            drain_completed_event = asyncio.Event()
+                                            self._rotation_drain_event = drain_completed_event
+                                            drain_t = asyncio.create_task(
+                                                self._drain_and_close(
+                                                    old_session,
+                                                    old_ws,
+                                                    on_transcript=on_transcript,
+                                                    drain_turn_prefix=old_prefix,
+                                                    drain_completed_event=drain_completed_event,
+                                                )
+                                            )
+                                            self._drain_tasks.add(drain_t)
+                                            drain_t.add_done_callback(self._drain_tasks.discard)
+
                                             prewarm_task = None
                                             self._prewarm_task = None
+                                        finally:
                                             is_rotating = False
-                                            continue
-
-                                        self._active_ws = new_ws
-                                        active_ws = new_ws
-                                        self._active_session = new_session
-                                        active_session = new_session
-
-                                        session_start_time = time.monotonic()
-                                        self.session_start_monotonic = session_start_time
-                                        rotation_requested = False
-
-                                        self.rotation_count += 1
-                                        self.last_rotation_time = time.time()
-                                        self._go_away_received = False
-
-                                        self._reset_turn_state()
-                                        switch_receiver(new_ws)
-                                        is_rotating = False
-
-                                        prewarm_task = None
-                                        self._prewarm_task = None
+                                            self._rotation_in_progress = False
 
                         if chunk:
                             even_len = len(chunk) & ~1

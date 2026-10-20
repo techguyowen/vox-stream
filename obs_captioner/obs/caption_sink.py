@@ -244,7 +244,7 @@ class CaptionSink:
     def _attempt_boundary_stitch(self, clean_text: str, prev_final_time: Optional[float] = None) -> Tuple[str, bool]:
         """Stitch mid-word chunk boundary splits and continuing clauses between consecutive utterances."""
         now = time.time()
-        p_time = prev_final_time if prev_final_time is not None else getattr(self, "_prev_final_time", self._last_final_time)
+        p_time = prev_final_time if prev_final_time is not None else self._prev_final_time
         last_entry_end = self.history.entries[-1].end_time if self.history.entries else 0.0
         last_final_time = last_entry_end if last_entry_end > 1000.0 else p_time
         if not self.history.entries or (now - last_final_time > 3.5):
@@ -481,7 +481,7 @@ class CaptionSink:
         if event.is_final and clean_text and self.history.entries:
             now = time.time()
             prev_entry = self.history.entries[-1]
-            dt = now - prev_entry.end_time if prev_entry.end_time > 1000.0 else (now - prev_final_time)
+            dt = (now - prev_entry.end_time) if prev_entry.end_time > 1000.0 else (now - prev_final_time)
             if dt <= 4.0:
                 prev_clean_base = re.sub(r"[.,?!;:…\"'”’\s]+$", "", prev_entry.text).casefold()
                 new_clean_base = re.sub(r"[.,?!;:…\"'”’\s]+$", "", clean_text).casefold()
@@ -690,7 +690,7 @@ class CaptionSink:
             if (
                 self.history.entries
                 and not had_fresh_interim
-                and (sentence_end - self._last_final_time) < self._duplicate_final_window
+                and (sentence_end - prev_final_time) < self._duplicate_final_window
             ):
                 norm_new = re.sub(r"\s+", " ", re.sub(r"[^\w\s]+", " ", clean_text)).strip().casefold()
                 last_base = re.sub(r"\s*\([^)]*\)$", "", self.history.entries[-1].text).strip()

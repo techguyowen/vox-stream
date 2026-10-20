@@ -1040,3 +1040,226 @@ async def test_receive_loop_disconnect_strips_already_finalized_prefix():
     words = candidate.split()
     assert len(words) < 2, "Candidate should be fully stripped by _strip_disconnect_replay_prefix"
 
+
+
+# ---------------------------------------------------------------------------
+# Hot-handoff rotation hardening: strict concurrent-receive mock sockets
+# ---------------------------------------------------------------------------
+
+class _StrictMsg:
+    def __init__(self, msg_type, data=None):
+        self.type = msg_type
+        self.data = data
+        self.extra = ""
+
+
+class _StrictWs:
+    """Mock ws that raises RuntimeError on concurrent receive(), like aiohttp."""
+
+    def __init__(self, sink: List["_StrictWs"], closed: bool = False):
+        self.idx = len(sink)
+        self.closed = closed
+        self.close_code = None
+        self.sent: List[Dict[str, Any]] = []
+        self.audio_times: List[float] = []
+        self.send_hook = None
+        self.readers = 0
+        self.concurrent_error = False
+        self._incoming: asyncio.Queue = asyncio.Queue()
+
+    async def send_str(self, s: str):
+        if self.closed:
+            raise ConnectionResetError("closed")
+        payload = json.loads(s)
+        if self.send_hook is not None:
+            await self.send_hook(payload)
+        self.sent.append(payload)
+        if "audio" in payload.get("realtimeInput", {}):
+            self.audio_times.append(time.monotonic())
+
+    async def _recv(self, timeout):
+        if self.readers:
+            self.concurrent_error = True
+            raise RuntimeError("Concurrent call to receive() is not allowed")
+        self.readers += 1
+        try:
+            if not self._incoming.empty():
+                return self._incoming.get_nowait()
+            if self.closed:
+                return _StrictMsg(aiohttp.WSMsgType.CLOSED)
+            return await asyncio.wait_for(self._incoming.get(), timeout=timeout)
+        finally:
+            self.readers -= 1
+
+    async def receive(self, timeout=None):
+        return await self._recv(timeout)
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        while not self.closed:
+            try:
+                return await self._recv(0.05)
+            except asyncio.TimeoutError:
+                continue
+        raise StopAsyncIteration
+
+    async def close(self, code=1000):
+        self.closed = True
+        self.close_code = code
+
+
+def _strict_engine(first_new_closed: bool = False):
+    from obs_captioner.engines import gemini_live as gl
+
+    cfg = AppConfig()
+    cfg.gemini_live.api_key = "test-live-key"
+    cfg.audio.suppress_music = False
+    engine = gl.GeminiLiveEngine(cfg)
+    engine.vad.is_music = lambda *a, **k: False
+    engine.vad.is_speech = lambda *a, **k: False
+    conns: List[_StrictWs] = []
+
+    class _Sess:
+        def __init__(self, *a, **k):
+            self.closed = False
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            self.closed = True
+            return False
+
+        async def close(self):
+            self.closed = True
+
+        def ws_connect(self, *a, **k):
+            ws = _StrictWs(conns, closed=False)
+            ws._incoming.put_nowait(_StrictMsg(aiohttp.WSMsgType.TEXT, json.dumps({"setupComplete": {}})))
+            conns.append(ws)
+            return ws
+
+    return gl, engine, conns, _Sess
+
+
+def _rot_patches(gl, sess):
+    return (
+        patch.object(gl.aiohttp, "ClientSession", sess),
+        patch.object(gl, "SESSION_PREWARM_THRESHOLD_SEC", 0.04),
+        patch.object(gl, "SESSION_ROTATION_THRESHOLD_SEC", 0.08),
+        patch.object(gl, "SESSION_HARD_ROTATION_SEC", 0.25),
+    )
+
+
+@pytest.mark.asyncio
+async def test_rotation_old_socket_trailing_final_delivered_without_concurrent_receive():
+    gl, engine, conns, Sess = _strict_engine()
+    got: List[TranscriptEvent] = []
+    audio_q: asyncio.Queue = asyncio.Queue()
+    audio_q.put_nowait(b"\x01\x00" * 160)
+    p = _rot_patches(gl, Sess)
+    with p[0], p[1], p[2], p[3]:
+        task = asyncio.create_task(engine._stream_from_queue(audio_q, got.append))
+        await asyncio.sleep(0.12)
+        assert len(conns) >= 2
+        conns[0]._incoming.put_nowait(_StrictMsg(
+            aiohttp.WSMsgType.TEXT,
+            json.dumps({"serverContent": {"inputTranscription": {"text": "Old socket trailing final."}}}),
+        ))
+        audio_q.put_nowait(b"\x02\x00" * 160)
+        await asyncio.sleep(0.15)
+        audio_q.put_nowait(None)
+        await asyncio.wait_for(task, timeout=2.0)
+    assert not any(c.concurrent_error for c in conns), "concurrent receive() on one socket"
+    assert any("Old socket trailing final." in e.text and e.is_final for e in got), got
+    await asyncio.wait_for(asyncio.gather(*list(engine._drain_tasks), return_exceptions=True), timeout=2.0)
+    assert conns[0].closed
+
+
+@pytest.mark.asyncio
+async def test_rotation_closed_prewarm_keeps_old_session_and_chunk():
+    gl, engine, conns, Sess = _strict_engine()
+    got: List[TranscriptEvent] = []
+    audio_q: asyncio.Queue = asyncio.Queue()
+    audio_q.put_nowait(b"\x01\x00" * 160)
+    p = _rot_patches(gl, Sess)
+    orig_ws_connect = Sess.ws_connect
+
+    def ws_connect(self, *a, **k):
+        ws = orig_ws_connect(self, *a, **k)
+        if len(conns) >= 2:
+            # Pre-warmed socket dies right after setup completes.
+            async def _die():
+                await asyncio.sleep(0.02)
+                ws.closed = True
+            asyncio.get_running_loop().create_task(_die())
+        return ws
+
+    Sess.ws_connect = ws_connect
+    with p[0], p[1], p[2], p[3]:
+        task = asyncio.create_task(engine._stream_from_queue(audio_q, got.append))
+        await asyncio.sleep(0.2)
+        audio_q.put_nowait(b"\x07\x00" * 160)
+        await asyncio.sleep(0.1)
+        audio_q.put_nowait(None)
+        await asyncio.wait_for(task, timeout=2.0)
+    first = conns[0]
+    audio = [x for x in first.sent if "audio" in x.get("realtimeInput", {})]
+    assert len(audio) == 2, f"chunk dropped on old socket: {len(audio)}"
+    assert engine.rotation_count == 0 or len(conns) > 2
+
+
+@pytest.mark.asyncio
+async def test_rotation_never_blocks_audio_loop():
+    gl, engine, conns, Sess = _strict_engine()
+    got: List[TranscriptEvent] = []
+    audio_q: asyncio.Queue = asyncio.Queue()
+    p = _rot_patches(gl, Sess)
+    with p[0], p[1], p[2], p[3]:
+        task = asyncio.create_task(engine._stream_from_queue(audio_q, got.append))
+        end = time.monotonic() + 0.4
+        sent_trailing = False
+        while time.monotonic() < end:
+            audio_q.put_nowait(b"\x01\x00" * 160)
+            if not sent_trailing and len(conns) >= 2:
+                sent_trailing = True
+                engine._latest_interim_text = "pending interim words here"
+                conns[0]._incoming.put_nowait(_StrictMsg(
+                    aiohttp.WSMsgType.TEXT,
+                    json.dumps({"serverContent": {"inputTranscription": {"text": "Late final."}}}),
+                ))
+            await asyncio.sleep(0.01)
+        audio_q.put_nowait(None)
+        await asyncio.wait_for(task, timeout=2.0)
+    times = sorted(t for c in conns for t in c.audio_times)
+    gaps = [b - a for a, b in zip(times, times[1:])]
+    assert engine.rotation_count >= 1
+    assert gaps and max(gaps) < 0.05, f"audio loop stalled {max(gaps)*1000:.0f}ms"
+
+
+@pytest.mark.asyncio
+async def test_cancelled_error_during_rotation_resets_flag():
+    gl, engine, conns, Sess = _strict_engine()
+    got: List[TranscriptEvent] = []
+    audio_q: asyncio.Queue = asyncio.Queue()
+    audio_q.put_nowait(b"\x01\x00" * 160)
+    p = _rot_patches(gl, Sess)
+
+    async def hook(payload):
+        if payload.get("realtimeInput", {}).get("audioStreamEnd"):
+            raise asyncio.CancelledError()
+
+    with p[0], p[1], p[2], p[3]:
+        task = asyncio.create_task(engine._stream_from_queue(audio_q, got.append))
+        await asyncio.sleep(0.02)
+        conns[0].send_hook = hook
+        await asyncio.sleep(0.2)
+        engine.is_running = False
+        audio_q.put_nowait(None)
+        try:
+            await asyncio.wait_for(task, timeout=2.0)
+        except (asyncio.CancelledError, asyncio.TimeoutError):
+            task.cancel()
+    assert engine._rotation_in_progress is False
