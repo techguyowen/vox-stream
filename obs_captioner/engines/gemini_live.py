@@ -59,7 +59,7 @@ STREAM_RECONNECT_MAX_DELAY = 15.0
 DISCONNECT_DEDUP_WINDOW_SEC = 5.0
 
 # Session duration thresholds for proactive graceful rotation (Google 600s ceiling)
-SESSION_PREWARM_THRESHOLD_SEC = 480.0   # (8.0 minutes) start background pre-warm of replacement socket
+SESSION_PREWARM_THRESHOLD_SEC = 505.0   # (~8.4 minutes) start background pre-warm of replacement socket
 SESSION_ROTATION_THRESHOLD_SEC = 510.0  # (~8.5 minutes) preferred natural pause rotation threshold
 SESSION_HARD_ROTATION_SEC = 540.0       # (9.0 minutes) forced handover ceiling
 PREWARM_CONNECT_TIMEOUT = 5.0
@@ -153,10 +153,9 @@ def _strip_finalized_prefix(text: str, finalized_prefix: str) -> str:
     n_pref = len(prefix_tokens)
     n_text = len(text_tokens)
 
-    # If text is shorter than or equal to prefix and shares >= 70% of words, it is completely covered
+    # An incoming utterance is only 100% covered if n_text > 0 and text_tokens == prefix_tokens[:n_text]
     if n_text <= n_pref:
-        overlap = sum(1 for a, b in zip(text_tokens, prefix_tokens[:n_text]) if a and a == b)
-        if n_text > 0 and (overlap / n_text) >= 0.70:
+        if n_text > 0 and text_tokens == prefix_tokens[:n_text]:
             return ""
 
     # Search candidate cut positions around n_pref (+/- 4 words for ASR insertions/deletions)
@@ -1171,10 +1170,12 @@ class GeminiLiveEngine(BaseSTTEngine):
                     return session, ws, handshake_ms
                 raise RuntimeError(f"Unexpected initial message: {raw}")
             raise RuntimeError(f"WebSocket closed or error during setup: {init_msg.type}")
-        except (Exception, asyncio.CancelledError):
+        except (Exception, asyncio.CancelledError) as exc:
             if ws is not None:
                 await self._safe_close_ws(ws)
             await self._safe_close_session(session)
+            if isinstance(exc, Exception) and not isinstance(exc, asyncio.CancelledError):
+                logger.debug(f"Gemini Live connection setup error: {self._redact_api_key(exc)}")
             raise
 
     async def _drain_and_close(
@@ -1184,8 +1185,10 @@ class GeminiLiveEngine(BaseSTTEngine):
         final_received_event: Optional[asyncio.Event] = None,
         on_transcript: Optional[CaptionCallback] = None,
         drain_turn_prefix: str = "",
+        drain_completed_event: Optional[asyncio.Event] = None,
     ) -> None:
         """Listen to old_ws for up to 600ms, parse final inputTranscription, and cleanly close."""
+        ev = final_received_event or drain_completed_event
         cb = on_transcript or getattr(self, "_on_transcript", None)
         deadline = time.monotonic() + 0.60
         max_words = max(12, int(getattr(self.config.audio, "max_sentence_words", 24) or 24))
@@ -1248,6 +1251,8 @@ class GeminiLiveEngine(BaseSTTEngine):
                             )
                             if final_received_event is not None:
                                 final_received_event.set()
+                            if drain_completed_event is not None:
+                                drain_completed_event.set()
                             if cb is not None:
                                 try:
                                     res = cb(seg_ev)
@@ -1272,8 +1277,18 @@ class GeminiLiveEngine(BaseSTTEngine):
         except Exception as ex:
             logger.debug(f"Drain error on rotated socket: {ex}")
         finally:
+            if ev is not None:
+                ev.set()
+            if final_received_event is not None:
+                final_received_event.set()
+            if drain_completed_event is not None:
+                drain_completed_event.set()
             await self._safe_close_ws(old_ws)
             await self._safe_close_session(old_session)
+
+    @staticmethod
+    def _redact_api_key(text: Any) -> str:
+        return re.sub(r'([?&]key=)[^&\s"\']+', r'\1[REDACTED]', str(text or ""))
 
     @staticmethod
     def _is_invalid_key_failure(reason: str, code: Any = None) -> bool:
@@ -1415,7 +1430,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                     fallback = getattr(self.config.gemini_live, "fallback_model", "") or get_fallback_model_id(model)
                     if fallback and fallback != model:
                         logger.warning(
-                            f"⚠️ Model '{model}' rejected ({e}). Auto-falling back to '{fallback}'..."
+                            f"⚠️ Model '{model}' rejected ({self._redact_api_key(e)}). Auto-falling back to '{fallback}'..."
                         )
                         if status_callback:
                             status_callback(f"⚠️ Model '{model}' invalid. Auto-falling back to {fallback}...")
@@ -1423,12 +1438,12 @@ class GeminiLiveEngine(BaseSTTEngine):
                         model = fallback
                         continue
                 if attempt >= INIT_MAX_ATTEMPTS:
-                    err = f"Failed to connect to Gemini Live after {INIT_MAX_ATTEMPTS} attempts: {e}"
+                    err = f"Failed to connect to Gemini Live after {INIT_MAX_ATTEMPTS} attempts: {self._redact_api_key(e)}"
                     logger.error(err)
                     if status_callback:
                         status_callback(f"❌ {err}")
                     return False
-                logger.warning(f"Gemini Live handshake attempt {attempt}/{INIT_MAX_ATTEMPTS} failed ({e}); retrying...")
+                logger.warning(f"Gemini Live handshake attempt {attempt}/{INIT_MAX_ATTEMPTS} failed ({self._redact_api_key(e)}); retrying...")
                 if status_callback:
                     status_callback(
                         f"🔄 Network initializing, retrying connection (attempt {attempt + 1}/{INIT_MAX_ATTEMPTS})..."
@@ -1747,7 +1762,6 @@ class GeminiLiveEngine(BaseSTTEngine):
                 rotation_requested = False
                 is_rotating = False
                 prewarm_task: Optional[asyncio.Task] = None
-                final_received_event = asyncio.Event()
 
                 try:
                     setup_payload = self.build_setup_payload(force_transcribe=use_interp_sidecar)
@@ -1759,7 +1773,6 @@ class GeminiLiveEngine(BaseSTTEngine):
                     session_start_time = time.monotonic()
                     self.session_start_monotonic = session_start_time
                     self._reset_turn_state()
-                    final_received_event.clear()
                     self.current_ping_ms = handshake_ms
                     if self.on_ping:
                         try:
@@ -1773,7 +1786,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                 except Exception as e:
                     if not self.is_running:
                         return
-                    reason = str(e)
+                    reason = self._redact_api_key(e)
                     if self._is_invalid_key_failure(reason):
                         logger.error("Invalid Gemini API key. Please check your key at aistudio.google.com.")
                         return
@@ -1813,12 +1826,12 @@ class GeminiLiveEngine(BaseSTTEngine):
                                         f"Google Gemini Live sent goAway notice (timeLeft={time_left}); rotating preemptively."
                                     )
                                     self._go_away_received = True
-                                    final_received_event.set()
                                     if prewarm_task is None:
                                         pw_payload = self.build_setup_payload(force_transcribe=use_interp_sidecar)
                                         prewarm_task = asyncio.create_task(
                                             self._connect_and_setup(ws_url, ssl_context, pw_payload)
                                         )
+                                        self._prewarm_task = prewarm_task
 
                                 if "sessionResumptionUpdate" in data:
                                     update = data.get("sessionResumptionUpdate") or {}
@@ -1851,11 +1864,6 @@ class GeminiLiveEngine(BaseSTTEngine):
                                         translated_text=translated_text,
                                     )
                                     for seg_ev in segmented_events:
-                                        if seg_ev.is_final:
-                                            final_received_event.set()
-                                        else:
-                                            final_received_event.clear()
-
                                         res = on_transcript(seg_ev)
                                         if asyncio.iscoroutine(res):
                                             await res
@@ -1921,7 +1929,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                                 continue
                             raise
                         except Exception as e:
-                            logger.warning(f"Receiver error: {e}")
+                            logger.warning(f"Receiver error: {self._redact_api_key(e)}")
                             break
                         if current_recv_subtask is not sub or is_rotating:
                             continue
@@ -1933,6 +1941,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                     speech_active = False
                     speech_start_time = 0.0
                     last_speech_time = 0.0
+                    last_prewarm_fail_time = 0.0
 
                     eof = False
                     while True:
@@ -1951,7 +1960,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                         elapsed_session = time.monotonic() - session_start_time
                         prewarm_thresh = min(SESSION_PREWARM_THRESHOLD_SEC, SESSION_ROTATION_THRESHOLD_SEC)
                         if session_start_time > 0.0 and (elapsed_session >= prewarm_thresh or self._go_away_received):
-                            if prewarm_task is None:
+                            if prewarm_task is None and (time.monotonic() - last_prewarm_fail_time) >= 10.0:
                                 logger.info(
                                     f"Pre-warming replacement Gemini Live session (session age: {elapsed_session:.1f}s, goAway: {self._go_away_received})..."
                                 )
@@ -1962,66 +1971,88 @@ class GeminiLiveEngine(BaseSTTEngine):
                                 self._prewarm_task = prewarm_task
 
                         if prewarm_task is not None and prewarm_task.done():
-                            prewarm_exc = prewarm_task.exception()
-                            if prewarm_exc is not None:
-                                logger.warning(f"Pre-warm replacement session failed: {prewarm_exc}")
+                            if prewarm_task.cancelled():
                                 prewarm_task = None
+                                self._prewarm_task = None
                             else:
-                                should_rotate = (
-                                    self._go_away_received
-                                    or (elapsed_session >= SESSION_ROTATION_THRESHOLD_SEC and not speech_active)
-                                    or (elapsed_session >= SESSION_HARD_ROTATION_SEC)
-                                )
-                                if should_rotate:
-                                    logger.info(
-                                        f"Gemini Live seamless hot-handoff rotation triggered at {elapsed_session:.1f}s "
-                                        f"(speech_active={speech_active}, goAway={self._go_away_received})."
-                                    )
-                                    is_rotating = True
-                                    old_ws = active_ws
-                                    old_session = active_session
-
-                                    try:
-                                        await old_ws.send_str(json.dumps({"realtimeInput": {"audioStreamEnd": True}}))
-                                    except Exception:
-                                        pass
-
-                                    new_session, new_ws, new_handshake_ms = prewarm_task.result()
-
-                                    self._active_ws = new_ws
-                                    active_ws = new_ws
-                                    self._active_session = new_session
-                                    active_session = new_session
-
-                                    session_start_time = time.monotonic()
-                                    self.session_start_monotonic = session_start_time
-                                    rotation_requested = False
-
-                                    self.rotation_count += 1
-                                    self.last_rotation_time = time.time()
-                                    self._go_away_received = False
-
-                                    old_prefix = self._finalized_turn_prefix
-                                    if old_prefix:
-                                        self._last_disconnect_finalized_text = old_prefix
-                                        self._last_disconnect_mono = time.monotonic()
-                                    self._reset_turn_state()
-                                    switch_receiver(new_ws)
-                                    is_rotating = False
-
-                                    drain_t = asyncio.create_task(
-                                        self._drain_and_close(
-                                            old_session,
-                                            old_ws,
-                                            final_received_event,
-                                            on_transcript,
-                                            drain_turn_prefix=old_prefix,
-                                        )
-                                    )
-                                    self._drain_tasks.add(drain_t)
-                                    drain_t.add_done_callback(self._drain_tasks.discard)
-
+                                prewarm_exc = prewarm_task.exception()
+                                if prewarm_exc is not None:
+                                    logger.warning(f"Pre-warm replacement session failed: {self._redact_api_key(prewarm_exc)}")
                                     prewarm_task = None
+                                    self._prewarm_task = None
+                                    last_prewarm_fail_time = time.monotonic()
+                                else:
+                                    should_rotate = (
+                                        self._go_away_received
+                                        or (elapsed_session >= SESSION_ROTATION_THRESHOLD_SEC and not speech_active)
+                                        or (elapsed_session >= SESSION_HARD_ROTATION_SEC)
+                                    )
+                                    if should_rotate:
+                                        logger.info(
+                                            f"Gemini Live seamless hot-handoff rotation triggered at {elapsed_session:.1f}s "
+                                            f"(speech_active={speech_active}, goAway={self._go_away_received})."
+                                        )
+                                        is_rotating = True
+                                        old_ws = active_ws
+                                        old_session = active_session
+
+                                        try:
+                                            await old_ws.send_str(json.dumps({"realtimeInput": {"audioStreamEnd": True}}))
+                                        except Exception:
+                                            pass
+
+                                        old_prefix = self._finalized_turn_prefix
+                                        if old_prefix:
+                                            self._last_disconnect_finalized_text = old_prefix
+                                            self._last_disconnect_mono = time.monotonic()
+
+                                        drain_completed_event = asyncio.Event()
+                                        drain_t = asyncio.create_task(
+                                            self._drain_and_close(
+                                                old_session,
+                                                old_ws,
+                                                drain_completed_event,
+                                                on_transcript,
+                                                drain_turn_prefix=old_prefix,
+                                            )
+                                        )
+                                        self._drain_tasks.add(drain_t)
+                                        drain_t.add_done_callback(self._drain_tasks.discard)
+
+                                        if speech_active or self._latest_interim_text:
+                                            try:
+                                                await asyncio.wait_for(drain_completed_event.wait(), timeout=0.25)
+                                            except (asyncio.TimeoutError, asyncio.CancelledError, Exception):
+                                                pass
+
+                                        new_session, new_ws, new_handshake_ms = prewarm_task.result()
+
+                                        if getattr(new_ws, "closed", False):
+                                            logger.warning("Pre-warmed Gemini Live socket already closed; abandoning rotation.")
+                                            prewarm_task = None
+                                            self._prewarm_task = None
+                                            is_rotating = False
+                                            continue
+
+                                        self._active_ws = new_ws
+                                        active_ws = new_ws
+                                        self._active_session = new_session
+                                        active_session = new_session
+
+                                        session_start_time = time.monotonic()
+                                        self.session_start_monotonic = session_start_time
+                                        rotation_requested = False
+
+                                        self.rotation_count += 1
+                                        self.last_rotation_time = time.time()
+                                        self._go_away_received = False
+
+                                        self._reset_turn_state()
+                                        switch_receiver(new_ws)
+                                        is_rotating = False
+
+                                        prewarm_task = None
+                                        self._prewarm_task = None
 
                         if chunk:
                             even_len = len(chunk) & ~1
@@ -2104,7 +2135,6 @@ class GeminiLiveEngine(BaseSTTEngine):
                                         mono_now=mono_now,
                                     )
                                     if vad_event is not None:
-                                        final_received_event.set()
                                         try:
                                             res = on_transcript(vad_event)
                                             if asyncio.iscoroutine(res):
@@ -2154,6 +2184,18 @@ class GeminiLiveEngine(BaseSTTEngine):
                     for t in pending:
                         if not t.done():
                             t.cancel()
+                    if prewarm_task is not None:
+                        if not prewarm_task.done():
+                            prewarm_task.cancel()
+                        else:
+                            try:
+                                p_sess, p_ws, _ = prewarm_task.result()
+                                await self._safe_close_ws(p_ws)
+                                await self._safe_close_session(p_sess)
+                            except Exception:
+                                pass
+                        prewarm_task = None
+                        self._prewarm_task = None
                     await self._safe_close_ws(active_ws)
                     await self._safe_close_session(active_session)
                     break
@@ -2161,12 +2203,24 @@ class GeminiLiveEngine(BaseSTTEngine):
                     if send_task in done and not send_task.cancelled():
                         send_exc = send_task.exception()
                         if send_exc is not None:
-                            logger.warning(f"Gemini Live audio sender failed ({send_exc}); reconnecting...")
+                            logger.warning(f"Gemini Live audio sender failed ({self._redact_api_key(send_exc)}); reconnecting...")
                     for t in pending:
                         if not t.done():
                             t.cancel()
                     if pending:
                         await asyncio.gather(*pending, return_exceptions=True)
+                    if prewarm_task is not None:
+                        if not prewarm_task.done():
+                            prewarm_task.cancel()
+                        else:
+                            try:
+                                p_sess, p_ws, _ = prewarm_task.result()
+                                await self._safe_close_ws(p_ws)
+                                await self._safe_close_session(p_sess)
+                            except Exception:
+                                pass
+                        prewarm_task = None
+                        self._prewarm_task = None
                     if not self.is_running:
                         await self._safe_close_ws(active_ws)
                         await self._safe_close_session(active_session)

@@ -75,6 +75,7 @@ class CaptionSink:
         self._last_partial_time = 0.0
         self._auto_clear_task: Optional[asyncio.Task] = None
         self._last_final_time = 0.0
+        self._prev_final_time = 0.0
         self._lock: Optional[asyncio.Lock] = None
         self._seq = 0
         self._utterance_id = 0
@@ -240,10 +241,12 @@ class CaptionSink:
         self._obs_text_queue.clear()
         self._obs_cea_queue.clear()
 
-    def _attempt_boundary_stitch(self, clean_text: str) -> Tuple[str, bool]:
+    def _attempt_boundary_stitch(self, clean_text: str, prev_final_time: Optional[float] = None) -> Tuple[str, bool]:
         """Stitch mid-word chunk boundary splits and continuing clauses between consecutive utterances."""
         now = time.time()
-        last_final_time = max(self.history.entries[-1].end_time, self._last_final_time) if self.history.entries else self._last_final_time
+        p_time = prev_final_time if prev_final_time is not None else getattr(self, "_prev_final_time", self._last_final_time)
+        last_entry_end = self.history.entries[-1].end_time if self.history.entries else 0.0
+        last_final_time = last_entry_end if last_entry_end > 1000.0 else p_time
         if not self.history.entries or (now - last_final_time > 3.5):
             return clean_text, False
 
@@ -403,6 +406,7 @@ class CaptionSink:
         # Sliding window caption deduplication:
         # Suppress rapid identical re-finalizations and alternating ping-pong duplicate loops
         # (such as intro videos repeating A -> B -> A -> B) within the recency window.
+        prev_final_time = self._last_final_time
         if event.is_final and clean_text:
             normalized_final = re.sub(r"\s+", " ", clean_text).strip().casefold()
             now_ts = time.time()
@@ -432,6 +436,8 @@ class CaptionSink:
                     )
                 return
             else:
+                prev_final_time = self._last_final_time
+                self._prev_final_time = prev_final_time
                 self._recent_finals.append((normalized_final, now_ts))
                 self._last_final_text = normalized_final
                 self._last_final_time = now_ts
@@ -475,7 +481,7 @@ class CaptionSink:
         if event.is_final and clean_text and self.history.entries:
             now = time.time()
             prev_entry = self.history.entries[-1]
-            dt = now - max(prev_entry.end_time, self._last_final_time)
+            dt = now - prev_entry.end_time if prev_entry.end_time > 1000.0 else (now - prev_final_time)
             if dt <= 4.0:
                 prev_clean_base = re.sub(r"[.,?!;:…\"'”’\s]+$", "", prev_entry.text).casefold()
                 new_clean_base = re.sub(r"[.,?!;:…\"'”’\s]+$", "", clean_text).casefold()
@@ -572,7 +578,7 @@ class CaptionSink:
         # Boundary Stitcher for split chunks
         if event.is_final and clean_text:
             prev_entry_text = self.history.entries[-1].text if self.history.entries else None
-            stitched_text, is_absorbed = self._attempt_boundary_stitch(clean_text)
+            stitched_text, is_absorbed = self._attempt_boundary_stitch(clean_text, prev_final_time=prev_final_time)
             if is_absorbed:
                 logger.info(f"✓ [STITCHED & ABSORBED] '{clean_text}' into previous entry")
                 self._utterance_active = False

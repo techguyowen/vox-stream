@@ -158,7 +158,7 @@ def _get_known_words() -> Set[str]:
     if _KNOWN_WORDS:
         return _KNOWN_WORDS
 
-    _KNOWN_WORDS.update({
+    words: Set[str] = {
         "raise", "angels", "laborers", "rejoicing", "my", "him", "that", "the", "a", "i",
         "to", "of", "in", "and", "is", "for", "with", "his", "her", "our", "give", "send",
         "from", "at", "on", "by", "you", "we", "they", "me", "us", "he", "she", "it", "them",
@@ -215,7 +215,7 @@ def _get_known_words() -> Set[str]:
         "restless", "relentless", "sleepless", "speechless", "tireless", "worthless",
         "careless", "harmless", "heartless", "nameless", "painless", "powerless",
         "priceless", "sinless", "timeless", "useless", "weightless",
-    })
+    }
 
     db_path = Path(__file__).parent / "data" / "bible.db"
     if db_path.exists():
@@ -226,11 +226,12 @@ def _get_known_words() -> Set[str]:
             cur.execute("SELECT text FROM verses")
             for row in cur:
                 for w in re.findall(r"[a-zA-Z]+", row[0]):
-                    _KNOWN_WORDS.add(w.lower())
+                    words.add(w.lower())
             conn.close()
         except Exception:
             pass
 
+    _KNOWN_WORDS = words
     return _KNOWN_WORDS
 
 

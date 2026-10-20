@@ -1189,6 +1189,10 @@
             transform: scale(1.04);
         }
 
+        body.has-pwa-banner .jump-live-btn {
+            bottom: calc(84px + env(safe-area-inset-bottom, 16px));
+        }
+
         /* Accessibility (a11y): Reduced Motion Media Query */
         @media (prefers-reduced-motion: reduce) {
             *, *::before, *::after {
@@ -3245,7 +3249,7 @@
                 return;
             }
             const tag = (e.target && e.target.tagName) || '';
-            if (['INPUT', 'SELECT', 'TEXTAREA'].includes(tag)) return;
+            if (['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(tag)) return;
             if (e.key === '?' || e.key === 't' || e.key === 'T') {
                 toggleTutorialModal();
                 return;
@@ -4362,16 +4366,20 @@
             if (!pwaInstallBanner) return;
             if (isStandaloneMode()) {
                 pwaInstallBanner.style.display = 'none';
+                document.body.classList.remove('has-pwa-banner');
                 return;
             }
             if (localStorage.getItem('voxstream_pwa_banner_dismissed') === '1') {
                 pwaInstallBanner.style.display = 'none';
+                document.body.classList.remove('has-pwa-banner');
                 return;
             }
             if (isMobileDevice()) {
                 pwaInstallBanner.style.display = 'flex';
+                document.body.classList.add('has-pwa-banner');
             } else {
                 pwaInstallBanner.style.display = 'none';
+                document.body.classList.remove('has-pwa-banner');
             }
         }
 
@@ -4395,6 +4403,7 @@
             btnDismissPwaBanner.addEventListener('click', () => {
                 localStorage.setItem('voxstream_pwa_banner_dismissed', '1');
                 if (pwaInstallBanner) pwaInstallBanner.style.display = 'none';
+                document.body.classList.remove('has-pwa-banner');
             });
         }
 
@@ -4409,6 +4418,7 @@
         window.addEventListener('appinstalled', () => {
             deferredInstallPrompt = null;
             if (pwaInstallBanner) pwaInstallBanner.style.display = 'none';
+            document.body.classList.remove('has-pwa-banner');
             if (pwaModal && pwaModal.style.display === 'flex') {
                 renderPwaModalContent();
             }
