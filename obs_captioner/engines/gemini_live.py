@@ -820,13 +820,13 @@ class GeminiLiveEngine(BaseSTTEngine):
         """
         self._track_usage_metadata(data)
         events: List[ParsedTranscriptTuple] = []
-        server_content = data.get("serverContent")
+        server_content = data.get("serverContent") or data.get("server_content")
         if not isinstance(server_content, dict):
             return events
 
         # Extract finalized transcriptions: inputTranscription (original) and outputTranscription (translated)
-        final_obj = server_content.get("inputTranscription")
-        output_obj = server_content.get("outputTranscription")
+        final_obj = server_content.get("inputTranscription") or server_content.get("input_transcription")
+        output_obj = server_content.get("outputTranscription") or server_content.get("output_transcription")
 
         input_text = ""
         output_text = ""
@@ -853,7 +853,7 @@ class GeminiLiveEngine(BaseSTTEngine):
             events.append(ParsedTranscriptTuple(input_text, True, None))
 
         # Speculative interim hypothesis (updates rapidly while user speaks).
-        interim_obj = server_content.get("interimInputTranscription")
+        interim_obj = server_content.get("interimInputTranscription") or server_content.get("interim_input_transcription")
         if isinstance(interim_obj, dict) and interim_obj.get("text"):
             text = str(interim_obj["text"]).strip()
             if text:
@@ -1167,8 +1167,12 @@ class GeminiLiveEngine(BaseSTTEngine):
             if init_msg.type in (aiohttp.WSMsgType.TEXT, aiohttp.WSMsgType.BINARY):
                 raw = init_msg.data if isinstance(init_msg.data, str) else init_msg.data.decode("utf-8")
                 init_data = json.loads(raw)
-                if "setupComplete" in init_data:
+                if "setupComplete" in init_data or "setup_complete" in init_data:
                     handshake_ms = round((time.perf_counter() - t0) * 1000.0, 1)
+                    try:
+                        setattr(ws, "_connected_mono", time.monotonic())
+                    except Exception:
+                        pass
                     return session, ws, handshake_ms
                 raise RuntimeError(f"Unexpected initial message: {raw}")
             raise RuntimeError(f"WebSocket closed or error during setup: {init_msg.type}")
@@ -1188,13 +1192,19 @@ class GeminiLiveEngine(BaseSTTEngine):
         on_transcript: Optional[CaptionCallback] = None,
         drain_turn_prefix: str = "",
         drain_completed_event: Optional[asyncio.Event] = None,
+        send_stream_end: bool = False,
     ) -> None:
-        """Listen to old_ws for up to 600ms, parse final inputTranscription, and cleanly close."""
+        """Send audioStreamEnd (if requested), listen to old_ws for up to 1.0s, parse final inputTranscription, and cleanly close."""
         ev = final_received_event or drain_completed_event
         cb = on_transcript or getattr(self, "_on_transcript", None)
-        deadline = time.monotonic() + 0.60
+        deadline = time.monotonic() + 1.0
         max_words = max(12, int(getattr(self.config.audio, "max_sentence_words", 24) or 24))
         try:
+            if send_stream_end and not getattr(old_ws, "closed", False):
+                try:
+                    await old_ws.send_str(json.dumps({"realtimeInput": {"audioStreamEnd": True}}))
+                except Exception:
+                    pass
             while not getattr(old_ws, "closed", False):
                 rem = deadline - time.monotonic()
                 if rem <= 0:
@@ -1875,7 +1885,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                                         drain_ev = getattr(self, "_rotation_drain_event", None)
                                         if seg_ev.is_final and drain_ev is not None and not drain_ev.is_set() and active_ws is target_ws:
                                             try:
-                                                await asyncio.wait_for(drain_ev.wait(), 0.6)
+                                                await asyncio.wait_for(drain_ev.wait(), 1.0)
                                             except asyncio.TimeoutError:
                                                 pass
                                         res = on_transcript(seg_ev)
@@ -2022,22 +2032,25 @@ class GeminiLiveEngine(BaseSTTEngine):
                                             old_ws = active_ws
                                             old_session = active_session
 
-                                            try:
-                                                await old_ws.send_str(json.dumps({"realtimeInput": {"audioStreamEnd": True}}))
-                                            except Exception:
-                                                pass
-
                                             old_prefix = self._finalized_turn_prefix
                                             if old_prefix:
                                                 self._last_disconnect_finalized_text = old_prefix
                                                 self._last_disconnect_mono = time.monotonic()
 
+                                            # 1. Atomic 0ms synchronous pointer swap to new session first
                                             self._active_ws = new_ws
                                             active_ws = new_ws
                                             self._active_session = new_session
                                             active_session = new_session
 
-                                            session_start_time = time.monotonic()
+                                            # 2. Re-arm watchdog from new_ws connection timestamp so server age never drifts
+                                            now_mono = time.monotonic()
+                                            conn_mono = getattr(new_ws, "_connected_mono", None)
+                                            session_start_time = (
+                                                conn_mono
+                                                if isinstance(conn_mono, (int, float)) and 0.0 < conn_mono <= now_mono
+                                                else now_mono
+                                            )
                                             self.session_start_monotonic = session_start_time
                                             rotation_requested = False
 
@@ -2046,9 +2059,10 @@ class GeminiLiveEngine(BaseSTTEngine):
                                             self._go_away_received = False
 
                                             self._reset_turn_state()
-                                            # Cancel receive_loop(old_ws) first so the drain task is the sole reader.
+                                            # 3. Cancel receive_loop(old_ws) so _drain_and_close is the sole reader
                                             switch_receiver(new_ws)
 
+                                            # 4. Flush audioStreamEnd & drain old_ws for 1.0s in background
                                             drain_completed_event = asyncio.Event()
                                             self._rotation_drain_event = drain_completed_event
                                             drain_t = asyncio.create_task(
@@ -2058,6 +2072,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                                                     on_transcript=on_transcript,
                                                     drain_turn_prefix=old_prefix,
                                                     drain_completed_event=drain_completed_event,
+                                                    send_stream_end=True,
                                                 )
                                             )
                                             self._drain_tasks.add(drain_t)
