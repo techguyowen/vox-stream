@@ -8,8 +8,8 @@ from typing import Tuple
 # Current application version
 VERSION = "1.2.8"
 VERSION_INFO = (1, 2, 8)
-RELEASE_DATE = "2026-10-19"
-CODENAME = "Windows & macOS Booth UX, RAM Watchdog & Multi-User Scaling"
+RELEASE_DATE = "2026-10-22"
+CODENAME = "Gemini Live Make-Before-Break Session Rotation & ASR Resilience"
 
 
 def parse_version(v_str: str) -> Tuple[int, int, int]:

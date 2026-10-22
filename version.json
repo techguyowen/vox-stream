@@ -3,8 +3,7 @@
   "major": 1,
   "minor": 2,
   "patch": 8,
-  "release_date": "2026-10-19",
-  "codename": "Windows & macOS Booth UX, RAM Watchdog & Multi-User Scaling",
-  "notes": "Gemini Live hot-handoff session rotation, context window compression, and zero-downtime streaming."
+  "release_date": "2026-10-22",
+  "codename": "Gemini Live Make-Before-Break Session Rotation & ASR Resilience",
+  "notes": "Zero-downtime make-before-break session rotation, cloud sliding-window context compression, trailing drain token capture, spoken time normalization guard (90:09 fix), 2-letter concatenation splitting, cross-turn phrase deduplication, Read-Along Tutorial Guide, and mobile PWA helper."
 }
-
