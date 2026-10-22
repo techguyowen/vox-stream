@@ -45,6 +45,11 @@ _CONCAT_PREFIXES: Tuple[str, ...] = (
 
 _CONCAT_SUFFIXES: Tuple[str, ...] = ("there", "here", "again", "also", "now", "away", "us")
 
+_VALID_2LETTER_WORDS: Set[str] = {
+    "go", "to", "in", "up", "on", "at", "do", "so", "me", "us", "no",
+    "he", "we", "by", "if", "or", "as", "is", "it", "my", "am", "an", "be", "of",
+}
+
 _REPEATED_WORD_WHITELIST: Set[str] = {
     "murmur", "bonbon", "chacha", "cancan", "froufrou", "couscous", "beriberi",
     "tartar", "pawpaw", "pompon", "dumdum",
@@ -286,8 +291,10 @@ def _split_concat_token(m: re.Match) -> str:
 
     # 3. General 2-word compound fallback for unknown tokens
     if low not in known:
-        for i in range(3, len(low) - 2):
+        for i in range(3, len(low) - 1):
             w1, w2 = low[:i], low[i:]
+            if len(w2) == 2 and w2 not in _VALID_2LETTER_WORDS:
+                continue
             if w1 in known and w2 in known:
                 return _format_split(w, i)
 
@@ -352,7 +359,7 @@ _STANDALONE_ORDINAL_PATTERN = re.compile(
 )
 
 _SPOKEN_TIME_PATTERN = re.compile(
-    rf"\b({_TENS_PAT}|{_UNITS_PAT})[- ]+({_MINUTE_WORDS}|o'clock)\b(?=\s+(?:in the|am|pm|a\.m|p\.m))",
+    rf"\b({_UNITS_PAT})[- ]+({_MINUTE_WORDS}|o'clock)\b(?=\s+(?:in the (?:morning|afternoon|evening)|am|pm|a\.m|p\.m)\b)",
     re.IGNORECASE,
 )
 
@@ -382,7 +389,7 @@ def _replace_time(m):
         minute = _HOUR_WORDS.get(minute_word, 0)
     else:
         minute = 0
-    if hour == 0:
+    if hour == 0 or hour > 12 or minute >= 60:
         return m.group(0)
     return f"{hour}:{minute:02d}"
 

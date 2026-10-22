@@ -866,7 +866,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                     logger.debug(f"Suppressed hallucinated interim transcript from Gemini Live: {text}")
 
         # Conversational fallback & synthesized audio (modelTurn parts)
-        model_turn = server_content.get("modelTurn")
+        model_turn = server_content.get("modelTurn") or server_content.get("model_turn")
         if isinstance(model_turn, dict):
             parts = model_turn.get("parts", [])
             for part in parts:
@@ -1193,18 +1193,27 @@ class GeminiLiveEngine(BaseSTTEngine):
         drain_turn_prefix: str = "",
         drain_completed_event: Optional[asyncio.Event] = None,
         send_stream_end: bool = False,
+        old_recv_task: Optional[asyncio.Task] = None,
     ) -> None:
         """Send audioStreamEnd (if requested), listen to old_ws for up to 1.0s, parse final inputTranscription, and cleanly close."""
         ev = final_received_event or drain_completed_event
         cb = on_transcript or getattr(self, "_on_transcript", None)
-        deadline = time.monotonic() + 1.0
         max_words = max(12, int(getattr(self.config.audio, "max_sentence_words", 24) or 24))
         try:
+            if old_recv_task is not None and not old_recv_task.done():
+                old_recv_task.cancel()
+                try:
+                    await asyncio.wait_for(asyncio.shield(old_recv_task), timeout=0.1)
+                except (asyncio.TimeoutError, asyncio.CancelledError, Exception):
+                    pass
+
             if send_stream_end and not getattr(old_ws, "closed", False):
                 try:
                     await old_ws.send_str(json.dumps({"realtimeInput": {"audioStreamEnd": True}}))
                 except Exception:
                     pass
+
+            deadline = time.monotonic() + 1.0
             while not getattr(old_ws, "closed", False):
                 rem = deadline - time.monotonic()
                 if rem <= 0:
@@ -1224,10 +1233,13 @@ class GeminiLiveEngine(BaseSTTEngine):
                     except Exception:
                         continue
 
-                    if "sessionResumptionUpdate" in data:
-                        update = data.get("sessionResumptionUpdate") or {}
-                        if update.get("resumable") and update.get("newHandle"):
-                            self._resumption_handle = update["newHandle"]
+                    server_content = data.get("serverContent") or data.get("server_content") or {}
+                    is_turn_done = bool(
+                        server_content.get("turnComplete")
+                        or server_content.get("turn_complete")
+                        or server_content.get("generationComplete")
+                        or server_content.get("generation_complete")
+                    )
 
                     events = self.parse_server_message(data)
                     suppress_music = getattr(self.config.audio, "suppress_music", True)
@@ -1252,6 +1264,8 @@ class GeminiLiveEngine(BaseSTTEngine):
                             else text.strip()
                         )
                         if not stripped:
+                            if drain_completed_event is not None:
+                                drain_completed_event.set()
                             continue
 
                         parts = _split_final_paragraph(stripped, max_words=max_words)
@@ -1271,14 +1285,13 @@ class GeminiLiveEngine(BaseSTTEngine):
                                 except Exception as cbe:
                                     logger.debug(f"Drain on_transcript error: {cbe}")
 
-                        existing = self._last_disconnect_finalized_text
-                        self._last_disconnect_finalized_text = (
-                            f"{existing} {stripped}".strip() if existing else stripped
-                        )
-                        self._last_disconnect_mono = time.monotonic()
                         if drain_completed_event is not None:
                             drain_completed_event.set()
-                        continue
+
+                    if is_turn_done:
+                        if drain_completed_event is not None:
+                            drain_completed_event.set()
+                        break
 
                 elif msg.type in (
                     aiohttp.WSMsgType.CLOSED,
@@ -1298,6 +1311,8 @@ class GeminiLiveEngine(BaseSTTEngine):
                 final_received_event.set()
             if drain_completed_event is not None:
                 drain_completed_event.set()
+            if getattr(self, "_rotation_drain_event", None) is drain_completed_event:
+                self._rotation_drain_event = None
             await self._safe_close_ws(old_ws)
             await self._safe_close_session(old_session)
 
@@ -1636,7 +1651,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                                         server_content = data.get("serverContent")
                                         if not isinstance(server_content, dict):
                                             continue
-                                        model_turn = server_content.get("modelTurn")
+                                        model_turn = server_content.get("modelTurn") or server_content.get("model_turn")
                                         if not isinstance(model_turn, dict):
                                             continue
                                         parts = model_turn.get("parts", [])
@@ -1837,9 +1852,9 @@ class GeminiLiveEngine(BaseSTTEngine):
                                 except Exception:
                                     continue
 
-                                if "goAway" in data:
-                                    go_away = data.get("goAway") or {}
-                                    time_left = go_away.get("timeLeft", "unknown")
+                                go_away = data.get("goAway") or data.get("go_away")
+                                if isinstance(go_away, dict):
+                                    time_left = go_away.get("timeLeft") or go_away.get("time_left", "unknown")
                                     logger.warning(
                                         f"Google Gemini Live sent goAway notice (timeLeft={time_left}); rotating preemptively."
                                     )
@@ -1851,10 +1866,11 @@ class GeminiLiveEngine(BaseSTTEngine):
                                         )
                                         self._prewarm_task = prewarm_task
 
-                                if "sessionResumptionUpdate" in data:
-                                    update = data.get("sessionResumptionUpdate") or {}
-                                    if update.get("resumable") and update.get("newHandle"):
-                                        self._resumption_handle = update["newHandle"]
+                                resump = data.get("sessionResumptionUpdate") or data.get("session_resumption_update")
+                                if isinstance(resump, dict):
+                                    new_handle = resump.get("newHandle") or resump.get("new_handle")
+                                    if resump.get("resumable") and new_handle:
+                                        self._resumption_handle = new_handle
                                         logger.debug(
                                             f"Received Gemini session resumption token: {self._resumption_handle[:16]}..."
                                         )
@@ -1887,10 +1903,15 @@ class GeminiLiveEngine(BaseSTTEngine):
                                             try:
                                                 await asyncio.wait_for(drain_ev.wait(), 1.0)
                                             except asyncio.TimeoutError:
-                                                pass
-                                        res = on_transcript(seg_ev)
-                                        if asyncio.iscoroutine(res):
-                                            await res
+                                                logger.debug("Rotation drain event timed out; proceeding with new session")
+                                                drain_ev.set()
+                                                self._rotation_drain_event = None
+                                        try:
+                                            res = on_transcript(seg_ev)
+                                            if asyncio.iscoroutine(res):
+                                                await res
+                                        except Exception as cb_err:
+                                            logger.warning(f"Error in on_transcript callback: {cb_err}")
 
                             elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.ERROR):
                                 logger.warning("Gemini Live WebSocket closed by remote server.")
@@ -1954,6 +1975,10 @@ class GeminiLiveEngine(BaseSTTEngine):
                                 continue
                             raise
                         except Exception as e:
+                            if is_rotating or (current_recv_subtask is not sub):
+                                logger.debug(f"Ignoring stale receiver error during rotation: {self._redact_api_key(e)}")
+                                await asyncio.sleep(0.01)
+                                continue
                             logger.warning(f"Receiver error: {self._redact_api_key(e)}")
                             break
                         if current_recv_subtask is not sub or is_rotating:
@@ -1987,7 +2012,9 @@ class GeminiLiveEngine(BaseSTTEngine):
                         elapsed_session = time.monotonic() - session_start_time
                         prewarm_thresh = min(SESSION_PREWARM_THRESHOLD_SEC, SESSION_ROTATION_THRESHOLD_SEC)
                         if session_start_time > 0.0 and (elapsed_session >= prewarm_thresh or self._go_away_received):
-                            if prewarm_task is None and (time.monotonic() - last_prewarm_fail_time) >= 10.0:
+                            cooldown_passed = (time.monotonic() - last_prewarm_fail_time) >= 10.0
+                            urgent_rotation = self._go_away_received or elapsed_session >= SESSION_ROTATION_THRESHOLD_SEC
+                            if prewarm_task is None and (cooldown_passed or urgent_rotation):
                                 logger.info(
                                     f"Pre-warming replacement Gemini Live session (session age: {elapsed_session:.1f}s, goAway: {self._go_away_received})..."
                                 )
@@ -2033,9 +2060,6 @@ class GeminiLiveEngine(BaseSTTEngine):
                                             old_session = active_session
 
                                             old_prefix = self._finalized_turn_prefix
-                                            if old_prefix:
-                                                self._last_disconnect_finalized_text = old_prefix
-                                                self._last_disconnect_mono = time.monotonic()
 
                                             # 1. Atomic 0ms synchronous pointer swap to new session first
                                             self._active_ws = new_ws
@@ -2060,6 +2084,7 @@ class GeminiLiveEngine(BaseSTTEngine):
 
                                             self._reset_turn_state()
                                             # 3. Cancel receive_loop(old_ws) so _drain_and_close is the sole reader
+                                            old_recv_subtask = current_recv_subtask
                                             switch_receiver(new_ws)
 
                                             # 4. Flush audioStreamEnd & drain old_ws for 1.0s in background
@@ -2073,6 +2098,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                                                     drain_turn_prefix=old_prefix,
                                                     drain_completed_event=drain_completed_event,
                                                     send_stream_end=True,
+                                                    old_recv_task=old_recv_subtask,
                                                 )
                                             )
                                             self._drain_tasks.add(drain_t)
@@ -2217,11 +2243,12 @@ class GeminiLiveEngine(BaseSTTEngine):
                     if prewarm_task is not None:
                         if not prewarm_task.done():
                             prewarm_task.cancel()
-                        else:
+                        elif not prewarm_task.cancelled():
                             try:
-                                p_sess, p_ws, _ = prewarm_task.result()
-                                await self._safe_close_ws(p_ws)
-                                await self._safe_close_session(p_sess)
+                                p_res = prewarm_task.result()
+                                if isinstance(p_res, tuple) and len(p_res) >= 2:
+                                    await self._safe_close_ws(p_res[1])
+                                    await self._safe_close_session(p_res[0])
                             except Exception:
                                 pass
                         prewarm_task = None
@@ -2242,11 +2269,12 @@ class GeminiLiveEngine(BaseSTTEngine):
                     if prewarm_task is not None:
                         if not prewarm_task.done():
                             prewarm_task.cancel()
-                        else:
+                        elif not prewarm_task.cancelled():
                             try:
-                                p_sess, p_ws, _ = prewarm_task.result()
-                                await self._safe_close_ws(p_ws)
-                                await self._safe_close_session(p_sess)
+                                p_res = prewarm_task.result()
+                                if isinstance(p_res, tuple) and len(p_res) >= 2:
+                                    await self._safe_close_ws(p_res[1])
+                                    await self._safe_close_session(p_res[0])
                             except Exception:
                                 pass
                         prewarm_task = None
@@ -2319,9 +2347,14 @@ class GeminiLiveEngine(BaseSTTEngine):
                 except Exception:
                     pass
             self._prewarm_task = None
-        for dt in list(self._drain_tasks):
-            if not dt.done():
-                dt.cancel()
+        pending_drains = [dt for dt in self._drain_tasks if not dt.done()]
+        for dt in pending_drains:
+            dt.cancel()
+        if pending_drains:
+            try:
+                await asyncio.wait_for(asyncio.gather(*pending_drains, return_exceptions=True), timeout=0.5)
+            except Exception:
+                pass
         self._drain_tasks.clear()
         if self._active_ws and not self._active_ws.closed:
             try:

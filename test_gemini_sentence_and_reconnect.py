@@ -1003,8 +1003,8 @@ async def test_drain_and_close_ignores_interim_and_updates_disconnect_prefix():
     assert len(emitted_events) == 1, f"Expected exactly 1 final event, got {len(emitted_events)}: {emitted_events}"
     assert emitted_events[0].is_final is True
     assert emitted_events[0].text == "This is the trailing finalized sentence."
-    assert engine._last_disconnect_finalized_text == "This is the trailing finalized sentence."
-    assert engine._last_disconnect_mono >= t_before
+    # Per Fix 7, _drain_and_close prevents state pollution on _last_disconnect_finalized_text
+    assert engine._last_disconnect_finalized_text == ""
     assert mock_ws.closed is True
     assert mock_session.closed is True
 

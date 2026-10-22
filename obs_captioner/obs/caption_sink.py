@@ -244,9 +244,14 @@ class CaptionSink:
     def _attempt_boundary_stitch(self, clean_text: str, prev_final_time: Optional[float] = None) -> Tuple[str, bool]:
         """Stitch mid-word chunk boundary splits and continuing clauses between consecutive utterances."""
         now = time.time()
-        p_time = prev_final_time if prev_final_time is not None else self._prev_final_time
+        p_time = prev_final_time if prev_final_time is not None else getattr(self, "_prev_final_time", 0.0)
         last_entry_end = self.history.entries[-1].end_time if self.history.entries else 0.0
-        last_final_time = last_entry_end if last_entry_end > 1000.0 else p_time
+        if last_entry_end > 1000.0 and p_time > 1000.0:
+            last_final_time = min(last_entry_end, p_time)
+        elif last_entry_end > 1000.0:
+            last_final_time = last_entry_end
+        else:
+            last_final_time = p_time
         if not self.history.entries or (now - last_final_time > 3.5):
             return clean_text, False
 
@@ -282,6 +287,24 @@ class CaptionSink:
                 return remainder, False
             else:
                 return "", True
+
+        # 2. Cross-turn trailing-to-leading word overlap stripping
+        norm = lambda w: re.sub(r"[^\w]+", "", w).casefold()
+        prev_words = [norm(w) for w in last_text.split() if norm(w)]
+        if prev_words:
+            tokens = list(re.finditer(r"\b\w+\b", clean_new))
+            new_norm_words = [t.group(0).casefold() for t in tokens]
+            if prev_words != new_norm_words:
+                max_k = min(len(prev_words), len(new_norm_words), 16)
+                for k in range(max_k, 2, -1):  # min overlap of 3 words
+                    if prev_words[-k:] == new_norm_words[:k]:
+                        cut_idx = tokens[k - 1].end()
+                        rem = clean_new[cut_idx:].lstrip(" .,;:—-\t\"'”’")
+                        if rem and re.search(r"\w", rem):
+                            rem = rem[0].upper() + rem[1:]
+                            return rem, False
+                        return "", True
+
         return clean_text, False
 
     def _stamp_payload(self, payload: dict, utterance_id: int) -> dict:

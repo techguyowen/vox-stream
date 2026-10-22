@@ -9073,6 +9073,54 @@ class TestQuoteFormattingConcatenationAndScripture(unittest.IsolatedAsyncioTestC
         self.assertEqual(fmt.normalize_punctuation_spacing("grace., But"), "grace, But")
         self.assertEqual(fmt.normalize_punctuation_spacing("starving to death!\"?."), "starving to death!\"?")
 
+    def test_spoken_time_does_not_corrupt_ninety_nine(self):
+        from obs_captioner.formatter import TextFormatter
+
+        fmt = TextFormatter()
+        text = "Does he not leave the ninety-nine in the open country"
+        res = fmt.format_text(text, is_final=True)
+        self.assertNotIn("90:09", res)
+        self.assertTrue("ninety-nine" in res or "99" in res)
+
+    def test_split_concatenated_two_letter_words(self):
+        from obs_captioner.formatter import fix_concatenated_words, TextFormatter
+
+        fmt = TextFormatter()
+        self.assertEqual(fix_concatenated_words("countrygo"), "country go")
+        self.assertEqual(fmt.fix_concatenated_words("countrygo"), "country go")
+        self.assertEqual(fix_concatenated_words("sendto"), "send to")
+        self.assertEqual(fmt.fix_concatenated_words("sendto"), "send to")
+
+    async def test_cross_turn_phrase_overlap_dedup(self):
+        from obs_captioner.obs.caption_sink import CaptionSink
+        from obs_captioner.config import AppConfig
+        from obs_captioner.history import TranscriptHistory, HistoryEntry
+        import time
+
+        cfg = AppConfig()
+        hist = TranscriptHistory()
+        sink = CaptionSink(cfg, history=hist)
+
+        # Preceding Turn 1 ending with "...go after the lost sheep until he finds it?"
+        turn1 = "Does he not leave the 99 in the open country, go after the lost sheep until he finds it?"
+        now = time.time()
+        hist.entries.append(HistoryEntry(id=1, text=turn1, start_time=now - 1.0, end_time=now))
+
+        # Turn 2 repeats the 8-word clause at its head
+        turn2 = "After the lost sheep until he finds it, and when he finds it, he joyfully puts it on his shoulders and goes home."
+        stitched, absorbed = sink._attempt_boundary_stitch(turn2)
+        self.assertFalse(absorbed)
+        self.assertEqual(
+            stitched,
+            "And when he finds it, he joyfully puts it on his shoulders and goes home.",
+        )
+
+        # Full duplicate clause is completely absorbed
+        turn2_duplicate_only = "After the lost sheep until he finds it."
+        stitched_dup, absorbed_dup = sink._attempt_boundary_stitch(turn2_duplicate_only)
+        self.assertTrue(absorbed_dup)
+        self.assertEqual(stitched_dup, "")
+
 
 if __name__ == "__main__":
     unittest.main()
