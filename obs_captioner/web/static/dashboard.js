@@ -2638,7 +2638,7 @@ function updateChurchModeLabels(isChurchMode) {
         const ppPassword = document.getElementById("propresenter_password");
         if (ppPassword && document.activeElement !== ppPassword) ppPassword.value = pp.password || "";
         const pcHost = document.getElementById("proclaim_host");
-        if (pcHost) pcHost.value = pp.proclaim_host || "127.0.0.1";
+        if (pcHost) pcHost.value = pp.proclaim_host || "auto";
         const pcPort = document.getElementById("proclaim_port");
         if (pcPort) pcPort.value = pp.proclaim_port ?? 52195;
         const pcPassword = document.getElementById("proclaim_password");
@@ -3894,7 +3894,7 @@ if (btnSavePresentation) {
                 host: document.getElementById("propresenter_host").value.trim() || "127.0.0.1",
                 port: isNaN(portVal) ? 1025 : portVal,
                 password: document.getElementById("propresenter_password").value,
-                proclaim_host: document.getElementById("proclaim_host").value.trim() || "127.0.0.1",
+                proclaim_host: document.getElementById("proclaim_host").value.trim() || "auto",
                 proclaim_port: isNaN(proclaimPortVal) ? 52195 : proclaimPortVal,
                 proclaim_password: document.getElementById("proclaim_password").value,
                 auto_mute_on_lyrics: document.getElementById("propresenter_auto_mute").checked,

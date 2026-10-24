@@ -8072,6 +8072,238 @@ class TestV120AuditRemediationAndFeatures(AioHTTPTestCase):
         states = {a for a, _ in events}
         self.assertEqual(states, {True, False})
 
+    async def test_proclaim_resolve_host_localhost_and_explicit(self):
+        from obs_captioner.propresenter import ProPresenterClient, ProPresenterConfig
+        from unittest.mock import patch
+
+        cfg = ProPresenterConfig(enabled=True, provider="proclaim", proclaim_host="192.168.1.55")
+        client = ProPresenterClient(cfg)
+
+        # 1. Explicit host probe succeeds -> returns explicit host and caches it
+        with patch.object(client, "_probe_endpoint", return_value=True) as mock_probe:
+            host = await client._resolve_proclaim_host()
+            self.assertEqual(host, "192.168.1.55")
+            self.assertEqual(client._resolved_proclaim_host, "192.168.1.55")
+
+        # 2. Cached resolved host returns immediately if reachable
+        with patch.object(client, "_probe_endpoint", return_value=True) as mock_probe:
+            host = await client._resolve_proclaim_host()
+            self.assertEqual(host, "192.168.1.55")
+            mock_probe.assert_called_once()
+
+        # 3. Cached host fails probe -> falls back to auto discovery (localhost succeeds)
+        client.config.proclaim_host = "auto"
+        client._resolved_proclaim_host = "192.168.1.55"
+
+        async def mock_probe_fallback(session, probe_host, port, check_signature=False):
+            return probe_host == "127.0.0.1"
+
+        with patch.object(client, "_probe_endpoint", side_effect=mock_probe_fallback):
+            host = await client._resolve_proclaim_host()
+            self.assertEqual(host, "127.0.0.1")
+            self.assertEqual(client._resolved_proclaim_host, "127.0.0.1")
+        await client.stop()
+
+    async def test_proclaim_resolve_host_arp_candidate_probe(self):
+        from obs_captioner.propresenter import ProPresenterClient, ProPresenterConfig
+        from unittest.mock import patch
+
+        cfg = ProPresenterConfig(enabled=True, provider="proclaim", proclaim_host="auto")
+        client = ProPresenterClient(cfg)
+
+        async def mock_probe_cand(session, cand_host, port, check_signature=False):
+            # Localhost is unreachable
+            if cand_host == "127.0.0.1":
+                return False
+            # LAN host 192.168.1.200 returns 200 with Proclaim signature
+            if cand_host == "192.168.1.200" and check_signature:
+                return True
+            return False
+
+        with patch.object(client, "_get_arp_candidates", return_value=["192.168.1.50", "192.168.1.200", "192.168.1.250"]), \
+             patch.object(client, "_probe_endpoint", side_effect=mock_probe_cand):
+            discovered = await client._resolve_proclaim_host()
+            self.assertEqual(discovered, "192.168.1.200")
+            self.assertEqual(client._resolved_proclaim_host, "192.168.1.200")
+        await client.stop()
+
+    async def test_proclaim_protocol_off_air(self):
+        from obs_captioner.propresenter import ProPresenterClient, ProPresenterConfig
+        from unittest.mock import patch
+
+        cfg = ProPresenterConfig(enabled=True, provider="proclaim", proclaim_host="127.0.0.1")
+        client = ProPresenterClient(cfg)
+
+        class MockResp:
+            def __init__(self, status=204, text_val=""):
+                self.status = status
+                self._text = text_val
+            async def text(self):
+                return self._text
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, exc_type, exc, tb):
+                pass
+
+        class MockSession:
+            def get(self, url, **kwargs):
+                if "/onair/session" in url:
+                    return MockResp(204, "")
+                return MockResp(404, "")
+
+        with patch.object(client, "_resolve_proclaim_host", return_value="127.0.0.1"), \
+             patch.object(client, "_get_session", return_value=MockSession()):
+            await client._poll_proclaim_once()
+            self.assertTrue(client.is_connected)
+            self.assertEqual(client.current_slide_label, "Off Air")
+            self.assertEqual(client.current_slide_text, "")
+        await client.stop()
+
+    async def test_proclaim_protocol_full_onair_sync(self):
+        from obs_captioner.propresenter import ProPresenterClient, ProPresenterConfig
+        from unittest.mock import patch
+
+        cfg = ProPresenterConfig(enabled=True, provider="proclaim", auto_mute_on_lyrics=True)
+        lyrics_events = []
+        client = ProPresenterClient(cfg, on_lyrics_state_changed=lambda is_l, s: lyrics_events.append((is_l, s)))
+
+        class MockResp:
+            def __init__(self, status=200, json_val=None, text_val=""):
+                self.status = status
+                self._json = json_val or {}
+                self._text = text_val
+            async def text(self):
+                return self._text
+            async def json(self):
+                return self._json
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, exc_type, exc, tb):
+                pass
+
+        current_item_id = "song-item-1"
+        current_quick_screen = "None"
+        current_slide_idx = 0
+
+        class MockSession:
+            def get(self, url, **kwargs):
+                if "/onair/session" in url:
+                    return MockResp(200, text_val='"session-uuid-999"')
+                elif "/presentations/onair" in url:
+                    return MockResp(200, json_val={
+                        "id": "pres-1",
+                        "title": "Sunday Worship",
+                        "localRevision": 10,
+                        "serviceItems": [
+                            {
+                                "id": "song-item-1",
+                                "title": "10,000 Reasons",
+                                "kind": "Song",
+                                "notes": "Bless the Lord O my soul\nO my soul worship His holy name",
+                                "slides": [{"index": 0}, {"index": 1}],
+                            },
+                            {
+                                "id": "slide-item-2",
+                                "title": "Announcements",
+                                "kind": "Presentation",
+                                "notes": "",
+                                "slides": [{"index": 0}, {"index": 1}, {"index": 2}],
+                            }
+                        ]
+                    })
+                elif "/onair/statusChanged" in url:
+                    return MockResp(200, json_val={
+                        "status": {
+                            "itemId": current_item_id,
+                            "slideIndex": current_slide_idx,
+                            "quickScreenKind": current_quick_screen,
+                        }
+                    })
+                return MockResp(404)
+
+            def post(self, url, **kwargs):
+                if "/auth/control" in url:
+                    return MockResp(200, json_val={"connectionId": "conn-xyz-555", "authenticationToken": "auth-tok"})
+                return MockResp(404)
+
+        with patch.object(client, "_resolve_proclaim_host", return_value="127.0.0.1"), \
+             patch.object(client, "_get_session", return_value=MockSession()):
+            # 1. First poll: Song item
+            await client._poll_proclaim_once()
+            self.assertTrue(client.is_connected)
+            self.assertEqual(client._proclaim_session_id, "session-uuid-999")
+            self.assertEqual(client._proclaim_conn_id, "conn-xyz-555")
+            self.assertEqual(len(client._proclaim_items), 2)
+            self.assertEqual(client.current_slide_label, "Song: 10,000 Reasons")
+            self.assertIn("Bless the Lord", client.current_slide_text)
+            self.assertTrue(client.is_lyrics_slide_active)
+
+            # 2. Second poll: Slide item without notes (slide index formatting)
+            current_item_id = "slide-item-2"
+            current_slide_idx = 1
+            await client._poll_proclaim_once()
+            self.assertEqual(client.current_slide_label, "Presentation: Announcements")
+            self.assertEqual(client.current_slide_text, "Announcements (Slide 2/3)")
+            self.assertFalse(client.is_lyrics_slide_active)
+
+            # 3. Third poll: Quick screen Blank
+            current_quick_screen = "Blank"
+            await client._poll_proclaim_once()
+            self.assertEqual(client.current_slide_label, "Quick Screen: Blank")
+            self.assertEqual(client.current_slide_text, "")
+            self.assertFalse(client.is_lyrics_slide_active)
+
+        await client.stop()
+
+    async def test_proclaim_protocol_auth_retry(self):
+        from obs_captioner.propresenter import ProPresenterClient, ProPresenterConfig
+        from unittest.mock import patch
+
+        cfg = ProPresenterConfig(enabled=True, provider="proclaim", proclaim_password="Proclaim")
+        client = ProPresenterClient(cfg)
+        client._proclaim_session_id = "session-test"
+
+        attempts = []
+
+        class MockResp:
+            def __init__(self, status=200, json_val=None, text_val='"session-test"'):
+                self.status = status
+                self._json = json_val or {}
+                self._text = text_val
+            async def text(self):
+                return self._text
+            async def json(self):
+                return self._json
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, exc_type, exc, tb):
+                pass
+
+        class MockSession:
+            def get(self, url, **kwargs):
+                if "/onair/session" in url:
+                    return MockResp(200)
+                elif "/onair/statusChanged" in url:
+                    return MockResp(200, json_val={"status": {"itemId": "item-1"}})
+                return MockResp(404)
+            def post(self, url, json=None, **kwargs):
+                if "/auth/control" in url:
+                    pwd = (json or {}).get("Password")
+                    attempts.append(pwd)
+                    if pwd == "Proclaim":
+                        return MockResp(401)
+                    elif pwd == "proclaim":
+                        return MockResp(200, {"connectionId": "retry-conn-id"})
+                return MockResp(404)
+
+        with patch.object(client, "_resolve_proclaim_host", return_value="127.0.0.1"), \
+             patch.object(client, "_get_session", return_value=MockSession()), \
+             patch.object(client, "_proclaim_items", {"item-1": {"title": "Test"}}):
+            await client._poll_proclaim_once()
+            self.assertEqual(attempts, ["Proclaim", "proclaim"])
+            self.assertEqual(client._proclaim_conn_id, "retry-conn-id")
+        await client.stop()
+
     async def test_presentation_slide_triggers_formatted_scripture_lookup(self):
         from obs_captioner.propresenter import ProPresenterClient, ProPresenterConfig, classify_slide_as_lyrics
         from obs_captioner.bible_engine import ScriptureLookupResult

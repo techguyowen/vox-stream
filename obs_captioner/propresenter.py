@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 import re
+import subprocess
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import quote
@@ -49,7 +50,7 @@ class ProPresenterConfig:
     host: str = "127.0.0.1"
     port: int = 1025
     password: str = ""
-    proclaim_host: str = "127.0.0.1"
+    proclaim_host: str = "auto"
     proclaim_port: int = 52195
     proclaim_password: str = "proclaim"
     auto_mute_on_lyrics: bool = True
@@ -121,6 +122,15 @@ class ProPresenterClient:
         self._running = False
         self._ws_task: Optional[asyncio.Task] = None
         self._poll_task: Optional[asyncio.Task] = None
+
+        self._resolved_proclaim_host: Optional[str] = None
+        self._proclaim_session_id: Optional[str] = None
+        self._proclaim_conn_id: Optional[str] = None
+        self._proclaim_presentation_id: Optional[str] = None
+        self._proclaim_presentation_revision: int = 0
+        self._proclaim_items: Dict[str, Dict[str, Any]] = {}
+        self._proclaim_current_item_id: Optional[str] = None
+        self._proclaim_current_slide_index: int = 0
 
     @property
     def is_connected(self) -> bool:
@@ -200,12 +210,21 @@ class ProPresenterClient:
             self._session = None
         self._ws_connected = False
         self._proclaim_connected = False
+        self._resolved_proclaim_host = None
+        self._proclaim_session_id = None
+        self._proclaim_conn_id = None
+        self._proclaim_presentation_id = None
+        self._proclaim_presentation_revision = 0
+        self._proclaim_items.clear()
+        self._proclaim_current_item_id = None
+        self._proclaim_current_slide_index = 0
 
     async def _get_session(self) -> Optional["aiohttp.ClientSession"]:
         if aiohttp is None:
             return None
         if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
+            connector = aiohttp.TCPConnector(limit=100)
+            self._session = aiohttp.ClientSession(connector=connector)
         return self._session
 
     async def _ws_listen_loop(self) -> None:
@@ -302,6 +321,107 @@ class ProPresenterClient:
                     break
         return "\n".join(texts), label
 
+    async def _probe_endpoint(
+        self,
+        session: "aiohttp.ClientSession",
+        host: str,
+        port: int,
+        check_signature: bool = False,
+    ) -> bool:
+        if aiohttp is None:
+            return False
+        try:
+            timeout = aiohttp.ClientTimeout(total=0.5)
+            async with session.get(f"http://{host}:{port}/", timeout=timeout) as resp:
+                if resp.status == 200:
+                    if check_signature:
+                        text = await resp.text()
+                        return "Proclaim" in text or "EmbedIO" in text
+                    return True
+                return not check_signature and resp.status < 500
+        except Exception:
+            return False
+
+    @staticmethod
+    def _get_arp_candidates() -> List[str]:
+        raw_output = ""
+        for cmd in (["arp", "-an"], ["arp", "-a"]):
+            try:
+                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=2.0)
+                if proc.stdout:
+                    raw_output = proc.stdout
+                    break
+            except Exception:
+                continue
+        if not raw_output:
+            return []
+        ips = re.findall(r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", raw_output)
+        candidates: List[str] = []
+        for ip in set(ips):
+            parts = ip.split(".")
+            if len(parts) == 4 and all(p.isdigit() and 0 <= int(p) <= 255 for p in parts):
+                first = int(parts[0])
+                last = int(parts[3])
+                if first in (127, 224, 239) or first >= 224:
+                    continue
+                if last in (0, 255):
+                    continue
+                candidates.append(ip)
+        return sorted(candidates)
+
+    async def _resolve_proclaim_host(self) -> Optional[str]:
+        session = await self._get_session()
+        if session is None:
+            return None
+        port = self.config.proclaim_port
+
+        # 1. If self._resolved_proclaim_host: probe GET http://{self._resolved_proclaim_host}:{port}/ (timeout 0.5s)
+        if self._resolved_proclaim_host:
+            if await self._probe_endpoint(session, self._resolved_proclaim_host, port):
+                return self._resolved_proclaim_host
+            self._resolved_proclaim_host = None
+
+        # 2. If self.config.proclaim_host is set to an explicit IP/hostname (not "auto", "", or "127.0.0.1")
+        cfg_host = (self.config.proclaim_host or "").strip()
+        if cfg_host and cfg_host.lower() not in ("auto", "127.0.0.1", "localhost"):
+            if await self._probe_endpoint(session, cfg_host, port):
+                self._resolved_proclaim_host = cfg_host
+                return cfg_host
+
+        # 3. If host is "auto", "", or configured host failed:
+        # a. Test 127.0.0.1:{port}
+        if await self._probe_endpoint(session, "127.0.0.1", port):
+            self._resolved_proclaim_host = "127.0.0.1"
+            return "127.0.0.1"
+
+        # b. If localhost unreachable, perform fast LAN discovery
+        candidates = self._get_arp_candidates()
+        if candidates:
+            async def _probe_cand(cand_ip: str) -> Optional[str]:
+                if await self._probe_endpoint(session, cand_ip, port, check_signature=True):
+                    return cand_ip
+                return None
+
+            tasks = [asyncio.create_task(_probe_cand(ip)) for ip in candidates]
+            try:
+                for coro in asyncio.as_completed(tasks):
+                    found = await coro
+                    if found:
+                        for t in tasks:
+                            if not t.done():
+                                t.cancel()
+                        logger.info(f"Discovered Faithlife Proclaim on LAN at {found}:{port}")
+                        self._resolved_proclaim_host = found
+                        return found
+            except Exception:
+                pass
+            finally:
+                for t in tasks:
+                    if not t.done():
+                        t.cancel()
+
+        return None
+
     async def authenticate_proclaim(self) -> Optional[str]:
         """Authenticate with Proclaim's local HTTP API and store the auth token.
 
@@ -310,12 +430,15 @@ class ProPresenterClient:
         """
         if aiohttp is None:
             return None
-        url = f"http://{self.config.proclaim_host}:{self.config.proclaim_port}/appCommand/authenticate"
+        host = self._resolved_proclaim_host or await self._resolve_proclaim_host()
+        if not host:
+            return None
+        url = f"http://{host}:{self.config.proclaim_port}/appCommand/authenticate"
         try:
             session = await self._get_session()
             if session is None:
                 return None
-            async with session.post(url, json={"Password": self.config.proclaim_password}, timeout=5) as resp:
+            async with session.post(url, json={"Password": self.config.proclaim_password}, timeout=aiohttp.ClientTimeout(total=5.0)) as resp:
                 if resp.status >= 400:
                     return None
                 self._proclaim_connected = True
@@ -337,10 +460,13 @@ class ProPresenterClient:
         """Send a Proclaim local App Command (nextSlide, blankScreen, ...)."""
         if aiohttp is None:
             return False
+        host = self._resolved_proclaim_host or await self._resolve_proclaim_host()
+        if not host:
+            return False
         if not self._proclaim_auth_token:
             await self.authenticate_proclaim()
         url = (
-            f"http://{self.config.proclaim_host}:{self.config.proclaim_port}"
+            f"http://{host}:{self.config.proclaim_port}"
             f"/appCommand/perform?appCommandName={quote(str(command_name), safe='')}"
         )
         if index is not None:
@@ -352,12 +478,12 @@ class ProPresenterClient:
             session = await self._get_session()
             if session is None:
                 return False
-            async with session.get(url, headers=headers, timeout=5) as resp:
+            async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=5.0)) as resp:
                 if resp.status in (401, 403):
                     new_token = await self.authenticate_proclaim()
                     if new_token:
                         headers["ProclaimAuthToken"] = new_token
-                        async with session.get(url, headers=headers, timeout=5) as retry_resp:
+                        async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=5.0)) as retry_resp:
                             return retry_resp.status < 400
                 return resp.status < 400
         except Exception:
@@ -384,35 +510,152 @@ class ProPresenterClient:
         session = await self._get_session()
         if session is None:
             return
-        if not self._proclaim_auth_token:
-            await self.authenticate_proclaim()
-        headers: Dict[str, str] = {}
-        if self._proclaim_auth_token:
-            headers["ProclaimAuthToken"] = self._proclaim_auth_token
-        base = f"http://{self.config.proclaim_host}:{self.config.proclaim_port}"
-        # Proclaim EmbedIO API has case-sensitive routes: /onair/session (lowercase) and /
-        for path in ("/onair/session", "/status", "/"):
-            try:
-                async with session.get(base + path, headers=headers, timeout=5) as resp:
-                    if resp.status in (401, 403):
-                        new_token = await self.authenticate_proclaim()
-                        if new_token:
-                            headers["ProclaimAuthToken"] = new_token
-                            continue
-                    if resp.status >= 400:
-                        continue
+
+        host = await self._resolve_proclaim_host()
+        if not host:
+            self._proclaim_connected = False
+            return
+        port = self.config.proclaim_port
+        timeout_4s = aiohttp.ClientTimeout(total=4.0)
+
+        # 2) Query GET http://{host}:{port}/onair/session (timeout 4s)
+        try:
+            async with session.get(f"http://{host}:{port}/onair/session", timeout=timeout_4s) as resp:
+                if resp.status == 204:
                     self._proclaim_connected = True
-                    raw = await resp.text()
-                    try:
-                        data = json.loads(raw)
-                        if isinstance(data, dict):
-                            self._handle_proclaim_status(data)
-                    except Exception:
-                        pass
+                    if self._current_slide_label != "Off Air":
+                        self.update_slide_state("", "Off Air", source="proclaim")
                     return
+                elif resp.status == 200:
+                    body = await resp.text()
+                    sid = body.strip().strip('"')
+                    if not sid:
+                        self._proclaim_connected = True
+                        if self._current_slide_label != "Off Air":
+                            self.update_slide_state("", "Off Air", source="proclaim")
+                        return
+                    self._proclaim_connected = True
+                    if sid != self._proclaim_session_id:
+                        self._proclaim_session_id = sid
+                        self._proclaim_conn_id = None
+                        self._proclaim_items.clear()
+                else:
+                    self._proclaim_connected = False
+                    return
+        except Exception:
+            self._proclaim_connected = False
+            self._resolved_proclaim_host = None
+            return
+
+        if not self._proclaim_session_id:
+            return
+
+        # 3) Fetch Presentation (if not self._proclaim_items)
+        if not self._proclaim_items:
+            try:
+                headers = {"OnAirSessionId": self._proclaim_session_id}
+                async with session.get(f"http://{host}:{port}/presentations/onair", headers=headers, timeout=timeout_4s) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        if isinstance(data, dict):
+                            self._proclaim_items = {
+                                it["id"]: it
+                                for it in data.get("serviceItems", [])
+                                if isinstance(it, dict) and "id" in it
+                            }
+                            self._proclaim_presentation_revision = data.get("localRevision", 0)
+                            self._proclaim_presentation_id = data.get("id")
+                            logger.info(f"Loaded Proclaim presentation '{data.get('title')}' ({len(self._proclaim_items)} items)")
+                    elif resp.status in (401, 404):
+                        self._proclaim_session_id = None
+                        self._proclaim_conn_id = None
+                        self._proclaim_items.clear()
+                        return
             except Exception:
-                continue
-        self._proclaim_connected = False
+                logger.debug("Failed fetching Proclaim onair presentation.", exc_info=True)
+                return
+
+        # 4) Request Controller Connection (if not self._proclaim_conn_id)
+        if not self._proclaim_conn_id:
+            try:
+                pwd = (
+                    self.config.proclaim_password
+                    if self.config.proclaim_password and self.config.proclaim_password != "proclaim"
+                    else "Proclaim"
+                )
+                auth_body = {
+                    "FaithlifeUserId": None,
+                    "UserName": "VoxStream",
+                    "RemoteDeviceName": "VoxStream Captioner",
+                    "Password": pwd,
+                }
+                headers = {"OnAirSessionId": self._proclaim_session_id}
+                auth_url = f"http://{host}:{port}/auth/control"
+                async with session.post(auth_url, json=auth_body, headers=headers, timeout=timeout_4s) as resp:
+                    if resp.status in (401, 403):
+                        alt_pwd = "proclaim" if pwd == "Proclaim" else "Proclaim"
+                        auth_body["Password"] = alt_pwd
+                        async with session.post(auth_url, json=auth_body, headers=headers, timeout=timeout_4s) as retry_resp:
+                            if retry_resp.status == 200:
+                                resp_data = await retry_resp.json()
+                                if isinstance(resp_data, dict):
+                                    self._proclaim_conn_id = resp_data.get("connectionId")
+                                    token = resp_data.get("authenticationToken")
+                                    if token:
+                                        self._proclaim_auth_token = str(token)
+                    elif resp.status == 200:
+                        resp_data = await resp.json()
+                        if isinstance(resp_data, dict):
+                            self._proclaim_conn_id = resp_data.get("connectionId")
+                            token = resp_data.get("authenticationToken")
+                            if token:
+                                self._proclaim_auth_token = str(token)
+            except Exception:
+                logger.debug("Failed requesting Proclaim controller connection.", exc_info=True)
+                return
+
+        # 5) Poll Active Slide Status
+        if self._proclaim_conn_id:
+            try:
+                status_url = f"http://{host}:{port}/onair/statusChanged?localrevision=0&step=0"
+                headers = {
+                    "OnAirSessionId": self._proclaim_session_id,
+                    "ConnectionId": self._proclaim_conn_id,
+                }
+                async with session.get(status_url, headers=headers, timeout=timeout_4s) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        st = data.get("status", {}) if isinstance(data, dict) else {}
+                        item_id = st.get("itemId")
+                        slide_idx = st.get("slideIndex", 0)
+                        quick_screen = st.get("quickScreenKind", "None")
+                        self._proclaim_current_item_id = item_id
+                        self._proclaim_current_slide_index = slide_idx
+
+                        slide_text = ""
+                        slide_label = ""
+                        if quick_screen and quick_screen.lower() != "none":
+                            slide_text = ""
+                            slide_label = f"Quick Screen: {quick_screen}"
+                        elif item_id in self._proclaim_items:
+                            item = self._proclaim_items[item_id]
+                            item_title = item.get("title", "")
+                            item_kind = item.get("kind", "")
+                            item_notes = item.get("notes", "")
+                            total_slides = len(item.get("slides", []))
+                            slide_label = f"{item_kind}: {item_title}" if item_kind else item_title
+                            slide_text = item_notes.strip() if item_notes and item_notes.strip() else item_title
+                            if total_slides > 1 and not item_notes:
+                                slide_text = f"{item_title} (Slide {slide_idx + 1}/{total_slides})"
+                        elif item_id:
+                            self._proclaim_items.clear()
+
+                        if slide_text or slide_label:
+                            self.update_slide_state(slide_text, slide_label, source="proclaim")
+                    elif resp.status in (401, 403, 404):
+                        self._proclaim_conn_id = None
+            except Exception:
+                logger.debug("Failed polling Proclaim statusChanged.", exc_info=True)
 
     def _handle_proclaim_status(self, data: Any) -> None:
         if not isinstance(data, dict):
@@ -528,4 +771,5 @@ class ProPresenterClient:
             "is_lyrics_slide_active": self.is_lyrics_slide_active,
             "current_slide_label": self.current_slide_label,
             "current_slide_text": self.current_slide_text[:200],
+            "resolved_proclaim_host": self._resolved_proclaim_host,
         }
