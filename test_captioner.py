@@ -5685,6 +5685,39 @@ class TestEmergencyOfflineFallback(unittest.TestCase):
         eng = create_engine(cfg, override_engine="vosk")
         self.assertIsInstance(eng, VoskEngine)
 
+    def test_fallback_get_app_status_model_detail(self):
+        from obs_captioner.config import AppConfig
+        from obs_captioner.main import get_app_status, get_model_detail
+
+        cfg = AppConfig()
+        cfg.general.engine = "gemini_live"
+        cfg.general.fallback_engine = "vosk"
+        cfg.vosk.model_name = "small"
+
+        # Verify get_model_detail with eng_override
+        self.assertEqual(get_model_detail(cfg, eng_override="vosk"), "Vosk Small (~40 MB)")
+        self.assertIn("Gemini", get_model_detail(cfg, eng_override="gemini_live"))
+        self.assertIn("Gemini", get_model_detail(cfg))
+
+        # Primary engine normal active status
+        status_normal = get_app_status(config=cfg, fallback_active=False)
+        self.assertFalse(status_normal["fallback_active"])
+        self.assertEqual(status_normal["engine"], "gemini_live")
+        self.assertEqual(status_normal["primary_engine"], "gemini_live")
+        self.assertIn("Gemini", status_normal["model_detail"])
+
+        # Failover active status
+        class DummyFallbackEngine:
+            name = "Vosk STT (Offline)"
+
+        status_fallback = get_app_status(config=cfg, engine=DummyFallbackEngine(), fallback_active=True)
+        self.assertTrue(status_fallback["fallback_active"])
+        self.assertEqual(status_fallback["engine"], "vosk")
+        self.assertEqual(status_fallback["primary_engine"], "gemini_live")
+        self.assertEqual(status_fallback["fallback_engine"], "vosk")
+        self.assertEqual(status_fallback["engine_name"], "Vosk STT (Offline)")
+        self.assertEqual(status_fallback["model_detail"], "Vosk Small (~40 MB)")
+
 
 class TestStandaloneLauncher(unittest.TestCase):
     def test_get_project_root(self):

@@ -5004,41 +5004,62 @@ async function refreshEngineStatus() {
             }
 
             currentEngineName = data.engine_name || data.engine || "Unknown";
-            currentModelDetail = data.model_detail || currentEngineName;
+            currentModelDetail = data.model_detail || data.engine_name || currentEngineName;
 
             // Update top header badge
             const badgeText = document.getElementById("active-engine-badge-text");
             const engineDot = document.getElementById("active-engine-dot");
             const engineTag = document.getElementById("active-engine-status-tag");
             const activePill = document.getElementById("active-engine-pill");
+            const fallbackTag = document.getElementById("active-engine-fallback-tag");
 
-            if (badgeText) {
-                badgeText.textContent = currentModelDetail;
-            }
-            if (activePill) {
-                activePill.title = `Currently Active Speech Model: ${currentModelDetail}\nStatus: ${data.is_running ? 'Running & Listening' : 'Paused'}\nClick to configure in Audio & Engine settings.`;
-            }
+            if (data.fallback_active) {
+                if (badgeText) {
+                    badgeText.textContent = currentModelDetail;
+                }
+                if (fallbackTag) {
+                    fallbackTag.style.display = "inline-block";
+                }
+                if (activePill) {
+                    activePill.classList.add("is-fallback");
+                    activePill.title = `⚠️ Primary engine (${data.primary_engine || 'Primary'}) offline — Running on Fallback (${currentModelDetail}).\nAuto-reconnecting in background... Click to configure.`;
+                }
+                if (engineDot) {
+                    engineDot.className = "status-dot pulse-fallback";
+                }
+            } else {
+                if (badgeText) {
+                    badgeText.textContent = currentModelDetail;
+                }
+                if (fallbackTag) {
+                    fallbackTag.style.display = "none";
+                }
+                if (activePill) {
+                    activePill.classList.remove("is-fallback");
+                    activePill.title = `Currently Active Speech Model: ${currentModelDetail}\nStatus: ${data.is_running ? 'Running & Listening' : 'Paused'}\nClick to configure in Audio & Engine settings.`;
+                }
 
-            if (data.is_switching_engine) {
-                if (engineDot) engineDot.className = "status-dot pulse-loading";
-                if (engineTag) {
-                    engineTag.textContent = "LOADING...";
-                    engineTag.style.background = "rgba(245, 158, 11, 0.2)";
-                    engineTag.style.color = "#F59E0B";
-                }
-            } else if (!data.is_running) {
-                if (engineDot) engineDot.className = "status-dot offline";
-                if (engineTag) {
-                    engineTag.textContent = "PAUSED";
-                    engineTag.style.background = "rgba(239, 68, 68, 0.2)";
-                    engineTag.style.color = "#FCA5A5";
-                }
-            } else if (!isActivelyTranscribing) {
-                if (engineDot) engineDot.className = "status-dot pulse-active";
-                if (engineTag) {
-                    engineTag.textContent = "LISTENING";
-                    engineTag.style.background = "rgba(16, 185, 129, 0.2)";
-                    engineTag.style.color = "#34D399";
+                if (data.is_switching_engine) {
+                    if (engineDot) engineDot.className = "status-dot pulse-loading";
+                    if (engineTag) {
+                        engineTag.textContent = "LOADING...";
+                        engineTag.style.background = "rgba(245, 158, 11, 0.2)";
+                        engineTag.style.color = "#F59E0B";
+                    }
+                } else if (!data.is_running) {
+                    if (engineDot) engineDot.className = "status-dot offline";
+                    if (engineTag) {
+                        engineTag.textContent = "PAUSED";
+                        engineTag.style.background = "rgba(239, 68, 68, 0.2)";
+                        engineTag.style.color = "#FCA5A5";
+                    }
+                } else if (!isActivelyTranscribing) {
+                    if (engineDot) engineDot.className = "status-dot pulse-active";
+                    if (engineTag) {
+                        engineTag.textContent = "LISTENING";
+                        engineTag.style.background = "rgba(16, 185, 129, 0.2)";
+                        engineTag.style.color = "#34D399";
+                    }
                 }
             }
 
@@ -5047,7 +5068,11 @@ async function refreshEngineStatus() {
             const previewModelDot = document.getElementById("preview-model-dot");
             const previewModelState = document.getElementById("preview-model-state");
             if (previewModelName) {
-                previewModelName.textContent = `Model: ${currentModelDetail}`;
+                if (data.fallback_active) {
+                    previewModelName.textContent = `Model: ${currentModelDetail} (⚠️ Backup)`;
+                } else {
+                    previewModelName.textContent = `Model: ${currentModelDetail}`;
+                }
             }
             if (previewModelDot && !isActivelyTranscribing) {
                 previewModelDot.className = data.is_switching_engine ? "status-dot pulse-loading" : (!data.is_running ? "status-dot offline" : "status-dot pulse-active");
@@ -5372,6 +5397,20 @@ function connectControlWs() {
                     badge.style.background = "rgba(245, 158, 11, 0.2)";
                     badge.style.color = "#FCD34D";
                 }
+                currentModelDetail = msg.fallback_model_detail || msg.fallback_name || msg.fallback_engine || "Backup";
+                const badgeText = document.getElementById("active-engine-badge-text");
+                if (badgeText) badgeText.textContent = currentModelDetail;
+                const fallbackTag = document.getElementById("active-engine-fallback-tag");
+                if (fallbackTag) fallbackTag.style.display = "inline-block";
+                const activePill = document.getElementById("active-engine-pill");
+                if (activePill) {
+                    activePill.classList.add("is-fallback");
+                    activePill.title = `⚠️ Primary engine (${msg.primary_engine || 'Primary'}) offline — Running on Fallback (${currentModelDetail}).\nAuto-reconnecting in background... Click to configure.`;
+                }
+                const engineDot = document.getElementById("active-engine-dot");
+                if (engineDot) engineDot.className = "status-dot pulse-fallback";
+                const previewModelName = document.getElementById("preview-model-name");
+                if (previewModelName) previewModelName.textContent = `Model: ${currentModelDetail} (⚠️ Backup)`;
             } else if (msg.type === "emergency_fallback_restored") {
                 showToast(`✅ Primary engine connection restored! Reconnected to ${msg.primary_name || msg.primary_engine}.`, "success", 5000);
                 const badge = document.getElementById("status-badge");
@@ -5380,6 +5419,20 @@ function connectControlWs() {
                     badge.style.background = "rgba(16, 185, 129, 0.2)";
                     badge.style.color = "#34D399";
                 }
+                currentModelDetail = msg.primary_model_detail || msg.primary_name || msg.primary_engine;
+                const badgeText = document.getElementById("active-engine-badge-text");
+                if (badgeText) badgeText.textContent = currentModelDetail;
+                const fallbackTag = document.getElementById("active-engine-fallback-tag");
+                if (fallbackTag) fallbackTag.style.display = "none";
+                const activePill = document.getElementById("active-engine-pill");
+                if (activePill) {
+                    activePill.classList.remove("is-fallback");
+                    activePill.title = `Currently Active Speech Model: ${currentModelDetail}\nStatus: Running & Listening\nClick to configure in Audio & Engine settings.`;
+                }
+                const engineDot = document.getElementById("active-engine-dot");
+                if (engineDot) engineDot.className = "status-dot pulse-active";
+                const previewModelName = document.getElementById("preview-model-name");
+                if (previewModelName) previewModelName.textContent = `Model: ${currentModelDetail}`;
             } else if (msg.type === "propresenter_lyrics_state" || msg.type === "presentation_status") {
                 if (msg.current_slide_text !== undefined || msg.current_slide_label !== undefined || msg.is_lyrics_slide_active !== undefined) {
                     updatePresentationMonitor(msg);

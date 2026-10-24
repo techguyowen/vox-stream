@@ -8,6 +8,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from typing import Optional
 if sys.platform == "win32":
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -218,6 +219,110 @@ async def cleanup_resources(
     logger.info("OBS Live Captioner stopped gracefully.")
 
 
+def get_model_detail(cfg: AppConfig, eng_override: Optional[str] = None) -> str:
+    eng = eng_override or cfg.general.engine
+    if eng == "vosk":
+        model_variant = (cfg.vosk.model_name or "small").strip().lower()
+        if model_variant in ("accurate", "large", "en-us-0.22", "vosk-model-en-us-0.22"):
+            return "Vosk Accurate (1.8 GB)"
+        return "Vosk Small (~40 MB)"
+    elif eng == "local_whisper":
+        w_size = cfg.local_whisper.model_size or "base.en"
+        if w_size == "distil-large-v3":
+            w_label = "Distil-Large-v3 (Anti-Hallucination)"
+        elif w_size == "large-v3-turbo":
+            w_label = "Large-v3-Turbo (SOTA Multilingual)"
+        elif w_size == "base.en":
+            w_label = "Base.en (Punctuation & Caps)"
+        else:
+            w_label = w_size
+        return f"Faster-Whisper ({w_label})"
+    elif eng == "moonshine":
+        return f"Moonshine ONNX ({cfg.moonshine.model_name})"
+    elif eng == "google_web":
+        return "Google Web Speech (Real-Time Cloud • Free)"
+    elif eng == "google_stt":
+        return f"Google Cloud Speech v2 ({cfg.google_stt.model or 'latest_long'})"
+    elif eng == "gemini_live":
+        return f"Gemini 3.5 Live ({cfg.gemini_live.model})"
+    elif eng in ("bandwidth", "labs.bandwidth.com", "bandwidth_labs"):
+        return "Bandwidth Labs Live STT (Real-Time Cloud)"
+    elif eng in ("sherpa", "sherpa_onnx", "zipformer"):
+        return f"Sherpa-ONNX Zipformer ({cfg.sherpa.model_name})"
+    elif eng in ("parakeet", "nemo", "nemo_parakeet", "fastconformer"):
+        p_model = cfg.parakeet.model_name or "parakeet-fastconformer-large-24500"
+        if "24500" in p_model:
+            p_name = "FastConformer Large (24,500h CTC)"
+        elif "tdt" in p_model:
+            p_name = "Parakeet-TDT 0.6B (Transducer)"
+        elif "large" in p_model:
+            p_name = "Conformer Large int8"
+        elif "medium" in p_model or "nemo" in p_model:
+            p_name = "Conformer Medium int8"
+        else:
+            p_name = p_model
+        return f"NVIDIA Parakeet ({p_name})"
+    elif eng in ("sensevoice", "funasr"):
+        return f"SenseVoice ({cfg.sensevoice.model_name} • Device: {cfg.sensevoice.device})"
+    return eng
+
+
+def get_app_status(
+    config: Optional[AppConfig] = None,
+    engine=None,
+    fallback_active: bool = False,
+    is_paused: bool = False,
+    obs_client=None,
+    audio_capture=None,
+    initialized: bool = False,
+    is_switching_engine: bool = False,
+    engine_switch_status: str = "",
+    engine_switch_target: str = "",
+    engine_switch_error=None,
+    sink=None,
+    history=None,
+) -> dict:
+    if config is None:
+        from .config import AppConfig
+        config = AppConfig()
+    from .hardware import get_ram_usage_mb, get_gpu_info
+    sink_obj = sink
+    hist_obj = history
+    gpu_data = get_gpu_info(getattr(config.general, "preferred_gpu", "auto"))
+    fallback_target = getattr(config.general, "fallback_engine", "vosk")
+    active_eng = fallback_target if fallback_active else config.general.engine
+    actual_model_detail = get_model_detail(config, eng_override=active_eng)
+    return {
+        "is_running": not is_paused,
+        "obs_connected": obs_client.is_connected if obs_client else False,
+        "audio_level_db": audio_capture.current_rms_db if audio_capture else -100.0,
+        "engine": active_eng,
+        "primary_engine": config.general.engine,
+        "engine_name": engine.name if engine else active_eng,
+        "gemini_ping_ms": getattr(engine, "current_ping_ms", None) if engine else None,
+        "model_detail": actual_model_detail,
+        "fallback_active": bool(fallback_active),
+        "fallback_engine": getattr(config.general, "fallback_engine", "vosk"),
+        "enable_auto_fallback": getattr(config.general, "enable_auto_fallback", True),
+        "engine_initialized": bool(initialized and (engine is not None)),
+        "is_streaming": bool(engine and getattr(engine, "is_running", False) and not is_paused),
+        "is_switching_engine": is_switching_engine,
+        "engine_switch_status": engine_switch_status,
+        "engine_switch_target": engine_switch_target,
+        "engine_switch_error": engine_switch_error,
+        "last_caption_time": getattr(sink_obj, "_last_caption_time", 0.0) if sink_obj else 0.0,
+        "total_captions": len(hist_obj.entries) if hist_obj else 0,
+        "ram_usage_mb": get_ram_usage_mb(),
+        "gpu": gpu_data,
+        "gpu_info": gpu_data,
+        "preferred_gpu": getattr(config.general, "preferred_gpu", "auto"),
+    }
+
+
+_module_get_app_status = get_app_status
+_module_get_model_detail = get_model_detail
+
+
 async def main_async(args):
     """Main async execution loop."""
     config: AppConfig = load_config(args.config)
@@ -284,52 +389,8 @@ async def main_async(args):
     shutdown_event = asyncio.Event()
     scheduler = None  # CaptionScheduler – initialized after on_start/on_stop callbacks are defined
 
-    def get_model_detail(cfg: AppConfig) -> str:
-        eng = cfg.general.engine
-        if eng == "vosk":
-            model_variant = (cfg.vosk.model_name or "small").strip().lower()
-            if model_variant in ("accurate", "large", "en-us-0.22", "vosk-model-en-us-0.22"):
-                return "Vosk Accurate (1.8 GB)"
-            return "Vosk Small (~40 MB)"
-        elif eng == "local_whisper":
-            w_size = cfg.local_whisper.model_size or "base.en"
-            if w_size == "distil-large-v3":
-                w_label = "Distil-Large-v3 (Anti-Hallucination)"
-            elif w_size == "large-v3-turbo":
-                w_label = "Large-v3-Turbo (SOTA Multilingual)"
-            elif w_size == "base.en":
-                w_label = "Base.en (Punctuation & Caps)"
-            else:
-                w_label = w_size
-            return f"Faster-Whisper ({w_label})"
-        elif eng == "moonshine":
-            return f"Moonshine ONNX ({cfg.moonshine.model_name})"
-        elif eng == "google_web":
-            return "Google Web Speech (Real-Time Cloud • Free)"
-        elif eng == "google_stt":
-            return f"Google Cloud Speech v2 ({cfg.google_stt.model or 'latest_long'})"
-        elif eng == "gemini_live":
-            return f"Gemini 3.5 Live ({cfg.gemini_live.model})"
-        elif eng in ("bandwidth", "labs.bandwidth.com", "bandwidth_labs"):
-            return "Bandwidth Labs Live STT (Real-Time Cloud)"
-        elif eng in ("sherpa", "sherpa_onnx", "zipformer"):
-            return f"Sherpa-ONNX Zipformer ({cfg.sherpa.model_name})"
-        elif eng in ("parakeet", "nemo", "nemo_parakeet", "fastconformer"):
-            p_model = cfg.parakeet.model_name or "parakeet-fastconformer-large-24500"
-            if "24500" in p_model:
-                p_name = "FastConformer Large (24,500h CTC)"
-            elif "tdt" in p_model:
-                p_name = "Parakeet-TDT 0.6B (Transducer)"
-            elif "large" in p_model:
-                p_name = "Conformer Large int8"
-            elif "medium" in p_model or "nemo" in p_model:
-                p_name = "Conformer Medium int8"
-            else:
-                p_name = p_model
-            return f"NVIDIA Parakeet ({p_name})"
-        elif eng in ("sensevoice", "funasr"):
-            return f"SenseVoice ({cfg.sensevoice.model_name} • Device: {cfg.sensevoice.device})"
-        return eng
+    def get_model_detail(cfg: AppConfig, eng_override: Optional[str] = None) -> str:
+        return _module_get_model_detail(cfg, eng_override=eng_override)
 
     engine_switch_status = ""
     engine_switch_target = ""
@@ -357,34 +418,21 @@ async def main_async(args):
             eng.on_ping = _on_gemini_ping
 
     def get_app_status():
-        from .hardware import get_ram_usage_mb, get_gpu_info
-        sink_obj = sink if 'sink' in locals() else None
-        hist_obj = history if 'history' in locals() else None
-        gpu_data = get_gpu_info(getattr(config.general, "preferred_gpu", "auto"))
-        return {
-            "is_running": not is_paused,
-            "obs_connected": obs_client.is_connected if obs_client else False,
-            "audio_level_db": audio_capture.current_rms_db if audio_capture else -100.0,
-            "engine": config.general.engine,
-            "engine_name": engine.name if engine else config.general.engine,
-            "gemini_ping_ms": getattr(engine, "current_ping_ms", None) if engine else None,
-            "model_detail": get_model_detail(config),
-            "fallback_active": fallback_active,
-            "fallback_engine": getattr(config.general, "fallback_engine", "vosk"),
-            "enable_auto_fallback": getattr(config.general, "enable_auto_fallback", True),
-            "engine_initialized": bool(initialized and (engine is not None)),
-            "is_streaming": bool(engine and getattr(engine, "is_running", False) and not is_paused),
-            "is_switching_engine": is_switching_engine,
-            "engine_switch_status": engine_switch_status,
-            "engine_switch_target": engine_switch_target,
-            "engine_switch_error": engine_switch_error,
-            "last_caption_time": getattr(sink_obj, "_last_caption_time", 0.0) if sink_obj else 0.0,
-            "total_captions": len(hist_obj.entries) if hist_obj else 0,
-            "ram_usage_mb": get_ram_usage_mb(),
-            "gpu": gpu_data,
-            "gpu_info": gpu_data,
-            "preferred_gpu": getattr(config.general, "preferred_gpu", "auto"),
-        }
+        return _module_get_app_status(
+            config=config,
+            engine=engine,
+            fallback_active=fallback_active,
+            is_paused=is_paused,
+            obs_client=obs_client,
+            audio_capture=audio_capture,
+            initialized=initialized,
+            is_switching_engine=is_switching_engine,
+            engine_switch_status=engine_switch_status,
+            engine_switch_target=engine_switch_target,
+            engine_switch_error=engine_switch_error,
+            sink=sink if 'sink' in locals() else None,
+            history=history if 'history' in locals() else None,
+        )
 
     async def switch_engine_async(new_cfg: AppConfig):
         nonlocal engine, initialized, is_switching_engine, engine_switch_status, engine_switch_target, engine_switch_error
@@ -886,6 +934,7 @@ async def main_async(args):
                                 "primary_engine": config.general.engine,
                                 "fallback_engine": fallback_target,
                                 "fallback_name": engine.name,
+                                "fallback_model_detail": get_model_detail(config, eng_override=fallback_target),
                                 "status_text": engine_switch_status,
                             }),
                             loop,
@@ -1166,6 +1215,7 @@ async def main_async(args):
                                 "type": "emergency_fallback_restored",
                                 "primary_engine": config.general.engine,
                                 "primary_name": engine.name,
+                                "primary_model_detail": get_model_detail(config, eng_override=config.general.engine),
                                 "status_text": engine_switch_status,
                             })
                     break
@@ -1220,6 +1270,7 @@ async def main_async(args):
                                         "type": "emergency_fallback_restored",
                                         "primary_engine": config.general.engine,
                                         "primary_name": engine.name,
+                                        "primary_model_detail": get_model_detail(config, eng_override=config.general.engine),
                                         "status_text": engine_switch_status,
                                     })
                     except Exception as pe:
@@ -1280,6 +1331,7 @@ async def main_async(args):
                                                     "primary_engine": config.general.engine,
                                                     "fallback_engine": fallback_target,
                                                     "fallback_name": engine.name,
+                                                    "fallback_model_detail": get_model_detail(config, eng_override=fallback_target),
                                                     "status_text": engine_switch_status,
                                                 }),
                                                 loop,
@@ -1352,6 +1404,8 @@ async def main_async(args):
                                             "type": "emergency_fallback_activated",
                                             "primary_engine": config.general.engine,
                                             "fallback_engine": fallback_target,
+                                            "fallback_name": engine.name,
+                                            "fallback_model_detail": get_model_detail(config, eng_override=fallback_target),
                                             "status_text": engine_switch_status,
                                         }),
                                         loop,
