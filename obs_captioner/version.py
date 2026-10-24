@@ -6,10 +6,10 @@ import re
 from typing import Tuple
 
 # Current application version
-VERSION = "1.2.8"
-VERSION_INFO = (1, 2, 8)
-RELEASE_DATE = "2026-10-22"
-CODENAME = "Gemini Live Make-Before-Break Session Rotation & ASR Resilience"
+VERSION = "1.2.9"
+VERSION_INFO = (1, 2, 9)
+RELEASE_DATE = "2026-10-24"
+CODENAME = "Faithlife Proclaim LAN Auto-Discovery & Live Slide Sync"
 
 
 def parse_version(v_str: str) -> Tuple[int, int, int]:
