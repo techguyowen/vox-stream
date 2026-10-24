@@ -540,10 +540,18 @@ async def main_async(args):
         if propresenter_client is not None:
             try:
                 was_enabled = bool(getattr(propresenter_client.config, "enabled", False))
+                was_auto_mute = bool(getattr(propresenter_client.config, "auto_mute_on_lyrics", True))
             except Exception:
                 was_enabled = False
+                was_auto_mute = True
             propresenter_client.config = new_cfg.propresenter
             now_enabled = bool(getattr(new_cfg.propresenter, "enabled", False))
+            now_auto_mute = bool(getattr(new_cfg.propresenter, "auto_mute_on_lyrics", True))
+            # If auto-mute or sync is disabled while currently auto-muted, immediately resume captioning!
+            if (not now_enabled or not now_auto_mute) and auto_muted_by_automation and is_paused:
+                auto_muted_by_automation = False
+                on_start_requested(_from_automation=True)
+                logger.info("Presentation auto-mute disabled in settings while muted — resumed captioning.")
             if now_enabled and not was_enabled:
                 logger.info("Presentation sync enabled via config update — starting ProPresenter/Proclaim client...")
                 try:

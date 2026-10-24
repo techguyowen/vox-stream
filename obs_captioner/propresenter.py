@@ -34,7 +34,13 @@ DEFAULT_LYRICS_KEYWORDS: List[str] = [
     "worship", "song", "lyrics", "chorus", "verse", "bridge", "hymn", "praise",
 ]
 
+DEFAULT_NON_LYRICS_KEYWORDS: Tuple[str, ...] = (
+    "sermon", "message", "preach", "notes", "announcement", "welcome", "scripture",
+    "bible", "off air", "video", "slideshow", "imageslideshow", "giving", "tithe", "offering",
+)
+
 _SCRIPTURE_CITATION_RE = re.compile(r"\b\d+:\d+\b")
+_BULLET_RE = re.compile(r"^(\d+[\.\)]|[-•*])\s+")
 
 _MUSICAL_SYMBOLS = ("♪", "♫")
 _SECTION_TAGS = ("[chorus]", "[verse", "[bridge]", "(chorus)")
@@ -76,8 +82,11 @@ def classify_slide_as_lyrics(
         return False
     if _SCRIPTURE_CITATION_RE.search(text) or _SCRIPTURE_CITATION_RE.search(label):
         return False
-    active_keywords = DEFAULT_LYRICS_KEYWORDS if keywords is None else keywords
     label_lower = label.lower()
+    if any(nl in label_lower for nl in DEFAULT_NON_LYRICS_KEYWORDS):
+        if not any(k in label_lower for k in ("song", "worship", "lyrics", "hymn")):
+            return False
+    active_keywords = DEFAULT_LYRICS_KEYWORDS if keywords is None else keywords
     for keyword in active_keywords:
         if keyword and keyword.lower() in label_lower:
             return True
@@ -88,6 +97,8 @@ def classify_slide_as_lyrics(
         return True
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     if len(lines) >= 2:
+        if any(_BULLET_RE.match(line) for line in lines):
+            return False
         poetic = True
         for line in lines:
             words = line.split()
@@ -208,6 +219,13 @@ class ProPresenterClient:
             except Exception:
                 pass
             self._session = None
+        was_lyrics = self._is_lyrics_slide_active
+        self._is_lyrics_slide_active = False
+        if was_lyrics and self.on_lyrics_state_changed:
+            try:
+                self.on_lyrics_state_changed(False, "sync_stopped")
+            except Exception:
+                pass
         self._ws_connected = False
         self._proclaim_connected = False
         self._resolved_proclaim_host = None
@@ -731,11 +749,19 @@ class ProPresenterClient:
         )
         if is_lyrics != self.is_lyrics_slide_active:
             self.is_lyrics_slide_active = is_lyrics
-            if self.config.auto_mute_on_lyrics and self.on_lyrics_state_changed:
-                try:
-                    self.on_lyrics_state_changed(is_lyrics, f"{source}:{clean_label or 'lyrics'}")
-                except Exception:
-                    logger.debug("on_lyrics_state_changed callback failed.", exc_info=True)
+            if self.on_lyrics_state_changed:
+                if is_lyrics:
+                    if self.config.auto_mute_on_lyrics:
+                        try:
+                            self.on_lyrics_state_changed(True, f"{source}:{clean_label or 'lyrics'}")
+                        except Exception:
+                            logger.debug("on_lyrics_state_changed callback failed.", exc_info=True)
+                else:
+                    # Always signal un-mute when leaving a lyrics slide, even if auto_mute was just toggled off.
+                    try:
+                        self.on_lyrics_state_changed(False, f"{source}:{clean_label or 'non_lyrics'}")
+                    except Exception:
+                        logger.debug("on_lyrics_state_changed callback failed.", exc_info=True)
         if has_changed and self.on_slide_changed and (clean_text or clean_label):
             try:
                 self.on_slide_changed(clean_text, clean_label, source)

@@ -8304,6 +8304,34 @@ class TestV120AuditRemediationAndFeatures(AioHTTPTestCase):
             self.assertEqual(client._proclaim_conn_id, "retry-conn-id")
         await client.stop()
 
+    def test_slide_transition_unmutes_and_auto_mute_toggle(self):
+        from obs_captioner.propresenter import ProPresenterClient, ProPresenterConfig
+
+        events = []
+        cfg = ProPresenterConfig(enabled=True, provider="proclaim", auto_mute_on_lyrics=True)
+        client = ProPresenterClient(cfg, on_lyrics_state_changed=lambda is_lyrics, src: events.append((is_lyrics, src)))
+
+        # 1. Worship slide triggers mute
+        lyrics = "Holy holy holy Lord God Almighty\nEarly in the morning our song shall rise to Thee"
+        self.assertTrue(client.update_slide_state(lyrics, "Worship", source="proclaim"))
+        self.assertEqual(events, [(True, "proclaim:Worship")])
+
+        # 2. Transitioning to non-music slide (Sermon) immediately un-mutes
+        sermon = "Points for today:\n1. Faith in action\n2. Hope that endures"
+        self.assertFalse(client.update_slide_state(sermon, "Sermon Notes", source="proclaim"))
+        self.assertEqual(events, [(True, "proclaim:Worship"), (False, "proclaim:Sermon Notes")])
+
+        # 3. Transition back to lyrics
+        self.assertTrue(client.update_slide_state(lyrics, "Worship", source="proclaim"))
+        self.assertEqual(len(events), 3)
+        self.assertTrue(events[-1][0])
+
+        # 4. If auto_mute_on_lyrics is toggled off, leaving the lyrics slide still fires un-mute!
+        client.config.auto_mute_on_lyrics = False
+        self.assertFalse(client.update_slide_state(sermon, "Sermon Notes", source="proclaim"))
+        self.assertEqual(len(events), 4)
+        self.assertFalse(events[-1][0])  # Must be False (unmute)!
+
     async def test_presentation_slide_triggers_formatted_scripture_lookup(self):
         from obs_captioner.propresenter import ProPresenterClient, ProPresenterConfig, classify_slide_as_lyrics
         from obs_captioner.bible_engine import ScriptureLookupResult
