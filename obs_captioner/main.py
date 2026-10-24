@@ -550,6 +550,15 @@ async def main_async(args):
                     asyncio.run_coroutine_threadsafe(propresenter_client.start(), loop)
                 except Exception as pe:
                     logger.warning(f"Could not start ProPresenter/Proclaim sync: {pe}")
+            elif now_enabled and was_enabled:
+                logger.info("Presentation sync settings updated while running — restarting ProPresenter/Proclaim client...")
+                try:
+                    async def _restart_presentation():
+                        await propresenter_client.stop()
+                        await propresenter_client.start()
+                    asyncio.run_coroutine_threadsafe(_restart_presentation(), loop)
+                except Exception as pe:
+                    logger.warning(f"Could not restart ProPresenter/Proclaim sync: {pe}")
             elif was_enabled and not now_enabled:
                 logger.info("Presentation sync disabled via config update — stopping ProPresenter/Proclaim client...")
                 try:

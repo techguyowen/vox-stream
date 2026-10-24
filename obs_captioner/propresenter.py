@@ -337,6 +337,8 @@ class ProPresenterClient:
         """Send a Proclaim local App Command (nextSlide, blankScreen, ...)."""
         if aiohttp is None:
             return False
+        if not self._proclaim_auth_token:
+            await self.authenticate_proclaim()
         url = (
             f"http://{self.config.proclaim_host}:{self.config.proclaim_port}"
             f"/appCommand/perform?appCommandName={quote(str(command_name), safe='')}"
@@ -351,6 +353,12 @@ class ProPresenterClient:
             if session is None:
                 return False
             async with session.get(url, headers=headers, timeout=5) as resp:
+                if resp.status in (401, 403):
+                    new_token = await self.authenticate_proclaim()
+                    if new_token:
+                        headers["ProclaimAuthToken"] = new_token
+                        async with session.get(url, headers=headers, timeout=5) as retry_resp:
+                            return retry_resp.status < 400
                 return resp.status < 400
         except Exception:
             logger.debug(f"Proclaim command '{command_name}' failed.", exc_info=True)
@@ -376,21 +384,31 @@ class ProPresenterClient:
         session = await self._get_session()
         if session is None:
             return
+        if not self._proclaim_auth_token:
+            await self.authenticate_proclaim()
         headers: Dict[str, str] = {}
         if self._proclaim_auth_token:
             headers["ProclaimAuthToken"] = self._proclaim_auth_token
         base = f"http://{self.config.proclaim_host}:{self.config.proclaim_port}"
-        for path in ("/onAir/session", "/status"):
+        # Proclaim EmbedIO API has case-sensitive routes: /onair/session (lowercase) and /
+        for path in ("/onair/session", "/status", "/"):
             try:
                 async with session.get(base + path, headers=headers, timeout=5) as resp:
+                    if resp.status in (401, 403):
+                        new_token = await self.authenticate_proclaim()
+                        if new_token:
+                            headers["ProclaimAuthToken"] = new_token
+                            continue
                     if resp.status >= 400:
                         continue
-                    try:
-                        data = await resp.json()
-                    except Exception:
-                        continue
                     self._proclaim_connected = True
-                    self._handle_proclaim_status(data)
+                    raw = await resp.text()
+                    try:
+                        data = json.loads(raw)
+                        if isinstance(data, dict):
+                            self._handle_proclaim_status(data)
+                    except Exception:
+                        pass
                     return
             except Exception:
                 continue
