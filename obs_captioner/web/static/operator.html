@@ -479,6 +479,9 @@
             <div id="mic-silence-warning">
                 ⚠️ Mic Muted / No Signal (&lt; -55 dBFS)
             </div>
+            <div id="audio-recovery-warning" style="display: none; margin-top: 8px; padding: 6px 10px; border-radius: var(--radius-sm); font-size: 11px; font-weight: 600; background: rgba(245, 158, 11, 0.15); color: #F59E0B; border: 1px solid rgba(245, 158, 11, 0.3);">
+                ⚠️ Audio Watchdog Recovering Device...
+            </div>
         </div>
 
         <!-- Primary System Controls (Big Actions) -->
@@ -638,6 +641,15 @@
             let isRunning = false;
             let controlWs = null;
             let micSilenceTimer = null;
+            let lastVuMeterTime = 0;
+
+            // VU Meter decay watchdog
+            setInterval(() => {
+                if (Date.now() - lastVuMeterTime > 600) {
+                    if (vuBar) vuBar.style.width = '0%';
+                    if (vuDb) vuDb.textContent = '-∞ dB';
+                }
+            }, 100);
 
             // Toast Helper
             function showToast(msg, duration = 2500) {
@@ -708,6 +720,16 @@
                         pill.classList.remove('active');
                     }
                 });
+
+                const recoveryWarning = document.getElementById('audio-recovery-warning');
+                if (recoveryWarning && data.audio_recovering !== undefined) {
+                    if (data.audio_recovering) {
+                        recoveryWarning.textContent = `⚠️ Audio interface '${data.audio_device || 'microphone'}' disconnected. Auto-watchdog recovering...`;
+                        recoveryWarning.style.display = 'block';
+                    } else {
+                        recoveryWarning.style.display = 'none';
+                    }
+                }
             }
 
             // WebSockets Connection
@@ -727,6 +749,7 @@
                     try {
                         const msg = JSON.parse(event.data);
                         if (msg.type === 'vu_meter') {
+                            lastVuMeterTime = Date.now();
                             const db = typeof msg.level_db === 'number' ? msg.level_db : -100;
                             const pct = Math.max(0, Math.min(100, ((db + 60) / 60) * 100));
                             if (vuBar) vuBar.style.width = `${pct}%`;
@@ -742,6 +765,20 @@
                                 micSilenceTimer = null;
                                 if (micWarning) micWarning.style.display = 'none';
                             }
+                        } else if (msg.type === 'audio_recovery_status') {
+                            const recoveryWarning = document.getElementById('audio-recovery-warning');
+                            if (msg.status === 'recovering') {
+                                if (recoveryWarning) {
+                                    recoveryWarning.textContent = `⚠️ Audio interface '${msg.device || 'microphone'}' disconnected. Auto-watchdog recovering...`;
+                                    recoveryWarning.style.display = 'block';
+                                }
+                                if (vuBar) vuBar.style.width = '0%';
+                                if (vuDb) vuDb.textContent = '-∞ dB';
+                            } else if (msg.status === 'recovered') {
+                                if (recoveryWarning) {
+                                    recoveryWarning.style.display = 'none';
+                                }
+                            }
                         } else if (msg.type === 'engine_changed' || msg.type === 'config_updated') {
                             fetchStatus();
                         } else if (msg.type === 'bible_context_updated' && msg.context) {
@@ -754,7 +791,14 @@
                     }
                 };
 
+                controlWs.onerror = () => {
+                    if (vuBar) vuBar.style.width = '0%';
+                    if (vuDb) vuDb.textContent = '-∞ dB';
+                };
+
                 controlWs.onclose = () => {
+                    if (vuBar) vuBar.style.width = '0%';
+                    if (vuDb) vuDb.textContent = '-∞ dB';
                     connBadge.className = 'status-badge offline';
                     connText.textContent = 'Offline';
                     setTimeout(connectWs, 2000);

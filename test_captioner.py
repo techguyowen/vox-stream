@@ -9457,8 +9457,141 @@ class TestQuoteFormattingConcatenationAndScripture(unittest.IsolatedAsyncioTestC
         self.assertEqual(stitched_new, "The best I got is pigs?")
 
 
+class TestAudioWatchdogAndTelemetry(unittest.IsolatedAsyncioTestCase):
+    """Unit tests for audio watchdog auto-recovery on failure, initial level meter callbacks,
+    cached VU broadcast on WebSocket connect, and audio_recovering status reporting."""
+
+    def test_audio_capture_start_auto_recovery_on_open_fail(self):
+        from obs_captioner.audio_capture import AudioCapture
+        from obs_captioner.config import AudioConfig
+        from unittest.mock import patch
+
+        ac = AudioCapture(AudioConfig())
+        ac.device_info = {"name": "Test Mic", "hostapi": "WASAPI"}
+        recovery_events = []
+        ac.on_recovery_status = lambda status, dev: recovery_events.append((status, dev))
+
+        with patch.object(ac, "_open_stream", return_value=False):
+            loop = asyncio.get_event_loop()
+            ok = ac.start(loop=loop)
+            self.assertFalse(ok)
+            self.assertTrue(ac._running)
+            self.assertTrue(ac.is_recovering)
+            self.assertIsNotNone(ac._recovery_task)
+            self.assertEqual(len(recovery_events), 1)
+            self.assertEqual(recovery_events[0], ("recovering", "Test Mic"))
+        ac.stop()
+
+    def test_audio_capture_start_emits_initial_level_meter(self):
+        from obs_captioner.audio_capture import AudioCapture
+        from obs_captioner.config import AudioConfig
+        from unittest.mock import patch
+
+        ac = AudioCapture(AudioConfig())
+        ac.current_rms_db = -42.5
+        levels = []
+        ac.on_level_meter = lambda lvl: levels.append(lvl)
+
+        with patch.object(ac, "_open_stream", return_value=True):
+            loop = asyncio.get_event_loop()
+            ok = ac.start(loop=loop)
+            self.assertTrue(ok)
+            self.assertTrue(ac._running)
+            self.assertFalse(ac.is_recovering)
+            self.assertIn(-42.5, levels)
+        ac.stop()
+
+    async def test_audio_recovery_loop_recovers_and_notifies(self):
+        from obs_captioner.audio_capture import AudioCapture
+        from obs_captioner.config import AudioConfig
+        from unittest.mock import patch, AsyncMock
+
+        ac = AudioCapture(AudioConfig())
+        ac._running = True
+        ac.is_recovering = True
+        ac.device_info = {"name": "USB Interface", "hostapi": "WASAPI"}
+        recovered_events = []
+        ac.on_recovery_status = lambda status, dev: recovered_events.append((status, dev))
+
+        with patch("obs_captioner.audio_capture.find_audio_device_async", new=AsyncMock(return_value=(1, {"name": "USB Interface"}))), \
+             patch.object(ac, "_open_stream", return_value=True), \
+             patch("asyncio.sleep", new=AsyncMock(return_value=None)):
+            await ac._auto_recovery_loop()
+
+        self.assertFalse(ac.is_recovering)
+        self.assertIn(("recovered", "USB Interface"), recovered_events)
+        ac.stop()
+
+    async def test_web_server_broadcast_vu_level_caches_and_sends_to_new_ws(self):
+        from obs_captioner.web.server import WebOverlayServer
+        from obs_captioner.config import AppConfig
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        server = WebOverlayServer(AppConfig())
+        self.assertEqual(server._last_vu_db, -100.0)
+
+        # Broadcast VU level
+        await server.broadcast_vu_level(-24.5)
+        self.assertEqual(server._last_vu_db, -24.5)
+
+        # Simulate newly connecting control WS client
+        mock_ws = AsyncMock()
+        mock_ws.prepare = AsyncMock()
+        mock_ws.send_json = AsyncMock()
+        mock_ws.__aiter__.return_value = []  # immediately end iteration
+        mock_request = MagicMock()
+
+        with patch("obs_captioner.web.server.web.WebSocketResponse", return_value=mock_ws):
+            await server._handle_control_ws(mock_request)
+
+        # Verify initial snapshot was sent with cached VU level
+        mock_ws.send_json.assert_called_with({"type": "vu_meter", "level_db": -24.5})
+
+    def test_get_app_status_includes_audio_recovering_and_device(self):
+        from obs_captioner.main import get_app_status
+        from obs_captioner.config import AppConfig
+        from unittest.mock import MagicMock
+
+        cfg = AppConfig()
+
+        # 1. Active recovering audio device
+        mock_capture = MagicMock()
+        mock_capture.current_rms_db = -32.0
+        mock_capture.is_recovering = True
+        mock_capture.device_info = {"name": "Focusrite Scarlett 2i2"}
+
+        status = get_app_status(config=cfg, audio_capture=mock_capture)
+        self.assertTrue(status["audio_recovering"])
+        self.assertEqual(status["audio_device"], "Focusrite Scarlett 2i2")
+        self.assertEqual(status["audio_level_db"], -32.0)
+
+        # 2. None audio_capture fallback
+        status_none = get_app_status(config=cfg, audio_capture=None)
+        self.assertFalse(status_none["audio_recovering"])
+        self.assertEqual(status_none["audio_device"], "Default")
+        self.assertEqual(status_none["audio_level_db"], -100.0)
+
+    def test_dashboard_and_operator_telemetry_guards(self):
+        from pathlib import Path
+        static_dir = Path(__file__).parent / "obs_captioner" / "web" / "static"
+        dashboard_js = (static_dir / "dashboard.js").read_text(encoding="utf-8")
+        operator_html = (static_dir / "operator.html").read_text(encoding="utf-8")
+
+        # Dashboard JS checks
+        self.assertIn("lastVuMeterTimestamp", dashboard_js)
+        self.assertIn("isAudioRecovering", dashboard_js)
+        self.assertIn("ensureVuMeterDecayWatchdog", dashboard_js)
+        self.assertIn("resetVuMeterLevel()", dashboard_js)
+
+        # Operator HTML checks
+        self.assertIn("audio-recovery-warning", operator_html)
+        self.assertIn("lastVuMeterTime", operator_html)
+        self.assertIn("Date.now() - lastVuMeterTime > 600", operator_html)
+
+
 if __name__ == "__main__":
     unittest.main()
+
 
 
 

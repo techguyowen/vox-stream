@@ -296,6 +296,8 @@ def get_app_status(
         "is_running": not is_paused,
         "obs_connected": obs_client.is_connected if obs_client else False,
         "audio_level_db": audio_capture.current_rms_db if audio_capture else -100.0,
+        "audio_recovering": bool(audio_capture.is_recovering) if audio_capture else False,
+        "audio_device": audio_capture.device_info.get("name") if (audio_capture and audio_capture.device_info) else "Default",
         "engine": active_eng,
         "primary_engine": config.general.engine,
         "engine_name": engine.name if engine else active_eng,
@@ -862,6 +864,8 @@ async def main_async(args):
             logger.warning(f"Could not initialize system tray applet: {te}")
 
     audio_capture.on_recovery_status = on_recovery_status
+    if not audio_capture.start(loop=loop):
+        logger.warning("Initial audio capture start returned False; audio watchdog will continue auto-recovery.")
 
     # 4. Initialize Twitch Chat Bot
     twitch_bot = None
@@ -966,9 +970,10 @@ async def main_async(args):
                 loop,
             )
 
-    # 6. Initialize Audio Capture
-    if not audio_capture.start(loop=loop):
-        logger.error("Failed to start audio capture stream.")
+    # 6. Ensure Audio Capture is active
+    if not audio_capture.stream and not audio_capture.is_recovering:
+        if not audio_capture.start(loop=loop):
+            logger.error("Failed to start audio capture stream.")
 
     # Hook OBS auto-start / auto-stop events & recording sync
     if obs_client:

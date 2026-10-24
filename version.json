@@ -1,9 +1,9 @@
 {
-  "version": "1.2.10",
+  "version": "1.2.11",
   "major": 1,
   "minor": 2,
-  "patch": 10,
+  "patch": 11,
   "release_date": "2026-10-24",
-  "codename": "Gemini Live SMART Rewrite Dedup & Seamless Update Restart",
-  "notes": "Suffix-to-prefix overlap stripping for mid-turn SMART mode rewrites, leading stutter normalization, multi-entry cross-turn deduplication, BPE sub-word repairs, active fallback badge in header pill, Proclaim LAN auto-discovery & non-lyrics slide exclusions, and seamless Windows update restart handover."
+  "codename": "Live Microphone Telemetry & Boot VU Decay Watchdog",
+  "notes": "Resequenced audio capture startup to run immediately alongside web services before model initialization, auto-recovery on initial stream opening failures, immediate WebSocket VU snapshot dispatch, early frontend WebSocket initialization, and client-side VU meter activity decay watchdogs to prevent microphone status freezing on page load and reboots."
 }

@@ -1252,6 +1252,13 @@ function resetVuMeterLevel() {
         tabVuDb.textContent = "-∞ dB";
         tabVuDb.style.color = "#64748B";
     }
+    const previewMic = document.getElementById("preview-mic-indicator");
+    if (previewMic) {
+        previewMic.textContent = "🎙️ Mic: Idle";
+        previewMic.style.color = "#64748B";
+    }
+    const warnBadge = document.getElementById("mic-silence-warning");
+    if (warnBadge) warnBadge.style.display = "none";
 }
 const statusPill = document.getElementById("status-pill");
 const statusText = document.getElementById("status-text");
@@ -4995,6 +5002,10 @@ async function refreshEngineStatus() {
                 updateRecordingUI(data.recording);
             }
 
+            if (data.audio_recovering !== undefined) {
+                isAudioRecovering = !!data.audio_recovering;
+            }
+
             if (!controlWs || controlWs.readyState !== WebSocket.OPEN) {
                 if (!isRunning) {
                     resetVuMeterLevel();
@@ -5298,7 +5309,45 @@ function updateMicSilenceWarning(db) {
 }
 
 let controlReconnectAttempts = 0;
+let lastVuMeterTimestamp = 0;
+let isAudioRecovering = false;
+let vuMeterDecayInterval = null;
+
+function ensureVuMeterDecayWatchdog() {
+    if (vuMeterDecayInterval) return;
+    vuMeterDecayInterval = setInterval(() => {
+        if (Date.now() - lastVuMeterTimestamp > 600) {
+            if (vuBar) vuBar.style.width = "0%";
+            if (vuDbText) {
+                vuDbText.textContent = "-∞ dB";
+                vuDbText.style.color = "#64748B";
+            }
+            const tabVu = document.getElementById("audio-tab-vu-meter");
+            if (tabVu) tabVu.style.width = "0%";
+            const tabVuDb = document.getElementById("audio-vu-db-text");
+            if (tabVuDb) {
+                tabVuDb.textContent = "-∞ dB";
+                tabVuDb.style.color = "#64748B";
+            }
+            const previewMic = document.getElementById("preview-mic-indicator");
+            if (previewMic) {
+                if (!controlWs || controlWs.readyState !== WebSocket.OPEN) {
+                    previewMic.textContent = isRunning ? "🎙️ Mic: Reconnecting..." : "🎙️ Mic: Idle";
+                    previewMic.style.color = "#94A3B8";
+                } else if (isAudioRecovering) {
+                    previewMic.textContent = "🎙️ Mic: Recovering...";
+                    previewMic.style.color = "#F59E0B";
+                } else {
+                    previewMic.textContent = "🎙️ Mic: Idle";
+                    previewMic.style.color = "#64748B";
+                }
+            }
+        }
+    }, 100);
+}
+
 function connectControlWs() {
+    ensureVuMeterDecayWatchdog();
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/api/control/ws${apiKeyQuerySuffix()}`;
     controlWs = new WebSocket(wsUrl);
@@ -5308,6 +5357,7 @@ function connectControlWs() {
         try {
             const msg = JSON.parse(event.data);
             if (msg.type === "vu_meter") {
+                lastVuMeterTimestamp = Date.now();
                 // 0 dB (full scale) is falsy — must not collapse to -100
                 const db = (typeof msg.level_db === "number") ? msg.level_db : -100;
                 applyVuMeterLevel(db);
@@ -5384,10 +5434,18 @@ function connectControlWs() {
                     }
                 }
             } else if (msg.type === "audio_recovery_status") {
+                isAudioRecovering = (msg.status === "recovering");
+                const previewMic = document.getElementById("preview-mic-indicator");
                 if (msg.status === "recovering") {
-                    showToast(`⚠️ Audio interface '${msg.device}' disconnected. Auto-watchdog recovering...`, "warning", 4000);
+                    if (previewMic) {
+                        previewMic.textContent = "🎙️ Mic: Recovering...";
+                        previewMic.style.color = "#F59E0B";
+                    }
+                    resetVuMeterLevel();
+                    showToast(`⚠️ Audio interface '${msg.device || "mic"}' disconnected. Auto-watchdog recovering...`, "warning", 4000);
                 } else if (msg.status === "recovered") {
-                    showToast(`✅ Audio interface '${msg.device}' restored!`, "success", 4000);
+                    isAudioRecovering = false;
+                    showToast(`✅ Audio interface '${msg.device || "mic"}' restored!`, "success", 4000);
                 }
             } else if (msg.type === "emergency_fallback_activated") {
                 showToast(`⚠️ Primary engine (${msg.primary_engine}) offline: Emergency fallback active (${msg.fallback_engine || 'Vosk'})`, "warning", 6000);
@@ -5443,8 +5501,22 @@ function connectControlWs() {
         } catch (e) {}
     };
 
+    controlWs.onerror = () => {
+        resetVuMeterLevel();
+        const previewMic = document.getElementById("preview-mic-indicator");
+        if (previewMic) {
+            previewMic.textContent = isRunning ? "🎙️ Mic: Reconnecting..." : "🎙️ Mic: Disconnected";
+            previewMic.style.color = "#F59E0B";
+        }
+    };
+
     controlWs.onclose = () => {
         resetVuMeterLevel();
+        const previewMic = document.getElementById("preview-mic-indicator");
+        if (previewMic) {
+            previewMic.textContent = isRunning ? "🎙️ Mic: Reconnecting..." : "🎙️ Mic: Disconnected";
+            previewMic.style.color = "#F59E0B";
+        }
         setTimeout(connectControlWs, Math.min(10000, (++controlReconnectAttempts) * 3000));
     };
 }
@@ -7216,6 +7288,9 @@ function initChurchNameHandlers() {
 
 // Initialize on page load
 window.addEventListener("DOMContentLoaded", async () => {
+    // Connect WebSockets immediately for instant live telemetry and controls
+    connectControlWs();
+    connectCaptionWs();
     // Dynamic church lexicon badge on Gemini settings
     const churchModeToggle = document.getElementById("church_mode");
     if (churchModeToggle) {
@@ -7419,8 +7494,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     await loadYouTubeChapters();
     initUpdaterHandlers();
     loadUpdateStatus(false);
-    connectControlWs();
-    connectCaptionWs();
 
     // Setup copy buttons for stream and API links
     document.querySelectorAll(".btn-copy-code").forEach(btn => {

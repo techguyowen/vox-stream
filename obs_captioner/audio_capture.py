@@ -459,12 +459,51 @@ class AudioCapture:
             logger.error("sounddevice is not installed. Cannot capture audio.")
             return False
 
-        self._loop = loop or asyncio.get_event_loop()
+        if loop is not None:
+            self._loop = loop
+        elif self._loop is None:
+            try:
+                self._loop = asyncio.get_running_loop()
+            except RuntimeError:
+                try:
+                    self._loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    self._loop = None
+
         self._running = True
         ok = self._open_stream()
         if not ok:
-            self._running = False
-        return ok
+            self.is_recovering = True
+            dev_name = self.device_info["name"] if self.device_info else "Default"
+            logger.warning(
+                f"⚠️ Initial audio device opening failed on '{dev_name}'. Audio watchdog initiating background auto-recovery..."
+            )
+            if self.on_recovery_status:
+                try:
+                    self.on_recovery_status("recovering", dev_name)
+                except Exception:
+                    pass
+            if not self._recovery_task or self._recovery_task.done():
+                try:
+                    if self._loop:
+                        self._recovery_task = self._loop.create_task(self._auto_recovery_loop())
+                    else:
+                        self._recovery_task = asyncio.create_task(self._auto_recovery_loop())
+                except RuntimeError:
+                    try:
+                        self._recovery_task = asyncio.get_event_loop().create_task(self._auto_recovery_loop())
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
+            return False
+
+        if self.on_level_meter:
+            try:
+                self.on_level_meter(self.current_rms_db)
+            except Exception:
+                pass
+        return True
 
     def inject_audio_chunk(self, pcm_bytes: bytes):
         """Directly inject 16kHz 16-bit linear PCM audio chunk (e.g. from OBS native filter or network stream)."""
@@ -588,8 +627,19 @@ class AudioCapture:
                     self.device_info = new_info
                     ok = self._open_stream()
                     if ok:
+                        self.is_recovering = False
                         dev_name = self.device_info["name"] if self.device_info else f"Index {new_idx}"
                         logger.info(f"✅ Audio watchdog reconnected to '{dev_name}' (attempt #{retry_count})!")
+                        if self.on_recovery_status:
+                            try:
+                                self.on_recovery_status("recovered", dev_name)
+                            except Exception:
+                                pass
+                        if self.on_level_meter:
+                            try:
+                                self.on_level_meter(self.current_rms_db)
+                            except Exception:
+                                pass
                         break
             except Exception as ex:
                 logger.debug(f"Audio recovery attempt #{retry_count} failed: {ex}")

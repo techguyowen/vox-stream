@@ -193,6 +193,7 @@ class WebOverlayServer:
         self._snapshot_tasks: Set[asyncio.Task] = set()
         self._status_cache: Dict[str, Tuple[float, dict]] = {}
         self._status_cache_ttl: float = 2.0
+        self._last_vu_db: float = -100.0
 
         self._setup_routes()
 
@@ -2472,6 +2473,11 @@ class WebOverlayServer:
         ws = web.WebSocketResponse(heartbeat=25.0)
         await ws.prepare(request)
         self.control_sockets.add(ws)
+        initial_db = getattr(self, "_last_vu_db", -100.0)
+        try:
+            await ws.send_json({"type": "vu_meter", "level_db": initial_db})
+        except Exception:
+            pass
         try:
             async for msg in ws:
                 if msg.type == web.WSMsgType.TEXT:
@@ -2681,6 +2687,7 @@ class WebOverlayServer:
 
     async def broadcast_vu_level(self, db_level: float):
         """Broadcast audio VU level to dashboard clients."""
+        self._last_vu_db = db_level
         await self.broadcast_control({"type": "vu_meter", "level_db": db_level})
 
     async def start(self) -> bool:
