@@ -9414,6 +9414,48 @@ class TestQuoteFormattingConcatenationAndScripture(unittest.IsolatedAsyncioTestC
         self.assertTrue(absorbed_dup)
         self.assertEqual(stitched_dup, "")
 
+    async def test_multi_entry_cross_turn_overlap_and_bpe_subword_repairs(self):
+        from obs_captioner.obs.caption_sink import CaptionSink
+        from obs_captioner.config import AppConfig
+        from obs_captioner.history import TranscriptHistory, HistoryEntry
+        from obs_captioner.formatter import TextFormatter
+        import time
+
+        # 1. Verify BPE sub-word split repairs in TextFormatter
+        fmt = TextFormatter()
+        self.assertIn("gummy", fmt.format_text("I love gum my bears", is_final=True).lower())
+        self.assertNotIn("gum my", fmt.format_text("I love gum my bears", is_final=True).lower())
+        self.assertIn("basically", fmt.format_text("That is basic ally the point", is_final=True).lower())
+        self.assertIn("sunglasses", fmt.format_text("Wearing sun glasses outside", is_final=True).lower())
+
+        # 2. Verify multi-entry cross-turn overlap deduplication in CaptionSink
+        cfg = AppConfig()
+        hist = TranscriptHistory()
+        sink = CaptionSink(cfg, history=hist)
+
+        now = time.time()
+        hist.entries.append(HistoryEntry(id=1, text="Wait a 2nd.", start_time=now - 3.0, end_time=now - 2.5))
+        hist.entries.append(
+            HistoryEntry(
+                id=2,
+                text="Is this who I'm hanging out with now?",
+                start_time=now - 2.0,
+                end_time=now - 1.0,
+            )
+        )
+
+        # Combined multi-sentence repeat arriving within 8.0s should be completely absorbed
+        combined_repeat = "Wait a 2nd. Is this who I'm hanging out with now?"
+        stitched_comb, absorbed_comb = sink._attempt_boundary_stitch(combined_repeat)
+        self.assertTrue(absorbed_comb)
+        self.assertEqual(stitched_comb, "")
+
+        # Combined multi-sentence prefix + new trailing sentence should strip the prefix and keep only the new sentence
+        combined_plus_new = "Wait a 2nd. Is this who I'm hanging out with now? The best I got is pigs?"
+        stitched_new, absorbed_new = sink._attempt_boundary_stitch(combined_plus_new)
+        self.assertFalse(absorbed_new)
+        self.assertEqual(stitched_new, "The best I got is pigs?")
+
 
 if __name__ == "__main__":
     unittest.main()

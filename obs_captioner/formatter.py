@@ -21,6 +21,9 @@ _DISFLUENCY_REPLACEMENTS: Tuple[Tuple[re.Pattern, str], ...] = (
     (re.compile(r"\bdopple gangers\b", re.IGNORECASE), "doppelgängers"),
     (re.compile(r"\bdoppel ganger\b", re.IGNORECASE), "doppelgänger"),
     (re.compile(r"\bdopple ganger\b", re.IGNORECASE), "doppelgänger"),
+    (re.compile(r"\bgum my\b", re.IGNORECASE), "gummy"),
+    (re.compile(r"\bbasic ally\b", re.IGNORECASE), "basically"),
+    (re.compile(r"\bsun glasses\b", re.IGNORECASE), "sunglasses"),
 )
 
 # Precompiled deduplication patterns
@@ -151,6 +154,8 @@ _CONCAT_WHITELIST: Set[str] = {
     "census", "fungus", "circus", "walrus", "plus", "thus", "versus", "genus",
     "sinus", "nexus", "lotus", "bogus", "hubris", "apparatus", "consensus",
     "impetus", "stimulus", "syllabus", "surplus", "fetus",
+    # Compound / BPE-repaired words that must not be split:
+    "gummy", "gummies", "basically", "sunglasses",
 }
 
 _CONCAT_WORD_PATTERN = re.compile(r"\b([A-Za-z]+)\b")
@@ -211,6 +216,7 @@ def _get_known_words() -> Set[str]:
         "doxology", "benediction", "can", "have", "has", "had", "will", "would",
         "could", "should", "are", "were", "been",
         "sermon", "sermons", "fidget", "fidgets",
+        "gummy", "gummies", "basically", "sunglasses",
         # Broadcasting & calendar vocabulary
         "broadcast", "broadcasting", "broadcasts", "broadcaster", "broadcasters",
         "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",

@@ -121,13 +121,33 @@ def _norm_word(w: str) -> str:
     return _WORD_NORM_RE.sub("", w).casefold()
 
 
+def _filter_stutter_tokens(raw_words: Sequence[str]) -> List[str]:
+    """Normalize words while dropping hyphenated stutter fragments (e.g. 'Wai-' before 'Wait')."""
+    filtered: List[str] = []
+    n = len(raw_words)
+    for i, w in enumerate(raw_words):
+        norm = _norm_word(w)
+        if not norm:
+            continue
+        is_hyphen_frag = w.rstrip("\"'”’)]").endswith("-") and 1 <= len(norm) <= 4
+        if is_hyphen_frag:
+            continue
+        if i + 1 < n and 1 <= len(norm) <= 3:
+            next_norm = _norm_word(raw_words[i + 1])
+            if next_norm and len(next_norm) > len(norm) and next_norm.startswith(norm) and w.endswith("-"):
+                continue
+        filtered.append(norm)
+    return filtered
+
+
 def _strip_finalized_prefix(text: str, finalized_prefix: str) -> str:
     """Strip already-finalized prefix text from cumulative turn transcriptions.
 
     Matches normalized word tokens from the start of `text` against the words
     of `finalized_prefix`, tolerating minor ASR word revisions (>= 70% word
-    overlap or exact 2-word tail anchor at the prefix boundary) as well as
-    case/punctuation differences.
+    overlap or exact 2-word tail anchor at the prefix boundary), case/punctuation
+    differences, mid-turn SMART mode rewrites (dropping early clauses), and
+    leading disfluency/stutter removals.
     """
     if not text or not finalized_prefix:
         return (text or "").strip()
@@ -142,21 +162,31 @@ def _strip_finalized_prefix(text: str, finalized_prefix: str) -> str:
         remainder = raw_text[len(raw_prefix):]
         return re.sub(r"^[\s.,;!?:\"')\]—\-]+", "", remainder).strip()
 
-    prefix_tokens = [_norm_word(t) for t in raw_prefix.split()]
-    prefix_tokens = [t for t in prefix_tokens if t]
+    raw_prefix_words = raw_prefix.split()
+    prefix_tokens = _filter_stutter_tokens(raw_prefix_words)
+    if not prefix_tokens:
+        prefix_tokens = [_norm_word(t) for t in raw_prefix_words if _norm_word(t)]
     if not prefix_tokens:
         return raw_text
 
-    text_matches = list(re.finditer(r"\S+", raw_text))
+    text_matches = [m for m in re.finditer(r"\S+", raw_text) if _norm_word(m.group(0))]
     text_tokens = [_norm_word(m.group(0)) for m in text_matches]
 
     n_pref = len(prefix_tokens)
     n_text = len(text_tokens)
+    if n_text == 0:
+        return raw_text
 
-    # An incoming utterance is only 100% covered if n_text > 0 and text_tokens == prefix_tokens[:n_text]
+    # Check if the incoming utterance is 100% covered as a prefix or contiguous subsequence of prefix_tokens
     if n_text <= n_pref:
-        if n_text > 0 and text_tokens == prefix_tokens[:n_text]:
+        if text_tokens == prefix_tokens[:n_text]:
             return ""
+        if n_text >= 2:
+            for start_idx in range(0, n_pref - n_text + 1):
+                if prefix_tokens[start_idx : start_idx + n_text] == text_tokens:
+                    return ""
+
+    from collections import Counter
 
     # Search candidate cut positions around n_pref (+/- 4 words for ASR insertions/deletions)
     best_cut_idx = 0
@@ -169,17 +199,16 @@ def _strip_finalized_prefix(text: str, finalized_prefix: str) -> str:
         best_cut_idx = n_pref
         best_score = 1.0
     else:
-        from collections import Counter
         pref_counts = Counter(prefix_tokens)
         for k in range(min_k, max_k + 1):
-            cand_tokens = [t for t in text_tokens[:k] if t]
+            cand_tokens = text_tokens[:k]
             if not cand_tokens:
                 continue
             cand_counts = Counter(cand_tokens)
             common = sum(min(pref_counts[w], cand_counts[w]) for w in pref_counts)
             # Check boundary alignment (last words of prefix vs candidate end, or punctuation boundary)
             raw_cand_last = text_matches[k - 1].group(0)
-            raw_pref_last = raw_prefix.split()[-1]
+            raw_pref_last = raw_prefix_words[-1]
             punct_end_match = (
                 raw_cand_last[-1] in ".?!,;:" and raw_pref_last[-1] in ".?!,;:"
             )
@@ -209,6 +238,51 @@ def _strip_finalized_prefix(text: str, finalized_prefix: str) -> str:
         if best_cut_idx >= len(text_matches):
             return ""
         slice_pos = text_matches[best_cut_idx].start()
+        remainder = raw_text[slice_pos:]
+        return re.sub(r"^[\s.,;!?:\"')\]—\-]+", "", remainder).strip()
+
+    # Suffix-to-Prefix Overlap Matching (handles mid-turn SMART mode rewrites that drop early clauses)
+    max_overlap = min(n_pref, n_text)
+    for k in range(max_overlap, 1, -1):
+        if text_tokens[:k] == prefix_tokens[-k:]:
+            raw_cand_last = text_matches[k - 1].group(0)
+            if k >= 3 or sum(len(w) for w in text_tokens[:k]) >= 6 or raw_cand_last[-1] in ".?!,;:":
+                if k >= len(text_matches):
+                    return ""
+                slice_pos = text_matches[k].start()
+                remainder = raw_text[slice_pos:]
+                return re.sub(r"^[\s.,;!?:\"')\]—\-]+", "", remainder).strip()
+
+    # Fuzzy Suffix-to-Prefix Overlap Matching (when SMART mode both drops an early sentence and slightly revises a word)
+    best_sub_cut = 0
+    best_sub_score = 0.0
+    for start_i in range(1, n_pref - 2):
+        sub_pref = prefix_tokens[start_i:]
+        m = len(sub_pref)
+        if m < 3:
+            break
+        sub_counts = Counter(sub_pref)
+        s_min_k = max(3, min(n_text, m - 2))
+        s_max_k = min(n_text, m + 2)
+        for k in range(s_min_k, s_max_k + 1):
+            cand_tokens = text_tokens[:k]
+            if not cand_tokens or cand_tokens[-1] != sub_pref[-1]:
+                continue
+            if len(cand_tokens) >= 2 and len(sub_pref) >= 2 and cand_tokens[-2] != sub_pref[-2]:
+                raw_cand_last = text_matches[k - 1].group(0)
+                if raw_cand_last[-1] not in ".?!,;:":
+                    continue
+            cand_counts = Counter(cand_tokens)
+            common = sum(min(sub_counts[w], cand_counts[w]) for w in sub_counts)
+            overlap_ratio = common / max(m, k)
+            if overlap_ratio >= 0.78 and k > best_sub_cut:
+                best_sub_cut = k
+                best_sub_score = overlap_ratio
+
+    if best_sub_score >= 0.78 and best_sub_cut > 0:
+        if best_sub_cut >= len(text_matches):
+            return ""
+        slice_pos = text_matches[best_sub_cut].start()
         remainder = raw_text[slice_pos:]
         return re.sub(r"^[\s.,;!?:\"')\]—\-]+", "", remainder).strip()
 
@@ -458,6 +532,8 @@ class GeminiLiveEngine(BaseSTTEngine):
         self.on_audio_data: Optional[Callable[[bytes, str], Any]] = None
         self._drain_tasks: set[asyncio.Task] = set()
         self._on_transcript: Optional[CaptionCallback] = None
+        self._audio_q: Optional[asyncio.Queue] = None
+        self._pump_task: Optional[asyncio.Task] = None
 
         # Token usage & cost tracking (usageMetadata maxima + streamed audio duration)
         self._prompt_tokens: int = 0
@@ -467,6 +543,7 @@ class GeminiLiveEngine(BaseSTTEngine):
         # Per-turn incremental sentence segmentation & prefix tracking
         self._finalized_turn_prefix: str = ""
         self._finalized_turn_words: List[str] = []
+        self._finalized_turn_sentences: List[str] = []
         self._latest_interim_text: Optional[str] = None
         self._last_interim_change_mono: float = 0.0
         self._last_disconnect_finalized_text: str = ""
@@ -899,6 +976,7 @@ class GeminiLiveEngine(BaseSTTEngine):
         """Reset per-turn prefix tracking and interim state."""
         self._finalized_turn_prefix = ""
         self._finalized_turn_words = []
+        self._finalized_turn_sentences = []
         self._latest_interim_text = None
         self._last_interim_change_mono = 0.0
 
@@ -912,6 +990,22 @@ class GeminiLiveEngine(BaseSTTEngine):
         else:
             self._finalized_turn_prefix = seg
         self._finalized_turn_words = self._finalized_turn_prefix.split()
+        self._finalized_turn_sentences.append(seg)
+
+    def _strip_all_finalized_turn_prefixes(self, text: str) -> str:
+        """Strip full finalized turn prefix and any cleaned stutter variants if the full prefix was rewritten."""
+        raw_in = (text or "").strip()
+        if not raw_in or not self._finalized_turn_prefix:
+            return raw_in
+        remaining = _strip_finalized_prefix(raw_in, self._finalized_turn_prefix)
+        # Only fall back to individual sentence prefixes if the full turn prefix failed to match
+        if remaining == raw_in and self._finalized_turn_sentences:
+            for sent in self._finalized_turn_sentences:
+                next_rem = _strip_finalized_prefix(remaining, sent)
+                if next_rem != remaining:
+                    remaining = next_rem
+                    break
+        return remaining
 
     def _strip_disconnect_replay_prefix(self, text: str, now_m: float) -> str:
         """Strip any turn prefix finalized right before an unexpected disconnect if replayed within 5s."""
@@ -961,7 +1055,7 @@ class GeminiLiveEngine(BaseSTTEngine):
             deduped_text = self._strip_disconnect_replay_prefix(text, now_m)
             if not deduped_text:
                 return out
-            remaining_text = _strip_finalized_prefix(deduped_text, self._finalized_turn_prefix)
+            remaining_text = self._strip_all_finalized_turn_prefixes(deduped_text)
             if not remaining_text:
                 return out
 
@@ -988,7 +1082,7 @@ class GeminiLiveEngine(BaseSTTEngine):
                 self._last_interim_change_mono = now_m
         else:
             deduped_text = self._strip_disconnect_replay_prefix(text, now_m)
-            remaining_text = _strip_finalized_prefix(deduped_text, self._finalized_turn_prefix) if deduped_text else ""
+            remaining_text = self._strip_all_finalized_turn_prefixes(deduped_text) if deduped_text else ""
             self._reset_turn_state()
             self._last_disconnect_finalized_text = ""
             self._last_disconnect_mono = 0.0
@@ -1026,7 +1120,9 @@ class GeminiLiveEngine(BaseSTTEngine):
             return None
 
         raw = self._latest_interim_text.strip()
-        words = raw.split()
+        # Clean leading hyphenated stutter fragments (e.g. "Wai- Wait a 2nd." -> "Wait a 2nd.")
+        cleaned_raw = re.sub(r"^\b[A-Za-z]{1,4}-\s+", "", raw).strip()
+        words = (cleaned_raw or raw).split()
         if len(words) < 3:
             return None
 
@@ -1058,8 +1154,12 @@ class GeminiLiveEngine(BaseSTTEngine):
             if self._last_interim_change_mono > 0.0 and (now_m - self._last_interim_change_mono) < unpunct_threshold:
                 return None
 
-        text_to_finalize = raw
+        text_to_finalize = cleaned_raw or raw
+        # Record cleaned text in finalized prefix so subsequent SMART-cleaned sentences match the full prefix,
+        # while also keeping raw in _finalized_turn_sentences in case raw stutter persists in the next interim
         self._append_finalized_prefix(text_to_finalize)
+        if text_to_finalize != raw:
+            self._finalized_turn_sentences.append(raw)
         self._latest_interim_text = None
         self._last_interim_change_mono = now_m
         return TranscriptEvent(text=text_to_finalize, is_final=True, translated_text=None)
@@ -1496,11 +1596,15 @@ class GeminiLiveEngine(BaseSTTEngine):
         cancelled async generator is finished forever, which would otherwise
         leave every reconnect with no audio) and no queued audio is lost.
         """
+        self.is_running = True
         audio_q: asyncio.Queue = asyncio.Queue(maxsize=1500)
+        self._audio_q = audio_q
 
         async def _pump() -> None:
             try:
                 async for chunk in audio_stream:
+                    if not self.is_running:
+                        break
                     if audio_q.full():
                         try:
                             audio_q.get_nowait()  # drop oldest rather than block capture
@@ -1523,11 +1627,25 @@ class GeminiLiveEngine(BaseSTTEngine):
                     pass
 
         pump_task = asyncio.ensure_future(_pump())
+        self._pump_task = pump_task
         try:
             await self._stream_from_queue(audio_q, on_transcript)
         finally:
             if not pump_task.done():
                 pump_task.cancel()
+            try:
+                await asyncio.wait_for(asyncio.gather(pump_task, return_exceptions=True), timeout=0.5)
+            except Exception:
+                pass
+            if hasattr(audio_stream, "aclose"):
+                try:
+                    await asyncio.wait_for(audio_stream.aclose(), timeout=0.2)
+                except Exception:
+                    pass
+            if self._pump_task is pump_task:
+                self._pump_task = None
+            if self._audio_q is audio_q:
+                self._audio_q = None
 
     async def _run_interpreter_sidecar(self, interp_q: "asyncio.Queue") -> None:
         """Run the interpreter audio sidecar on the live-translate model.
@@ -2322,6 +2440,19 @@ class GeminiLiveEngine(BaseSTTEngine):
     async def stop(self) -> None:
         """Stop Gemini Live streaming session cleanly."""
         self.is_running = False
+        if self._pump_task is not None and not self._pump_task.done():
+            self._pump_task.cancel()
+        self._pump_task = None
+        if self._audio_q is not None:
+            if self._audio_q.full():
+                try:
+                    self._audio_q.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+            try:
+                self._audio_q.put_nowait(None)
+            except asyncio.QueueFull:
+                pass
         if self._ping_task and not self._ping_task.done():
             self._ping_task.cancel()
         self._ping_task = None

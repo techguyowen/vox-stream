@@ -617,7 +617,7 @@ class BackendProcessManager:
             return True
         return self.process is not None and self.process.poll() is None
 
-    def start(self, extra_args: Optional[list] = None) -> bool:
+    def start(self, extra_args: Optional[list] = None, attach_existing: bool = True) -> bool:
         """Start the VoxStream backend process."""
         if self.is_running or self.is_starting:
             return True
@@ -626,19 +626,20 @@ class BackendProcessManager:
         self._stop_requested = False
 
         # First check if backend is already running on port 8765
-        try:
-            req = urllib.request.Request("http://127.0.0.1:8765/api/status")
-            with urllib.request.urlopen(req, timeout=0.8) as resp:
-                if resp.status == 200:
-                    self.attached_to_existing = True
-                    self.is_starting = False
-                    if self.on_log_line:
-                        self.on_log_line("[VoxStream] Attached to existing active backend instance on port 8765.")
-                    if self.on_status_change:
-                        self.on_status_change("RUNNING")
-                    return True
-        except Exception:
-            pass
+        if attach_existing:
+            try:
+                req = urllib.request.Request("http://127.0.0.1:8765/api/status")
+                with urllib.request.urlopen(req, timeout=0.8) as resp:
+                    if resp.status == 200:
+                        self.attached_to_existing = True
+                        self.is_starting = False
+                        if self.on_log_line:
+                            self.on_log_line("[VoxStream] Attached to existing active backend instance on port 8765.")
+                        if self.on_status_change:
+                            self.on_status_change("RUNNING")
+                        return True
+            except Exception:
+                pass
 
         py_exe = find_python_executable(self.root_dir)
 
@@ -811,7 +812,8 @@ class BackendProcessManager:
                 self.on_status_change("STARTING")
             time.sleep(1.0)
             self.process = None
-            self.start()
+            self.attached_to_existing = False
+            self.start(attach_existing=False)
             return
 
         self.process = None

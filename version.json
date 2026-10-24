@@ -1,9 +1,9 @@
 {
-  "version": "1.2.8",
+  "version": "1.2.10",
   "major": 1,
   "minor": 2,
-  "patch": 8,
-  "release_date": "2026-10-22",
-  "codename": "Gemini Live Make-Before-Break Session Rotation & ASR Resilience",
-  "notes": "Zero-downtime make-before-break session rotation, cloud sliding-window context compression, trailing drain token capture, spoken time normalization guard (90:09 fix), 2-letter concatenation splitting, cross-turn phrase deduplication, Read-Along Tutorial Guide, and mobile PWA helper."
+  "patch": 10,
+  "release_date": "2026-10-24",
+  "codename": "Gemini Live SMART Rewrite Dedup & Seamless Update Restart",
+  "notes": "Suffix-to-prefix overlap stripping for mid-turn SMART mode rewrites, leading stutter normalization, multi-entry cross-turn deduplication, BPE sub-word repairs, active fallback badge in header pill, Proclaim LAN auto-discovery & non-lyrics slide exclusions, and seamless Windows update restart handover."
 }

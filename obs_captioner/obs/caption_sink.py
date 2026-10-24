@@ -252,7 +252,7 @@ class CaptionSink:
             last_final_time = last_entry_end
         else:
             last_final_time = p_time
-        if not self.history.entries or (now - last_final_time > 3.5):
+        if not self.history.entries or (now - last_final_time > 8.0):
             return clean_text, False
 
         last_entry = self.history.entries[-1]
@@ -261,49 +261,86 @@ class CaptionSink:
         if not clean_new:
             return clean_text, False
 
-        # 1. Lexical word-split stitching (e.g. 'way poi' + 'point' -> 'Waypoint')
-        stitches = getattr(self, "_effective_boundary_stitches", self.BOUNDARY_STITCH_PAIRS)
-        for (prefix, suffix), (stitched_word, _) in stitches.items():
-            # Check if last entry ends with prefix or stitched word (ignoring trailing punctuation)
-            tail_pat = rf"(?:\b|_)(?:{re.escape(prefix)}|{re.escape(stitched_word)})[.,!?:;\-_]*$"
-            tail_match = re.search(tail_pat, last_text, re.IGNORECASE)
-            if not tail_match:
-                continue
+        # 1. Lexical word-split stitching (e.g. 'way poi' + 'point' -> 'Waypoint') - gated at <= 3.5s
+        if (now - last_final_time) <= 3.5:
+            stitches = getattr(self, "_effective_boundary_stitches", self.BOUNDARY_STITCH_PAIRS)
+            for (prefix, suffix), (stitched_word, _) in stitches.items():
+                # Check if last entry ends with prefix or stitched word (ignoring trailing punctuation)
+                tail_pat = rf"(?:\b|_)(?:{re.escape(prefix)}|{re.escape(stitched_word)})[.,!?:;\-_]*$"
+                tail_match = re.search(tail_pat, last_text, re.IGNORECASE)
+                if not tail_match:
+                    continue
 
-            # Check if clean_text starts with suffix or stitched word (ignoring leading punctuation)
-            head_pat = rf"^[.,!?:;\-_\s]*(?:{re.escape(suffix)}|{re.escape(stitched_word)})\b[.,!?:;\-_]*"
-            head_match = re.search(head_pat, clean_new, re.IGNORECASE)
-            if not head_match:
-                continue
+                # Check if clean_text starts with suffix or stitched word (ignoring leading punctuation)
+                head_pat = rf"^[.,!?:;\-_\s]*(?:{re.escape(suffix)}|{re.escape(stitched_word)})\b[.,!?:;\-_]*"
+                head_match = re.search(head_pat, clean_new, re.IGNORECASE)
+                if not head_match:
+                    continue
 
-            # Found split boundary! Update last history entry
-            prefix_span = tail_match.span()
-            last_entry.text = last_text[:prefix_span[0]] + stitched_word + ("." if last_text.endswith(".") else "")
+                # Found split boundary! Update last history entry
+                prefix_span = tail_match.span()
+                last_entry.text = last_text[:prefix_span[0]] + stitched_word + ("." if last_text.endswith(".") else "")
 
-            # Remainder of new chunk
-            remainder = clean_new[head_match.end():].strip()
-            if remainder:
-                remainder = remainder[0].upper() + remainder[1:]
-                return remainder, False
-            else:
+                # Remainder of new chunk
+                remainder = clean_new[head_match.end():].strip()
+                if remainder:
+                    remainder = remainder[0].upper() + remainder[1:]
+                    return remainder, False
+                else:
+                    return "", True
+
+        # 2. Cross-turn trailing-to-leading word overlap stripping across recent history entries (<= 8.0s)
+        tokens = list(re.finditer(r"\b\w+\b", clean_new))
+        new_norm_words = [t.group(0).casefold() for t in tokens]
+        if not new_norm_words:
+            return clean_text, False
+
+        all_entries = list(self.history.entries) if self.history.entries else []
+        recent_entries = [
+            e for e in all_entries[-3:]
+            if getattr(e, "end_time", 0.0) <= 0.0 or (now - e.end_time) <= 8.0
+        ]
+        if not recent_entries:
+            recent_entries = [last_entry]
+
+        prev_words_last = [m.group(0).casefold() for m in re.finditer(r"\b\w+\b", last_text)]
+        combined_recent_words: list[str] = []
+        for e in recent_entries:
+            combined_recent_words.extend(m.group(0).casefold() for m in re.finditer(r"\b\w+\b", e.text))
+
+        # 2a. Check if new_norm_words is an exact multi-entry suffix of recent entries
+        # (i.e. repeats the last 2+ finalized sentences together without matching an arbitrary interior substring)
+        if len(recent_entries) >= 2 and len(new_norm_words) > len(prev_words_last):
+            n_new = len(new_norm_words)
+            n_comb = len(combined_recent_words)
+            if n_new <= n_comb and combined_recent_words[-n_new:] == new_norm_words:
                 return "", True
 
-        # 2. Cross-turn trailing-to-leading word overlap stripping
-        norm = lambda w: re.sub(r"[^\w]+", "", w).casefold()
-        prev_words = [norm(w) for w in last_text.split() if norm(w)]
-        if prev_words:
-            tokens = list(re.finditer(r"\b\w+\b", clean_new))
-            new_norm_words = [t.group(0).casefold() for t in tokens]
-            if prev_words != new_norm_words:
-                max_k = min(len(prev_words), len(new_norm_words), 16)
-                for k in range(max_k, 2, -1):  # min overlap of 3 words
-                    if prev_words[-k:] == new_norm_words[:k]:
-                        cut_idx = tokens[k - 1].end()
-                        rem = clean_new[cut_idx:].lstrip(" .,;:—-\t\"'”’")
-                        if rem and re.search(r"\w", rem):
-                            rem = rem[0].upper() + rem[1:]
-                            return rem, False
-                        return "", True
+        # 2b. Check trailing-to-leading overlap against both last entry and combined recent entries
+        candidate_prev_lists = [prev_words_last]
+        if len(recent_entries) >= 2 and combined_recent_words != prev_words_last:
+            candidate_prev_lists.append(combined_recent_words)
+
+        for prev_words in candidate_prev_lists:
+            if not prev_words or prev_words == new_norm_words:
+                continue
+            max_k = min(len(prev_words), len(new_norm_words), 24)
+            for k in range(max_k, 1, -1):
+                is_exact = (prev_words[-k:] == new_norm_words[:k])
+                if is_exact:
+                    if k == 2:
+                        # Require 2-word overlap to end at punctuation or have >= 6 chars
+                        end_pos = tokens[k - 1].end()
+                        trailing_slice = clean_new[end_pos : end_pos + 2]
+                        has_punct = bool(re.match(r"^[.,!?;:]", trailing_slice))
+                        if not has_punct and sum(len(w) for w in new_norm_words[:2]) < 6:
+                            continue
+                    cut_idx = tokens[k - 1].end()
+                    rem = clean_new[cut_idx:].lstrip(" .,;?!:—-\t\"'”’")
+                    if rem and re.search(r"\w", rem):
+                        rem = rem[0].upper() + rem[1:]
+                        return rem, False
+                    return "", True
 
         return clean_text, False
 

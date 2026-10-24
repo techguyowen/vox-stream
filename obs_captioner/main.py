@@ -145,9 +145,30 @@ async def cleanup_resources(
     if pipeline_task:
         pipeline_task.cancel()
         try:
-            await asyncio.wait_for(pipeline_task, timeout=0.5)
+            await asyncio.wait_for(pipeline_task, timeout=0.8)
         except (asyncio.CancelledError, asyncio.TimeoutError, Exception):
             pass
+    if engine:
+        try:
+            await asyncio.wait_for(engine.stop(), timeout=1.0)
+        except Exception as e:
+            logger.debug(f"Error stopping engine: {e}")
+    if audio_capture:
+        try:
+            audio_capture.stop()
+        except Exception as e:
+            logger.debug(f"Error stopping audio capture: {e}")
+    if web_server:
+        if getattr(web_server, "translator", None) and hasattr(web_server.translator, "_save_disk_cache"):
+            try:
+                logger.info("Flushing translation cache to disk...")
+                web_server.translator._save_disk_cache()
+            except Exception as e:
+                logger.debug(f"Error saving translator disk cache: {e}")
+        try:
+            await asyncio.wait_for(web_server.stop(), timeout=1.5)
+        except Exception as e:
+            logger.debug(f"Error stopping web server: {e}")
     if scheduler:
         try:
             scheduler.stop()
@@ -169,16 +190,6 @@ async def cleanup_resources(
             subtitle_recorder.stop_recording()
         except Exception as e:
             logger.debug(f"Error stopping subtitle recorder: {e}")
-    if engine:
-        try:
-            await asyncio.wait_for(engine.stop(), timeout=0.8)
-        except Exception as e:
-            logger.debug(f"Error stopping engine: {e}")
-    if audio_capture:
-        try:
-            audio_capture.stop()
-        except Exception as e:
-            logger.debug(f"Error stopping audio capture: {e}")
     if sink:
         try:
             await asyncio.wait_for(sink.stop(), timeout=0.8)
@@ -189,17 +200,6 @@ async def cleanup_resources(
             await asyncio.wait_for(obs_client.close(), timeout=0.8)
         except Exception as e:
             logger.debug(f"Error closing OBS client: {e}")
-    if web_server:
-        if getattr(web_server, "translator", None) and hasattr(web_server.translator, "_save_disk_cache"):
-            try:
-                logger.info("Flushing translation cache to disk...")
-                web_server.translator._save_disk_cache()
-            except Exception as e:
-                logger.debug(f"Error saving translator disk cache: {e}")
-        try:
-            await asyncio.wait_for(web_server.stop(), timeout=1.5)
-        except Exception as e:
-            logger.debug(f"Error stopping web server: {e}")
     if tray_app:
         try:
             tray_app.stop()
@@ -396,6 +396,7 @@ async def main_async(args):
     engine_switch_target = ""
     engine_switch_error = None
     fallback_active = False
+    is_streaming_in_pipeline = False
 
     def wire_engine_callbacks(eng):
         if web_server is not None:
@@ -435,7 +436,7 @@ async def main_async(args):
         )
 
     async def switch_engine_async(new_cfg: AppConfig):
-        nonlocal engine, initialized, is_switching_engine, engine_switch_status, engine_switch_target, engine_switch_error
+        nonlocal engine, initialized, is_switching_engine, engine_switch_status, engine_switch_target, engine_switch_error, fallback_active
         nonlocal active_engine_type, active_vosk_model, active_whisper_model, active_moonshine_model, active_gemini_key, active_gemini_model, active_bandwidth_key
         nonlocal active_sherpa_model, active_sherpa_path, active_sherpa_threads, active_sherpa_device
         nonlocal active_parakeet_model, active_parakeet_device, active_parakeet_threads
@@ -472,9 +473,13 @@ async def main_async(args):
                     logger.info(f"Stopping active engine: {engine.name}...")
                     await engine.stop()
                     engine = None
+                    # Wait briefly for run_pipeline() to exit start_streaming() and release audio generator
+                    wait_deadline = time.monotonic() + 1.0
+                    while is_streaming_in_pipeline and time.monotonic() < wait_deadline:
+                        await asyncio.sleep(0.05)
                     from .hardware import release_stt_memory
                     release_stt_memory()
-                    await asyncio.sleep(0.1)
+                    await asyncio.sleep(0.05)
 
                 await broadcast_status(f"Initializing {target_name} (checking cache / downloading weights)...")
                 logger.info(f"Instantiating new STT engine for: {new_cfg.general.engine}...")
@@ -484,6 +489,7 @@ async def main_async(args):
                 if init_ok:
                     engine = new_eng
                     initialized = True
+                    fallback_active = False
                     engine_switch_error = None
                     engine_switch_status = f"✅ {engine.name} ready!"
                     active_engine_type = new_cfg.general.engine
@@ -528,6 +534,7 @@ async def main_async(args):
                             engine = fallback_eng
                             wire_engine_callbacks(engine)
                             initialized = True
+                            fallback_active = False
                             logger.info(f"Restored previous engine: {engine.name}")
                     except Exception as fe:
                         logger.warning(f"Could not restore previous engine: {fe}")
@@ -642,6 +649,9 @@ async def main_async(args):
             or (new_cfg.general.engine in ("parakeet", "nemo", "nemo_parakeet", "fastconformer") and (new_cfg.parakeet.model_name != active_parakeet_model or new_cfg.parakeet.device != active_parakeet_device or new_cfg.parakeet.num_threads != active_parakeet_threads))
             or (new_cfg.general.engine in ("sensevoice", "funasr") and (new_cfg.sensevoice.model_name != active_sensevoice_model or new_cfg.sensevoice.device != active_sensevoice_device or new_cfg.sensevoice.num_threads != active_sensevoice_threads or new_cfg.sensevoice.detect_events != active_sensevoice_events or new_cfg.sensevoice.language != active_sensevoice_language))
             or (engine_switch_error is not None)
+            or bool(fallback_active)
+            or (not initialized)
+            or (engine is None)
         )
         if (new_cfg.general.engine == 'gemini_live' and (getattr(new_cfg.translation, 'interpreter_mode', False) != active_interpreter_mode or (getattr(new_cfg.translation, 'interpreter_mode', False) and getattr(new_cfg.translation, 'target_language', 'es') != active_translation_target))):
             needs_engine_reload = True
@@ -897,6 +907,7 @@ async def main_async(args):
             )
 
     initialized = await engine.initialize(status_callback=initial_status_cb)
+    active_gemini_model = config.gemini_live.model
     if not initialized:
         logger.error(f"Failed to initialize engine '{engine.name}'. Please check API keys / credentials in Dashboard or config.json.")
         fallback_target = getattr(config.general, "fallback_engine", "vosk")
@@ -1168,7 +1179,7 @@ async def main_async(args):
         fallback engine, which lets its `start_streaming()` return so
         `run_pipeline()` loops straight into streaming on the restored primary.
         """
-        nonlocal engine, fallback_active, engine_switch_status
+        nonlocal engine, fallback_active, engine_switch_status, active_gemini_model
         while fallback_active and not is_paused and not shutdown_event.is_set():
             await asyncio.sleep(15.0)
             if not (fallback_active and not is_paused and not shutdown_event.is_set()):
@@ -1199,6 +1210,7 @@ async def main_async(args):
                         probe_eng = None  # Ownership transferred; skip stop in finally.
                         wire_engine_callbacks(engine)
                         fallback_active = False
+                        active_gemini_model = config.gemini_live.model
                         engine_switch_status = f"✅ {engine.name} restored and ready!"
                         logger.info(f"STT primary restored: {engine.name}")
                         try:
@@ -1231,7 +1243,7 @@ async def main_async(args):
                         pass
 
     async def run_pipeline():
-        nonlocal initialized, engine_switch_status, engine, fallback_active
+        nonlocal initialized, engine_switch_status, engine, fallback_active, is_streaming_in_pipeline, active_gemini_model
         last_engine_retry = 0.0
         last_primary_probe = 0.0
         while not shutdown_event.is_set():
@@ -1254,6 +1266,7 @@ async def main_async(args):
                                 engine = probe_eng
                                 wire_engine_callbacks(engine)
                                 fallback_active = False
+                                active_gemini_model = config.gemini_live.model
                                 engine_switch_status = f"✅ {engine.name} restored and ready!"
                                 logger.info(f"STT primary restored: {engine.name}")
                                 try:
@@ -1285,6 +1298,7 @@ async def main_async(args):
                         retry_ok = await engine.initialize(status_callback=initial_status_cb)
                         if retry_ok:
                             initialized = True
+                            active_gemini_model = config.gemini_live.model
                             engine_switch_status = f"✅ {engine.name} ready!"
                             logger.info(f"✅ Engine background re-initialization succeeded: {engine.name}")
                             if web_server:
@@ -1344,14 +1358,17 @@ async def main_async(args):
                         logger.warning(f"Engine background re-initialization error: {e}; will retry.")
                 await asyncio.sleep(0.5)
                 continue
+            current_eng = engine
             try:
+                is_streaming_in_pipeline = True
                 probe_task = asyncio.create_task(_fallback_recovery_watcher())
                 try:
-                    await engine.start_streaming(
+                    await current_eng.start_streaming(
                         audio_stream=audio_capture.stream_generator(),
                         on_transcript=sink.handle_transcript,
                     )
                 finally:
+                    is_streaming_in_pipeline = False
                     probe_task.cancel()
                     try:
                         await probe_task
@@ -1360,13 +1377,15 @@ async def main_async(args):
             except asyncio.CancelledError:
                 break
             except Exception as e:
+                if is_switching_engine or engine is not current_eng:
+                    continue
                 if getattr(e, "__class__", None).__name__ == "AudioStreamError":
                     logger.error("Audio device lost. Attempting to re-initialize audio capture in 3 seconds...")
                     audio_capture.stop()
                     await asyncio.sleep(3.0)
                     if not audio_capture.start(loop=loop):
                         logger.error("Failed to recover audio capture stream. Will retry.")
-                elif not is_switching_engine:
+                else:
                     logger.error(f"Pipeline error: {e}", exc_info=True)
                     # If primary cloud engine fails during streaming, check auto-fallback
                     fallback_target = getattr(config.general, "fallback_engine", "vosk")
@@ -1453,9 +1472,9 @@ async def main_async(args):
         logger.info("KeyboardInterrupt received.")
     finally:
         try:
-            await asyncio.wait_for(cleanup_all(), timeout=3.0)
+            await asyncio.wait_for(cleanup_all(), timeout=5.0)
         except asyncio.TimeoutError:
-            logger.warning("Resource cleanup timed out after 3.0s, proceeding with exit.")
+            logger.warning("Resource cleanup timed out after 5.0s, proceeding with exit.")
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
     return 42 if is_restart else 0
@@ -1510,14 +1529,21 @@ def main():
         if len(sys.argv) > 1:
             restart_cmd.extend(sys.argv[1:])
 
-        # If running under batch/shell wrapper, exit with code 42 so launcher loops
-        is_runner = os.environ.get("VOXSTREAM_RUNNER") in ("bat", "sh")
+        # If running under batch/shell wrapper or GUI launcher, exit with code 42 so parent supervisor restarts cleanly
+        is_runner = os.environ.get("VOXSTREAM_RUNNER") in ("bat", "sh", "launcher_gui", "launcher_bat")
         if is_runner:
             os._exit(42)
         elif sys.platform == "win32":
-            # Standalone Windows execution without wrapper: spawn replacement process and exit
+            # Standalone Windows execution without wrapper: spawn delayed replacement process so OS ports/audio handles release first
             try:
-                subprocess.Popen(restart_cmd)
+                trampoline_cmd = [
+                    sys.executable,
+                    "-c",
+                    "import time, subprocess, sys; time.sleep(1.0); subprocess.Popen(sys.argv[1:])",
+                    *restart_cmd,
+                ]
+                creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                subprocess.Popen(trampoline_cmd, creationflags=creationflags)
             except Exception as restart_err:
                 logger.error(f"Failed to spawn replacement restart process: {restart_err}")
             os._exit(42)

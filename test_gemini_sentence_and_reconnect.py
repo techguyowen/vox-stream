@@ -1263,3 +1263,164 @@ async def test_cancelled_error_during_rotation_resets_flag():
         except (asyncio.CancelledError, asyncio.TimeoutError):
             task.cancel()
     assert engine._rotation_in_progress is False
+
+
+@pytest.mark.asyncio
+async def test_smart_mode_mid_turn_sentence_drop_and_rewrite_no_duplicates():
+    """Verify suffix-to-prefix stripping when Gemini SMART mode drops early filler sentences mid-turn."""
+    cfg, engine, sink, server, display_ws = _build_full_pipeline(max_sentence_words=24)
+
+    try:
+        # Scenario 1: Speaker says "Okay. All right. Well, moving on." (split finalized)
+        # followed by "This son was very spoiled." (VAD pause finalized).
+        # Then Gemini SMART mode rewrites the turn to:
+        # "Moving on, this son was very spoiled. He did not treat his father very well."
+        evs_1 = engine._segment_streaming_event(
+            "Okay. All right. Well, moving on. This son was very",
+            is_final=False,
+            mono_now=100.0,
+        )
+        finals_1 = [e.text for e in evs_1 if e.is_final]
+        assert finals_1 == ["Okay. All right. Well, moving on."]
+
+        evs_2 = engine._segment_streaming_event(
+            "Okay. All right. Well, moving on. This son was very spoiled.",
+            is_final=False,
+            mono_now=100.5,
+        )
+        assert [e.text for e in evs_2 if e.is_final] == []
+
+        # Simulate VAD pause finalizing "This son was very spoiled."
+        vad_ev = engine._maybe_finalize_on_vad_pause(
+            speech_active=False, silence_duration=0.8, pause_threshold=0.6, mono_now=101.3
+        )
+        assert vad_ev is not None and vad_ev.is_final
+        assert vad_ev.text == "This son was very spoiled."
+
+        # Now authoritative inputTranscription arrives with SMART mode dropping "Okay. All right. Well,"
+        evs_3 = engine._segment_streaming_event(
+            "Moving on, this son was very spoiled. He did not treat his father very well.",
+            is_final=True,
+            mono_now=103.0,
+        )
+        finals_3 = [e.text for e in evs_3 if e.is_final]
+        assert finals_3 == ["He did not treat his father very well."], (
+            f"Expected only new sentence after suffix-to-prefix strip, got {finals_3}"
+        )
+
+        # Scenario 2: Exact full-turn repeat when both sentences were already finalized via split + VAD pause
+        evs_b1 = engine._segment_streaming_event(
+            "Okay. All right. Well, moving on. This son was very",
+            is_final=False,
+            mono_now=200.0,
+        )
+        assert [e.text for e in evs_b1 if e.is_final] == ["Okay. All right. Well, moving on."]
+
+        engine._segment_streaming_event(
+            "Okay. All right. Well, moving on. This son was very spoiled.",
+            is_final=False,
+            mono_now=200.5,
+        )
+        vad_b = engine._maybe_finalize_on_vad_pause(
+            speech_active=False, silence_duration=0.8, pause_threshold=0.6, mono_now=201.3
+        )
+        assert vad_b is not None and vad_b.text == "This son was very spoiled."
+
+        evs_b_final = engine._segment_streaming_event(
+            "Okay. All right. Well, moving on. This son was very spoiled.",
+            is_final=True,
+            mono_now=202.0,
+        )
+        assert [e.text for e in evs_b_final if e.is_final] == []
+    finally:
+        await sink.stop()
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_leading_stutter_stripped_by_smart_mode_no_duplicates():
+    """Verify leading hyphenated stutter ('Wai- Wait a 2nd.') finalized on VAD pause does not duplicate when SMART mode drops 'Wai-'."""
+    cfg, engine, sink, server, display_ws = _build_full_pipeline(max_sentence_words=24)
+
+    try:
+        # 1. Interim arrives with leading stutter "Wai- Wait a 2nd." and speaker pauses
+        engine._segment_streaming_event("Wai- Wait a 2nd.", is_final=False, mono_now=300.0)
+        vad_1 = engine._maybe_finalize_on_vad_pause(
+            speech_active=False, silence_duration=0.8, pause_threshold=0.6, mono_now=300.8
+        )
+        assert vad_1 is not None and vad_1.is_final
+        # Leading stutter should be cleaned on emission
+        assert vad_1.text == "Wait a 2nd."
+
+        # 2. Speaker continues in same turn, SMART mode strips "Wai-" from the cumulative transcript
+        evs_2 = engine._segment_streaming_event(
+            "Wait a 2nd. Is this who I'm hanging out with now? The best I got is",
+            is_final=False,
+            mono_now=302.0,
+        )
+        finals_2 = [e.text for e in evs_2 if e.is_final]
+        assert finals_2 == ["Is this who I'm hanging out with now?"]
+
+        # 3. Final inputTranscription arrives for the full turn
+        evs_3 = engine._segment_streaming_event(
+            "Wait a 2nd. Is this who I'm hanging out with now? The best I got is pigs?",
+            is_final=True,
+            mono_now=304.0,
+        )
+        finals_3 = [e.text for e in evs_3 if e.is_final]
+        assert finals_3 == ["The best I got is pigs?"], (
+            f"Expected only the final sentence without duplicating earlier sentences, got {finals_3}"
+        )
+    finally:
+        await sink.stop()
+        await server.stop()
+
+
+@pytest.mark.asyncio
+async def test_gemini_live_stop_unblocks_start_streaming_and_allows_clean_restart():
+    """Verify GeminiLiveEngine.stop() unblocks start_streaming(), cancels _pump_task, and allows immediate restart."""
+    gl, engine, conns, Sess = _strict_engine()
+    got: List[TranscriptEvent] = []
+
+    closed_gen = False
+
+    async def mock_audio_stream():
+        nonlocal closed_gen
+        try:
+            while True:
+                yield b"\x01\x00" * 160
+                await asyncio.sleep(0.02)
+        finally:
+            closed_gen = True
+
+    with patch.object(gl.aiohttp, "ClientSession", Sess):
+        stream_task = asyncio.create_task(engine.start_streaming(mock_audio_stream(), got.append))
+        await asyncio.sleep(0.08)
+        assert engine.is_running is True
+        assert len(conns) == 1
+
+        # Stop engine and verify start_streaming terminates promptly and closes audio generator
+        await asyncio.wait_for(engine.stop(), timeout=1.5)
+        await asyncio.wait_for(stream_task, timeout=1.5)
+        assert engine.is_running is False
+        assert closed_gen is True
+
+        # Now start streaming again without recreating the process — must set is_running=True and connect cleanly
+        closed_gen_2 = False
+
+        async def mock_audio_stream_2():
+            nonlocal closed_gen_2
+            try:
+                yield b"\x02\x00" * 160
+                await asyncio.sleep(0.05)
+            finally:
+                closed_gen_2 = True
+
+        stream_task_2 = asyncio.create_task(engine.start_streaming(mock_audio_stream_2(), got.append))
+        await asyncio.sleep(0.08)
+        assert engine.is_running is True
+        assert len(conns) >= 2
+        await asyncio.wait_for(engine.stop(), timeout=1.5)
+        await asyncio.wait_for(stream_task_2, timeout=1.5)
+        assert closed_gen_2 is True
+
