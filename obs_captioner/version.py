@@ -6,8 +6,8 @@ import re
 from typing import Tuple
 
 # Current application version
-VERSION = "1.2.14"
-VERSION_INFO = (1, 2, 14)
+VERSION = "1.2.15"
+VERSION_INFO = (1, 2, 15)
 RELEASE_DATE = "2026-10-25"
 CODENAME = "Live Display Interim Deduplication, Gemini Word Space Preservation & Prefix Anchoring"
 

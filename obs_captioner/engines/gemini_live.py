@@ -460,8 +460,9 @@ def _split_completed_sentences(
 
             # Do not split on spurious period after a dangling connector ("loved by. God.", "worked all through. The dough.")
             last_word_clean = re.sub(r"^[^\w]+|[^\w]+$", "", cand_words[-1]).lower()
-            if last_word_clean in _SPURIOUS_PERIOD_PREPOSITIONS and candidate_sent.rstrip("\"'”’)]").endswith(".") and len(trail_words) <= 4:
-                continue
+            if last_word_clean in _SPURIOUS_PERIOD_PREPOSITIONS and candidate_sent.rstrip("\"'”’)]").endswith("."):
+                if len(trail_words) <= 4 or (last_word_clean in ("of", "by", "for", "with", "to", "in", "from", "into", "onto", "upon", "about", "through", "without", "within", "between", "under", "over") and trail_words[0].lower().rstrip(".,?!") in ("blessing", "being", "making", "doing", "working", "living", "walking", "serving", "loving", "building", "bringing", "giving", "taking", "sharing", "helping", "seeking", "following", "trusting", "knowing", "seeing", "hearing")):
+                    continue
 
             # In English, a new sentence never begins with a lowercase letter
             first_trail_char = trail_words[0].lstrip("\"'“‘([{\u201c\u2018")

@@ -62,8 +62,8 @@ _QUOTE_ECHO_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-# Precompiled camelCase missing spaces pattern
-_CAMELCASE_PATTERN = re.compile(r"([a-z])([A-Z])")
+# Precompiled camelCase missing spaces pattern (also handles standalone capital 'I' glued to a TitleCase word like 'ITo' -> 'I To')
+_CAMELCASE_PATTERN = re.compile(r"([a-z])([A-Z])|(\bI)([A-Z][a-z])")
 
 # Precompiled apostrophe-glued contraction pattern (e.g. We'reregardless, doesn'tstop, God'skingdom)
 _APOSTROPHE_GLUED_PATTERN = re.compile(
@@ -887,7 +887,7 @@ class TextFormatter:
         """Fix missing spaces between concatenated words (e.g. 'areOther' -> 'are Other')."""
         if not text:
             return ""
-        return _CAMELCASE_PATTERN.sub(r"\1 \2", text)
+        return _CAMELCASE_PATTERN.sub(lambda m: f"{m.group(1)} {m.group(2)}" if m.group(1) else f"{m.group(3)} {m.group(4)}", text)
 
     @classmethod
     def fix_concatenated_words(cls, text: str) -> str:
@@ -1014,7 +1014,12 @@ class TextFormatter:
 
         # Check if text ends on a dangling connector word (conjunction/preposition)
         last_word_clean = words[-1].lower().rstrip(".,?!;:…\"'”’)]}")
-        if last_word_clean in self.DANGLING_CONNECTORS and terminal_punct == ".":
+        prev_word_clean = words[-2].lower().rstrip(".,?!;:…\"'”’)]}") if len(words) >= 2 else ""
+        is_complete_idiom = (
+            (last_word_clean == "that" and prev_word_clean in ("of", "with", "about", "like", "than", "just", "all", "for", "to", "in", "on", "at", "from", "by"))
+            or (last_word_clean in ("in", "out", "on", "off", "up", "down", "over", "through", "by", "around", "along", "ahead", "back", "away") and len(words) >= 4 and words[-1].endswith("."))
+        )
+        if last_word_clean in self.DANGLING_CONNECTORS and terminal_punct == "." and not is_complete_idiom:
             # Strip false terminal punctuation if model appended it to a dangling connector
             return text.rstrip(".,?!;:…")
 
