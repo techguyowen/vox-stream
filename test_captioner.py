@@ -9258,9 +9258,16 @@ class TestQuoteFormattingConcatenationAndScripture(unittest.IsolatedAsyncioTestC
         b.clear_context()
         b.recent_book = "Luke"
         res_chap = b.parse_and_lookup_first("Chapter 15.")
-        self.assertIsNotNone(res_chap)
-        self.assertEqual(res_chap.book, "Luke")
-        self.assertEqual(res_chap.chapter, 15)
+        self.assertIsNone(res_chap)
+        self.assertEqual(b.recent_chapter, 15)
+        self.assertEqual(b.recent_book, "Luke")
+
+        # When require_verse=False, it returns verse 1
+        res_chap_allow = b.parse_and_lookup_first("Chapter 15.", require_verse=False)
+        self.assertIsNotNone(res_chap_allow)
+        self.assertEqual(res_chap_allow.book, "Luke")
+        self.assertEqual(res_chap_allow.chapter, 15)
+        self.assertEqual(res_chap_allow.verse_start, 1)
 
         # 3. Cross-sentence boundary scripture lookup in CaptionSink
         cfg = AppConfig()
@@ -9285,6 +9292,29 @@ class TestQuoteFormattingConcatenationAndScripture(unittest.IsolatedAsyncioTestC
         last_lookup_call = mock_web.trigger_scripture_lookup.call_args[0][0]
         self.assertIn("Luke's Gospel", last_lookup_call)
         self.assertIn("Chapter 15", last_lookup_call)
+
+    def test_bible_chapter_mention_does_not_pull_up_verse_one(self):
+        from obs_captioner.bible_engine import BibleEngine
+        b = BibleEngine()
+        b.clear_context()
+
+        # Mentioning "Ezekiel 17" should update context but NOT return verse 1
+        res = b.parse_and_lookup_first("Please turn in your Bibles to Ezekiel 17.")
+        self.assertIsNone(res)
+        self.assertEqual(b.recent_book, "Ezekiel")
+        self.assertEqual(b.recent_chapter, 17)
+
+        # Subsequent "verse 5" should resolve to Ezekiel 17:5
+        res_v5 = b.parse_and_lookup_first("Reading from verse 5.")
+        self.assertIsNotNone(res_v5)
+        self.assertEqual(res_v5.book, "Ezekiel")
+        self.assertEqual(res_v5.chapter, 17)
+        self.assertEqual(res_v5.verse_start, 5)
+        self.assertEqual(res_v5.citation, "Ezekiel 17:5")
+
+        # Single chapter book (e.g. Jude 4) should treat number as verse
+        jude_res = b.extract_citations_from_text("Jude 4")
+        self.assertEqual(jude_res, [("Jude", 1, 4, None)])
 
     async def test_sliding_window_alternating_duplicate_suppression(self):
         import collections
@@ -9710,6 +9740,235 @@ class TestProcessLifecycleAndUpdaterRecovery(unittest.IsolatedAsyncioTestCase):
         bat_content = (Path(__file__).parent / "run_captioner.bat").read_text(encoding="utf-8")
         self.assertIn('cmd /c "%~f0" %*', bat_content)
         self.assertNotIn('pip install -q -r "%ROOT_DIR%\\requirements.txt"', bat_content)
+
+
+class TestSlowSpeechAndConfigurableMaxWords(unittest.IsolatedAsyncioTestCase):
+    """Unit tests verifying VAD speech hangover, high max_words ceiling, and continuing clause stitching."""
+
+    def test_vad_speech_hangover_and_neural_state_preservation(self):
+        from obs_captioner.vad import VoiceActivityDetector
+        from unittest.mock import MagicMock
+        import numpy as np
+
+        vad = VoiceActivityDetector(enable_silero=False)
+        self.assertEqual(vad._speech_hangover_frames, 0)
+        self.assertEqual(vad._max_hangover_frames, 3)
+
+        # Mock silero model & ONNX state
+        mock_silero = MagicMock()
+        mock_silero.reset_states = MagicMock()
+        vad.silero_model = mock_silero
+        vad._onnx_state = np.ones((2, 1, 128), dtype=np.float32)
+
+        dummy_audio = bytes(3200)
+
+        # 1. Speech frame detected
+        vad._detect_speech = MagicMock(return_value=True)
+        self.assertTrue(vad.is_speech(dummy_audio))
+        self.assertEqual(vad._speech_hangover_frames, 3)
+        self.assertTrue(vad._was_speaking)
+        mock_silero.reset_states.assert_not_called()
+        self.assertFalse(np.all(vad._onnx_state == 0))
+
+        # 2. Silence frame 1 (hangover frame 1)
+        vad._detect_speech = MagicMock(return_value=False)
+        self.assertTrue(vad.is_speech(dummy_audio))
+        self.assertEqual(vad._speech_hangover_frames, 2)
+        mock_silero.reset_states.assert_not_called()
+
+        # 3. Silence frame 2 (hangover frame 2)
+        self.assertTrue(vad.is_speech(dummy_audio))
+        self.assertEqual(vad._speech_hangover_frames, 1)
+        mock_silero.reset_states.assert_not_called()
+
+        # 4. Silence frame 3 (hangover frame 3)
+        self.assertTrue(vad.is_speech(dummy_audio))
+        self.assertEqual(vad._speech_hangover_frames, 0)
+        mock_silero.reset_states.assert_not_called()
+
+        # 5. Silence frame 4 (hangover expired into true silence)
+        self.assertFalse(vad.is_speech(dummy_audio))
+        self.assertFalse(vad._was_speaking)
+        mock_silero.reset_states.assert_called_once()
+        self.assertTrue(np.all(vad._onnx_state == 0))
+
+        # 6. Additional silence frame while already inactive does not reset again
+        mock_silero.reset_states.reset_mock()
+        self.assertFalse(vad.is_speech(dummy_audio))
+        mock_silero.reset_states.assert_not_called()
+
+    def test_gemini_live_pause_finalization_short_utterance(self):
+        from obs_captioner.engines.gemini_live import GeminiLiveEngine
+        from obs_captioner.config import AppConfig
+
+        cfg = AppConfig()
+        cfg.gemini_live.api_key = "test-key"
+        engine = GeminiLiveEngine(cfg)
+
+        engine._latest_interim_text = "Praise the Lord."
+        engine._last_interim_change_mono = 0.0
+
+        # Complete short sentence with terminal punct finalizes at pause_threshold
+        # With pause_threshold = 0.65:
+        # 0.5s silence should NOT finalize
+        res = engine._maybe_finalize_on_vad_pause(
+            speech_active=False,
+            silence_duration=0.5,
+            pause_threshold=0.65,
+        )
+        self.assertIsNone(res)
+
+        # 0.75s silence SHOULD finalize
+        res_ok = engine._maybe_finalize_on_vad_pause(
+            speech_active=False,
+            silence_duration=0.75,
+            pause_threshold=0.65,
+        )
+        self.assertIsNotNone(res_ok)
+        self.assertEqual(res_ok.text, "Praise the Lord.")
+        self.assertTrue(res_ok.is_final)
+
+    def test_gemini_live_pause_finalization_dangling_connector(self):
+        from obs_captioner.engines.gemini_live import GeminiLiveEngine
+        from obs_captioner.config import AppConfig
+
+        cfg = AppConfig()
+        cfg.gemini_live.api_key = "test-key"
+        engine = GeminiLiveEngine(cfg)
+
+        # 7 words, ends in dangling connector "because"
+        engine._latest_interim_text = "We are gathering together here today because."
+        engine._last_interim_change_mono = 0.0
+
+        # Dangling connector requires silence_duration >= pause_threshold * 1.5
+        # With pause_threshold = 0.65, req_pause = 0.975s
+        # 0.8s silence should NOT finalize
+        res = engine._maybe_finalize_on_vad_pause(
+            speech_active=False,
+            silence_duration=0.8,
+            pause_threshold=0.65,
+        )
+        self.assertIsNone(res)
+
+        # 1.1s silence SHOULD finalize
+        res_ok = engine._maybe_finalize_on_vad_pause(
+            speech_active=False,
+            silence_duration=1.1,
+            pause_threshold=0.65,
+        )
+        self.assertIsNotNone(res_ok)
+        self.assertEqual(res_ok.text, "We are gathering together here today because.")
+
+    def test_gemini_live_high_max_words_ceiling_and_split(self):
+        from obs_captioner.engines.gemini_live import _split_completed_sentences, _split_final_paragraph
+
+        # Test _split_completed_sentences with unpunctuated run-on speech up to 80 words
+        words_60 = " ".join([f"word{i}" for i in range(60)])
+        # At max_words=80, threshold is max(32, 80 + 8) = 88. 60 words should not be split
+        completed, rem = _split_completed_sentences(words_60, max_words=80)
+        self.assertEqual(completed, [])
+        self.assertEqual(rem, words_60)
+
+        # At max_words=24, 60 words is >= threshold (32) and should be split
+        completed_24, rem_24 = _split_completed_sentences(words_60, max_words=24)
+        self.assertTrue(len(completed_24) > 0)
+
+        # Test _split_final_paragraph preserves long sentences under effective_max
+        long_sent = "In the beginning was the Word and the Word was with God and the Word was God and He was in the beginning with God and all things were made through Him and without Him was not anything made that was made and in Him was life and the life was the light of men."
+        word_count = len(long_sent.split())
+        self.assertTrue(30 < word_count < 80)
+
+        parts_80 = _split_final_paragraph(long_sent, max_words=80)
+        self.assertEqual(len(parts_80), 1)
+        self.assertEqual(parts_80[0], long_sent)
+
+        parts_24 = _split_final_paragraph(long_sent, max_words=24)
+        self.assertTrue(len(parts_24) > 1)
+
+    def test_caption_sink_continuing_clause_stitching(self):
+        from obs_captioner.obs.caption_sink import CaptionSink
+        from obs_captioner.config import AppConfig
+        from obs_captioner.history import TranscriptHistory, HistoryEntry
+        import time
+
+        cfg = AppConfig()
+        cfg.audio.max_sentence_words = 30
+        hist = TranscriptHistory()
+        sink = CaptionSink(cfg, history=hist)
+
+        now = time.time()
+        hist.entries.append(
+            HistoryEntry(
+                id=1,
+                text="He divided unto them his living.",
+                start_time=now - 2.0,
+                end_time=now - 1.0,
+            )
+        )
+
+        # 1. Continuing clause with lowercase within 2.5s -> absorbed & stitched
+        # Capitalized words/conjunctions are separate sentences and do NOT stitch
+        stitched_cap, absorbed_cap = sink._attempt_boundary_stitch("And some goods.")
+        self.assertFalse(absorbed_cap)
+        self.assertEqual(stitched_cap, "And some goods.")
+
+        stitched, absorbed = sink._attempt_boundary_stitch("and some goods.")
+        self.assertTrue(absorbed)
+        self.assertEqual(stitched, "")
+        self.assertEqual(hist.entries[-1].text, "He divided unto them his living and some goods.")
+
+        # 2. Continuing clause with "I" preserves capital "I"
+        hist.entries[-1].text = "He divided unto them his living."
+        hist.entries[-1].end_time = now - 0.5
+        stitched_i, absorbed_i = sink._attempt_boundary_stitch("and I was amazed.")
+        self.assertTrue(absorbed_i)
+        self.assertEqual(hist.entries[-1].text, "He divided unto them his living and I was amazed.")
+
+        # 3. Does NOT stitch if previous entry ends in question mark or exclamation mark
+        hist.entries.append(
+            HistoryEntry(
+                id=2,
+                text="Who can find a virtuous woman?",
+                start_time=now - 1.5,
+                end_time=now - 0.5,
+            )
+        )
+        stitched_q, absorbed_q = sink._attempt_boundary_stitch("And who can know her worth?")
+        self.assertFalse(absorbed_q)
+        self.assertEqual(stitched_q, "And who can know her worth?")
+
+        # 4. Does NOT stitch if arrival is after 2.5s
+        hist.entries.append(
+            HistoryEntry(
+                id=3,
+                text="The Lord is my shepherd.",
+                start_time=now - 10.0,
+                end_time=now - 5.0,
+            )
+        )
+        stitched_late, absorbed_late = sink._attempt_boundary_stitch("And I shall not want.", prev_final_time=now - 5.0)
+        self.assertFalse(absorbed_late)
+        self.assertEqual(stitched_late, "And I shall not want.")
+
+        # 5. Does NOT stitch if combined words exceeds max_sentence_words
+        cfg.audio.max_sentence_words = 10
+        hist.entries.append(
+            HistoryEntry(
+                id=4,
+                text="We are traveling to the holy mountain of God.",
+                start_time=now - 1.0,
+                end_time=now - 0.5,
+            )
+        )
+        stitched_overflow, absorbed_overflow = sink._attempt_boundary_stitch("and we are bringing offerings and prayers.")
+        self.assertFalse(absorbed_overflow)
+        self.assertEqual(stitched_overflow, "and we are bringing offerings and prayers.")
+
+    def test_ui_slider_ranges_in_dashboard_html(self):
+        from pathlib import Path
+        html = (Path(__file__).parent / "obs_captioner" / "web" / "static" / "dashboard.html").read_text(encoding="utf-8")
+        self.assertIn('id="max_words_slider" min="10" max="80" step="1" value="24"', html)
+        self.assertIn('id="sentence_break_slider" min="200" max="2500" step="50" value="650"', html)
 
 
 if __name__ == "__main__":

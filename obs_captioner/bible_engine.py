@@ -111,6 +111,8 @@ BOOK_ALIASES: Dict[str, str] = {
     "revelation": "Revelation", "revelations": "Revelation", "rev": "Revelation", "rv": "Revelation",
 }
 
+SINGLE_CHAPTER_BOOKS = {"Obadiah", "Philemon", "2 John", "3 John", "Jude"}
+
 # Pre-compiled module-level regexes for citation extraction and cleanup
 _CITATION_PATTERN = re.compile(
     r"\b((?:(?:1st|2nd|3rd|first|second|third|[1-3])\s+)?(?:gospel\s+of\s+[A-Za-z]+|book\s+of\s+[A-Za-z]+|acts\s+of\s+the\s+apostles|[A-Za-z'’]+\s+gospel|[A-Za-z]+(?:\s+of\s+[A-Za-z]+)?))\s+(\d+)[:\.](\d+)(?:[-–—](\d+))?\b",
@@ -366,15 +368,25 @@ class BibleEngine:
                 return None
 
 
-    def parse_and_lookup_first(self, text: str, version: str = "bsb") -> Optional[ScriptureLookupResult]:
+    def parse_and_lookup_first(self, text: str, version: str = "bsb", require_verse: bool = True) -> Optional[ScriptureLookupResult]:
         """Scan a transcript string for scripture references and lookup the first match."""
         citations = self.extract_citations_from_text(text)
         if citations:
             book, ch, v_start, v_end = citations[0]
-            res = self.lookup_citation(book, ch, v_start, v_end, version=version)
-            if res:
-                self.set_context(book, ch)
-                return res
+            # Always update sermon / recent context so subsequent verses know the chapter
+            self.set_context(book, ch)
+            if v_start is not None:
+                res = self.lookup_citation(book, ch, v_start, v_end, version=version)
+                if res:
+                    return res
+            elif not require_verse:
+                res = self.lookup_citation(book, ch, 1, None, version=version)
+                if res:
+                    return res
+            else:
+                # Chapter-only mention (e.g. "Ezekiel 17"): context updated, but DO NOT pull up verse 1!
+                logger.info(f"📖 [BIBLE CONTEXT UPDATED] {book} {ch} mentioned without verse; context updated.")
+                return None
 
         # If no explicit full citation match, attempt contextual verse lookup (e.g. "verse 8")
         res = self.lookup_contextual_verse(text, version=version)
@@ -388,12 +400,16 @@ class BibleEngine:
             if m:
                 ch = self.parse_spoken_num(m.group(1))
                 if ch:
-                    res = self.lookup_citation(target_book, ch, 1, None, version=version)
-                    if res:
-                        res.inferred_context = f"{target_book} {ch}"
-                        self.recent_book = target_book
-                        self.recent_chapter = ch
-                        return res
+                    self.recent_book = target_book
+                    self.recent_chapter = ch
+                    if require_verse:
+                        logger.info(f"📖 [BIBLE CONTEXT UPDATED] Context set to {target_book} {ch} (no verse specified).")
+                        return None
+                    else:
+                        res = self.lookup_citation(target_book, ch, 1, None, version=version)
+                        if res:
+                            res.inferred_context = f"{target_book} {ch}"
+                            return res
 
         return None
 
@@ -478,7 +494,7 @@ class BibleEngine:
         return None
 
     @classmethod
-    def extract_citations_from_text(cls, text: str) -> List[Tuple[str, int, int, Optional[int]]]:
+    def extract_citations_from_text(cls, text: str) -> List[Tuple[str, int, Optional[int], Optional[int]]]:
         """Extract all standard formatted scripture references from text (e.g. 'John 3:16', '1 Corinthians 13:4-7')."""
         if not text:
             return []
@@ -509,7 +525,7 @@ class BibleEngine:
             if psalm_match:
                 ch = int(psalm_match.group(2))
                 if 1 <= ch <= 150:
-                    results.append(("Psalms", ch, 1, None))
+                    results.append(("Psalms", ch, None, None))
 
         # Check for Book + Chapter references (e.g. "John 3", "Romans 8")
         if not results:
@@ -521,7 +537,12 @@ class BibleEngine:
                 chap = match.group(2) or match.group(4)
                 canonical = cls.normalize_book_name(raw_book)
                 if canonical and chap:
-                    results.append((canonical, int(chap), 1, None))
+                    if canonical in SINGLE_CHAPTER_BOOKS:
+                        # For single-chapter books, the number is the verse! (e.g. "Jude 4" is Jude 1:4)
+                        results.append((canonical, 1, int(chap), None))
+                    else:
+                        # For all other books, the number is the CHAPTER, NOT a verse! Do not default to verse 1!
+                        results.append((canonical, int(chap), None, None))
 
         return results
 

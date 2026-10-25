@@ -42,9 +42,9 @@ class AudioConfig:
     enable_vad: bool = True
     vad_threshold: float = 0.35  # AI voice detection sensitivity (0.35 catches soft prayers and whispers)
     noise_gate_db: float = -52.0  # Drops ambient noise while preserving whispered prayers (default -52.0 dB)
-    sentence_break_ms: int = 650  # Pause/silence duration in ms to trigger a sentence break (650ms preserves dramatic preaching pauses)
+    sentence_break_ms: int = 650  # Pause/silence duration in ms to trigger a sentence break (650ms preserves dramatic preaching pauses, configurable up to 2500ms)
     max_sentence_duration_seconds: float = 7.0  # Max duration of continuous speech in seconds before forcing a break (default 7.0s)
-    max_sentence_words: int = 24  # Max words per sentence before finalization (default 24)
+    max_sentence_words: int = 24  # Max words per sentence before finalization (default 24, configurable up to 80 words for run-on sentences)
     suppress_music: bool = True  # Stop/pause captioning when worship music, preludes, or singing is detected
     suppress_music_strict: bool = False  # Strict mode: aggressively silences all captions whenever music/instruments are playing, even during singing
     enable_agc: bool = True  # Broadcast Speech AGC: normalizes soft prayers & loud shouting into speech recognition window

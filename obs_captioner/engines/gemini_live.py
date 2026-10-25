@@ -302,6 +302,7 @@ _ABBREV_WORDS = {
 _SENTENCE_BOUNDARY_RE = re.compile(r'([.?!]+["\'”’)]*)\s+')
 _CLAUSE_JOINERS = {";", "—", "–", "--"}
 _CONJUNCTION_WORDS = {"and", "but", "so"}
+_DANGLING_CONNECTORS = {"and", "but", "or", "so", "because", "that", "to", "for", "in", "with", "of"}
 
 
 def _split_completed_sentences(
@@ -329,7 +330,7 @@ def _split_completed_sentences(
         `and`, `but`, `so` preceded by >= 10 words).
       - Otherwise splits cleanly at `effective_max`.
     """
-    effective_max = max(12, int(max_words or 24))
+    effective_max = max(12, min(80, int(max_words or 24)))
     completed: List[str] = []
     remaining = (text or "").strip()
     if not remaining:
@@ -427,7 +428,7 @@ def _split_final_paragraph(text: str, max_words: int = 24) -> List[str]:
     raw = (text or "").strip()
     if not raw:
         return []
-    effective_max = max(12, int(max_words or 24))
+    effective_max = max(12, min(80, int(max_words or 24)))
     if len(raw.split()) <= effective_max:
         return [raw]
 
@@ -1025,7 +1026,8 @@ class GeminiLiveEngine(BaseSTTEngine):
             return stripped
 
         # Also check if only the last finalized sentence on disconnect was replayed
-        completed, tail = _split_completed_sentences(disc_text, max_words=24, require_trailing_words=1)
+        cfg_max = max(12, min(80, int(getattr(self.config.audio, "max_sentence_words", 24) or 24)))
+        completed, tail = _split_completed_sentences(disc_text, max_words=cfg_max, require_trailing_words=1)
         last_sent = tail if tail else (completed[-1] if completed else "")
         if last_sent and last_sent != disc_text:
             stripped_tail = _strip_finalized_prefix(text, last_sent)
@@ -1048,7 +1050,7 @@ class GeminiLiveEngine(BaseSTTEngine):
         in real time without duplicating text when `inputTranscription` arrives.
         """
         now_m = mono_now if mono_now is not None else time.monotonic()
-        max_words = max(12, int(getattr(self.config.audio, "max_sentence_words", 24) or 24))
+        max_words = max(12, min(80, int(getattr(self.config.audio, "max_sentence_words", 24) or 24)))
         out: List[TranscriptEvent] = []
 
         if not is_final:
@@ -1140,15 +1142,25 @@ class GeminiLiveEngine(BaseSTTEngine):
             ):
                 has_terminal_punct = False
 
+        last_word = re.sub(r"^[^\w]+|[^\w]+$", "", words[-1]).lower() if words else ""
+        is_dangling = last_word in _DANGLING_CONNECTORS
+
         if has_terminal_punct:
-            if silence_duration < pause_threshold:
+            req_pause = pause_threshold * 1.5 if is_dangling else pause_threshold
+
+            if silence_duration < req_pause:
                 return None
-            if self._last_interim_change_mono > 0.0 and (now_m - self._last_interim_change_mono) < pause_threshold:
+            if self._last_interim_change_mono > 0.0 and (now_m - self._last_interim_change_mono) < req_pause:
                 return None
         else:
             # DO NOT finalize unpunctuated text on a short pause (0.6s).
             # ONLY finalize unpunctuated text if silence_duration >= 2.5 seconds (true extended dead silence)
             unpunct_threshold = max(2.5, pause_threshold)
+            if len(words) < 6:
+                unpunct_threshold = max(unpunct_threshold, max(1.0, pause_threshold * 1.5))
+            if is_dangling:
+                unpunct_threshold = max(unpunct_threshold, max(1.2, pause_threshold * 1.8))
+
             if silence_duration < unpunct_threshold:
                 return None
             if self._last_interim_change_mono > 0.0 and (now_m - self._last_interim_change_mono) < unpunct_threshold:
@@ -1298,7 +1310,7 @@ class GeminiLiveEngine(BaseSTTEngine):
         """Send audioStreamEnd (if requested), listen to old_ws for up to 1.0s, parse final inputTranscription, and cleanly close."""
         ev = final_received_event or drain_completed_event
         cb = on_transcript or getattr(self, "_on_transcript", None)
-        max_words = max(12, int(getattr(self.config.audio, "max_sentence_words", 24) or 24))
+        max_words = max(12, min(80, int(getattr(self.config.audio, "max_sentence_words", 24) or 24)))
         try:
             if old_recv_task is not None and not old_recv_task.done():
                 old_recv_task.cancel()

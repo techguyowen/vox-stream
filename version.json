@@ -1,9 +1,9 @@
 {
-  "version": "1.2.12",
+  "version": "1.2.13",
   "major": 1,
   "minor": 2,
-  "patch": 12,
-  "release_date": "2026-10-24",
-  "codename": "Reliable Update Reboot Handover & Detached Windows Trampoline",
-  "notes": "Detached Windows process trampoline for seamless background restart, port 8765 TIME_WAIT rebind retry loop with reuse_address, preservation of Caddy reverse proxy across restarts, clean re-exec in run_captioner.bat to survive git self-updates, and hardened dashboard polling to prevent premature reloads."
+  "patch": 13,
+  "release_date": "2026-10-25",
+  "codename": "Configurable Max Words, Slow Speech VAD Hangover & Bible Chapter Context",
+  "notes": "Configurable Max Words per caption up to 80 words for run-on sentences, extended Sentence Break Pause slider up to 2500ms, Silero VAD 300ms speech hangover to prevent cold starts and syllable drops during slow talking, and smart Bible chapter-only context tracking that avoids false verse 1 popups on chapter mentions."
 }

@@ -342,6 +342,23 @@ class CaptionSink:
                         return rem, False
                     return "", True
 
+        # 3. Continuing clause stitching between consecutive utterances
+        if (now - last_final_time) <= 2.5:
+            tokens_new = clean_new.split()
+            starts_continuing = clean_new[0].islower()
+
+            last_stripped = last_text.rstrip(' "\'”’')
+            prev_not_terminal = not last_stripped.endswith(('?', '!'))
+
+            max_sentence_words = getattr(self.config.audio, "max_sentence_words", 24) or 24
+            total_words = len(last_text.split()) + len(tokens_new)
+
+            if starts_continuing and prev_not_terminal and total_words <= max_sentence_words:
+                last_entry.text = f"{last_text.rstrip('. ')} {clean_new}"
+                if hasattr(last_entry, "end_time"):
+                    last_entry.end_time = now
+                return "", True
+
         return clean_text, False
 
     def _stamp_payload(self, payload: dict, utterance_id: int) -> dict:
@@ -798,7 +815,7 @@ class CaptionSink:
                             prev_raw = self.history.entries[-2].text
                             prev_text_only = re.sub(r"\s*\([^)]*\)$", "", prev_raw).strip()
                             combined = f"{prev_text_only} {clean_text}"
-                            if bible_engine.parse_and_lookup_first(combined):
+                            if bible_engine.extract_citations_from_text(combined) or bible_engine.parse_and_lookup_first(combined):
                                 lookup_text = combined
                     elif len(self.history.entries) >= 2:
                         try:

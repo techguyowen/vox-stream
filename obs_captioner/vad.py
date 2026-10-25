@@ -41,6 +41,8 @@ class VoiceActivityDetector:
         self.silero_mode = None  # "torch" or "onnx"
         self._onnx_state = None
         self._was_speaking: bool = False
+        self._speech_hangover_frames: int = 0
+        self._max_hangover_frames: int = 3  # ~300ms hangover (at 100ms chunks)
 
         if enable_silero:
             try:
@@ -109,6 +111,10 @@ class VoiceActivityDetector:
                 self.silero_model.reset_states()
             except Exception:
                 pass
+        if self._onnx_state is not None:
+            self._onnx_state = np.zeros((2, 1, 128), dtype=np.float32)
+        self._speech_hangover_frames = 0
+        self._was_speaking = False
 
     def is_music(
         self,
@@ -153,14 +159,26 @@ class VoiceActivityDetector:
             return 10.0 * math.log10(mean_sq / 1073676289.0)
 
     def is_speech(self, audio_chunk_bytes: bytes) -> bool:
-        """Return True if speech is detected in the audio chunk."""
-        is_active = self._detect_speech(audio_chunk_bytes)
+        """Return True if speech is detected in the audio chunk (with speech hangover)."""
+        raw_active = self._detect_speech(audio_chunk_bytes)
+        if raw_active:
+            self._speech_hangover_frames = self._max_hangover_frames
+            is_active = True
+        elif self._speech_hangover_frames > 0:
+            self._speech_hangover_frames -= 1
+            is_active = True
+        else:
+            is_active = False
+
         if self._was_speaking and not is_active:
             if self.silero_model is not None and hasattr(self.silero_model, "reset_states"):
                 try:
                     self.silero_model.reset_states()
                 except Exception:
                     pass
+            if self._onnx_state is not None:
+                self._onnx_state = np.zeros((2, 1, 128), dtype=np.float32)
+
         self._was_speaking = is_active
         return is_active
 
