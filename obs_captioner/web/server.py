@@ -2702,32 +2702,44 @@ class WebOverlayServer:
         await self.runner.setup()
 
         # Attempt to bind to requested port, auto-fallback if port is occupied (e.g. by REAPER)
-        for offset in range(10):
-            current_port = initial_port + offset
+        bound = False
+        for retry in range(6):
             try:
-                self.site = web.TCPSite(self.runner, host, current_port, shutdown_timeout=1.0)
+                self.site = web.TCPSite(self.runner, host, initial_port, shutdown_timeout=1.0, reuse_address=True)
                 await self.site.start()
-                self.config.overlay.port = current_port
-                
-                from ..hardware import get_local_ip
-                lan_ip = get_local_ip()
-                logger.info(f"✅ Local Dashboard:       http://127.0.0.1:{current_port}/dashboard")
-                logger.info(f"✅ OBS Browser Source:     http://127.0.0.1:{current_port}/")
-                if lan_ip and lan_ip != "127.0.0.1":
-                    logger.info(f"🌐 Network Dashboard:     http://{lan_ip}:{current_port}/dashboard")
-                    logger.info(f"📱 Mobile / Stage View:   http://{lan_ip}:{current_port}/display")
-                if getattr(self.config, "update", None) and self.config.update.auto_check and self.updater:
-                    self._updater_task = asyncio.create_task(self._auto_check_updates_loop())
-                return True
-            except OSError as e:
-                logger.debug(f"Port {current_port} busy ({e}), trying next port...")
-                continue
-            except Exception as e:
-                logger.error(f"Failed to start overlay server: {e}")
-                return False
+                self.config.overlay.port = initial_port
+                bound = True
+                break
+            except OSError:
+                if retry < 5:
+                    await asyncio.sleep(0.5)
 
-        logger.error(f"Failed to bind web server to any port between {initial_port} and {initial_port + 9}")
-        return False
+        if not bound:
+            for offset in range(1, 10):
+                current_port = initial_port + offset
+                try:
+                    self.site = web.TCPSite(self.runner, host, current_port, shutdown_timeout=1.0, reuse_address=True)
+                    await self.site.start()
+                    self.config.overlay.port = current_port
+                    bound = True
+                    break
+                except OSError:
+                    continue
+
+        if not bound:
+            logger.error(f"Failed to bind web server to any port between {initial_port} and {initial_port + 9}")
+            return False
+
+        from ..hardware import get_local_ip
+        lan_ip = get_local_ip()
+        logger.info(f"✅ Local Dashboard:       http://127.0.0.1:{self.config.overlay.port}/dashboard")
+        logger.info(f"✅ OBS Browser Source:     http://127.0.0.1:{self.config.overlay.port}/")
+        if lan_ip and lan_ip != "127.0.0.1":
+            logger.info(f"🌐 Network Dashboard:     http://{lan_ip}:{self.config.overlay.port}/dashboard")
+            logger.info(f"📱 Mobile / Stage View:   http://{lan_ip}:{self.config.overlay.port}/display")
+        if getattr(self.config, "update", None) and self.config.update.auto_check and self.updater:
+            self._updater_task = asyncio.create_task(self._auto_check_updates_loop())
+        return True
 
     async def stop(self):
         """Stop the web server cleanly with fast timeout."""
@@ -3246,6 +3258,14 @@ class WebOverlayServer:
         try:
             success, message = await self.updater.apply_update(progress_cb=progress_cb)
             if success:
+                try:
+                    await self.broadcast_control({
+                        "type": "server_restarting",
+                        "instance_id": self.instance_id,
+                        "message": message or "VoxStream update applied. Restarting backend...",
+                    })
+                except Exception:
+                    pass
                 return web.json_response({"status": "restarting", "message": message})
             else:
                 return web.json_response({"status": "error", "message": message}, status=500)

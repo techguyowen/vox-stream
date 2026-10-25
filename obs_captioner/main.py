@@ -133,6 +133,7 @@ async def cleanup_resources(
     web_server=None,
     tray_app=None,
     config=None,
+    is_restart: bool = False,
 ):
     """Gracefully stop and flush all captioning pipeline resources."""
     logger.info("Cleaning up resources...")
@@ -210,7 +211,7 @@ async def cleanup_resources(
         set_os_keep_awake(False)
     except Exception as e:
         logger.debug(f"Error resetting keep-awake in cleanup: {e}")
-    if getattr(config, "caddy", None) and config.caddy.enabled:
+    if not is_restart and getattr(config, "caddy", None) and config.caddy.enabled:
         try:
             from .caddy_manager import stop_caddy
             stop_caddy()
@@ -1468,6 +1469,7 @@ async def main_async(args):
             web_server=web_server,
             tray_app=tray_app,
             config=config,
+            is_restart=is_restart,
         )
 
     # Wait until shutdown requested
@@ -1540,15 +1542,25 @@ def main():
             os._exit(42)
         elif sys.platform == "win32":
             # Standalone Windows execution without wrapper: spawn delayed replacement process so OS ports/audio handles release first
+            detached_flags = 0x00000008 | 0x00000200
+            trampoline_code = (
+                "import time, subprocess, sys, os; "
+                "time.sleep(1.2); "
+                "subprocess.Popen(sys.argv[1:], cwd=os.getcwd(), close_fds=True)"
+            )
+            trampoline_cmd = [
+                sys.executable,
+                "-c",
+                trampoline_code,
+                *restart_cmd,
+            ]
             try:
-                trampoline_cmd = [
-                    sys.executable,
-                    "-c",
-                    "import time, subprocess, sys; time.sleep(1.0); subprocess.Popen(sys.argv[1:])",
-                    *restart_cmd,
-                ]
-                creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-                subprocess.Popen(trampoline_cmd, creationflags=creationflags)
+                subprocess.Popen(
+                    trampoline_cmd,
+                    creationflags=detached_flags,
+                    close_fds=True,
+                    cwd=str(Path(__file__).resolve().parent.parent),
+                )
             except Exception as restart_err:
                 logger.error(f"Failed to spawn replacement restart process: {restart_err}")
             os._exit(42)

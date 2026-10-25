@@ -1,9 +1,9 @@
 {
-  "version": "1.2.11",
+  "version": "1.2.12",
   "major": 1,
   "minor": 2,
-  "patch": 11,
+  "patch": 12,
   "release_date": "2026-10-24",
-  "codename": "Live Microphone Telemetry & Boot VU Decay Watchdog",
-  "notes": "Resequenced audio capture startup to run immediately alongside web services before model initialization, auto-recovery on initial stream opening failures, immediate WebSocket VU snapshot dispatch, early frontend WebSocket initialization, and client-side VU meter activity decay watchdogs to prevent microphone status freezing on page load and reboots."
+  "codename": "Reliable Update Reboot Handover & Detached Windows Trampoline",
+  "notes": "Detached Windows process trampoline for seamless background restart, port 8765 TIME_WAIT rebind retry loop with reuse_address, preservation of Caddy reverse proxy across restarts, clean re-exec in run_captioner.bat to survive git self-updates, and hardened dashboard polling to prevent premature reloads."
 }

@@ -87,16 +87,10 @@ set "APP_EXIT_CODE=!errorlevel!"
 :: Exit code 42 indicates an intentional application restart
 if "!APP_EXIT_CODE!"=="42" (
     echo.
-    echo [VoxStream] Application restart requested. Verifying dependencies and reloading...
-    if exist "%ROOT_DIR%\requirements.txt" (
-        if exist "%VENV_DIR%\Scripts\uv.exe" (
-            call "%VENV_DIR%\Scripts\uv.exe" pip install -q -r "%ROOT_DIR%\requirements.txt"
-        ) else (
-            call "%VENV_PY%" -m pip install -q -r "%ROOT_DIR%\requirements.txt"
-        )
-    )
+    echo [VoxStream] Application restart requested. Reloading...
     timeout /t 1 /nobreak >nul
-    goto app_loop
+    cmd /c "%~f0" %*
+    exit /b !errorlevel!
 )
 
 :: Ensure Caddy reverse proxy daemon is stopped

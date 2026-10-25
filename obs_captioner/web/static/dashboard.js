@@ -6569,6 +6569,7 @@ async function applyVoxStreamUpdate() {
             } catch (pollErr) {}
         }, 1000);
 
+        const targetOldInstanceId = currentInstanceId;
         const res = await fetch("/api/updater/apply", { method: "POST" });
         const text = await res.text();
         let data = null;
@@ -6590,7 +6591,7 @@ async function applyVoxStreamUpdate() {
         if (updateStepStatus) updateStepStatus.textContent = "🔄 Step 4/4: Backend restarting to finalize update...";
 
         // Begin polling for backend recovery
-        pollForUpdateRestartSuccess();
+        pollForUpdateRestartSuccess(targetOldInstanceId);
     } catch (err) {
         console.error("Update apply error:", err);
         if (updateModal) updateModal.style.display = "none";
@@ -6603,7 +6604,7 @@ async function applyVoxStreamUpdate() {
     }
 }
 
-function pollForUpdateRestartSuccess() {
+function pollForUpdateRestartSuccess(targetOldInstanceId = currentInstanceId) {
     const updateModal = document.getElementById("update-modal");
     const updateTitle = document.getElementById("update-modal-title");
     const updateSub = document.getElementById("update-modal-sub");
@@ -6611,17 +6612,22 @@ function pollForUpdateRestartSuccess() {
     const updateStepStatus = document.getElementById("update-step-status");
 
     let attempts = 0;
-    const maxAttempts = 45;
+    const maxAttempts = 90;
 
     // Wait 2.5s before initial ping to let the old backend process exit cleanly
     setTimeout(() => {
         const interval = setInterval(async () => {
             attempts++;
+            if (updateStepStatus) {
+                updateStepStatus.textContent = `Attempt ${attempts}/90: Waiting for new VoxStream instance...`;
+            }
             try {
                 const res = await fetch("/api/status", { cache: "no-store" });
                 if (res.ok) {
                     const data = await res.json();
-                    if (data && (data.instance_id !== currentInstanceId || (data.uptime_seconds !== undefined && data.uptime_seconds < 15.0))) {
+                    const isNewInstance = targetOldInstanceId ? (data.instance_id && data.instance_id !== targetOldInstanceId) : false;
+                    const isFreshUptime = typeof data.uptime_seconds === "number" && data.uptime_seconds < 8.0;
+                    if (isNewInstance || isFreshUptime) {
                         clearInterval(interval);
                         if (updateTitle) updateTitle.textContent = "✅ VoxStream Updated Successfully!";
                         if (updateSub) updateSub.textContent = `New backend is active (${data.engine_name || 'Speech Engine'}). Reloading dashboard...`;
@@ -6632,7 +6638,7 @@ function pollForUpdateRestartSuccess() {
                         if (updateStepStatus) updateStepStatus.textContent = "Reloading...";
                         setTimeout(() => {
                             window.location.reload();
-                        }, 800);
+                        }, 600);
                         return;
                     }
                 }

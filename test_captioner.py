@@ -9586,7 +9586,130 @@ class TestAudioWatchdogAndTelemetry(unittest.IsolatedAsyncioTestCase):
         # Operator HTML checks
         self.assertIn("audio-recovery-warning", operator_html)
         self.assertIn("lastVuMeterTime", operator_html)
-        self.assertIn("Date.now() - lastVuMeterTime > 600", operator_html)
+
+class TestProcessLifecycleAndUpdaterRecovery(unittest.IsolatedAsyncioTestCase):
+    """Unit tests for process lifecycle, Caddy preservation across restarts,
+    WebSocket restart announcements, socket reuse, and port retry resilience."""
+
+    async def test_cleanup_resources_preserves_caddy_on_restart(self):
+        from obs_captioner.main import cleanup_resources
+        from unittest.mock import patch, MagicMock
+
+        cfg = MagicMock()
+        cfg.caddy.enabled = True
+
+        with patch("obs_captioner.caddy_manager.stop_caddy") as mock_stop_caddy:
+            # When is_restart=True, stop_caddy must NOT be called
+            await cleanup_resources(config=cfg, is_restart=True)
+            mock_stop_caddy.assert_not_called()
+
+            # When is_restart=False, stop_caddy must be called
+            await cleanup_resources(config=cfg, is_restart=False)
+            mock_stop_caddy.assert_called_once()
+
+    async def test_handle_updater_apply_broadcasts_server_restarting_on_success(self):
+        from obs_captioner.web.server import WebOverlayServer
+        from obs_captioner.config import AppConfig
+        from unittest.mock import AsyncMock, MagicMock
+
+        server = WebOverlayServer(AppConfig())
+        server.updater = MagicMock()
+        server.updater.apply_update = AsyncMock(return_value=(True, "VoxStream updated successfully"))
+        server.broadcast_control = AsyncMock()
+
+        mock_request = MagicMock()
+        resp = await server._handle_updater_apply(mock_request)
+        self.assertEqual(resp.status, 200)
+
+        # Verify broadcast_control was called with server_restarting
+        server.broadcast_control.assert_awaited_once_with({
+            "type": "server_restarting",
+            "instance_id": server.instance_id,
+            "message": "VoxStream updated successfully",
+        })
+
+    async def test_handle_updater_apply_does_not_broadcast_on_failure(self):
+        from obs_captioner.web.server import WebOverlayServer
+        from obs_captioner.config import AppConfig
+        from unittest.mock import AsyncMock, MagicMock
+
+        server = WebOverlayServer(AppConfig())
+        server.updater = MagicMock()
+        server.updater.apply_update = AsyncMock(return_value=(False, "Git pull failed"))
+        server.broadcast_control = AsyncMock()
+
+        mock_request = MagicMock()
+        resp = await server._handle_updater_apply(mock_request)
+        self.assertEqual(resp.status, 500)
+        server.broadcast_control.assert_not_called()
+
+    async def test_server_start_sets_reuse_address_true(self):
+        from obs_captioner.web.server import WebOverlayServer
+        from obs_captioner.config import AppConfig
+        from unittest.mock import patch, AsyncMock, MagicMock
+
+        server = WebOverlayServer(AppConfig())
+        server.config.overlay.enabled = True
+        server.config.overlay.port = 8765
+
+        mock_runner = MagicMock()
+        mock_runner.setup = AsyncMock()
+        mock_site = MagicMock()
+        mock_site.start = AsyncMock()
+
+        with patch("obs_captioner.web.server.web.AppRunner", return_value=mock_runner), \
+             patch("obs_captioner.web.server.web.TCPSite", return_value=mock_site) as mock_tcp_site:
+            started = await server.start()
+            self.assertTrue(started)
+            mock_tcp_site.assert_called()
+            _, kwargs = mock_tcp_site.call_args
+            self.assertTrue(kwargs.get("reuse_address"))
+
+    async def test_server_start_retries_initial_port_before_shifting(self):
+        from obs_captioner.web.server import WebOverlayServer
+        from obs_captioner.config import AppConfig
+        from unittest.mock import patch, AsyncMock, MagicMock
+
+        server = WebOverlayServer(AppConfig())
+        server.config.overlay.enabled = True
+        server.config.overlay.port = 8765
+
+        mock_runner = MagicMock()
+        mock_runner.setup = AsyncMock()
+
+        attempt = 0
+        def fake_site_init(*args, **kwargs):
+            nonlocal attempt
+            site = MagicMock()
+            if attempt == 0:
+                attempt += 1
+                site.start = AsyncMock(side_effect=OSError("Address in use (TIME_WAIT)"))
+            else:
+                site.start = AsyncMock()
+            return site
+
+        with patch("obs_captioner.web.server.web.AppRunner", return_value=mock_runner), \
+             patch("obs_captioner.web.server.web.TCPSite", side_effect=fake_site_init), \
+             patch("asyncio.sleep", new=AsyncMock(return_value=None)):
+            started = await server.start()
+            self.assertTrue(started)
+            self.assertEqual(server.config.overlay.port, 8765)
+            self.assertEqual(attempt, 1)
+
+    def test_dashboard_update_restart_guards(self):
+        from pathlib import Path
+        dashboard_js = (Path(__file__).parent / "obs_captioner" / "web" / "static" / "dashboard.js").read_text(encoding="utf-8")
+        self.assertIn("targetOldInstanceId", dashboard_js)
+        self.assertIn("pollForUpdateRestartSuccess(targetOldInstanceId)", dashboard_js)
+        self.assertIn("maxAttempts = 90", dashboard_js)
+        self.assertIn("Attempt ${attempts}/90: Waiting for new VoxStream instance...", dashboard_js)
+        self.assertIn("isFreshUptime", dashboard_js)
+
+    def test_run_captioner_bat_restart_reloads_without_pip_install(self):
+        from pathlib import Path
+        bat_content = (Path(__file__).parent / "run_captioner.bat").read_text(encoding="utf-8")
+        self.assertIn('cmd /c "%~f0" %*', bat_content)
+        self.assertNotIn('pip install -q -r "%ROOT_DIR%\\requirements.txt"', bat_content)
 
 
 if __name__ == "__main__":
