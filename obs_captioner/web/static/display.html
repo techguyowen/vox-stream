@@ -1806,6 +1806,7 @@
         let interimText = "";
         let lastSeenSeq = 0;
         let lastFinalUtteranceId = 0;
+        let lastInterimUtteranceId = 0;
         let interimGen = 0;
         let captionTranslateChain = Promise.resolve();
         let lastFinalTextAt = 0;
@@ -3416,6 +3417,7 @@
         function clearInterimLine() {
             interimText = "";
             pendingInterimText = null;
+            lastInterimUtteranceId = 0;
             interimGen++;
             const node = document.getElementById("liveInterimNode");
             if (node) {
@@ -3424,7 +3426,34 @@
             }
         }
 
-        function appendFinalSentence(text) {
+        function stripFinalizedFromInterim(interimStr, finalStr) {
+            if (!interimStr || !finalStr) return "";
+            const normWord = (w) => (w || "").replace(/[^\w']/g, "").toLowerCase();
+            const interimMatches = [];
+            const wordRe = /\S+/g;
+            let m;
+            while ((m = wordRe.exec(interimStr)) !== null) {
+                const nw = normWord(m[0]);
+                if (nw) interimMatches.push({ raw: m[0], norm: nw, index: m.index, end: m.index + m[0].length });
+            }
+            const finalWords = (finalStr.match(/\S+/g) || []).map(normWord).filter(Boolean);
+            if (interimMatches.length === 0 || finalWords.length === 0) return "";
+
+            if (interimMatches.length > finalWords.length) {
+                const nFinal = finalWords.length;
+                let matches = 0;
+                for (let i = 0; i < nFinal; i++) {
+                    if (interimMatches[i].norm === finalWords[i]) matches++;
+                }
+                if (matches === nFinal || (matches / nFinal) >= 0.75) {
+                    const cutPos = interimMatches[nFinal - 1].end;
+                    return interimStr.slice(cutPos).replace(/^[\s.,;!?:"')\]—\-]+/, "").trim();
+                }
+            }
+            return "";
+        }
+
+        function appendFinalSentence(text, utteranceId) {
             if (!text || !transcriptContent) return;
             interimGen++;
             removeEmptyIndicator();
@@ -3450,13 +3479,14 @@
             finalSentences.push(text);
             while (finalSentences.length > maxHistorySentences) finalSentences.shift();
 
-            if (pendingInterimText) {
-                const normPending = pendingInterimText.replace(/[^\w\s]/g, "").trim().toLowerCase();
-                const normFinal = (text || "").replace(/[^\w\s]/g, "").trim().toLowerCase();
-                if (normPending === normFinal || normFinal.startsWith(normPending)) {
-                    pendingInterimText = null;
-                }
+            let remainingInterim = pendingInterimText
+                ? stripFinalizedFromInterim(pendingInterimText, text)
+                : (interimText ? stripFinalizedFromInterim(interimText, text) : "");
+            if (utteranceId && lastInterimUtteranceId && utteranceId > lastInterimUtteranceId && !remainingInterim) {
+                remainingInterim = "";
             }
+            pendingInterimText = remainingInterim || null;
+            interimText = remainingInterim || "";
 
             // Do not abruptly collapse #liveInterimNode if interim text is pending or active
             if (interimNode) {
@@ -3779,10 +3809,13 @@
                                     return;
                                 }
                                 lastFinalTextAt = nowMs;
-                                appendFinalSentence(text);
+                                appendFinalSentence(text, data.utterance_id);
                             }
                         } else {
                             if (isFinalOnlyMode) return;
+                            if (typeof data.utterance_id === 'number' && data.utterance_id > 0) {
+                                lastInterimUtteranceId = data.utterance_id;
+                            }
                             interimText = text;
                             updateInterimSpeech(text);
                         }

@@ -1424,3 +1424,104 @@ async def test_gemini_live_stop_unblocks_start_streaming_and_allows_clean_restar
         await asyncio.wait_for(stream_task_2, timeout=1.5)
         assert closed_gen_2 is True
 
+
+def test_v1_2_14_live_capture_glued_words_compounds_and_stutters():
+    """Verify v1.2.14 live sermon capture fixes for glued words, split compounds, stutters, and quote echoes."""
+    from obs_captioner.formatter import TextFormatter
+
+    fmt = TextFormatter()
+
+    # 1. Glued words & 3-word chains
+    assert "something spectacular" in fmt.format_text("somethingspectacular", is_final=False).lower()
+    assert "simplistic statements" in fmt.format_text("simplisticstatements", is_final=False).lower()
+    assert "without necessarily experiencing" in fmt.format_text("withoutnecessarilyexperiencing", is_final=False).lower()
+    assert "were proverbial" in fmt.format_text("wereproverbial", is_final=False).lower()
+    assert "of smallness" in fmt.format_text("ofsmallness", is_final=False).lower()
+
+    # 2. Apostrophe-glued contractions
+    assert fmt.format_text("We'reregardless of the cost.", is_final=True) == "We're regardless of the cost."
+    assert fmt.format_text("It doesn'tstop there.", is_final=True) == "It doesn't stop there."
+    assert fmt.format_text("In God'skingdom today.", is_final=True) == "In God's kingdom today."
+    assert fmt.format_text("Transformation doesn'thappen overnight.", is_final=True) == "Transformation doesn't happen overnight."
+
+    # 3. Split compound words & east -> yeast
+    assert "relationships" in fmt.format_text("Our relation ships matter.", is_final=True).lower()
+    assert "partnerships" in fmt.format_text("Ministry partner ships grow.", is_final=True).lower()
+    assert "bedtime" in fmt.format_text("Right before bed time.", is_final=True).lower()
+    assert "you're already" in fmt.format_text("When you'real ready there.", is_final=True).lower()
+    assert "like yeast" in fmt.format_text("The kingdom of heaven is like east.", is_final=True).lower()
+    assert "yeast penetrates" in fmt.format_text("East penetrates the dough.", is_final=True).lower()
+
+    # 4. Single-word stutters and quote-boundary word echoes
+    assert fmt.format_text("We want to to to see this.", is_final=True) == "We want to see this."
+    assert fmt.format_text(
+        'The birds of the air come and perch in its branches.\'" Branches. To understand this.',
+        is_final=True,
+    ) == 'The birds of the air come and perch in its branches.\'" To understand this.'
+
+
+def test_v1_2_14_interim_space_restoration_and_prefix_anchoring():
+    """Verify interim word spaces are preserved when Gemini glues words on subsequent chunks and prefix stripping anchors on tail."""
+    from obs_captioner.config import AppConfig
+    from obs_captioner.engines.gemini_live import (
+        GeminiLiveEngine,
+        _split_completed_sentences,
+        _split_final_paragraph,
+        _strip_finalized_prefix,
+    )
+
+    cfg = AppConfig()
+    engine = GeminiLiveEngine(cfg)
+
+    # 1. Interim has "starts making", final glues "startsmaking" -> restored to "starts making"
+    evs_interim = engine._segment_streaming_event(
+        "So Jina starts making the bread.",
+        is_final=False,
+        mono_now=10.0,
+    )
+    assert len(evs_interim) == 1 and not evs_interim[0].is_final
+    assert "starts making" in evs_interim[0].text
+
+    evs_final = engine._segment_streaming_event(
+        "So Jina startsmaking the bread.",
+        is_final=True,
+        mono_now=11.0,
+    )
+    assert len(evs_final) == 1 and evs_final[0].is_final
+    assert evs_final[0].text == "So Jina starts making the bread."
+
+    # 2. Spurious periods after dangling prepositions ("loved by. God.", "worked all through. The dough.\"")
+    sents_1, rem_1 = _split_completed_sentences("We are deeply loved by. God.")
+    assert sents_1 == []
+    assert rem_1 == "We are deeply loved by. God."
+
+    parts_1 = _split_final_paragraph("We are deeply loved by. God.")
+    assert parts_1 == ["We are deeply loved by God."]
+
+    parts_2 = _split_final_paragraph(
+        'She mixed into about 60 pounds of flour until it worked all through. The dough."'
+    )
+    assert parts_2 == ['She mixed into about 60 pounds of flour until it worked all through the dough."']
+
+    # 3. _strip_finalized_prefix when SMART mode drops >4 filler words from a long multi-sentence prefix (utt=447)
+    finalized_pref = (
+        "Until one day, you know, I think, like, in high school, I looked at him, "
+        "and he was, you know, like, taller than me."
+    )
+    smart_rewritten_full = (
+        "Until one day in high school, I looked at him and he was taller than me. "
+        "I'm like, what just happened?"
+    )
+    stripped = _strip_finalized_prefix(smart_rewritten_full, finalized_pref)
+    assert stripped == "I'm like, what just happened?", f"Got over-stripped remainder: {stripped!r}"
+
+    # 4. turnComplete: true without inputTranscription finalizes _latest_interim_text
+    engine._reset_turn_state()
+    engine._segment_streaming_event("In the vineyard, you have to wait.", is_final=False, mono_now=20.0)
+    assert engine._latest_interim_text == "In the vineyard, you have to wait."
+    parsed = engine.parse_server_message({"serverContent": {"turnComplete": True}})
+    assert len(parsed) == 1
+    assert parsed[0].is_final is True
+    assert parsed[0].text == "In the vineyard, you have to wait."
+
+

@@ -1,6 +1,6 @@
 from pathlib import Path
 import re
-from typing import Dict, Optional, Set, Tuple
+from typing import Any, Dict, Optional, Set, Tuple
 from .church_lexicon import ChurchLexiconFormatter
 
 
@@ -10,8 +10,31 @@ _LEAK_REPR_LIST_PATTERN = re.compile(r"['\"][^'\"]{1,50}['\"]\s*,\s*['\"][^'\"]{
 _LEAK_TOKEN_REPETITION_PATTERN = re.compile(r"\b(\w+)\b(?:\s*[, '\"]+\s*\1\b){3,}", re.IGNORECASE)
 
 # Precompiled ASR disfluency and phonetic spelling artifact replacements
-_DISFLUENCY_REPLACEMENTS: Tuple[Tuple[re.Pattern, str], ...] = (
+def _join_ship_compound(m: re.Match) -> str:
+    return f"{m.group(1)}{m.group(2).lower()}"
+
+
+_DISFLUENCY_REPLACEMENTS: Tuple[Tuple[re.Pattern, Any], ...] = (
     (re.compile(r"\bI't\b"), "I don't"),
+    (re.compile(r"\byou'real\s+ready\b", re.IGNORECASE), "you're already"),
+    (
+        re.compile(
+            r"\b(relation|partner|fellow|disciple|leader|steward|wor|hard|friend|member|citizen|intern|scholar|owner|champion|sponsor|craftsman|statesman|sportsman|workman|horseman|airman|kinsman)\s+(ships?)\b",
+            re.IGNORECASE,
+        ),
+        _join_ship_compound,
+    ),
+    (re.compile(r"\bbed\s+time\b", re.IGNORECASE), "bedtime"),
+    (re.compile(r"\bfriends\s+givings\b", re.IGNORECASE), "Friendsgivings"),
+    (re.compile(r"\blike\s+east\b", re.IGNORECASE), "like yeast"),
+    (
+        re.compile(
+            r"\beast\s+(penetrates|rises|rising|works|working|in\s+the\s+dough|do\s+its\s+work)\b",
+            re.IGNORECASE,
+        ),
+        r"yeast \1",
+    ),
+    (re.compile(r"\b(thinking|talking)\s+about\s+east\b", re.IGNORECASE), r"\1 about yeast"),
     (re.compile(r"\bby by\b", re.IGNORECASE), "bye-bye"),
     (re.compile(r"\bby-by\b", re.IGNORECASE), "bye-bye"),
     (re.compile(r"\bspll\b", re.IGNORECASE), "spell"),
@@ -30,18 +53,32 @@ _DISFLUENCY_REPLACEMENTS: Tuple[Tuple[re.Pattern, str], ...] = (
 _SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[.!?])\s+")
 _PUNCT_STRIP_PATTERN = re.compile(r"[^\w\s]")
 _STUTTER_PATTERN = re.compile(r"\b(\w+(?:[^\w\n]+(?:\w+)){1,5})\s*[,;]?\s+\1\b", re.IGNORECASE)
+_SINGLE_WORD_STUTTER_PATTERN = re.compile(
+    r"\b(to|a|an|the|I|and|but|or|so|in|on|of|for|with|is|are|was|were|we|you|he|she|it|they|this|that|these|those|which|who|why|how|what|where|when|if|not)\b(?:\s+\1\b)+",
+    re.IGNORECASE,
+)
+_QUOTE_ECHO_PATTERN = re.compile(
+    r'\b(\w{3,})([.?!]+["\'”’)\]]+)\s+\1[.?!]?\s*(?=[A-Z]|$)',
+    re.IGNORECASE,
+)
 
 # Precompiled camelCase missing spaces pattern
 _CAMELCASE_PATTERN = re.compile(r"([a-z])([A-Z])")
+
+# Precompiled apostrophe-glued contraction pattern (e.g. We'reregardless, doesn'tstop, God'skingdom)
+_APOSTROPHE_GLUED_PATTERN = re.compile(
+    r"\b([A-Za-z]+[\'’](?:re|ve|ll|d|m|t|s))([A-Za-z]{2,})\b",
+    re.IGNORECASE,
+)
 
 # Prefixes for concatenated word repair
 _CONCAT_PREFIXES: Tuple[str, ...] = (
     # 5 chars
     "hired", "takes", "there", "whole",
     # 4 chars
-    "dead", "feed", "from", "give", "said", "send", "that", "they", "this", "took", "with",
+    "dead", "feed", "from", "give", "said", "send", "that", "they", "this", "took", "with", "were",
     # 3 chars
-    "all", "and", "for", "her", "his", "not", "our", "she", "the", "you",
+    "all", "and", "for", "her", "his", "not", "our", "she", "the", "you", "are", "was",
     # 2 chars
     "as", "at", "by", "he", "if", "in", "is", "it", "my", "no", "of", "on", "or", "so", "to", "we",
 )
@@ -130,8 +167,9 @@ _CONCAT_WHITELIST: Set[str] = {
     "heaven", "hearing", "height", "heal", "heals", "healing", "heel", "heels", "heavens",
     # For 'she':
     "sheep", "sheet", "shelter", "shepherd", "shed", "shell", "shelf", "shelves",
-    # For 'we':
+    # For 'we' / 'were' / 'was' / 'are':
     "wear", "went", "wedding", "week", "weekend", "welcome", "weight", "west", "western", "wealth",
+    "area", "areas", "arena", "arenas", "wash", "washed", "washing", "washes", "wasp", "wasps", "waste", "wasted", "wasting",
     # For 'they':
     "they're", "they've",
     # For 'this':
@@ -156,6 +194,18 @@ _CONCAT_WHITELIST: Set[str] = {
     "impetus", "stimulus", "syllabus", "surplus", "fetus",
     # Compound / BPE-repaired words that must not be split:
     "gummy", "gummies", "basically", "sunglasses",
+    "relationship", "relationships", "partnership", "partnerships", "fellowship", "fellowships",
+    "discipleship", "leadership", "stewardship", "worship", "hardship", "hardships",
+    "friendship", "friendships", "membership", "citizenship", "internship", "scholarship",
+    "ownership", "championship", "sponsorship", "bedtime", "lifetime", "somethings",
+    "everything", "anything", "nothing", "understand", "understanding", "understands",
+    "understood", "whatever", "whenever", "wherever", "however", "whoever", "themselves",
+    "ourselves", "yourself", "yourselves", "himself", "herself", "itself", "myself",
+    "nevertheless", "nonetheless", "furthermore", "meanwhile", "otherwise", "therefore",
+    "throughout", "without", "within", "cannot", "into", "onto", "upon", "headphone",
+    "headphones", "friendsgiving", "friendsgivings", "thanksgiving", "international",
+    "internationals", "transformation", "transformations", "imperceptibly", "imperceptible",
+    "extraordinary", "supernatural", "unanswered", "overlook", "overlooked", "underneath",
 }
 
 _CONCAT_WORD_PATTERN = re.compile(r"\b([A-Za-z]+)\b")
@@ -226,6 +276,31 @@ def _get_known_words() -> Set[str]:
         "restless", "relentless", "sleepless", "speechless", "tireless", "worthless",
         "careless", "harmless", "heartless", "nameless", "painless", "powerless",
         "priceless", "sinless", "timeless", "useless", "weightless",
+        # Live sermon vocabulary & inflections
+        "start", "starts", "started", "starting", "spectacular", "simplistic",
+        "statement", "statements", "without", "necessary", "necessarily",
+        "experience", "experiences", "experienced", "experiencing", "sensory",
+        "option", "options", "cancel", "canceling", "cancelling", "headphone",
+        "headphones", "regardless", "january", "february", "march", "april",
+        "may", "june", "july", "august", "september", "october", "november",
+        "december", "announce", "announces", "announced", "announcing",
+        "announcement", "announcements", "interact", "interacts", "interacting",
+        "interaction", "complicate", "complicated", "relationship", "relationships",
+        "proverbial", "smallness", "happen", "happens", "happened", "happening",
+        "christian", "christians", "scripture", "scriptures", "transformation",
+        "transformations", "imperceptibly", "imperceptible", "dramatic",
+        "miraculous", "extraordinary", "ordinary", "conversation", "conversations",
+        "significance", "consistently", "immediately", "resentment", "criticize",
+        "criticized", "penetrates", "penetrate", "phenomenal", "illustration",
+        "illustrations", "ingredients", "temperature", "expectation", "expectations",
+        "followers", "productive", "measurement", "measurable", "inherently",
+        "understandably", "disappointed", "accomplish", "comparing", "ministries",
+        "ministry", "substantial", "magnificent", "intentional", "generosity",
+        "compassion", "disconnected", "belonging", "identical", "surprising",
+        "surprisingly", "challenging", "frustrations", "frustrated", "generational",
+        "represented", "international", "internationals", "volunteering", "volunteer",
+        "intimidating", "professional", "professionals", "opportunity", "opportunities",
+        "decoration", "decorations", "appreciate", "apocalypse", "something",
     }
 
     db_path = Path(__file__).parent / "data" / "bible.db"
@@ -257,6 +332,20 @@ def _format_split(w: str, idx: int) -> str:
         return f"{part1.capitalize()} {part2}"
     else:
         return f"{part1} {part2}"
+
+
+def _format_split3(w: str, idx1: int, idx2: int) -> str:
+    """Format a 3-part word split preserving original casing according to grammar rules."""
+    low = w.lower()
+    p1 = low[:idx1]
+    p2 = low[idx1:idx2]
+    p3 = low[idx2:]
+    if w.isupper():
+        return f"{p1.upper()} {p2.upper()} {p3.upper()}"
+    elif w[0].isupper():
+        return f"{p1.capitalize()} {p2} {p3}"
+    else:
+        return f"{p1} {p2} {p3}"
 
 
 def _split_concat_token(m: re.Match) -> str:
@@ -295,7 +384,7 @@ def _split_concat_token(m: re.Match) -> str:
             if len(pref) >= 3 and pref in known and low not in _CONCAT_WHITELIST:
                 return _format_split(w, len(pref))
 
-    # 3. General 2-word compound fallback for unknown tokens
+    # 3. General 2-word and 3-word compound fallback for unknown tokens
     if low not in known:
         for i in range(3, len(low) - 1):
             w1, w2 = low[:i], low[i:]
@@ -303,6 +392,16 @@ def _split_concat_token(m: re.Match) -> str:
                 continue
             if w1 in known and w2 in known:
                 return _format_split(w, i)
+        # 3-word chain fallback (e.g. withoutnecessarilyexperiencing -> without necessarily experiencing)
+        if len(low) >= 9:
+            for i in range(3, len(low) - 5):
+                w1, rem = low[:i], low[i:]
+                if w1 not in known or rem in _CONCAT_WHITELIST:
+                    continue
+                for j in range(3, len(rem) - 2):
+                    w2a, w2b = rem[:j], rem[j:]
+                    if w2a in known and w2b in known and (w2a + w2b) not in _CONCAT_WHITELIST:
+                        return _format_split3(w, i, i + j)
 
     return w
 
@@ -691,6 +790,12 @@ class TextFormatter:
             if text == prev:
                 break
 
+        # 3. Single-word stutters (e.g. "to to to", "a a", "I I", "and and")
+        text = _SINGLE_WORD_STUTTER_PATTERN.sub(r"\1", text)
+
+        # 4. Quote-boundary immediate word echoes (e.g. 'branches.\'" Branches. To understand' -> 'branches.\'" To understand')
+        text = _QUOTE_ECHO_PATTERN.sub(r"\1\2 ", text).strip()
+
         return text
 
     @staticmethod
@@ -789,6 +894,7 @@ class TextFormatter:
         """Detect and split concatenated common words (e.g. 'toraise' -> 'to raise')."""
         if not text:
             return ""
+        text = _APOSTROPHE_GLUED_PATTERN.sub(r"\1 \2", text)
         return _CONCAT_WORD_PATTERN.sub(_split_concat_token, text)
 
     @classmethod

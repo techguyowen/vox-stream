@@ -1,9 +1,9 @@
 {
-  "version": "1.2.13",
+  "version": "1.2.14",
   "major": 1,
   "minor": 2,
-  "patch": 13,
+  "patch": 14,
   "release_date": "2026-10-25",
-  "codename": "Configurable Max Words, Slow Speech VAD Hangover & Bible Chapter Context",
-  "notes": "Configurable Max Words per caption up to 80 words for run-on sentences, extended Sentence Break Pause slider up to 2500ms, Silero VAD 300ms speech hangover to prevent cold starts and syllable drops during slow talking, and smart Bible chapter-only context tracking that avoids false verse 1 popups on chapter mentions."
+  "codename": "Live Display Interim Deduplication, Gemini Word Space Preservation & Prefix Anchoring",
+  "notes": "Fixes finalized sentences staying duplicated in #liveInterimNode on the display page, preserves word spaces from earlier interim hypotheses when Gemini glues words in subsequent chunks, anchors _strip_finalized_prefix to prefix tail tokens when SMART mode drops >4 filler words, repairs spurious periods after dangling prepositions, and expands glued/split compound word repair."
 }

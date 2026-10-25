@@ -188,11 +188,12 @@ def _strip_finalized_prefix(text: str, finalized_prefix: str) -> str:
 
     from collections import Counter
 
-    # Search candidate cut positions around n_pref (+/- 4 words for ASR insertions/deletions)
+    # Search candidate cut positions around n_pref (+/- tolerance for ASR insertions/deletions)
     best_cut_idx = 0
     best_score = 0.0
-    min_k = max(1, min(n_text, n_pref - 4))
-    max_k = min(n_text, n_pref + 4)
+    tolerance = max(4, n_pref // 4)
+    min_k = max(1, min(n_text, n_pref - tolerance))
+    max_k = min(n_text, n_pref + tolerance)
 
     # First check exact token sequence match
     if n_text >= n_pref and text_tokens[:n_pref] == prefix_tokens:
@@ -223,9 +224,11 @@ def _strip_finalized_prefix(text: str, finalized_prefix: str) -> str:
             )
             score = common / max(n_pref, len(cand_tokens))
             if exact_two_tail:
-                score += 0.12
+                score += 0.25
             elif tail_match:
                 score += 0.05
+            elif k > 2 and cand_tokens[-1] != prefix_tokens[-1]:
+                score -= 0.15
             if punct_end_match:
                 score += 0.04
             if k == n_pref:
@@ -302,7 +305,98 @@ _ABBREV_WORDS = {
 _SENTENCE_BOUNDARY_RE = re.compile(r'([.?!]+["\'”’)]*)\s+')
 _CLAUSE_JOINERS = {";", "—", "–", "--"}
 _CONJUNCTION_WORDS = {"and", "but", "so"}
-_DANGLING_CONNECTORS = {"and", "but", "or", "so", "because", "that", "to", "for", "in", "with", "of"}
+_DANGLING_CONNECTORS = {
+    "and", "but", "or", "so", "because", "that", "to", "for", "in", "with", "of",
+    "by", "from", "into", "onto", "upon", "about", "through", "without", "within",
+    "between", "under", "over", "after", "before", "during", "until", "than", "as", "like",
+}
+
+_LEGITIMATE_COMPOUNDS = {
+    "relationship", "relationships", "partnership", "partnerships", "fellowship", "fellowships",
+    "discipleship", "leadership", "stewardship", "worship", "hardship", "hardships",
+    "friendship", "friendships", "membership", "citizenship", "internship", "scholarship",
+    "ownership", "championship", "sponsorship", "bedtime", "lifetime", "something", "somethings",
+    "everything", "anything", "nothing", "without", "within", "understand", "understanding",
+    "understands", "understood", "whatever", "whenever", "wherever", "however", "whoever",
+    "themselves", "ourselves", "yourself", "yourselves", "himself", "herself", "itself", "myself",
+    "nevertheless", "nonetheless", "furthermore", "meanwhile", "otherwise", "therefore",
+    "throughout", "cannot", "into", "onto", "upon", "headphone", "headphones", "friendsgiving",
+    "friendsgivings", "thanksgiving", "international", "internationals", "transformation",
+    "transformations", "imperceptibly", "imperceptible", "extraordinary", "supernatural",
+    "unanswered", "overlook", "overlooked", "underneath", "already", "together", "today",
+    "tomorrow", "tonight", "weekend", "weekdays", "weekday", "background", "foreground",
+    "underground", "anyway", "anyhow", "anymore", "someone", "somebody", "somewhere",
+    "sometimes", "somewhat", "everyone", "everybody", "everywhere", "anyone", "anybody",
+    "anywhere", "noone", "nobody", "nowhere", "sunglasses", "basically", "gummy", "gummies",
+}
+
+
+def _extract_adjacent_alpha_pairs(text: str) -> set[Tuple[str, str]]:
+    """Extract adjacent purely alphabetic word pairs (w1.lower(), w2.lower()) from text."""
+    pairs: set[Tuple[str, str]] = set()
+    if not text:
+        return pairs
+    tokens = text.split()
+    for i in range(len(tokens) - 1):
+        w1 = re.sub(r"^[^\w]+|[^\w]+$", "", tokens[i])
+        w2 = re.sub(r"^[^\w]+|[^\w]+$", "", tokens[i + 1])
+        # Only pair words that had no terminal sentence punctuation between them
+        if tokens[i][-1] in ".?!;:":
+            continue
+        if len(w1) >= 2 and len(w2) >= 2 and w1.isalpha() and w2.isalpha():
+            lw1, lw2 = w1.lower(), w2.lower()
+            if (lw1 + lw2) not in _LEGITIMATE_COMPOUNDS:
+                pairs.add((lw1, lw2))
+    return pairs
+
+
+def _restore_known_interim_spaces(
+    text: str,
+    prev_interim: Optional[str],
+    known_pairs: Optional[set[Tuple[str, str]]] = None,
+) -> str:
+    """Restore word spaces when Gemini glues previously-spaced words on a subsequent chunk."""
+    if not text:
+        return text
+    pairs: set[Tuple[str, str]] = set()
+    if prev_interim:
+        pairs.update(_extract_adjacent_alpha_pairs(prev_interim))
+    if known_pairs:
+        pairs.update(known_pairs)
+    if not pairs:
+        return text
+
+    pair_map: Dict[str, Tuple[str, str]] = {}
+    for w1, w2 in pairs:
+        concat = w1 + w2
+        if len(concat) >= 5 and concat not in _LEGITIMATE_COMPOUNDS:
+            pair_map[concat] = (w1, w2)
+
+    if not pair_map:
+        return text
+
+    def _replace_tok(m: re.Match) -> str:
+        tok = m.group(1)
+        low = tok.lower()
+        if low in pair_map:
+            w1, w2 = pair_map[low]
+            idx = len(w1)
+            if tok.isupper():
+                return f"{w1.upper()} {w2.upper()}"
+            elif tok[0].isupper():
+                return f"{tok[:idx]} {tok[idx:]}"
+            else:
+                return f"{w1} {w2}"
+        return tok
+
+    return re.sub(r"\b([A-Za-z]{5,})\b", _replace_tok, text)
+
+
+_SPURIOUS_PERIOD_PREPOSITIONS = {
+    "by", "from", "into", "onto", "upon", "about", "through", "without", "within",
+    "between", "under", "over", "after", "before", "during", "until", "than", "as", "like",
+    "to", "for", "in", "with", "of",
+}
 
 
 def _split_completed_sentences(
@@ -364,6 +458,11 @@ def _split_completed_sentences(
             if not trail_words:
                 continue
 
+            # Do not split on spurious period after a dangling connector ("loved by. God.", "worked all through. The dough.")
+            last_word_clean = re.sub(r"^[^\w]+|[^\w]+$", "", cand_words[-1]).lower()
+            if last_word_clean in _SPURIOUS_PERIOD_PREPOSITIONS and candidate_sent.rstrip("\"'”’)]").endswith(".") and len(trail_words) <= 4:
+                continue
+
             # In English, a new sentence never begins with a lowercase letter
             first_trail_char = trail_words[0].lstrip("\"'“‘([{\u201c\u2018")
             if first_trail_char and first_trail_char[0].islower():
@@ -412,6 +511,12 @@ def _split_completed_sentences(
         if split_word_idx is None:
             split_word_idx = effective_max
 
+        while (
+            split_word_idx > min_preceding_words
+            and _norm_word(word_matches[split_word_idx - 1].group(0)) in _CONJUNCTION_WORDS
+        ):
+            split_word_idx -= 1
+
         char_cut = word_matches[split_word_idx - 1].end()
         chunk_sent = remaining[:char_cut].strip()
         # Strip trailing standalone dash/semicolon if split right after it
@@ -429,8 +534,61 @@ def _split_final_paragraph(text: str, max_words: int = 24) -> List[str]:
     if not raw:
         return []
     effective_max = max(12, min(80, int(max_words or 24)))
+
+    # Repair spurious periods after dangling prepositions when followed by a short object fragment
+    # (e.g. "loved by. God." -> "loved by God.", 'worked all through. The dough."' -> 'worked all through the dough."')
+    def _repair_dangling_periods(s: str) -> str:
+        while True:
+            repaired = False
+            for match in _SENTENCE_BOUNDARY_RE.finditer(s):
+                end_pos = match.end(1)
+                after_pos = match.end()
+                cand = s[:end_pos].strip()
+                trail = s[after_pos:].strip()
+                cand_words = cand.split()
+                trail_words = trail.split()
+                if not cand_words or not trail_words:
+                    continue
+                last_word_clean = re.sub(r"^[^\w]+|[^\w]+$", "", cand_words[-1]).lower()
+                # Count words up to next sentence boundary in trail
+                next_m = _SENTENCE_BOUNDARY_RE.search(trail)
+                frag_words = trail[:next_m.end(1)].split() if next_m else trail_words
+                if (
+                    last_word_clean in _SPURIOUS_PERIOD_PREPOSITIONS
+                    and cand.rstrip("\"'”’)]").endswith(".")
+                    and len(frag_words) <= 3
+                ):
+                    first_trail = trail_words[0]
+                    # Lowercase common determiners/pronouns when merging into the preposition phrase
+                    first_clean = re.sub(r"^[^\w]+|[^\w]+$", "", first_trail)
+                    if first_clean.lower() in {"the", "a", "an", "his", "her", "their", "our", "my", "your", "its", "this", "that", "these", "those", "all", "every", "some", "any", "him", "them", "us", "me", "you", "it"}:
+                        first_trail_fixed = first_trail[0].lower() + first_trail[1:] if first_trail and first_trail[0].isupper() else first_trail
+                        trail = first_trail_fixed + trail[len(first_trail):]
+                    cand_no_period = re.sub(r'\.(?=["\'”’)\]]*$)', "", cand)
+                    s = f"{cand_no_period} {trail}".strip()
+                    repaired = True
+                    break
+            if not repaired:
+                break
+        return s
+
+    raw = _repair_dangling_periods(raw)
+
     if len(raw.split()) <= effective_max:
-        return [raw]
+        # Still check for quote-boundary echo at the end of a short paragraph (e.g. "...branches.'\" Branches.")
+        m_list = list(_SENTENCE_BOUNDARY_RE.finditer(raw))
+        if m_list:
+            last_m = m_list[-1]
+            cand = raw[:last_m.end(1)].strip()
+            trail = raw[last_m.end():].strip()
+            c_words = cand.split()
+            t_words = trail.split()
+            if c_words and 1 <= len(t_words) <= 2:
+                if _norm_word(c_words[-1]) == _norm_word(t_words[0]):
+                    rem_trail = " ".join(t_words[1:]).strip()
+                    raw = f"{cand} {rem_trail}".strip() if rem_trail else cand
+        if len(raw.split()) <= effective_max:
+            return [raw]
 
     sentences: List[str] = []
     remaining = raw
@@ -451,14 +609,24 @@ def _split_final_paragraph(text: str, max_words: int = 24) -> List[str]:
             if re.match(r"^\d+\.?$", last_token) or re.match(r"^\d+:\d+", last_token):
                 continue
             trail_words = trail.split()
+            last_word_clean = re.sub(r"^[^\w]+|[^\w]+$", "", cand_words[-1]).lower()
+            if last_word_clean in _SPURIOUS_PERIOD_PREPOSITIONS and cand.rstrip("\"'”’)]").endswith(".") and len(trail_words) <= 3:
+                continue
             if trail_words:
                 first_trail_char = trail_words[0].lstrip("\"'“‘([{\u201c\u2018")
                 if first_trail_char and first_trail_char[0].islower():
                     continue
+                # Discard immediate echo word after sentence/quote boundary (e.g. '...perch in its branches.\'" Branches.')
+                if len(trail_words) <= 2 and _norm_word(trail_words[0]) == _norm_word(cand_words[-1]):
+                    trail_words = trail_words[1:]
+                    trail = " ".join(trail_words).strip()
             if trail:
                 sentences.append(cand)
                 remaining = trail
                 split_done = True
+                break
+            else:
+                remaining = cand
                 break
         if not split_done:
             if remaining:
@@ -495,7 +663,8 @@ def _split_final_paragraph(text: str, max_words: int = 24) -> List[str]:
                         final_parts.append(curr_tail)
                         break
                     cut_idx = effective_max
-                    for i in range(effective_max, max(9, effective_max // 2), -1):
+                    min_idx = max(9, effective_max // 2)
+                    for i in range(effective_max, min_idx, -1):
                         if i >= len(t_matches):
                             continue
                         prev = t_matches[i - 1].group(0)
@@ -503,6 +672,11 @@ def _split_final_paragraph(text: str, max_words: int = 24) -> List[str]:
                         if prev[-1] in _CLAUSE_JOINERS or prev in _CLAUSE_JOINERS or curr_c in _CONJUNCTION_WORDS:
                             cut_idx = i
                             break
+                    while (
+                        cut_idx > min_idx
+                        and _norm_word(t_matches[cut_idx - 1].group(0)) in _CONJUNCTION_WORDS
+                    ):
+                        cut_idx -= 1
                     c_sent = curr_tail[:t_matches[cut_idx - 1].end()].strip()
                     c_sent = re.sub(r"\s+[-–—;]$", "", c_sent).strip()
                     if c_sent:
@@ -547,6 +721,7 @@ class GeminiLiveEngine(BaseSTTEngine):
         self._finalized_turn_sentences: List[str] = []
         self._latest_interim_text: Optional[str] = None
         self._last_interim_change_mono: float = 0.0
+        self._turn_spaced_pairs: set[Tuple[str, str]] = set()
         self._last_disconnect_finalized_text: str = ""
         self._rotation_drain_event: Optional[asyncio.Event] = None
         self._rotation_in_progress: bool = False
@@ -971,6 +1146,16 @@ class GeminiLiveEngine(BaseSTTEngine):
                 else:
                     logger.debug(f"Suppressed hallucinated modelTurn from Gemini Live: {full_part_text}")
 
+        is_turn_done = bool(
+            server_content.get("turnComplete")
+            or server_content.get("turn_complete")
+            or server_content.get("generationComplete")
+            or server_content.get("generation_complete")
+            or server_content.get("interrupted")
+        )
+        if is_turn_done and not any(ev.is_final for ev in events) and self._latest_interim_text:
+            events.append(ParsedTranscriptTuple(self._latest_interim_text, True, None))
+
         return events
 
     def _reset_turn_state(self) -> None:
@@ -980,6 +1165,7 @@ class GeminiLiveEngine(BaseSTTEngine):
         self._finalized_turn_sentences = []
         self._latest_interim_text = None
         self._last_interim_change_mono = 0.0
+        self._turn_spaced_pairs = set()
 
     def _append_finalized_prefix(self, segment: str) -> None:
         """Append a newly finalized sentence segment to the current turn's finalized prefix."""
@@ -1053,6 +1239,11 @@ class GeminiLiveEngine(BaseSTTEngine):
         max_words = max(12, min(80, int(getattr(self.config.audio, "max_sentence_words", 24) or 24)))
         out: List[TranscriptEvent] = []
 
+        # Restore any word spaces that were present in earlier interims of this turn before Gemini glued them
+        if text:
+            text = _restore_known_interim_spaces(text, self._latest_interim_text, self._turn_spaced_pairs)
+            self._turn_spaced_pairs.update(_extract_adjacent_alpha_pairs(text))
+
         if not is_final:
             deduped_text = self._strip_disconnect_replay_prefix(text, now_m)
             if not deduped_text:
@@ -1069,6 +1260,22 @@ class GeminiLiveEngine(BaseSTTEngine):
                 out.append(TranscriptEvent(text=sent, is_final=True, translated_text=None))
 
             if remaining_interim:
+                # Check if remaining_interim is a completely disjoint new utterance (Gemini started a new turn
+                # without sending inputTranscription for the previous interim)
+                if not completed_sents and self._latest_interim_text:
+                    old_interim = self._latest_interim_text.strip()
+                    old_words = [_norm_word(w) for w in old_interim.split() if _norm_word(w)]
+                    new_words = [_norm_word(w) for w in remaining_interim.split() if _norm_word(w)]
+                    if (
+                        len(old_words) >= 3
+                        and len(new_words) >= 1
+                        and len(new_words) <= len(old_words) - 2
+                        and all(w not in old_words for w in new_words[:2])
+                        and len(set(old_words) & set(new_words)) == 0
+                    ):
+                        self._append_finalized_prefix(old_interim)
+                        out.append(TranscriptEvent(text=old_interim, is_final=True, translated_text=None))
+
                 if remaining_interim != self._latest_interim_text:
                     self._last_interim_change_mono = now_m
                 self._latest_interim_text = remaining_interim
@@ -2313,11 +2520,17 @@ class GeminiLiveEngine(BaseSTTEngine):
                                 silence_dur = (now - last_speech_time) if last_speech_time > 0.0 else 0.0
                                 if speech_active and silence_dur >= min(0.35, current_pause_threshold):
                                     speech_active = False
-                                if getattr(self.config.gemini_live, "enable_hybrid_vad", enable_hybrid_vad):
+                                is_hybrid_vad = getattr(self.config.gemini_live, "enable_hybrid_vad", enable_hybrid_vad)
+                                if is_hybrid_vad or silence_dur >= 2.0:
+                                    eff_pause_thresh = (
+                                        current_pause_threshold
+                                        if is_hybrid_vad
+                                        else max(2.0, current_pause_threshold)
+                                    )
                                     vad_event = self._maybe_finalize_on_vad_pause(
                                         speech_active=speech_active,
                                         silence_duration=silence_dur,
-                                        pause_threshold=current_pause_threshold,
+                                        pause_threshold=eff_pause_thresh,
                                         mono_now=mono_now,
                                     )
                                     if vad_event is not None:
