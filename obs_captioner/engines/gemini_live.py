@@ -323,6 +323,7 @@ _ABBREV_WORDS = {
 _SENTENCE_BOUNDARY_RE = re.compile(r'([.?!]+["\'”’)]*)\s+')
 _CLAUSE_JOINERS = {";", ":", "—", "–", "--"}
 _CONJUNCTION_WORDS = {"and", "but", "so"}
+_SUBORDINATING_CLAUSE_WORDS = {"than", "because", "where", "when", "which", "though", "although"}
 _DANGLING_CONNECTORS = {
     "and", "but", "or", "so", "because", "that", "to", "for", "in", "with", "of",
     "by", "from", "into", "onto", "upon", "about", "through", "without", "within",
@@ -351,7 +352,7 @@ _LEGITIMATE_COMPOUNDS = {
     "overestimate", "overestimates", "overestimated", "overestimating", "website", "websites",
     "hopefully", "sunday", "sundays", "hallmark", "hallmarks", "hallway", "hallways",
     "backpack", "backpacks", "creekside", "outreach", "highlight", "highlights", "highlighted",
-    "highlighting", "insecurity", "insecurities",
+    "highlighting", "insecurity", "insecurities", "downtown", "bookstore", "bookstores",
 }
 
 
@@ -575,12 +576,22 @@ def _split_completed_sentences(
                 split_word_idx = i
                 break
 
+        # Fallback to subordinating / comparative clause boundary if no coordinating conjunction or punctuation was found
+        if split_word_idx is None:
+            for i in range(effective_max, min_preceding_words - 1, -1):
+                if i >= len(word_matches):
+                    continue
+                curr_word_clean = _norm_word(word_matches[i].group(0))
+                if curr_word_clean in _SUBORDINATING_CLAUSE_WORDS:
+                    split_word_idx = i
+                    break
+
         if split_word_idx is None:
             split_word_idx = effective_max
 
         while (
             split_word_idx > min_preceding_words
-            and _norm_word(word_matches[split_word_idx - 1].group(0)) in _CONJUNCTION_WORDS
+            and _norm_word(word_matches[split_word_idx - 1].group(0)) in (_CONJUNCTION_WORDS | _SUBORDINATING_CLAUSE_WORDS)
         ):
             split_word_idx -= 1
 
@@ -763,13 +774,22 @@ def _split_final_paragraph(text: str, max_words: int = 24) -> List[str]:
                             cut_idx = i
                             found_clause_break = True
                             break
+                    if not found_clause_break:
+                        for i in range(effective_max, min_idx, -1):
+                            if i >= len(t_matches):
+                                continue
+                            curr_c = _norm_word(t_matches[i].group(0))
+                            if curr_c in _SUBORDINATING_CLAUSE_WORDS:
+                                cut_idx = i
+                                found_clause_break = True
+                                break
                     # Never leave a 1-2 word orphan tail if no earlier clause break was found
                     if not found_clause_break and len(t_matches) <= effective_max + 2:
                         final_parts.append(curr_tail)
                         break
                     while (
                         cut_idx > min_idx
-                        and _norm_word(t_matches[cut_idx - 1].group(0)) in _CONJUNCTION_WORDS
+                        and _norm_word(t_matches[cut_idx - 1].group(0)) in (_CONJUNCTION_WORDS | _SUBORDINATING_CLAUSE_WORDS)
                     ):
                         cut_idx -= 1
                     c_sent = curr_tail[:t_matches[cut_idx - 1].end()].strip()

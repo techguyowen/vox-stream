@@ -1541,8 +1541,8 @@ def test_v1_2_16_scripture_bridging_context_and_sermon_fixes():
     from obs_captioner.version import VERSION, VERSION_INFO
 
     # 1. Version bump check
-    assert VERSION == "1.2.17"
-    assert VERSION_INFO == (1, 2, 17)
+    assert VERSION == "1.2.18"
+    assert VERSION_INFO == (1, 2, 18)
 
     # 2. BibleEngine: bridging phrases ("starting with verse 31", "beginning at verse 5")
     bible = BibleEngine()
@@ -1644,6 +1644,55 @@ def test_v1_2_16_scripture_bridging_context_and_sermon_fixes():
     assert "highlight" in fmt.format_text("I want to high light one thing.", is_final=True).lower()
     assert "how much flour" in fmt.format_text("Notice how much flower Jesus mentions.", is_final=True).lower()
     assert fmt.format_text("Like east.", is_final=True) == "Like yeast."
+
+
+def test_v1_2_18_regression():
+    """Regression test suite for v1.2.18:
+    1. Everyday compound word rejoining ('down town' -> 'downtown', 'book store' -> 'bookstore')
+    2. Subordinating/comparative clause splitting in _split_final_paragraph and _split_completed_sentences
+       (Luke 15:7 splitting cleanly at 'than').
+    """
+    from obs_captioner.engines.gemini_live import (
+        _split_completed_sentences,
+        _split_final_paragraph,
+    )
+    from obs_captioner.formatter import TextFormatter
+    from obs_captioner.version import VERSION, VERSION_INFO
+
+    # 1. Version check
+    assert VERSION == "1.2.18"
+    assert VERSION_INFO == (1, 2, 18)
+
+    # 2. TextFormatter everyday compound word rejoining
+    fmt = TextFormatter(auto_capitalization=True, auto_punctuation=True, church_mode=True)
+    assert "downtown" in fmt.format_text("So we go down town to see it.", is_final=True).lower()
+    assert "Downtown" in fmt.format_text("Down town bookstores are open.", is_final=True)
+    assert "bookstore" in fmt.format_text("We decide to go to the book store before lunch.", is_final=True).lower()
+    assert "bookstores" in fmt.format_text("We visit multiple book stores.", is_final=True).lower()
+
+    # 3. Luke 15:7 comparative clause splitting at 'than' (preceded by 20 words >= 10 words)
+    luke_15_7 = (
+        "I tell you that in the same way, there will be more rejoicing in heaven over one "
+        "sinner who repents than over 99 righteous persons who do not need to repent."
+    )
+    parts = _split_final_paragraph(luke_15_7, max_words=24)
+    assert len(parts) == 2, f"Expected 2 parts, got {len(parts)}: {parts}"
+    assert parts[0] == "I tell you that in the same way, there will be more rejoicing in heaven over one sinner who repents"
+    assert parts[1] == "than over 99 righteous persons who do not need to repent."
+    assert len(parts[0].split()) == 20
+    assert len(parts[1].split()) == 11
+
+    # Also test _split_completed_sentences unpunctuated stream Rule B with subordinating conjunction
+    unpunct_stream = (
+        "i tell you that in the same way there will be more rejoicing in heaven over one "
+        "sinner who repents than over 99 righteous persons who do not need to repent and they celebrate"
+    )
+    completed, rem = _split_completed_sentences(unpunct_stream, max_words=24)
+    assert completed == [
+        "i tell you that in the same way there will be more rejoicing in heaven over one sinner who repents"
+    ]
+    assert rem.startswith("than over 99 righteous persons")
+
 
 
 

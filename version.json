@@ -1,9 +1,9 @@
 {
-  "version": "1.2.17",
+  "version": "1.2.18",
   "major": 1,
   "minor": 2,
-  "patch": 16,
+  "patch": 18,
   "release_date": "2026-10-27",
-  "codename": "Scripture Bridging Phrases, Chapter-Only Context Preservation, Sentence Boundary & Ordinal Fixes",
-  "notes": "Supports bridging words before verse references ('starting with verse 31'), preserves primary scripture chapter across chapter-only references ('In Ezekiel 17'), splits sentences after chapter numbers ('Matthew 13. He does it'), strips quote-boundary single-word echoes, repairs spurious periods after determiners/auxiliaries, prevents 1-2 word orphan sentence tails, fixes ordinal capitalization ('1st', '3rd'), and expands compound/homophone corrections."
+  "codename": "Everyday Compound Word Joining & Subordinating Clause Splitting",
+  "notes": "Rejoins everyday compound words ('down town' -> 'downtown', 'book store' -> 'bookstore', 'book stores' -> 'bookstores') and improves clause-break candidate selection in _split_completed_sentences and _split_final_paragraph on subordinating and comparative conjunctions ('than', 'because', 'where', 'when', 'which', 'though', 'although') when preceded by >= 10 words."
 }

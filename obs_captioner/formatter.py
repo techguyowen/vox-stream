@@ -28,6 +28,8 @@ _DISFLUENCY_REPLACEMENTS: Tuple[Tuple[re.Pattern, Any], ...] = (
         ),
         _join_ship_compound,
     ),
+    (re.compile(r"\b(down)\s+(town)\b", re.IGNORECASE), _join_two_part_compound),
+    (re.compile(r"\b(book)\s+(stores?)\b", re.IGNORECASE), _join_two_part_compound),
     (re.compile(r"\bbed\s+time\b", re.IGNORECASE), "bedtime"),
     (re.compile(r"\bfriends\s+givings\b", re.IGNORECASE), "Friendsgivings"),
     (re.compile(r"\b(toi)\s+(lets?)\b", re.IGNORECASE), _join_two_part_compound),
@@ -146,6 +148,7 @@ _CONCAT_WHITELIST: Set[str] = {
     "often", "history", "formal", "format", "forbid", "forget", "forgive", "forest",
     "forever", "theme", "theory", "theater", "there", "their", "these", "those",
     "they", "then", "them", "other", "another", "otherwise",
+    "downtown", "bookstore", "bookstores",
     # Additional common single words and inflections
     "one", "ones", "only", "once", "onto", "too", "inn", "inns",
     "toward", "tonight", "tomorrow", "total", "totally", "touch", "touched", "touching",
@@ -256,6 +259,7 @@ _CONCAT_WHITELIST: Set[str] = {
     "headphones", "friendsgiving", "friendsgivings", "thanksgiving", "international",
     "internationals", "transformation", "transformations", "imperceptibly", "imperceptible",
     "extraordinary", "supernatural", "unanswered", "overlook", "overlooked", "underneath",
+    "downtown", "bookstore", "bookstores",
 }
 
 _CONCAT_WORD_PATTERN = re.compile(r"\b([A-Za-z]+)\b")
@@ -356,6 +360,7 @@ def _get_known_words() -> Set[str]:
         "represented", "international", "internationals", "volunteering", "volunteer",
         "intimidating", "professional", "professionals", "opportunity", "opportunities",
         "decoration", "decorations", "appreciate", "apocalypse", "something",
+        "downtown", "bookstore", "bookstores",
     }
 
     db_path = Path(__file__).parent / "data" / "bible.db"
