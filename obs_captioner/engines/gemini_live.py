@@ -118,7 +118,7 @@ _WORD_NORM_RE = re.compile(r"[^\w']+", re.UNICODE)
 
 
 def _norm_word(w: str) -> str:
-    return _WORD_NORM_RE.sub("", w).casefold()
+    return _WORD_NORM_RE.sub("", w).strip("'").casefold()
 
 
 def _filter_stutter_tokens(raw_words: Sequence[str]) -> List[str]:
@@ -159,8 +159,17 @@ def _strip_finalized_prefix(text: str, finalized_prefix: str) -> str:
 
     # Fast exact case-insensitive prefix check
     if raw_text.casefold().startswith(raw_prefix.casefold()):
-        remainder = raw_text[len(raw_prefix):]
-        return re.sub(r"^[\s.,;!?:\"')\]—\-]+", "", remainder).strip()
+        remainder = re.sub(r"^[\s.,;!?:\"')\]—\-]+", "", raw_text[len(raw_prefix):]).strip()
+        rem_words = remainder.split()
+        pref_last = _norm_word(raw_prefix.split()[-1]) if raw_prefix.split() else ""
+        if (
+            rem_words
+            and pref_last
+            and _norm_word(rem_words[0]) == pref_last
+            and (len(rem_words) <= 2 or rem_words[0].rstrip("\"'”’)]").endswith((".", "!", "?")))
+        ):
+            remainder = " ".join(rem_words[1:]).strip()
+        return remainder
 
     raw_prefix_words = raw_prefix.split()
     prefix_tokens = _filter_stutter_tokens(raw_prefix_words)
@@ -241,8 +250,17 @@ def _strip_finalized_prefix(text: str, finalized_prefix: str) -> str:
         if best_cut_idx >= len(text_matches):
             return ""
         slice_pos = text_matches[best_cut_idx].start()
-        remainder = raw_text[slice_pos:]
-        return re.sub(r"^[\s.,;!?:\"')\]—\-]+", "", remainder).strip()
+        remainder = re.sub(r"^[\s.,;!?:\"')\]—\-]+", "", raw_text[slice_pos:]).strip()
+        # Strip single-word echo of the last prefix word (e.g. "...branches.'\" Branches. To understand...")
+        rem_words = remainder.split()
+        if (
+            rem_words
+            and prefix_tokens
+            and _norm_word(rem_words[0]) == prefix_tokens[-1]
+            and (len(rem_words) <= 2 or rem_words[0].rstrip("\"'”’)]").endswith((".", "!", "?")))
+        ):
+            remainder = " ".join(rem_words[1:]).strip()
+        return remainder
 
     # Suffix-to-Prefix Overlap Matching (handles mid-turn SMART mode rewrites that drop early clauses)
     max_overlap = min(n_pref, n_text)
@@ -303,7 +321,7 @@ _ABBREV_WORDS = {
 }
 
 _SENTENCE_BOUNDARY_RE = re.compile(r'([.?!]+["\'”’)]*)\s+')
-_CLAUSE_JOINERS = {";", "—", "–", "--"}
+_CLAUSE_JOINERS = {";", ":", "—", "–", "--"}
 _CONJUNCTION_WORDS = {"and", "but", "so"}
 _DANGLING_CONNECTORS = {
     "and", "but", "or", "so", "because", "that", "to", "for", "in", "with", "of",
@@ -324,10 +342,16 @@ _LEGITIMATE_COMPOUNDS = {
     "friendsgivings", "thanksgiving", "international", "internationals", "transformation",
     "transformations", "imperceptibly", "imperceptible", "extraordinary", "supernatural",
     "unanswered", "overlook", "overlooked", "underneath", "already", "together", "today",
-    "tomorrow", "tonight", "weekend", "weekdays", "weekday", "background", "foreground",
+    "tomorrow", "tonight", "weekend", "weekends", "weekdays", "weekday", "background", "foreground",
     "underground", "anyway", "anyhow", "anymore", "someone", "somebody", "somewhere",
     "sometimes", "somewhat", "everyone", "everybody", "everywhere", "anyone", "anybody",
     "anywhere", "noone", "nobody", "nowhere", "sunglasses", "basically", "gummy", "gummies",
+    "toilet", "toilets", "invest", "invests", "invested", "investing", "investment", "investments",
+    "investor", "investors", "underestimate", "underestimates", "underestimated", "underestimating",
+    "overestimate", "overestimates", "overestimated", "overestimating", "website", "websites",
+    "hopefully", "sunday", "sundays", "hallmark", "hallmarks", "hallway", "hallways",
+    "backpack", "backpacks", "creekside", "outreach", "highlight", "highlights", "highlighted",
+    "highlighting", "insecurity", "insecurities",
 }
 
 
@@ -396,7 +420,35 @@ _SPURIOUS_PERIOD_PREPOSITIONS = {
     "by", "from", "into", "onto", "upon", "about", "through", "without", "within",
     "between", "under", "over", "after", "before", "during", "until", "than", "as", "like",
     "to", "for", "in", "with", "of",
+    "a", "an", "the", "was", "were", "is", "are", "be", "been", "being", "has", "have", "had",
 }
+
+
+def _is_non_terminal_numeric_token(last_token: str, cand_words: Sequence[str], trail_words: Sequence[str]) -> bool:
+    """Return True when a number or citation token ending a candidate is NOT a sentence boundary."""
+    if re.match(r"^\d+:\d+", last_token):
+        return True
+    if not re.match(r"^\d+\.?$", last_token):
+        return False
+    if not trail_words:
+        return True
+    first_trail_clean = re.sub(r"^[^\w]+|[^\w]+$", "", trail_words[0]).lower()
+    if not first_trail_clean:
+        return True
+    # Decimal / unit / verse continuation (e.g. "3. 5 percent", "chapter 13. Verse 31")
+    if (
+        first_trail_clean[0].isdigit()
+        or first_trail_clean in {
+            "percent", "point", "verse", "verses", "starting", "beginning",
+            "to", "through", "thru", "and", "or", "am", "pm",
+        }
+    ):
+        return True
+    if len(cand_words) >= 2:
+        prev_clean = re.sub(r"^[^\w]+|[^\w]+$", "", cand_words[-2]).lower()
+        if prev_clean in {"ch", "chap", "v", "vss", "ver", "no", "fig", "sec", "min", "est", "approx"}:
+            return True
+    return False
 
 
 def _split_completed_sentences(
@@ -451,8 +503,8 @@ def _split_completed_sentences(
             # Avoid splitting on single-letter initials like "J. R. Tolkien"
             if re.match(r"^[a-z]\.$", last_token):
                 continue
-            # Ignore numbers with periods ("3. 5 percent", "15.") or verse citations ("15:1-3.", "15:1.")
-            if re.match(r"^\d+\.?$", last_token) or re.match(r"^\d+:\d+", last_token):
+            # Ignore non-terminal numbers with periods ("3. 5 percent") or verse citations ("15:1-3.", "15:1.")
+            if _is_non_terminal_numeric_token(last_token, cand_words, trail_words):
                 continue
 
             if not trail_words:
@@ -461,13 +513,27 @@ def _split_completed_sentences(
             # Do not split on spurious period after a dangling connector ("loved by. God.", "worked all through. The dough.")
             last_word_clean = re.sub(r"^[^\w]+|[^\w]+$", "", cand_words[-1]).lower()
             if last_word_clean in _SPURIOUS_PERIOD_PREPOSITIONS and candidate_sent.rstrip("\"'”’)]").endswith("."):
-                if len(trail_words) <= 4 or (last_word_clean in ("of", "by", "for", "with", "to", "in", "from", "into", "onto", "upon", "about", "through", "without", "within", "between", "under", "over") and trail_words[0].lower().rstrip(".,?!") in ("blessing", "being", "making", "doing", "working", "living", "walking", "serving", "loving", "building", "bringing", "giving", "taking", "sharing", "helping", "seeking", "following", "trusting", "knowing", "seeing", "hearing")):
+                next_m = _SENTENCE_BOUNDARY_RE.search(trailing_text)
+                frag_words = trailing_text[:next_m.end(1)].split() if next_m else trail_words
+                if len(trail_words) <= 4 or len(frag_words) <= 3 or (last_word_clean in ("of", "by", "for", "with", "to", "in", "from", "into", "onto", "upon", "about", "through", "without", "within", "between", "under", "over") and trail_words[0].lower().rstrip(".,?!") in ("blessing", "being", "making", "doing", "working", "living", "walking", "serving", "loving", "building", "bringing", "giving", "taking", "sharing", "helping", "seeking", "following", "trusting", "knowing", "seeing", "hearing")):
                     continue
 
             # In English, a new sentence never begins with a lowercase letter
             first_trail_char = trail_words[0].lstrip("\"'“‘([{\u201c\u2018")
             if first_trail_char and first_trail_char[0].islower():
                 continue
+
+            # Strip single-word quote-boundary echo (e.g. "...branches.'\" Branches. To understand...")
+            if (
+                trail_words
+                and cand_words
+                and _norm_word(trail_words[0]) == _norm_word(cand_words[-1])
+                and (len(trail_words) <= 2 or trail_words[0].rstrip("\"'”’)]").endswith((".", "!", "?")))
+            ):
+                trailing_text = " ".join(trail_words[1:]).strip()
+                trail_words = trailing_text.split()
+                if not trail_words:
+                    continue
 
             if len(trail_words) >= require_trailing_words:
                 completed.append(candidate_sent)
@@ -500,7 +566,7 @@ def _split_completed_sentences(
             prev_word = word_matches[i - 1].group(0)
             curr_word_clean = _norm_word(word_matches[i].group(0))
 
-            # Punctuation clause break at end of word i-1 (semicolon, dash)
+            # Punctuation clause break at end of word i-1 (semicolon, colon, dash)
             if prev_word[-1] in _CLAUSE_JOINERS or prev_word in _CLAUSE_JOINERS:
                 split_word_idx = i
                 break
@@ -536,8 +602,8 @@ def _split_final_paragraph(text: str, max_words: int = 24) -> List[str]:
         return []
     effective_max = max(12, min(80, int(max_words or 24)))
 
-    # Repair spurious periods after dangling prepositions when followed by a short object fragment
-    # (e.g. "loved by. God." -> "loved by God.", 'worked all through. The dough."' -> 'worked all through the dough."')
+    # Repair spurious periods after dangling prepositions/auxiliaries/determiners when followed by a short fragment
+    # (e.g. "loved by. God." -> "loved by God.", "images: a. Seed." -> "images: a seed.", "was. Expecting." -> "was expecting.")
     def _repair_dangling_periods(s: str) -> str:
         while True:
             repaired = False
@@ -560,9 +626,26 @@ def _split_final_paragraph(text: str, max_words: int = 24) -> List[str]:
                     and len(frag_words) <= 3
                 ):
                     first_trail = trail_words[0]
-                    # Lowercase common determiners/pronouns when merging into the preposition phrase
                     first_clean = re.sub(r"^[^\w]+|[^\w]+$", "", first_trail)
-                    if first_clean.lower() in {"the", "a", "an", "his", "her", "their", "our", "my", "your", "its", "this", "that", "these", "those", "all", "every", "some", "any", "him", "them", "us", "me", "you", "it"}:
+                    _keep_capitalized = {
+                        "god", "jesus", "christ", "lord", "spirit", "father", "messiah", "savior",
+                        "bible", "scripture", "scriptures", "israel", "israelites", "jerusalem",
+                        "galilee", "nazareth", "rome", "costco", "waypoint", "matthew", "mark",
+                        "luke", "john", "acts", "romans", "ezekiel", "psalm", "psalms", "genesis",
+                        "exodus", "isaiah", "paul", "peter", "david", "moses", "abraham", "i",
+                    }
+                    if (
+                        first_clean.lower() in {
+                            "the", "a", "an", "his", "her", "their", "our", "my", "your", "its",
+                            "this", "that", "these", "those", "all", "every", "some", "any",
+                            "him", "them", "us", "me", "you", "it",
+                        }
+                        or (
+                            len(frag_words) == 1
+                            and first_clean.lower() not in _keep_capitalized
+                            and not first_clean.isupper()
+                        )
+                    ):
                         first_trail_fixed = first_trail[0].lower() + first_trail[1:] if first_trail and first_trail[0].isupper() else first_trail
                         trail = first_trail_fixed + trail[len(first_trail):]
                     cand_no_period = re.sub(r'\.(?=["\'”’)\]]*$)', "", cand)
@@ -576,18 +659,19 @@ def _split_final_paragraph(text: str, max_words: int = 24) -> List[str]:
     raw = _repair_dangling_periods(raw)
 
     if len(raw.split()) <= effective_max:
-        # Still check for quote-boundary echo at the end of a short paragraph (e.g. "...branches.'\" Branches.")
+        # Still check for quote-boundary echo in a short paragraph (e.g. "...branches.'\" Branches.")
         m_list = list(_SENTENCE_BOUNDARY_RE.finditer(raw))
         if m_list:
-            last_m = m_list[-1]
-            cand = raw[:last_m.end(1)].strip()
-            trail = raw[last_m.end():].strip()
-            c_words = cand.split()
-            t_words = trail.split()
-            if c_words and 1 <= len(t_words) <= 2:
-                if _norm_word(c_words[-1]) == _norm_word(t_words[0]):
-                    rem_trail = " ".join(t_words[1:]).strip()
-                    raw = f"{cand} {rem_trail}".strip() if rem_trail else cand
+            for m_item in m_list:
+                cand = raw[:m_item.end(1)].strip()
+                trail = raw[m_item.end():].strip()
+                c_words = cand.split()
+                t_words = trail.split()
+                if c_words and t_words and _norm_word(c_words[-1]) == _norm_word(t_words[0]):
+                    if len(t_words) <= 2 or t_words[0].rstrip("\"'”’)]").endswith((".", "!", "?")):
+                        rem_trail = " ".join(t_words[1:]).strip()
+                        raw = f"{cand} {rem_trail}".strip() if rem_trail else cand
+                        break
         if len(raw.split()) <= effective_max:
             return [raw]
 
@@ -607,18 +691,22 @@ def _split_final_paragraph(text: str, max_words: int = 24) -> List[str]:
             last_token = cand_words[-1].lower().lstrip("\"'“‘(")
             if last_token in _ABBREV_WORDS or re.match(r"^[a-z]\.$", last_token):
                 continue
-            if re.match(r"^\d+\.?$", last_token) or re.match(r"^\d+:\d+", last_token):
-                continue
             trail_words = trail.split()
+            if _is_non_terminal_numeric_token(last_token, cand_words, trail_words):
+                continue
             last_word_clean = re.sub(r"^[^\w]+|[^\w]+$", "", cand_words[-1]).lower()
-            if last_word_clean in _SPURIOUS_PERIOD_PREPOSITIONS and cand.rstrip("\"'”’)]").endswith(".") and len(trail_words) <= 3:
+            next_m = _SENTENCE_BOUNDARY_RE.search(trail)
+            frag_words = trail[:next_m.end(1)].split() if next_m else trail_words
+            if last_word_clean in _SPURIOUS_PERIOD_PREPOSITIONS and cand.rstrip("\"'”’)]").endswith(".") and (len(trail_words) <= 3 or len(frag_words) <= 3):
                 continue
             if trail_words:
                 first_trail_char = trail_words[0].lstrip("\"'“‘([{\u201c\u2018")
                 if first_trail_char and first_trail_char[0].islower():
                     continue
                 # Discard immediate echo word after sentence/quote boundary (e.g. '...perch in its branches.\'" Branches.')
-                if len(trail_words) <= 2 and _norm_word(trail_words[0]) == _norm_word(cand_words[-1]):
+                if _norm_word(trail_words[0]) == _norm_word(cand_words[-1]) and (
+                    len(trail_words) <= 2 or trail_words[0].rstrip("\"'”’)]").endswith((".", "!", "?"))
+                ):
                     trail_words = trail_words[1:]
                     trail = " ".join(trail_words).strip()
             if trail:
@@ -665,6 +753,7 @@ def _split_final_paragraph(text: str, max_words: int = 24) -> List[str]:
                         break
                     cut_idx = effective_max
                     min_idx = max(9, effective_max // 2)
+                    found_clause_break = False
                     for i in range(effective_max, min_idx, -1):
                         if i >= len(t_matches):
                             continue
@@ -672,7 +761,12 @@ def _split_final_paragraph(text: str, max_words: int = 24) -> List[str]:
                         curr_c = _norm_word(t_matches[i].group(0))
                         if prev[-1] in _CLAUSE_JOINERS or prev in _CLAUSE_JOINERS or curr_c in _CONJUNCTION_WORDS:
                             cut_idx = i
+                            found_clause_break = True
                             break
+                    # Never leave a 1-2 word orphan tail if no earlier clause break was found
+                    if not found_clause_break and len(t_matches) <= effective_max + 2:
+                        final_parts.append(curr_tail)
+                        break
                     while (
                         cut_idx > min_idx
                         and _norm_word(t_matches[cut_idx - 1].group(0)) in _CONJUNCTION_WORDS

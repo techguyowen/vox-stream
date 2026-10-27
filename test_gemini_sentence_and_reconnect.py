@@ -1525,3 +1525,125 @@ def test_v1_2_14_interim_space_restoration_and_prefix_anchoring():
     assert parsed[0].text == "In the vineyard, you have to wait."
 
 
+def test_v1_2_16_scripture_bridging_context_and_sermon_fixes():
+    """Verify v1.2.16 fixes for scripture bridging phrases, chapter-only context preservation,
+    sentence splitting after chapter numbers, quote-boundary echo stripping, dangling period repair,
+    ordinal capitalization, and split compound/homophone corrections.
+    """
+    from obs_captioner.bible_engine import BibleEngine
+    from obs_captioner.config import AppConfig
+    from obs_captioner.engines.gemini_live import (
+        GeminiLiveEngine,
+        _split_completed_sentences,
+        _split_final_paragraph,
+    )
+    from obs_captioner.formatter import TextFormatter
+    from obs_captioner.version import VERSION, VERSION_INFO
+
+    # 1. Version bump check
+    assert VERSION == "1.2.16"
+    assert VERSION_INFO == (1, 2, 16)
+
+    # 2. BibleEngine: bridging phrases ("starting with verse 31", "beginning at verse 5")
+    bible = BibleEngine()
+    res_matthew = bible.parse_and_lookup_first(
+        "Hear the word of Jesus. From Matthew's Gospel, chapter 13, starting with verse 31."
+    )
+    assert res_matthew is not None
+    assert res_matthew.citation == "Matthew 13:31"
+    assert bible.primary_book == "Matthew"
+    assert bible.primary_chapter == 13
+
+    res_beg = bible.parse_and_lookup_first("Open to Romans chapter 8, beginning at verse 28.")
+    assert res_beg is not None
+    assert res_beg.citation == "Romans 8:28"
+
+    # 3. BibleEngine: chapter-only mention ("In Ezekiel 17...") does NOT overwrite primary_book/primary_chapter
+    bible.clear_context()
+    r1 = bible.parse_and_lookup_first("From Matthew's Gospel, chapter 13, starting with verse 31.")
+    assert r1 is not None and r1.citation == "Matthew 13:31"
+    # Passing chapter-only reference
+    r_ez = bible.parse_and_lookup_first("In Ezekiel 17, God describes planting a tender shoot.")
+    assert r_ez is None
+    assert bible.primary_book == "Matthew"
+    assert bible.primary_chapter == 13
+    assert bible.recent_book == "Ezekiel"
+    assert bible.recent_chapter == 17
+    # Subsequent contextual verse "Verse 33." resolves to primary passage Matthew 13:33
+    r_v33 = bible.parse_and_lookup_first("Verse 33. He told them another parable.")
+    assert r_v33 is not None
+    assert r_v33.citation == "Matthew 13:33"
+
+    # 4. GeminiLiveEngine: sentence boundary after chapter number ("here in Matthew 13. He does it...")
+    sents_ch, rem_ch = _split_completed_sentences(
+        "I feel like this is what Jesus invites us to consider here in Matthew 13. He does it through two surprisingly ordinary images."
+    )
+    assert sents_ch == ["I feel like this is what Jesus invites us to consider here in Matthew 13."]
+    assert rem_ch == "He does it through two surprisingly ordinary images."
+
+    # Still does NOT split on decimal or explicit "chapter 13. Verse 31"
+    sents_dec, _ = _split_completed_sentences("Interest rates rose by 3. 5 percent across the board.")
+    assert sents_dec == []
+    sents_cv, _ = _split_completed_sentences("Turn to Matthew chapter 13. Verse 31 tells us a story.")
+    assert sents_cv == []
+
+    # 5. GeminiLiveEngine: dangling determiner/auxiliary period repair & colon clause joiner
+    parts_seed = _split_final_paragraph(
+        "I feel like this is what Jesus invites us to consider here in Matthew 13. "
+        "He does it through two surprisingly ordinary images: a. Seed."
+    )
+    assert parts_seed == [
+        "I feel like this is what Jesus invites us to consider here in Matthew 13.",
+        "He does it through two surprisingly ordinary images: a seed.",
+    ]
+
+    parts_exp = _split_final_paragraph(
+        "To understand why this parable matters, we need to understand what Jesus's original audience was. Expecting."
+    )
+    assert parts_exp == [
+        "To understand why this parable matters, we need to understand what Jesus's original audience was expecting."
+    ]
+
+    # 6. GeminiLiveEngine: quote-boundary single-word echo stripping across streaming interims and finals
+    cfg = AppConfig()
+    eng = GeminiLiveEngine(cfg)
+    s_prefix = "Though it is the smallest of all seeds, yet when it grows, it is the largest of garden plants and becomes a tree,"
+    s_utt = 'So that the birds come and perch in its branches.\'" Branches. To understand why this parable matters, we need to understand what Jesus\'s original audience was.'
+    half_words = s_utt.split()[: len(s_utt.split()) // 2]
+    eng._segment_streaming_event(s_prefix + " " + " ".join(half_words), is_final=False)
+    ev_mid = eng._segment_streaming_event(s_prefix + " " + s_utt, is_final=False)
+    ev_end = eng._segment_streaming_event(s_prefix + " " + s_utt, is_final=True)
+    all_final_texts = [e.text for e in (ev_mid + ev_end) if e.is_final]
+    assert not any(t.strip() == "Branches." or t.startswith("Branches.") for t in all_final_texts), all_final_texts
+
+    # 7. GeminiLiveEngine: no 1-2 word orphan tail when splitting long unpunctuated sentence
+    long_unpunct = " ".join([f"word{i}" for i in range(1, 26)]) + "."
+    parts_25 = _split_final_paragraph(long_unpunct, max_words=24)
+    assert len(parts_25) == 1
+
+    # 8. TextFormatter: ordinal capitalization & split compound / homophone repairs
+    fmt = TextFormatter(auto_capitalization=True, auto_punctuation=True, church_mode=True)
+    assert fmt.format_text("1st time here.", is_final=True) == "1st time here."
+    assert fmt.format_text("3rd week of the series.", is_final=True) == "3rd week of the series."
+    assert "at 1st it sounds" in fmt.format_text("And at 1st it sounds pretty similar.", is_final=True)
+    assert "toilet paper" in fmt.format_text("They need their 48-roll pack of toi let paper.", is_final=True).lower()
+    assert "investments" in fmt.format_text("We want our in vestments to have big returns.", is_final=True).lower()
+    assert "underestimate" in fmt.format_text("Do not under estimate the power of prayer.", is_final=True).lower()
+    assert "website" in fmt.format_text("Check out our web site for details.", is_final=True).lower()
+    assert "hopefully" in fmt.format_text("And hope fully we will see you there.", is_final=True).lower()
+    assert "Sundays" in fmt.format_text("We gather on Sun days to worship.", is_final=True)
+    assert "hallmark" in fmt.format_text("Generosity is a hall mark of the church.", is_final=True).lower()
+    assert "Hallway" in fmt.format_text("Meet us out in the Hall way.", is_final=True)
+    assert "backpacks" in fmt.format_text("Filling back packs for kids.", is_final=True).lower()
+    assert "weekends" in fmt.format_text("Over the week ends they need food.", is_final=True).lower()
+    assert "Creekside" in fmt.format_text("Partnering with Creek side Elementary.", is_final=True)
+    assert "food insecurity" in fmt.format_text("Addressing food in security in our city.", is_final=True).lower()
+    assert "be a part of" in fmt.format_text("We want you to be apart of this.", is_final=True).lower()
+    assert "hands and feet" in fmt.format_text("Being the hand sand feet of Jesus.", is_final=True).lower()
+    assert "outreach" in fmt.format_text("Our local out reach team.", is_final=True).lower()
+    assert "highlight" in fmt.format_text("I want to high light one thing.", is_final=True).lower()
+    assert "how much flour" in fmt.format_text("Notice how much flower Jesus mentions.", is_final=True).lower()
+    assert fmt.format_text("Like east.", is_final=True) == "Like yeast."
+
+
+

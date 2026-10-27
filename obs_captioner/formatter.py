@@ -14,6 +14,10 @@ def _join_ship_compound(m: re.Match) -> str:
     return f"{m.group(1)}{m.group(2).lower()}"
 
 
+def _join_two_part_compound(m: re.Match) -> str:
+    return f"{m.group(1)}{m.group(2).lower()}"
+
+
 _DISFLUENCY_REPLACEMENTS: Tuple[Tuple[re.Pattern, Any], ...] = (
     (re.compile(r"\bI't\b"), "I don't"),
     (re.compile(r"\byou'real\s+ready\b", re.IGNORECASE), "you're already"),
@@ -26,6 +30,43 @@ _DISFLUENCY_REPLACEMENTS: Tuple[Tuple[re.Pattern, Any], ...] = (
     ),
     (re.compile(r"\bbed\s+time\b", re.IGNORECASE), "bedtime"),
     (re.compile(r"\bfriends\s+givings\b", re.IGNORECASE), "Friendsgivings"),
+    (re.compile(r"\b(toi)\s+(lets?)\b", re.IGNORECASE), _join_two_part_compound),
+    (re.compile(r"\b(in)\s+(vest(?:ments?|ing|ed|ors?)?)\b", re.IGNORECASE), _join_two_part_compound),
+    (re.compile(r"\b(under)\s+(estimat(?:e|es|ed|ing))\b", re.IGNORECASE), _join_two_part_compound),
+    (re.compile(r"\b(over)\s+(estimat(?:e|es|ed|ing))\b", re.IGNORECASE), _join_two_part_compound),
+    (re.compile(r"\b(web)\s+(sites?)\b", re.IGNORECASE), _join_two_part_compound),
+    (re.compile(r"\b(hope)\s+(fully)\b", re.IGNORECASE), _join_two_part_compound),
+    (re.compile(r"\bSun\s+days\b"), "Sundays"),
+    (
+        re.compile(
+            r"\b(few|every|on|first|1st|most|many|some|all|two|three)\s+sun\s+days\b",
+            re.IGNORECASE,
+        ),
+        r"\1 Sundays",
+    ),
+    (re.compile(r"\b(hall)\s+(marks?)\b", re.IGNORECASE), _join_two_part_compound),
+    (re.compile(r"\b(hall)\s+(ways?)\b", re.IGNORECASE), _join_two_part_compound),
+    (re.compile(r"\b(back)\s+(packs?)\b", re.IGNORECASE), _join_two_part_compound),
+    (re.compile(r"\b(week)\s+(ends?)\b", re.IGNORECASE), _join_two_part_compound),
+    (re.compile(r"\bCreek\s+side\b", re.IGNORECASE), "Creekside"),
+    (re.compile(r"\b(food)\s+in\s+security\b", re.IGNORECASE), r"\1 insecurity"),
+    (re.compile(r"\b(be)\s+apart\s+of\b", re.IGNORECASE), r"\1 a part of"),
+    (re.compile(r"\b(hand)\s+sand\s+(feet)\b", re.IGNORECASE), lambda m: f"{m.group(1)}s and {m.group(2).lower()}"),
+    (
+        re.compile(r"\b(do|doing|local|community|church|our|for)\s+out\s+reach\b", re.IGNORECASE),
+        r"\1 outreach",
+    ),
+    (
+        re.compile(r"\b(to|gonna|going\s+to|want\s+to)\s+high\s+light\b", re.IGNORECASE),
+        r"\1 highlight",
+    ),
+    (
+        re.compile(
+            r"\b(how\s+much|pounds?\s+of|cups?\s+of|measures?\s+of|into\s+the|in\s+the|with)\s+flower\b",
+            re.IGNORECASE,
+        ),
+        r"\1 flour",
+    ),
     (re.compile(r"\blike\s+east\b", re.IGNORECASE), "like yeast"),
     (
         re.compile(
@@ -47,6 +88,9 @@ _DISFLUENCY_REPLACEMENTS: Tuple[Tuple[re.Pattern, Any], ...] = (
     (re.compile(r"\bgum my\b", re.IGNORECASE), "gummy"),
     (re.compile(r"\bbasic ally\b", re.IGNORECASE), "basically"),
     (re.compile(r"\bsun glasses\b", re.IGNORECASE), "sunglasses"),
+    (re.compile(r"\b9ies\b", re.IGNORECASE), "90s"),
+    (re.compile(r"\bWe ship of\b"), "We-ship of"),
+    (re.compile(r"\bwe ship of\b"), "we-ship of"),
 )
 
 # Precompiled deduplication patterns
@@ -132,7 +176,8 @@ _CONCAT_WHITELIST: Set[str] = {
     "intensity", "interact", "interaction", "interactive", "interior", "internal", "interpret",
     "interpretation", "interval", "intervals", "interview", "interviews", "intimate",
     "introduce", "introduced", "introduction", "invade", "invalid", "invest", "invested",
-    "investing", "investment", "investigate", "investigation", "invitation", "invitations",
+    "investing", "investment", "investments", "investor", "investors", "investigate", "investigation",
+    "insecurity", "insecurities", "invitation", "invitations",
     "invite", "invited", "inviting", "invites", "invoke", "invoked", "invoking",
     "attempt", "attempted", "attempts", "attend", "attended", "attending", "attends",
     "attention", "attitude", "attorney", "attract", "attracted", "attraction", "attribute",
@@ -168,7 +213,8 @@ _CONCAT_WHITELIST: Set[str] = {
     # For 'she':
     "sheep", "sheet", "shelter", "shepherd", "shed", "shell", "shelf", "shelves",
     # For 'we' / 'were' / 'was' / 'are':
-    "wear", "went", "wedding", "week", "weekend", "welcome", "weight", "west", "western", "wealth",
+    "wear", "went", "wedding", "week", "weekend", "weekends", "website", "websites",
+    "welcome", "weight", "west", "western", "wealth",
     "area", "areas", "arena", "arenas", "wash", "washed", "washing", "washes", "wasp", "wasps", "waste", "wasted", "wasting",
     # For 'they':
     "they're", "they've",
@@ -184,8 +230,8 @@ _CONCAT_WHITELIST: Set[str] = {
     "order", "ordered", "ordering", "orders", "ordinance", "ordinary", "organ", "origin", "original", "orphan", "orphans",
     # Calendar & broadcasting compound words:
     "broadcast", "broadcasting", "broadcasts", "broadcaster", "broadcasters", "broadcasted",
-    "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
-    "yesterday", "tomorrow", "tonight", "weekend", "weekdays", "weekday",
+    "sunday", "sundays", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
+    "yesterday", "tomorrow", "tonight", "weekend", "weekends", "weekdays", "weekday",
     "background", "foreground", "underground", "anyway", "anyhow", "anymore",
     # Guard words for 'us' suffix:
     "jesus", "bonus", "status", "focus", "minus", "virus", "chorus", "campus",
@@ -194,6 +240,10 @@ _CONCAT_WHITELIST: Set[str] = {
     "impetus", "stimulus", "syllabus", "surplus", "fetus",
     # Compound / BPE-repaired words that must not be split:
     "gummy", "gummies", "basically", "sunglasses",
+    "toilet", "toilets", "underestimate", "underestimates", "underestimated", "underestimating",
+    "overestimate", "overestimates", "overestimated", "overestimating", "hopefully",
+    "hallmark", "hallmarks", "hallway", "hallways", "backpack", "backpacks", "creekside",
+    "outreach", "highlight", "highlights", "highlighted", "highlighting",
     "relationship", "relationships", "partnership", "partnerships", "fellowship", "fellowships",
     "discipleship", "leadership", "stewardship", "worship", "hardship", "hardships",
     "friendship", "friendships", "membership", "citizenship", "internship", "scholarship",
@@ -267,10 +317,15 @@ def _get_known_words() -> Set[str]:
         "could", "should", "are", "were", "been",
         "sermon", "sermons", "fidget", "fidgets",
         "gummy", "gummies", "basically", "sunglasses",
+        "toilet", "toilets", "invest", "invests", "invested", "investing", "investment", "investments",
+        "investor", "investors", "underestimate", "underestimates", "underestimated", "underestimating",
+        "overestimate", "overestimates", "overestimated", "overestimating", "website", "websites",
+        "hopefully", "sundays", "hallmark", "hallmarks", "hallway", "hallways", "backpack", "backpacks",
+        "creekside", "insecurity", "insecurities", "outreach", "highlight", "highlights", "highlighted",
         # Broadcasting & calendar vocabulary
         "broadcast", "broadcasting", "broadcasts", "broadcaster", "broadcasters",
         "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday",
-        "yesterday", "tomorrow", "tonight", "weekend", "weekdays", "weekday",
+        "yesterday", "tomorrow", "tonight", "weekend", "weekends", "weekdays", "weekday",
         # Common -less suffix words
         "effortless", "endless", "fearless", "flawless", "helpless", "hopeless",
         "restless", "relentless", "sleepless", "speechless", "tireless", "worthless",
@@ -954,13 +1009,22 @@ class TextFormatter:
         if not text:
             return ""
 
-        # Capitalize first character
+        # Capitalize first character (stop at first alphanumeric so "1st" doesn't become "1St")
         chars = list(text)
         for i, c in enumerate(chars):
-            if c.isalpha():
-                chars[i] = c.upper()
+            if c.isalnum():
+                if c.isalpha():
+                    chars[i] = c.upper()
                 break
         text = "".join(chars)
+
+        # Normalize any ordinal suffixes like 1St, 2Nd, 3Rd, 4Th to lowercase
+        text = re.sub(
+            r"\b(\d+)(st|nd|rd|th)\b",
+            lambda m: m.group(1) + m.group(2).lower(),
+            text,
+            flags=re.IGNORECASE,
+        )
 
         # Capitalize after sentence terminators: . ? ! followed by whitespace
         def cap_match(m):

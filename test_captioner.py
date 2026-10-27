@@ -8807,11 +8807,11 @@ class TestInterpreterModeNoPollution(unittest.IsolatedAsyncioTestCase):
 
             self.assertTrue(sink.history.entries)
             history_text = sink.history.entries[-1].text
-            # English-only: formatter normalizes "First" to "1St"; accept either
+            # English-only: formatter normalizes "First" to "1st"; accept either
             # but never the dual " / <translated>" form.
             self.assertIn(
                 history_text,
-                ["First time calling on the phone.", "1St time calling on the phone."],
+                ["First time calling on the phone.", "1st time calling on the phone.", "1St time calling on the phone."],
             )
             self.assertNotIn("Primera vez", history_text)
             self.assertNotIn(" / ", history_text)
@@ -8820,7 +8820,7 @@ class TestInterpreterModeNoPollution(unittest.IsolatedAsyncioTestCase):
             payload = mock_web.broadcast_caption.call_args[0][0]
             self.assertIn(
                 payload["text"],
-                ["First time calling on the phone.", "1St time calling on the phone."],
+                ["First time calling on the phone.", "1st time calling on the phone.", "1St time calling on the phone."],
             )
             self.assertEqual(
                 payload["translated_text"], "Primera vez que llamo por teléfono."

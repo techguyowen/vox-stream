@@ -138,11 +138,11 @@ _BOOK_CHAP_PATTERN = re.compile(
     re.IGNORECASE,
 )
 _CHAP_V_PATTERN = re.compile(
-    r"\bchapter\s+(\d+|[a-z]+)\s+verses?\s+(\d+|[a-z]+)(?:\s+(?:to|through|thru|until|-)\s+(\d+|[a-z]+))?\b",
+    r"\bchapter\s+(\d+|[a-z]+)(?:[\s,;]+(?:starting|beginning)?(?:\s+(?:with|at|in|from))?)?[\s,;]+verses?\s+(\d+|[a-z]+)(?:\s+(?:to|through|thru|until|-)\s+(\d+|[a-z]+))?\b",
     re.IGNORECASE,
 )
 _V_PATTERN = re.compile(
-    r"\bverses?\s+(\d+|[a-z]+)(?:\s+(?:to|through|thru|until|-)\s+(\d+|[a-z]+))?\b",
+    r"\b(?:(?:starting|beginning)\s+(?:with|at|in|from)\s+)?verses?\s+(\d+|[a-z]+)(?:\s+(?:to|through|thru|until|-)\s+(\d+|[a-z]+))?\b",
     re.IGNORECASE,
 )
 _STRONGS_PATTERN = re.compile(r"<S>\d+</S>")
@@ -206,6 +206,7 @@ class BibleEngine:
         self.primary_chapter: Optional[int] = None
         self.recent_book: Optional[str] = None
         self.recent_chapter: Optional[int] = None
+        self._recent_is_chapter_only: bool = False
         self._conn: Optional[sqlite3.Connection] = None
         self._db_lock = threading.Lock()
 
@@ -247,12 +248,13 @@ class BibleEngine:
             pass
 
 
-    def set_context(self, book: str, chapter: int, is_primary: bool = False):
+    def set_context(self, book: str, chapter: int, is_primary: bool = False, is_chapter_only: bool = False):
         canonical = self.normalize_book_name(book)
         if not canonical:
             return
         self.recent_book = canonical
         self.recent_chapter = chapter
+        self._recent_is_chapter_only = is_chapter_only
         if is_primary or not self.primary_book:
             self.primary_book = canonical
             self.primary_chapter = chapter
@@ -262,6 +264,7 @@ class BibleEngine:
         self.primary_chapter = None
         self.recent_book = None
         self.recent_chapter = None
+        self._recent_is_chapter_only = False
 
     def get_context_status(self) -> Dict[str, Any]:
         return {
@@ -373,20 +376,29 @@ class BibleEngine:
         citations = self.extract_citations_from_text(text)
         if citations:
             book, ch, v_start, v_end = citations[0]
-            # Always update sermon / recent context so subsequent verses know the chapter
-            self.set_context(book, ch)
+            if v_start is None:
+                parsed_ctx = self.extract_contextual_verse_reference(text)
+                if parsed_ctx:
+                    explicit_chap, cv_start, cv_end = parsed_ctx
+                    if explicit_chap is None or explicit_chap == ch:
+                        v_start = cv_start
+                        v_end = cv_end
+
             if v_start is not None:
+                self.set_context(book, ch, is_primary=True, is_chapter_only=False)
                 res = self.lookup_citation(book, ch, v_start, v_end, version=version)
                 if res:
                     return res
-            elif not require_verse:
-                res = self.lookup_citation(book, ch, 1, None, version=version)
-                if res:
-                    return res
             else:
-                # Chapter-only mention (e.g. "Ezekiel 17"): context updated, but DO NOT pull up verse 1!
-                logger.info(f"📖 [BIBLE CONTEXT UPDATED] {book} {ch} mentioned without verse; context updated.")
-                return None
+                self.set_context(book, ch, is_primary=False, is_chapter_only=True)
+                if not require_verse:
+                    res = self.lookup_citation(book, ch, 1, None, version=version)
+                    if res:
+                        return res
+                else:
+                    # Chapter-only mention (e.g. "Ezekiel 17"): context updated, but DO NOT pull up verse 1!
+                    logger.info(f"📖 [BIBLE CONTEXT UPDATED] {book} {ch} mentioned without verse; context updated.")
+                    return None
 
         # If no explicit full citation match, attempt contextual verse lookup (e.g. "verse 8")
         res = self.lookup_contextual_verse(text, version=version)
@@ -402,6 +414,7 @@ class BibleEngine:
                 if ch:
                     self.recent_book = target_book
                     self.recent_chapter = ch
+                    self._recent_is_chapter_only = True
                     if require_verse:
                         logger.info(f"📖 [BIBLE CONTEXT UPDATED] Context set to {target_book} {ch} (no verse specified).")
                         return None
@@ -423,7 +436,8 @@ class BibleEngine:
 
         explicit_chap, v_start, v_end = parsed
 
-        # Candidates to try in order: recent context first, then primary sermon context
+        # Candidates to try in order: recent context first (unless recent was a passing chapter-only mention
+        # while primary sermon context was established by a full verse lookup), then primary sermon context
         candidates: List[Tuple[str, int]] = []
         if explicit_chap is not None:
             if self.recent_book:
@@ -431,10 +445,20 @@ class BibleEngine:
             if self.primary_book and (self.primary_book, explicit_chap) not in candidates:
                 candidates.append((self.primary_book, explicit_chap))
         else:
-            if self.recent_book and self.recent_chapter:
-                candidates.append((self.recent_book, self.recent_chapter))
-            if self.primary_book and self.primary_chapter and (self.primary_book, self.primary_chapter) not in candidates:
+            if (
+                self._recent_is_chapter_only
+                and self.primary_book
+                and self.primary_chapter
+                and (self.primary_book, self.primary_chapter) != (self.recent_book, self.recent_chapter)
+            ):
                 candidates.append((self.primary_book, self.primary_chapter))
+                if self.recent_book and self.recent_chapter:
+                    candidates.append((self.recent_book, self.recent_chapter))
+            else:
+                if self.recent_book and self.recent_chapter:
+                    candidates.append((self.recent_book, self.recent_chapter))
+                if self.primary_book and self.primary_chapter and (self.primary_book, self.primary_chapter) not in candidates:
+                    candidates.append((self.primary_book, self.primary_chapter))
 
         for book, ch in candidates:
             res = self.lookup_citation(book, ch, v_start, v_end, version=version)
@@ -442,6 +466,7 @@ class BibleEngine:
                 res.inferred_context = f"{book} {ch}"
                 self.recent_book = book
                 self.recent_chapter = ch
+                self._recent_is_chapter_only = False
                 return res
 
         return None
