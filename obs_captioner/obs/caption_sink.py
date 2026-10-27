@@ -8,6 +8,7 @@ import re
 import time
 from typing import Optional, Tuple
 
+from ..church_lexicon import ChurchLexiconFormatter
 from ..config import AppConfig
 from ..engines.base import TranscriptEvent
 from ..censor import ContentFilter
@@ -20,6 +21,12 @@ from ..vocabulary import VocabularyReplacer
 from .ws_client import OBSWebSocketClient
 
 logger = logging.getLogger("obs_captioner.sink")
+
+_DANGLING_TAIL_WORDS = frozenset({
+    "the", "a", "an", "of", "to", "in", "for", "with", "by", "from", "through", "into",
+    "about", "than", "as", "your", "his", "her", "their", "our", "my", "its",
+    "this", "that", "these", "those",
+})
 
 
 class CaptionSink:
@@ -358,6 +365,41 @@ class CaptionSink:
                 if hasattr(last_entry, "end_time"):
                     last_entry.end_time = now
                 return "", True
+
+        # 4. Dangling function-word tail + 1-2 word fragment sentence ('through the.' + 'Dough.')
+        if (now - last_final_time) <= 4.0:
+            trail_chars = ' .?!"\'”’'
+            tail_words = re.findall(r"[\w'’-]+", last_text.rstrip(trail_chars))
+            tail = tail_words[-1].casefold() if tail_words else ""
+            if tail in _DANGLING_TAIL_WORDS:
+                frag_match = re.match(r"^\s*([^.?!]*[.?!][\"'”’]*)", clean_new)
+                frag = frag_match.group(1).strip() if frag_match else ""
+                frag_words = re.findall(r"[\w'’-]+", frag)
+                max_sentence_words = getattr(self.config.audio, "max_sentence_words", 24) or 24
+                merged_count = len(last_text.split()) + len(frag.split())
+                if (
+                    1 <= len(frag_words) <= 2
+                    and merged_count <= max_sentence_words
+                    and frag_words[0].casefold() != tail
+                ):
+                    body = re.match(r"^(.*?)([.?!]*[\"'”’]*)$", frag, re.S)
+                    frag_body, frag_end = body.group(1), body.group(2)
+                    first = frag_body.split(" ", 1)
+                    key = re.sub(r"[^\w'-]", "", first[0]).casefold()
+                    lex = ChurchLexiconFormatter
+                    if key in lex.CHURCH_TERMS or key in lex.BOOKS_OF_BIBLE:
+                        head = first[0]
+                    else:
+                        head = first[0][:1].lower() + first[0][1:]
+                    frag_body = head + (" " + first[1] if len(first) > 1 else "")
+                    stripped_prev = last_text.rstrip(trail_chars)
+                    last_entry.text = f"{stripped_prev} {frag_body}{frag_end}"
+                    if hasattr(last_entry, "end_time"):
+                        last_entry.end_time = now
+                    remainder = clean_new[frag_match.end():].strip()
+                    if remainder:
+                        return remainder[0].upper() + remainder[1:], False
+                    return "", True
 
         return clean_text, False
 

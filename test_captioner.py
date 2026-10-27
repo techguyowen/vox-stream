@@ -9970,6 +9970,42 @@ class TestSlowSpeechAndConfigurableMaxWords(unittest.IsolatedAsyncioTestCase):
         self.assertIn('id="max_words_slider" min="10" max="80" step="1" value="24"', html)
         self.assertIn('id="sentence_break_slider" min="200" max="2500" step="50" value="650"', html)
 
+    def test_caption_sink_dangling_tail_stitching(self):
+        from obs_captioner.obs.caption_sink import CaptionSink
+        from obs_captioner.config import AppConfig
+        from obs_captioner.history import TranscriptHistory, HistoryEntry
+        import time
+
+        def run(prev, new, age=1.0):
+            hist = TranscriptHistory()
+            sink = CaptionSink(AppConfig(), history=hist)
+            now = time.time()
+            hist.entries.append(HistoryEntry(id=1, text=prev, start_time=now - age - 1, end_time=now - age))
+            out = sink._attempt_boundary_stitch(new)
+            return hist.entries[-1].text, out
+
+        text, out = run("The yeast worked all through the.", "Dough. Jesus spoke all these things to the crowd in parables.")
+        self.assertEqual(text, "The yeast worked all through the dough.")
+        self.assertEqual(out, ("Jesus spoke all these things to the crowd in parables.", False))
+        text, out = run("We bless others in your.", "Name.")
+        self.assertEqual((text, out), ("We bless others in your name.", ("", True)))
+        text, out = run("We are already loved by.", "God.")
+        self.assertEqual((text, out), ("We are already loved by God.", ("", True)))
+        text, out = run("The yeast worked all through.", 'The dough."')
+        self.assertEqual(text, 'The yeast worked all through the dough."')
+        self.assertEqual(out, ("", True))
+
+        for prev, new, age in [
+            ("Tell us where we are.", "Which is a worship service?", 1.0),
+            ("Praise God from.", "In response and just as we remember all that God has done.", 1.0),
+            ("Today we'll have a.", "A full slew of more classes.", 1.0),
+            ("The original audience was.", "Expecting.", 1.0),
+            ("Bless others in your.", "Name.", 5.0),
+        ]:
+            text, out = run(prev, new, age)
+            self.assertEqual(text, prev)
+            self.assertEqual(out, (new, False))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1541,8 +1541,8 @@ def test_v1_2_16_scripture_bridging_context_and_sermon_fixes():
     from obs_captioner.version import VERSION, VERSION_INFO
 
     # 1. Version bump check
-    assert VERSION == "1.2.16"
-    assert VERSION_INFO == (1, 2, 16)
+    assert VERSION == "1.2.17"
+    assert VERSION_INFO == (1, 2, 17)
 
     # 2. BibleEngine: bridging phrases ("starting with verse 31", "beginning at verse 5")
     bible = BibleEngine()

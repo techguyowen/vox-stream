@@ -6,8 +6,8 @@ import re
 from typing import Tuple
 
 # Current application version
-VERSION = "1.2.16"
-VERSION_INFO = (1, 2, 16)
+VERSION = "1.2.17"
+VERSION_INFO = (1, 2, 17)
 RELEASE_DATE = "2026-10-27"
 CODENAME = "Scripture Bridging Phrases, Chapter-Only Context Preservation, Sentence Boundary & Ordinal Fixes"
 
