@@ -3736,7 +3736,7 @@
                     if (timeSinceGesture < 600) {
                         autoScroll = false;
                         updateFloatingButtons();
-                    } else if (autoScroll) {
+                    } else if (autoScroll && wordStreamQueue.length === 0) {
                         // Spontaneous DOM height growth or layout shift while autoScroll was intended: keep pinned to bottom!
                         stageContainer.scrollTop = stageContainer.scrollHeight;
                     }
@@ -3822,6 +3822,21 @@
             return spans;
         }
 
+        function scrollActiveWordIntoView(wordSpan, isLastWord = false) {
+            if (!autoScroll || !stageContainer || !wordSpan) return;
+            if (isLastWord) {
+                stageContainer.scrollTop = stageContainer.scrollHeight;
+                return;
+            }
+            const containerRect = stageContainer.getBoundingClientRect();
+            const spanRect = wordSpan.getBoundingClientRect();
+            const bottomPadding = 36;
+            const visibleBottom = containerRect.bottom - bottomPadding;
+            if (spanRect.bottom > visibleBottom) {
+                stageContainer.scrollTop += (spanRect.bottom - visibleBottom);
+            }
+        }
+
         function processWordStreamTick() {
             wordStreamTimer = null;
             if (wordStreamQueue.length === 0) return;
@@ -3840,6 +3855,7 @@
                     if (old && old.node && old.node.parentNode) {
                         old.node.style.display = '';
                         old.node.classList.add('previous');
+                        old.node.classList.remove('streaming-active');
                         old.node.innerHTML = formatBionicReading(old.fullText);
                     }
                 }
@@ -3866,20 +3882,27 @@
                         node.classList.remove('streaming-active');
                     }
                 });
-                if (autoScroll) scrollToBottom(false);
             }
 
             if (currentItem.renderedCount < currentItem.words.length) {
-                if (currentItem.spans && currentItem.spans[currentItem.renderedCount]) {
-                    currentItem.spans[currentItem.renderedCount].classList.add('visible');
+                const activeSpan = currentItem.spans && currentItem.spans[currentItem.renderedCount];
+                if (activeSpan) {
+                    activeSpan.classList.add('visible');
                 }
                 currentItem.renderedCount++;
+                const isLast = currentItem.renderedCount >= currentItem.words.length;
+                if (activeSpan) {
+                    scrollActiveWordIntoView(activeSpan, isLast);
+                }
             }
 
             // Finished current sentence
             if (currentItem.renderedCount >= currentItem.words.length) {
                 currentItem.node.innerHTML = formatBionicReading(currentItem.fullText);
                 wordStreamQueue.shift();
+                if (autoScroll && wordStreamQueue.length === 0 && stageContainer) {
+                    stageContainer.scrollTop = stageContainer.scrollHeight;
+                }
             }
 
             if (wordStreamQueue.length > 0) {
@@ -4028,7 +4051,7 @@
                 renderCaptions();
             }
 
-            if (autoScroll) scrollToBottom(false);
+            if (autoScroll && wordStreamQueue.length === 0) scrollToBottom(false);
 
             triggerSilenceTimer(isPacedReadingEnabled ? 12000 : 4000);
         }
@@ -4056,7 +4079,7 @@
                     interimNode.style.display = 'none';
                 }
 
-                if (autoScroll) scrollToBottom(false);
+                if (autoScroll && wordStreamQueue.length === 0) scrollToBottom(false);
             });
         }
 
@@ -4101,7 +4124,7 @@
                 interimNode.style.display = 'none';
             }
 
-            if (autoScroll) scrollToBottom(false);
+            if (autoScroll && wordStreamQueue.length === 0) scrollToBottom(false);
         }
 
         // Fetch session transcript history from server so Scrollable History is immediately populated
