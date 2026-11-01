@@ -1007,8 +1007,14 @@
             min-height: 100%;
             width: 100%;
             box-sizing: border-box;
-            padding-bottom: max(80px, calc(56px + env(safe-area-inset-bottom, 32px)));
+            padding-bottom: max(18vh, calc(84px + env(safe-area-inset-bottom, 32px)));
             transition: opacity 0.35s ease;
+        }
+
+        body.reading-column-mode .transcript-content {
+            max-width: 62ch;
+            margin-left: auto;
+            margin-right: auto;
         }
 
         /* FIX: Push content to bottom when few items exist, but allow upward scrolling when overflowing */
@@ -1096,6 +1102,7 @@
             opacity: 0.95;
             word-wrap: break-word;
             overflow-wrap: break-word;
+            text-wrap: pretty;
             transition: opacity 0.3s ease, color 0.3s ease;
             margin-bottom: 16px;
         }
@@ -1113,7 +1120,27 @@
         .caption-sentence.interim {
             color: var(--interim-color);
             opacity: 1;
-            font-weight: 800;
+            font-weight: 700;
+            transition: opacity 0.2s ease, color 0.35s ease;
+        }
+
+        .caption-sentence.just-finalized {
+            color: var(--interim-color, #38BDF8);
+            transition: color 0.6s ease, opacity 0.35s ease;
+        }
+
+        /* Keep a constant single-line reserve slot for #liveInterimNode in Scrollable History
+           so the page never snaps up and down when a sentence finalizes and the next one starts! */
+        body:not(.mode-live):not(.mode-smooth):not(.final-only-mode):not(.slow-flow-mode) #liveInterimNode {
+            display: block !important;
+            min-height: calc(var(--font-size) * var(--line-height));
+        }
+        body:not(.mode-live):not(.mode-smooth):not(.final-only-mode):not(.slow-flow-mode) #liveInterimNode:empty {
+            opacity: 0;
+            pointer-events: none;
+        }
+        body:not(.mode-live):not(.mode-smooth):not(.final-only-mode):not(.slow-flow-mode) #liveInterimNode:empty::after {
+            display: none;
         }
 
         .caption-sentence.interim::after {
@@ -1520,6 +1547,15 @@
                             <input type="checkbox" id="chkParagraphGrouping" style="width: 20px; height: 20px; cursor: pointer; accent-color: #60A5FA;">
                         </label>
 
+                        <!-- Comfortable Reading Column Mode -->
+                        <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.35); padding: 10px 12px; border-radius: 8px;">
+                            <div>
+                                <span id="lblReadingColumn" style="font-size: 13.5px; font-weight: 700; color: #38BDF8; display: block;">📐 Comfortable Reading Width (62ch)</span>
+                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Centers captions in a book-width column on wide screens to prevent eye fatigue across long lines.</span>
+                            </div>
+                            <input type="checkbox" id="chkReadingColumn" style="width: 20px; height: 20px; cursor: pointer; accent-color: #38BDF8;">
+                        </label>
+
                         <!-- Visual Aid Mode -->
                         <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.35); padding: 10px 12px; border-radius: 8px;">
                             <div>
@@ -1539,7 +1575,7 @@
                         </label>
 
                         <!-- Word Flow Speed Slider (Per Device) -->
-                        <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); padding: 10px 12px; border-radius: 8px;">
+                        <div id="wordSpeedControlGroup" style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); padding: 10px 12px; border-radius: 8px;">
                             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
                                 <label for="wordSpeedSlider" style="font-size: 13.5px; font-weight: 700; color: #38BDF8; cursor: pointer;">🌊 Word Stream Speed (This Device)</label>
                                 <span id="wordSpeedValBadge" style="font-size: 11.5px; font-weight: 800; font-family: monospace; color: #E2E8F0; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(56, 189, 248, 0.4); padding: 2px 8px; border-radius: 6px;">285 WPM (210ms)</span>
@@ -2755,6 +2791,7 @@
                     }
                     scrollToBottom(false);
                 }
+                if (typeof updateWordSpeedControlVisibility === 'function') updateWordSpeedControlVisibility();
             } else if (currentMode === 'smooth') {
                 document.body.classList.remove('mode-live');
                 document.body.classList.add('mode-smooth');
@@ -2770,6 +2807,7 @@
                 } else {
                     renderCaptions();
                 }
+                if (typeof updateWordSpeedControlVisibility === 'function') updateWordSpeedControlVisibility();
             } else {
                 document.body.classList.remove('mode-live');
                 document.body.classList.remove('mode-smooth');
@@ -2782,6 +2820,7 @@
                 } else {
                     renderCaptions();
                 }
+                if (typeof updateWordSpeedControlVisibility === 'function') updateWordSpeedControlVisibility();
             }
         }
 
@@ -3245,8 +3284,27 @@
         // 🎯 Active Focus Highlight Mode Handler
         let isFocusHighlightEnabled = false;
         let isParagraphGroupingEnabled = false;
+        let isReadingColumnEnabled = false;
         const chkActiveFocusHighlight = document.getElementById('chkActiveFocusHighlight');
         const chkParagraphGrouping = document.getElementById('chkParagraphGrouping');
+        const chkReadingColumn = document.getElementById('chkReadingColumn');
+        const wordSpeedControlGroup = document.getElementById('wordSpeedControlGroup');
+
+        function updateWordSpeedControlVisibility() {
+            const grp = document.getElementById('wordSpeedControlGroup');
+            if (!grp) return;
+            const shouldShow = (currentMode === 'smooth' || isPacedReadingEnabled);
+            grp.style.display = shouldShow ? 'block' : 'none';
+        }
+
+        function applyDisplayReadingColumnMode(enabled) {
+            isReadingColumnEnabled = !!enabled;
+            document.body.classList.toggle("reading-column-mode", !!enabled);
+            if (chkReadingColumn) chkReadingColumn.checked = isReadingColumnEnabled;
+            try {
+                localStorage.setItem("voxstream_display_reading_column", isReadingColumnEnabled ? "true" : "false");
+            } catch(e) {}
+        }
 
         function applyDisplayFocusHighlightMode(enabled) {
             isFocusHighlightEnabled = !!enabled;
@@ -3284,12 +3342,32 @@
             }
         } catch(e) {}
 
+        try {
+            const urlReadingColumn = urlParams.get('reading_column');
+            if (urlReadingColumn === '1' || urlReadingColumn === 'true' || urlReadingColumn === 'yes') {
+                applyDisplayReadingColumnMode(true);
+            } else if (urlReadingColumn === '0' || urlReadingColumn === 'false' || urlReadingColumn === 'no') {
+                applyDisplayReadingColumnMode(false);
+            } else {
+                const savedReadingColumn = localStorage.getItem("voxstream_display_reading_column");
+                if (savedReadingColumn !== null) {
+                    applyDisplayReadingColumnMode(savedReadingColumn === "true");
+                } else {
+                    applyDisplayReadingColumnMode(false);
+                }
+            }
+        } catch(e) {}
+
         if (chkActiveFocusHighlight) {
             chkActiveFocusHighlight.addEventListener("change", (e) => applyDisplayFocusHighlightMode(e.target.checked));
         }
 
         if (chkParagraphGrouping) {
             chkParagraphGrouping.addEventListener("change", (e) => applyDisplayParagraphGroupingMode(e.target.checked));
+        }
+
+        if (chkReadingColumn) {
+            chkReadingColumn.addEventListener("change", (e) => applyDisplayReadingColumnMode(e.target.checked));
         }
 
         // 🐢 Slow Down Text / Paced Mode Handler
@@ -3304,12 +3382,15 @@
             try {
                 localStorage.setItem("voxstream_display_pacing", enabled ? "true" : "false");
             } catch(e) {}
+            updateWordSpeedControlVisibility();
         }
 
         try {
             const savedPacing = localStorage.getItem("voxstream_display_pacing") === "true";
             if (savedPacing) applyDisplayPacingMode(true);
         } catch(e) {}
+
+        updateWordSpeedControlVisibility();
 
         if (chkDisplayPacing) {
             chkDisplayPacing.addEventListener("change", (e) => applyDisplayPacingMode(e.target.checked));
@@ -3907,11 +3988,21 @@
             }
             const containerRect = stageContainer.getBoundingClientRect();
             const spanRect = wordSpan.getBoundingClientRect();
-            const bottomPadding = 36;
+            const bottomPadding = Math.min(160, Math.max(68, Math.round(containerRect.height * 0.18)));
             const visibleBottom = containerRect.bottom - bottomPadding;
             if (spanRect.bottom > visibleBottom) {
                 stageContainer.scrollTop += (spanRect.bottom - visibleBottom);
             }
+        }
+
+        function getWordProsodyMultiplier(word, remainingQueuedWords) {
+            if (!word || remainingQueuedWords > 14) return 1.0;
+            const trimmed = String(word).trim();
+            if (/[.?!]["')\]]*$/.test(trimmed)) return 1.6;
+            if (/[,;:—–\-]["')\]]*$/.test(trimmed)) return 1.32;
+            const bare = trimmed.replace(/[^\w']/g, '');
+            if (bare.length > 0 && bare.length <= 3) return 0.88;
+            return 1.0;
         }
 
         function processWordStreamTick() {
@@ -3923,6 +4014,8 @@
                 smoothInterimRenderedWords.length < smoothInterimTargetWords.length;
 
             if (!hasQueuedFinal && !hasSmoothInterim) return;
+
+            let revealedWordText = '';
 
             if (hasQueuedFinal) {
                 // Count total remaining words across all queued sentences
@@ -3969,6 +4062,7 @@
                 }
 
                 if (currentItem.renderedCount < currentItem.words.length) {
+                    revealedWordText = currentItem.words[currentItem.renderedCount] || '';
                     const activeSpan = currentItem.spans && currentItem.spans[currentItem.renderedCount];
                     if (activeSpan) {
                         activeSpan.classList.add('visible');
@@ -3996,6 +4090,7 @@
                 const nextIdx = smoothInterimRenderedWords.length;
                 const nextWord = smoothInterimTargetWords[nextIdx];
                 if (nextWord !== undefined) {
+                    revealedWordText = nextWord;
                     if (smoothInterimRenderedWords.length > 0) {
                         smoothInterimNode.appendChild(document.createTextNode(' '));
                     }
@@ -4026,10 +4121,39 @@
                     interval = Math.max(60, Math.round(baseInterval * 0.45));
                 } else if (remaining > 18) {
                     interval = Math.max(85, Math.round(baseInterval * 0.68));
+                } else {
+                    interval = Math.max(70, Math.round(baseInterval * getWordProsodyMultiplier(revealedWordText, remaining)));
                 }
 
                 wordStreamTimer = setTimeout(processWordStreamTick, interval);
             }
+        }
+
+        function computeAlignedVisibleCount(renderedWords, finalWords) {
+            if (!Array.isArray(renderedWords) || !Array.isArray(finalWords) || renderedWords.length === 0 || finalWords.length === 0) {
+                return 0;
+            }
+            const norm = (w) => (w || '').replace(/[^\w']/g, '').toLowerCase();
+            const rNorm = renderedWords.map(norm);
+            const fNorm = finalWords.map(norm);
+            const lastIdx = rNorm.length - 1;
+            const lastWord = rNorm[lastIdx];
+            if (!lastWord) return Math.min(renderedWords.length, finalWords.length);
+
+            // Check near the expected index (handles 1-3 word leading filler removals or insertions by ASR)
+            const expected = Math.min(lastIdx, fNorm.length - 1);
+            for (let delta = 0; delta <= 3; delta++) {
+                for (const dir of (delta === 0 ? [0] : [-delta, delta])) {
+                    const cand = expected + dir;
+                    if (cand >= 0 && cand < fNorm.length && fNorm[cand] === lastWord) {
+                        // If multi-word, verify predecessor also matches when available
+                        if (cand === 0 || lastIdx === 0 || fNorm[cand - 1] === rNorm[lastIdx - 1]) {
+                            return cand + 1;
+                        }
+                    }
+                }
+            }
+            return Math.min(renderedWords.length, finalWords.length);
         }
 
         function queueSentenceForWordStreaming(el, text, initialVisibleCount = 0) {
@@ -4103,7 +4227,8 @@
                 // Promote the live streaming node directly into the finalized sentence node
                 // so already-streamed words are NEVER re-loaded a second time!
                 el = smoothInterimNode;
-                initialVisibleCount = smoothInterimRenderedWords.length;
+                const rawFinalWords = (text || '').trim().split(/\s+/).filter(Boolean);
+                initialVisibleCount = computeAlignedVisibleCount(smoothInterimRenderedWords, rawFinalWords);
                 resetSmoothInterimStream(false);
                 smoothInterimNode = null;
             } else {
@@ -4113,6 +4238,13 @@
                     el.innerHTML = '';
                 } else {
                     el.innerHTML = formatBionicReading(text);
+                    if (!isFinalOnlyMode && currentMode !== 'live') {
+                        // Gentle color settle from interim blue -> final white over 450ms so the eye tracks smoothly
+                        el.classList.add('just-finalized');
+                        setTimeout(() => {
+                            if (el) el.classList.remove('just-finalized');
+                        }, 450);
+                    }
                 }
                 transcriptContent.insertBefore(el, interimNode);
             }
@@ -4258,6 +4390,8 @@
             }
         }
 
+        let lastInterimLineHeight = 0;
+
         function updateInterimSpeech(text) {
             if (isFinalOnlyMode) return;
             if (!transcriptContent) return;
@@ -4294,9 +4428,18 @@
                 } else {
                     interimNode.textContent = '';
                     interimNode.style.display = 'none';
+                    lastInterimLineHeight = 0;
                 }
 
-                if (autoScroll && wordStreamQueue.length === 0) scrollToBottom(false);
+                const newHeight = interimNode ? interimNode.offsetHeight : 0;
+                if (autoScroll && wordStreamQueue.length === 0) {
+                    if (newHeight !== lastInterimLineHeight) {
+                        lastInterimLineHeight = newHeight;
+                        scrollToBottom(true);
+                    } else {
+                        scrollToBottom(false);
+                    }
+                }
             });
         }
 
