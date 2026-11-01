@@ -370,6 +370,58 @@ class BibleEngine:
                 logger.error(f"Error querying bible.db: {e}", exc_info=True)
                 return None
 
+    def lookup_chapter(self, book: str, chapter: int, version: str = "bsb") -> Optional[Dict[str, Any]]:
+        """Query offline SQLite database for all verses in a given book and chapter."""
+        canonical_book = self.normalize_book_name(book)
+        if not canonical_book:
+            return None
+
+        ver_code = (version or "bsb").lower().strip()
+        if ver_code not in VERSION_METADATA:
+            ver_code = "bsb"
+
+        if not self.db_path.exists():
+            logger.warning(f"Bible database not found at {self.db_path}")
+            return None
+
+        with self._db_lock:
+            conn = self._get_connection()
+            if not conn:
+                return None
+            try:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    SELECT verse, text FROM verses
+                    WHERE translation = ? AND (book_name = ? OR book_name = ?) AND chapter = ?
+                    ORDER BY verse ASC
+                    """,
+                    (ver_code, canonical_book, canonical_book.replace("Psalms", "Psalm"), int(chapter)),
+                )
+                rows = cur.fetchall()
+                if not rows:
+                    return None
+
+                cleaned_verses = []
+                for r in rows:
+                    raw_text = r[1] or ""
+                    clean_v = _STRONGS_PATTERN.sub("", raw_text)
+                    clean_v = _MARKUP_PATTERN.sub("", clean_v)
+                    clean_v = _WHITESPACE_PATTERN.sub(" ", clean_v).strip()
+                    cleaned_verses.append({"verse": int(r[0]), "text": clean_v})
+
+                ver_meta = VERSION_METADATA.get(ver_code, VERSION_METADATA["bsb"])
+                return {
+                    "citation": f"{canonical_book} {int(chapter)}",
+                    "book": canonical_book,
+                    "chapter": int(chapter),
+                    "version": ver_meta["code"].upper(),
+                    "version_name": ver_meta["name"],
+                    "verses": cleaned_verses,
+                }
+            except Exception as e:
+                logger.error(f"Error querying chapter {canonical_book} {chapter}: {e}", exc_info=True)
+                return None
 
     def parse_and_lookup_first(self, text: str, version: str = "bsb", require_verse: bool = True) -> Optional[ScriptureLookupResult]:
         """Scan a transcript string for scripture references and lookup the first match."""

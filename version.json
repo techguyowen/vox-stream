@@ -1,9 +1,9 @@
 {
-  "version": "1.2.18",
+  "version": "1.2.19",
   "major": 1,
   "minor": 2,
-  "patch": 18,
-  "release_date": "2026-10-27",
-  "codename": "Everyday Compound Word Joining & Subordinating Clause Splitting",
-  "notes": "Rejoins everyday compound words ('down town' -> 'downtown', 'book store' -> 'bookstore', 'book stores' -> 'bookstores') and improves clause-break candidate selection in _split_completed_sentences and _split_final_paragraph on subordinating and comparative conjunctions ('than', 'because', 'where', 'when', 'which', 'though', 'although') when preceded by >= 10 words."
+  "patch": 19,
+  "release_date": "2026-11-01",
+  "codename": "Proclaim Slide Exemption, ProPresenter Lifecycle Fix & Scrollable Chapter Lookup",
+  "notes": "Fixes dashboard settings save crash (UnboundLocalError), restores ProPresenter/Proclaim client stopping on disable, adds slide exemption keywords to prevent accidental worship muting, and introduces scrollable Bible chapter lookup API."
 }

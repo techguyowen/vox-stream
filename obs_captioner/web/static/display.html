@@ -1108,6 +1108,93 @@
             transition: all 0.4s ease;
         }
 
+        @keyframes wordRevealIn {
+            from { opacity: 0; transform: translateY(3px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .word-reveal {
+            display: inline;
+            animation: wordRevealIn 0.16s ease-out forwards;
+        }
+
+        /* Active Focus Highlight Mode */
+        body.focus-highlight-mode:not(.mode-live) .caption-sentence.previous {
+            opacity: 0.72;
+            transition: opacity 0.35s ease;
+        }
+        body.focus-highlight-mode:not(.mode-live) .caption-sentence:not(.previous):not(.interim) {
+            opacity: 1;
+            border-left: 3px solid var(--accent-color, var(--accent, #38BDF8));
+            padding-left: 12px;
+        }
+
+        /* Paragraph Grouping Mode */
+        body.paragraph-grouping-mode:not(.mode-live) .caption-sentence:not(.interim) {
+            margin-bottom: 0.25em;
+        }
+        body.paragraph-grouping-mode:not(.mode-live) .caption-sentence:not(.interim):nth-of-type(3n) {
+            margin-bottom: 1.15em;
+            padding-bottom: 0.35em;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        /* Distinct Recent Sentence Styling in Final Sentences Only Mode */
+        body.final-only-mode .caption-sentence.previous {
+            opacity: 0.72;
+            background: transparent;
+            border-left: 3px solid transparent;
+            padding-left: 0;
+            transition: opacity 0.35s ease, background 0.35s ease;
+        }
+        body.final-only-mode .caption-sentence:not(.previous):not(.interim) {
+            opacity: 1;
+            border-left: 4px solid var(--interim-color, #38BDF8);
+            background: rgba(56, 189, 248, 0.08);
+            padding: 6px 12px;
+            border-radius: 4px 8px 8px 4px;
+            box-shadow: 0 2px 12px rgba(56, 189, 248, 0.12);
+            transition: all 0.3s ease;
+        }
+
+        /* Scripture Passage Reader Modal Styles */
+        .reader-verse {
+            padding: 7px 11px;
+            margin-bottom: 6px;
+            border-radius: 6px;
+            transition: background 0.25s ease, border 0.25s ease;
+            word-break: break-word;
+            line-height: 1.65;
+        }
+        .reader-verse strong {
+            color: #C084FC;
+            font-size: 0.86em;
+            margin-right: 6px;
+            user-select: none;
+        }
+        .reader-verse.highlighted-verse {
+            background: rgba(245, 158, 11, 0.18);
+            border-left: 4px solid #F59E0B;
+            border-radius: 4px 6px 6px 4px;
+            color: #FEF3C7;
+        }
+        .recent-scripture-pill {
+            background: rgba(168, 85, 247, 0.16);
+            border: 1px solid rgba(168, 85, 247, 0.35);
+            color: #E9D5FF;
+            border-radius: 14px;
+            padding: 3px 10px;
+            font-size: 11.5px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s ease;
+        }
+        .recent-scripture-pill:hover, .recent-scripture-pill.active {
+            background: rgba(168, 85, 247, 0.35);
+            border-color: rgba(168, 85, 247, 0.65);
+            color: #FFFFFF;
+        }
+
         @keyframes blink {
             0%, 100% { opacity: 1; }
             50% { opacity: 0; }
@@ -1313,6 +1400,9 @@
                 <button class="ctrl-btn" id="btnShareDisplay" title="Share Screen / Show QR Code" aria-label="Share Display" style="background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.4); color: #34D399;">
                     📱 <span class="settings-label" style="font-size: 11.5px; margin-left: 2px;">Share</span>
                 </button>
+                <button class="ctrl-btn" id="btnOpenScriptureReader" title="Scripture Passage Reader (B)" aria-label="Scripture Reader" style="background: rgba(168, 85, 247, 0.18); border-color: rgba(168, 85, 247, 0.45); color: #C084FC;">
+                    📖 <span class="settings-label" style="font-size: 11.5px; margin-left: 2px;">Scripture</span>
+                </button>
                 <button class="ctrl-btn" id="btnOpenSettings" title="Display &amp; Reading Settings (S)" aria-label="Settings" style="background: rgba(56, 189, 248, 0.18); border-color: rgba(56, 189, 248, 0.45); color: #38BDF8;">
                     ⚙️ <span class="settings-label" style="font-size: 11.5px; margin-left: 2px;">Settings</span>
                 </button>
@@ -1328,6 +1418,7 @@
             <!-- Mode Selector -->
             <select class="theme-select" id="displayModeSelect" title="Display Mode" aria-label="Display Mode">
                 <option value="scrollable" selected>📜 Scrollable History</option>
+                <option value="smooth">🌊 Smooth Flow</option>
                 <option value="live">⚡ Live Prompter</option>
             </select>
 
@@ -1371,6 +1462,15 @@
             
             <div style="display: flex; flex-direction: column; gap: 16px;">
                 
+                <!-- Prominent Scripture Auto-Popup Toggle -->
+                <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(168, 85, 247, 0.16); border: 1px solid rgba(168, 85, 247, 0.45); padding: 12px 14px; border-radius: 12px; box-shadow: 0 4px 12px rgba(168, 85, 247, 0.08);">
+                    <div style="padding-right: 12px;">
+                        <span id="lblScriptureOverlay" style="font-size: 14px; font-weight: 800; color: #E9D5FF; display: block;">📖 Auto-Popup Scripture Cards</span>
+                        <span style="font-size: 11px; color: #D8B4FE; display: block; margin-top: 3px; line-height: 1.35;">Automatically pull up scripture verse cards when verses are spoken. Turn off for uninterrupted captions.</span>
+                    </div>
+                    <input type="checkbox" id="chkShowScriptureOverlay" checked style="width: 22px; height: 22px; cursor: pointer; accent-color: #A855F7; flex-shrink: 0;">
+                </label>
+
                 <!-- SECTION 1: Visual Aid & Reading Comfort -->
                 <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px;">
                     <div style="font-size: 11.5px; font-weight: 800; color: #93C5FD; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 10px;">
@@ -1378,6 +1478,24 @@
                     </div>
 
                     <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <!-- Active Focus Highlight Mode -->
+                        <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.35); padding: 10px 12px; border-radius: 8px;">
+                            <div>
+                                <span id="lblActiveFocus" style="font-size: 13.5px; font-weight: 700; color: #38BDF8; display: block;">🎯 Active Focus Highlight</span>
+                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Highlights the current live sentence at 100% brightness with an accent bar while gently dimming older lines to 75%.</span>
+                            </div>
+                            <input type="checkbox" id="chkActiveFocusHighlight" style="width: 20px; height: 20px; cursor: pointer; accent-color: #38BDF8;">
+                        </label>
+
+                        <!-- Paragraph Grouping Mode -->
+                        <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(147, 197, 253, 0.1); border: 1px solid rgba(147, 197, 253, 0.35); padding: 10px 12px; border-radius: 8px;">
+                            <div>
+                                <span id="lblParagraphGrouping" style="font-size: 13.5px; font-weight: 700; color: #93C5FD; display: block;">📑 Paragraph Grouping</span>
+                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Groups every 3 sentences into clean paragraph blocks with comfortable visual spacing.</span>
+                            </div>
+                            <input type="checkbox" id="chkParagraphGrouping" style="width: 20px; height: 20px; cursor: pointer; accent-color: #60A5FA;">
+                        </label>
+
                         <!-- Visual Aid Mode -->
                         <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.35); padding: 10px 12px; border-radius: 8px;">
                             <div>
@@ -1431,15 +1549,6 @@
                                 <span id="wakeLockStatusBadge" style="display: inline-block; margin-top: 4px; font-size: 10.5px; font-weight: 700; color: #34D399; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); padding: 2px 6px; border-radius: 4px;">● Active</span>
                             </div>
                             <input type="checkbox" id="chkKeepScreenAwake" checked style="width: 20px; height: 20px; cursor: pointer; accent-color: #3B82F6;">
-                        </label>
-
-                        <!-- Bible / Scripture Overlay Toggle -->
-                        <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.35); padding: 10px 12px; border-radius: 8px;">
-                            <div>
-                                <span style="font-size: 13.5px; font-weight: 700; color: #C084FC; display: block;">📖 Show Bible / Scripture Overlay</span>
-                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Shows pop-up verse cards when scriptures are detected or pushed. Turn off to display speech captions only.</span>
-                            </div>
-                            <input type="checkbox" id="chkShowScriptureOverlay" checked style="width: 20px; height: 20px; cursor: pointer; accent-color: #A855F7;">
                         </label>
                     </div>
                 </div>
@@ -1765,9 +1874,69 @@
     <div id="scripturePrompterCard" class="scripture-prompter-card" style="display: none;" role="region" aria-label="Scripture Verse">
         <div class="scripture-prompter-header">
             <span class="scripture-prompter-badge" id="stageScriptureCitation">📖 SCRIPTURE PASSAGE</span>
-            <button type="button" id="btnDismissStageScripture" class="btn-dismiss-scripture" title="Dismiss Scripture Card" aria-label="Dismiss Scripture Card">✕</button>
+            <div style="display: flex; align-items: center; gap: 6px;">
+                <button type="button" id="btnPrompterOpenReader" class="btn-prompter-reader" title="Read Full Chapter in Scripture Reader" style="background: rgba(168, 85, 247, 0.25); border: 1px solid rgba(168, 85, 247, 0.45); color: #E9D5FF; border-radius: 6px; padding: 2px 8px; font-size: 11.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;">📖 Full Chapter</button>
+                <button type="button" id="btnDismissStageScripture" class="btn-dismiss-scripture" title="Dismiss Scripture Card" aria-label="Dismiss Scripture Card">✕</button>
+            </div>
         </div>
         <div class="scripture-prompter-text" id="stageScriptureText">...</div>
+    </div>
+
+    <!-- Scripture Passage Reader Modal (Full Chapter / Verse Reader) -->
+    <div id="scriptureReaderModal" class="modal-backdrop" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 1001; align-items: center; justify-content: center; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);">
+        <div class="modal-content" style="background: #111827; border: 1.5px solid rgba(168, 85, 247, 0.45); border-radius: 16px; padding: max(20px, env(safe-area-inset-top, 20px)) 22px calc(20px + env(safe-area-inset-bottom, 0px)) 22px; width: 92%; max-width: 620px; box-shadow: 0 24px 48px rgba(0,0,0,0.9); color: #F9FAFB; max-height: calc(90vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column;">
+            
+            <!-- Modal Header -->
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.12); padding-bottom: 12px; margin-bottom: 12px; flex-shrink: 0;">
+                <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
+                    <span style="color: #C084FC;">📖</span> <span id="scriptureReaderModalTitle">Scripture Passage Reader</span>
+                </h3>
+                <button id="btnCloseScriptureReader" aria-label="Close Scripture Reader" style="background: none; border: none; color: #9CA3AF; font-size: 24px; font-weight: bold; cursor: pointer; padding: 0 6px; line-height: 1;">✕</button>
+            </div>
+
+            <!-- Controls row: Search Citation input, Version selector, Go button -->
+            <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; flex-shrink: 0;">
+                <input type="text" id="scriptureSearchInput" placeholder="Lookup passage (e.g. John 3:16 or Matthew 13)..." style="flex: 1; min-width: 170px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 8px 12px; color: #fff; font-size: 13.5px; outline: none;">
+                <select id="scriptureVersionSelect" class="theme-select" style="padding: 8px 10px; font-size: 13px; font-weight: 600;">
+                    <option value="bsb" selected>BSB (Berean)</option>
+                    <option value="web">WEB (World English)</option>
+                    <option value="kjv">KJV (King James)</option>
+                </select>
+                <button type="button" id="btnLookupScripture" class="ctrl-btn" style="background: rgba(168, 85, 247, 0.28); border-color: rgba(168, 85, 247, 0.55); color: #E9D5FF; font-weight: 700; padding: 8px 14px; font-size: 13px;">Go</button>
+            </div>
+
+            <!-- Recent Sermon Scriptures Bar -->
+            <div id="recentScripturesSection" style="margin-bottom: 10px; flex-shrink: 0;">
+                <div style="font-size: 11px; font-weight: 700; color: #A78BFA; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between;">
+                    <span>Recent Sermon Scriptures</span>
+                    <span id="scriptureContextStatus" style="font-size: 10.5px; color: #9CA3AF; font-weight: normal;"></span>
+                </div>
+                <div id="recentScripturesList" style="display: flex; flex-wrap: wrap; gap: 6px; max-height: 62px; overflow-y: auto;">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+
+            <!-- Chapter Navigation Header -->
+            <div id="chapterNavHeader" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; flex-shrink: 0;">
+                <button type="button" id="btnPrevChapterTop" class="ctrl-btn" style="padding: 4px 10px; font-size: 12px; background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.15); color: #D1D5DB;">← Prev Ch</button>
+                <span id="currentReaderCitation" style="font-weight: 700; font-size: 14.5px; color: #F3E8FF;"></span>
+                <button type="button" id="btnNextChapterTop" class="ctrl-btn" style="padding: 4px 10px; font-size: 12px; background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.15); color: #D1D5DB;">Next Ch →</button>
+            </div>
+
+            <!-- Scrollable Chapter Container -->
+            <div id="scriptureReaderBody" style="flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 12px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; line-height: 1.7; font-size: 15px; max-height: 52vh;">
+                <div style="text-align: center; color: #9CA3AF; padding: 24px 0;">Select or search a scripture passage above.</div>
+            </div>
+
+            <!-- Bottom Chapter Navigation and Close -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; flex-shrink: 0;">
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" id="btnPrevChapterBottom" class="ctrl-btn" style="padding: 6px 12px; font-size: 12px; background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.15); color: #D1D5DB;">← Prev Chapter</button>
+                    <button type="button" id="btnNextChapterBottom" class="ctrl-btn" style="padding: 6px 12px; font-size: 12px; background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.15); color: #D1D5DB;">Next Chapter →</button>
+                </div>
+                <button type="button" id="btnDoneScriptureReader" class="ctrl-btn" style="background: rgba(168, 85, 247, 0.28); border-color: rgba(168, 85, 247, 0.55); color: #E9D5FF; padding: 6px 18px; font-weight: 700; font-size: 13px;">Done</button>
+            </div>
+        </div>
     </div>
 
     <!-- Main Scrolling Area -->
@@ -1827,6 +1996,7 @@
                 settings: 'Settings',
                 display_mode: 'Display Mode',
                 scrollable: '📜 Scrollable History',
+                mode_smooth: '🌊 Smooth Flow',
                 live_prompter: '⚡ Live Prompter',
                 listen_live: '🎧 Listen Live',
                 listening: '🔊 Listening (Tap to Mute)',
@@ -1850,6 +2020,7 @@
                 settings: 'Configuración',
                 display_mode: 'Modo de visualización',
                 scrollable: '📜 Historial desplazable',
+                mode_smooth: '🌊 Flujo Suave',
                 live_prompter: '⚡ Teleprompter en vivo',
                 listen_live: '🎧 Escuchar en Vivo',
                 listening: '🔊 Escuchando (Tocar para Silenciar)',
@@ -1872,6 +2043,7 @@
                 settings: 'Paramètres',
                 display_mode: 'Mode d’affichage',
                 scrollable: '📜 Historique défilant',
+                mode_smooth: '🌊 Flux Fluide',
                 live_prompter: '⚡ Prompteur en direct',
                 listen_live: '🎧 Écouter en Direct',
                 listening: '🔊 Écoute en cours (Appuyer pour couper)',
@@ -1895,6 +2067,7 @@
                 settings: 'Einstellungen',
                 display_mode: 'Anzeigemodus',
                 scrollable: '📜 Scrollbarer Verlauf',
+                mode_smooth: '🌊 Fließender Fluss',
                 live_prompter: '⚡ Live-Prompter',
                 listen_live: '🎧 Live Anhören',
                 listening: '🔊 Hören (Tippen zum Stummschalten)',
@@ -1917,6 +2090,7 @@
                 settings: 'Configurações',
                 display_mode: 'Modo de exibição',
                 scrollable: '📜 Histórico rolável',
+                mode_smooth: '🌊 Fluxo Suave',
                 live_prompter: '⚡ Prompter ao vivo',
                 listen_live: '🎧 Ouvir ao Vivo',
                 listening: '🔊 Ouvindo (Toque para silenciar)',
@@ -1939,6 +2113,7 @@
                 settings: 'Impostazioni',
                 display_mode: 'Modalità di visualizzazione',
                 scrollable: '📜 Cronologia scorrevole',
+                mode_smooth: '🌊 Flusso Fluido',
                 live_prompter: '⚡ Gobbo live',
                 listen_live: '🎧 Ascolta dal vivo',
                 listening: '🔊 In ascolto (Tocca per silenziare)',
@@ -1961,6 +2136,7 @@
                 settings: '设置',
                 display_mode: '显示模式',
                 scrollable: '📜 可滚动历史',
+                mode_smooth: '🌊 流畅滚动',
                 live_prompter: '⚡ 实时提词器',
                 listen_live: '🎧 实时收听',
                 listening: '🔊 正在收听（点击静音）',
@@ -1983,6 +2159,7 @@
                 settings: '設定',
                 display_mode: '表示モード',
                 scrollable: '📜 スクロール可能な履歴',
+                mode_smooth: '🌊 スムーズフロー',
                 live_prompter: '⚡ ライブプロンプター',
                 listen_live: '🎧 ライブで聴く',
                 listening: '🔊 聴取中（タップでミュート）',
@@ -2005,6 +2182,7 @@
                 settings: '설정',
                 display_mode: '표시 모드',
                 scrollable: '📜 스크롤 가능한 기록',
+                mode_smooth: '🌊 부드러운 흐름',
                 live_prompter: '⚡ 라이브 프롬프터',
                 listen_live: '🎧 실시간 듣기',
                 listening: '🔊 듣는 중 (탭하여 음소거)',
@@ -2027,6 +2205,7 @@
                 settings: 'Настройки',
                 display_mode: 'Режим отображения',
                 scrollable: '📜 Прокручиваемая история',
+                mode_smooth: '🌊 Плавный поток',
                 live_prompter: '⚡ Живой суфлёр',
                 listen_live: '🎧 Слушать вживую',
                 listening: '🔊 Прослушивание (нажмите, чтобы выключить звук)',
@@ -2049,6 +2228,7 @@
                 settings: 'الإعدادات',
                 display_mode: 'وضع العرض',
                 scrollable: '📜 السجل القابل للتمرير',
+                mode_smooth: '🌊 تدفق سلس',
                 live_prompter: '⚡ الملقن المباشر',
                 listen_live: '🎧 استمع مباشرة',
                 listening: '🔊 جارٍ الاستماع (انقر لكتم الصوت)',
@@ -2071,6 +2251,7 @@
                 settings: 'सेटिंग्स',
                 display_mode: 'प्रदर्शन मोड',
                 scrollable: '📜 स्क्रॉल करने योग्य इतिहास',
+                mode_smooth: '🌊 सहज प्रवाह',
                 live_prompter: '⚡ लाइव प्रॉम्प्टर',
                 listen_live: '🎧 लाइव सुनें',
                 listening: '🔊 सुन रहे हैं (म्यूट के लिए टैप करें)',
@@ -2093,6 +2274,7 @@
                 settings: 'Instellingen',
                 display_mode: 'Weergavemodus',
                 scrollable: '📜 Scrollbare geschiedenis',
+                mode_smooth: '🌊 Vloeiende stroom',
                 live_prompter: '⚡ Live prompter',
                 listen_live: '🎧 Live luisteren',
                 listening: '🔊 Luisteren (Tik om te dempen)',
@@ -2115,6 +2297,7 @@
                 settings: 'Ustawienia',
                 display_mode: 'Tryb wyświetlania',
                 scrollable: '📜 Przewijana historia',
+                mode_smooth: '🌊 Płynny przepływ',
                 live_prompter: '⚡ Prompter na żywo',
                 listen_live: '🎧 Słuchaj na żywo',
                 listening: '🔊 Słuchanie (dotknij, aby wyciszyć)',
@@ -2137,6 +2320,7 @@
                 settings: 'Inställningar',
                 display_mode: 'Visningsläge',
                 scrollable: '📜 Rullningsbar historik',
+                mode_smooth: '🌊 Jämnt flöde',
                 live_prompter: '⚡ Live-prompter',
                 listen_live: '🎧 Lyssna live',
                 listening: '🔊 Lyssnar (Tryck för att stänga av ljudet)',
@@ -2159,6 +2343,7 @@
                 settings: 'Ayarlar',
                 display_mode: 'Görüntüleme Modu',
                 scrollable: '📜 Kaydırılabilir Geçmiş',
+                mode_smooth: '🌊 Akıcı Akış',
                 live_prompter: '⚡ Canlı Prompter',
                 listen_live: '🎧 Canlı Dinle',
                 listening: '🔊 Dinleniyor (Sessize almak için dokunun)',
@@ -2181,6 +2366,7 @@
                 settings: 'Налаштування',
                 display_mode: 'Режим відображення',
                 scrollable: '📜 Історія з прокручуванням',
+                mode_smooth: '🌊 Плавний потік',
                 live_prompter: '⚡ Живий суфлер',
                 listen_live: '🎧 Слухати наживо',
                 listening: '🔊 Прослуховування (торкніться, щоб вимкнути звук)',
@@ -2203,6 +2389,7 @@
                 settings: 'Cài đặt',
                 display_mode: 'Chế độ hiển thị',
                 scrollable: '📜 Lịch sử cuộn',
+                mode_smooth: '🌊 Luồng mượt mà',
                 live_prompter: '⚡ Máy nhắc chữ trực tiếp',
                 listen_live: '🎧 Nghe trực tiếp',
                 listening: '🔊 Đang nghe (Chạm để tắt tiếng)',
@@ -2225,6 +2412,7 @@
                 settings: 'Mga Setting',
                 display_mode: 'Display Mode',
                 scrollable: '📜 Nai-scroll na Kasaysayan',
+                mode_smooth: '🌊 Makinis na Daloy',
                 live_prompter: '⚡ Live Prompter',
                 listen_live: '🎧 Makinig nang Live',
                 listening: '🔊 Nakikinig (Tap para i-Mute)',
@@ -2247,6 +2435,7 @@
                 settings: 'הגדרות',
                 display_mode: 'מצב תצוגה',
                 scrollable: '📜 היסטוריה נגללת',
+                mode_smooth: '🌊 זרימה חלקה',
                 live_prompter: '⚡ פרומפטר חי',
                 listen_live: '🎧 האזנה חיה',
                 listening: '🔊 מאזין (הקש כדי להשתיק)',
@@ -2334,9 +2523,15 @@
                 displayModeSelect.title = t.display_mode;
                 displayModeSelect.setAttribute('aria-label', t.display_mode);
                 const optScrollable = displayModeSelect.querySelector('option[value="scrollable"]');
-                if (optScrollable) optScrollable.textContent = t.scrollable;
+                if (optScrollable) optScrollable.textContent = t.scrollable || '📜 Scrollable History';
+                const optSmooth = displayModeSelect.querySelector('option[value="smooth"]');
+                if (optSmooth) optSmooth.textContent = t.mode_smooth || '🌊 Smooth Flow';
                 const optLive = displayModeSelect.querySelector('option[value="live"]');
-                if (optLive) optLive.textContent = t.live_prompter;
+                if (optLive) optLive.textContent = t.live_prompter || '⚡ Live Prompter';
+            }
+            const btnOpenScriptureReaderEl = document.getElementById('btnOpenScriptureReader');
+            if (btnOpenScriptureReaderEl) {
+                btnOpenScriptureReaderEl.title = 'Scripture Passage Reader (B)';
             }
             refreshAudioListenBtnText();
             refreshAudioListenBannerText();
@@ -2501,7 +2696,7 @@
             });
         }
 
-        // Mode Selector: Scrollable History vs Live Prompter
+        // Mode Selector: Scrollable History vs Smooth Flow vs Live Prompter
         function applyDisplayMode(mode) {
             currentMode = mode;
             localStorage.setItem('voxstream_display_mode', currentMode);
@@ -2509,6 +2704,7 @@
 
             if (currentMode === 'live') {
                 document.body.classList.add('mode-live');
+                document.body.classList.remove('mode-smooth');
                 maxHistorySentences = 2;
                 while (finalSentences.length > 2) finalSentences.shift();
 
@@ -2521,8 +2717,22 @@
                     }
                     scrollToBottom(false);
                 }
+            } else if (currentMode === 'smooth') {
+                document.body.classList.remove('mode-live');
+                document.body.classList.add('mode-smooth');
+                maxHistorySentences = 300;
+                clearInterimLine();
+                if (transcriptContent) {
+                    transcriptContent.classList.remove('faded');
+                }
+                if (finalSentences.length <= 2) {
+                    loadServerHistory();
+                } else {
+                    renderCaptions();
+                }
             } else {
                 document.body.classList.remove('mode-live');
+                document.body.classList.remove('mode-smooth');
                 maxHistorySentences = 300;
                 if (transcriptContent) {
                     transcriptContent.classList.remove('faded');
@@ -2992,6 +3202,56 @@
             chkDisplayBionic.addEventListener("change", (e) => applyDisplayBionicMode(e.target.checked));
         }
 
+        // 🎯 Active Focus Highlight Mode Handler
+        let isFocusHighlightEnabled = false;
+        let isParagraphGroupingEnabled = false;
+        const chkActiveFocusHighlight = document.getElementById('chkActiveFocusHighlight');
+        const chkParagraphGrouping = document.getElementById('chkParagraphGrouping');
+
+        function applyDisplayFocusHighlightMode(enabled) {
+            isFocusHighlightEnabled = !!enabled;
+            document.body.classList.toggle('focus-highlight-mode', isFocusHighlightEnabled);
+            if (chkActiveFocusHighlight) chkActiveFocusHighlight.checked = isFocusHighlightEnabled;
+            try {
+                localStorage.setItem("voxstream_display_focus_highlight", isFocusHighlightEnabled ? "true" : "false");
+            } catch(e) {}
+        }
+
+        function applyDisplayParagraphGroupingMode(enabled) {
+            isParagraphGroupingEnabled = !!enabled;
+            document.body.classList.toggle('paragraph-grouping-mode', isParagraphGroupingEnabled);
+            if (chkParagraphGrouping) chkParagraphGrouping.checked = isParagraphGroupingEnabled;
+            try {
+                localStorage.setItem("voxstream_display_paragraph_grouping", isParagraphGroupingEnabled ? "true" : "false");
+            } catch(e) {}
+        }
+
+        try {
+            const savedFocus = localStorage.getItem("voxstream_display_focus_highlight");
+            if (savedFocus !== null) {
+                applyDisplayFocusHighlightMode(savedFocus === "true");
+            } else {
+                applyDisplayFocusHighlightMode(false);
+            }
+        } catch(e) {}
+
+        try {
+            const savedGrouping = localStorage.getItem("voxstream_display_paragraph_grouping");
+            if (savedGrouping !== null) {
+                applyDisplayParagraphGroupingMode(savedGrouping === "true");
+            } else {
+                applyDisplayParagraphGroupingMode(false);
+            }
+        } catch(e) {}
+
+        if (chkActiveFocusHighlight) {
+            chkActiveFocusHighlight.addEventListener("change", (e) => applyDisplayFocusHighlightMode(e.target.checked));
+        }
+
+        if (chkParagraphGrouping) {
+            chkParagraphGrouping.addEventListener("change", (e) => applyDisplayParagraphGroupingMode(e.target.checked));
+        }
+
         // 🐢 Slow Down Text / Paced Mode Handler
         function applyDisplayPacingMode(enabled) {
             isPacedReadingEnabled = enabled;
@@ -3018,6 +3278,7 @@
         // ✨ Final-Only Mode Handler (Only show captions once fully prepared)
         function applyDisplayFinalOnlyMode(enabled) {
             isFinalOnlyMode = enabled;
+            document.body.classList.toggle("final-only-mode", enabled);
             if (chkDisplayFinalOnly) chkDisplayFinalOnly.checked = enabled;
             try {
                 localStorage.setItem("voxstream_display_final_only", enabled ? "true" : "false");
@@ -3025,6 +3286,7 @@
             if (enabled) {
                 clearInterimLine();
             }
+            renderCaptions();
         }
 
         try {
@@ -3255,6 +3517,7 @@
                 if (pwaModal) pwaModal.style.display = 'none';
                 if (settingsModal) settingsModal.style.display = 'none';
                 if (shareModal) shareModal.style.display = 'none';
+                if (scriptureReaderModal) scriptureReaderModal.style.display = 'none';
                 return;
             }
             const tag = (e.target && e.target.tagName) || '';
@@ -3279,6 +3542,13 @@
             if (e.key === 's' || e.key === 'S') {
                 if (settingsModal) {
                     settingsModal.style.display = settingsModal.style.display === 'flex' ? 'none' : 'flex';
+                }
+            }
+            if (e.key === 'b' || e.key === 'B') {
+                if (scriptureReaderModal && scriptureReaderModal.style.display === 'flex') {
+                    closeScriptureReader();
+                } else {
+                    openScriptureReader();
                 }
             }
             if (e.key === 'h' || e.key === 'H') {
@@ -3376,35 +3646,73 @@
             return div.innerHTML;
         }
 
+        let lastUserScrollUpGestureAt = 0;
+        let touchStartY = 0;
+
         if (stageContainer) {
+            stageContainer.addEventListener('touchstart', (e) => {
+                if (e.touches && e.touches.length > 0) {
+                    touchStartY = e.touches[0].clientY;
+                }
+            }, { passive: true });
+
+            stageContainer.addEventListener('touchmove', (e) => {
+                if (e.touches && e.touches.length > 0) {
+                    const touchY = e.touches[0].clientY;
+                    // Dragging downward on touch means scrolling upward into history
+                    if (touchY - touchStartY > 12) {
+                        lastUserScrollUpGestureAt = performance.now();
+                        isSmoothScrollingToBottom = false;
+                        if (smoothScrollTimer) clearTimeout(smoothScrollTimer);
+                        autoScroll = false;
+                        updateFloatingButtons();
+                    }
+                }
+            }, { passive: true });
+
+            stageContainer.addEventListener('wheel', (e) => {
+                if (e.deltaY < 0) {
+                    lastUserScrollUpGestureAt = performance.now();
+                    isSmoothScrollingToBottom = false;
+                    if (smoothScrollTimer) clearTimeout(smoothScrollTimer);
+                    autoScroll = false;
+                    updateFloatingButtons();
+                }
+            }, { passive: true });
+
+            stageContainer.addEventListener('pointerdown', (e) => {
+                const rect = stageContainer.getBoundingClientRect();
+                if (e.clientX > rect.right - 24) {
+                    lastUserScrollUpGestureAt = performance.now();
+                }
+            }, { passive: true });
+
+            window.addEventListener('keydown', (e) => {
+                if (['ArrowUp', 'PageUp', 'Home'].includes(e.key)) {
+                    const tag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+                    if (tag !== 'input' && tag !== 'textarea' && tag !== 'select') {
+                        lastUserScrollUpGestureAt = performance.now();
+                        autoScroll = false;
+                        updateFloatingButtons();
+                    }
+                }
+            });
+
             stageContainer.addEventListener('scroll', () => {
                 if (isSmoothScrollingToBottom) return;
                 const dist = stageContainer.scrollHeight - stageContainer.scrollTop - stageContainer.clientHeight;
-                if (dist > 45) {
-                    autoScroll = false;
-                } else if (dist <= 15) {
+                if (dist <= 30) {
                     autoScroll = true;
-                }
-                updateFloatingButtons();
-            }, { passive: true });
-
-            // Immediately pause auto-scroll when user scrolls upward with mouse wheel or touch
-            stageContainer.addEventListener('wheel', (e) => {
-                if (e.deltaY < 0) {
-                    isSmoothScrollingToBottom = false;
-                    if (smoothScrollTimer) clearTimeout(smoothScrollTimer);
-                    autoScroll = false;
                     updateFloatingButtons();
-                }
-            }, { passive: true });
-
-            stageContainer.addEventListener('touchmove', () => {
-                const dist = stageContainer.scrollHeight - stageContainer.scrollTop - stageContainer.clientHeight;
-                if (dist > 30) {
-                    isSmoothScrollingToBottom = false;
-                    if (smoothScrollTimer) clearTimeout(smoothScrollTimer);
-                    autoScroll = false;
-                    updateFloatingButtons();
+                } else if (dist > 55) {
+                    const timeSinceGesture = performance.now() - lastUserScrollUpGestureAt;
+                    if (timeSinceGesture < 600) {
+                        autoScroll = false;
+                        updateFloatingButtons();
+                    } else if (autoScroll) {
+                        // Spontaneous DOM height growth or layout shift while autoScroll was intended: keep pinned to bottom!
+                        stageContainer.scrollTop = stageContainer.scrollHeight;
+                    }
                 }
             }, { passive: true });
         }
@@ -3453,15 +3761,128 @@
             return "";
         }
 
+        let wordStreamQueue = [];
+        let wordStreamTimer = null;
+
+        function flushWordStreamQueue() {
+            if (wordStreamTimer) {
+                clearTimeout(wordStreamTimer);
+                wordStreamTimer = null;
+            }
+            while (wordStreamQueue.length > 0) {
+                const item = wordStreamQueue.shift();
+                if (item && item.node && item.node.parentNode) {
+                    item.node.innerHTML = formatBionicReading(item.fullText);
+                }
+            }
+        }
+
+        function processWordStreamTick() {
+            wordStreamTimer = null;
+            if (wordStreamQueue.length === 0) return;
+
+            // Count total remaining words across all queued sentences
+            let totalRemaining = 0;
+            for (let i = 0; i < wordStreamQueue.length; i++) {
+                totalRemaining += Math.max(0, wordStreamQueue[i].words.length - wordStreamQueue[i].renderedCount);
+            }
+
+            // Dynamic catch-up: if remaining words > 45 and multiple sentences are queued,
+            // immediately complete older sentences so the display never falls far behind live speech!
+            if (totalRemaining > 45 && wordStreamQueue.length > 1) {
+                while (wordStreamQueue.length > 1) {
+                    const old = wordStreamQueue.shift();
+                    if (old && old.node && old.node.parentNode) {
+                        old.node.innerHTML = formatBionicReading(old.fullText);
+                    }
+                }
+                totalRemaining = Math.max(0, wordStreamQueue[0].words.length - wordStreamQueue[0].renderedCount);
+            }
+
+            const currentItem = wordStreamQueue[0];
+            if (!currentItem || !currentItem.node || !currentItem.node.parentNode) {
+                wordStreamQueue.shift();
+                if (wordStreamQueue.length > 0) {
+                    processWordStreamTick();
+                }
+                return;
+            }
+
+            if (currentItem.renderedCount < currentItem.words.length) {
+                const nextWord = currentItem.words[currentItem.renderedCount];
+                const span = document.createElement('span');
+                span.className = 'word-reveal';
+                span.innerHTML = formatBionicReading(nextWord);
+                currentItem.node.appendChild(span);
+                currentItem.node.appendChild(document.createTextNode(' '));
+                currentItem.renderedCount++;
+
+                if (autoScroll) scrollToBottom(false);
+            }
+
+            // Finished current sentence
+            if (currentItem.renderedCount >= currentItem.words.length) {
+                currentItem.node.innerHTML = formatBionicReading(currentItem.fullText);
+                wordStreamQueue.shift();
+            }
+
+            if (wordStreamQueue.length > 0) {
+                // Base interval per word:
+                // When isPacedReadingEnabled ("🐢 Slow Down Text") is ON: 68ms per word (~140 WPM)
+                // In smooth mode (without Slow Down Text): 48ms per word (~180 WPM)
+                let interval = isPacedReadingEnabled ? 68 : 48;
+
+                let remaining = 0;
+                for (let i = 0; i < wordStreamQueue.length; i++) {
+                    remaining += Math.max(0, wordStreamQueue[i].words.length - wordStreamQueue[i].renderedCount);
+                }
+
+                // Smooth queue pacing: keep steady base word pace for up to 18 queued words;
+                // only accelerate when remaining queued words > 18, and faster tier at > 32 words
+                if (remaining > 32) {
+                    interval = 18;
+                } else if (remaining > 18) {
+                    interval = 30;
+                }
+
+                wordStreamTimer = setTimeout(processWordStreamTick, interval);
+            }
+        }
+
+        function queueSentenceForWordStreaming(el, text) {
+            const rawWords = (text || '').trim().split(/\s+/).filter(Boolean);
+            if (rawWords.length === 0) {
+                el.innerHTML = formatBionicReading(text);
+                return;
+            }
+
+            wordStreamQueue.push({
+                node: el,
+                fullText: text,
+                words: rawWords,
+                renderedCount: 0
+            });
+
+            if (!wordStreamTimer) {
+                processWordStreamTick();
+            }
+        }
+
         function appendFinalSentence(text, utteranceId) {
             if (!text || !transcriptContent) return;
             interimGen++;
             removeEmptyIndicator();
             wakeLiveDisplay();
 
+            const isStreaming = (currentMode === 'smooth' || isPacedReadingEnabled);
+
             const el = document.createElement('div');
             el.className = 'caption-sentence';
-            el.innerHTML = formatBionicReading(text);
+            if (isStreaming) {
+                el.innerHTML = '';
+            } else {
+                el.innerHTML = formatBionicReading(text);
+            }
 
             const existing = transcriptContent.querySelectorAll('.caption-sentence:not(#liveInterimNode)');
             existing.forEach((node) => {
@@ -3488,15 +3909,19 @@
             pendingInterimText = remainingInterim || null;
             interimText = remainingInterim || "";
 
-            // Do not abruptly collapse #liveInterimNode if interim text is pending or active
+            // In smooth mode or final-only mode, keep liveInterimNode completely hidden!
             if (interimNode) {
-                if (pendingInterimText) {
+                if (pendingInterimText && !isFinalOnlyMode && currentMode !== 'smooth') {
                     interimNode.textContent = normalizePunctuationSpacing(pendingInterimText);
                     interimNode.style.display = 'block';
                 } else {
                     interimNode.textContent = '';
                     interimNode.style.display = 'none';
                 }
+            }
+
+            if (isStreaming) {
+                queueSentenceForWordStreaming(el, text);
             }
 
             if (autoScroll) scrollToBottom(false);
@@ -3515,7 +3940,17 @@
             } else {
                 finalSentences.push(text);
             }
-            renderCaptions();
+
+            const finals = transcriptContent.querySelectorAll('.caption-sentence:not(#liveInterimNode)');
+            const lastNode = finals.length > 0 ? finals[finals.length - 1] : null;
+
+            if (lastNode) {
+                // Cancel any active word streaming on this specific last node
+                wordStreamQueue = wordStreamQueue.filter(item => item.node !== lastNode);
+                lastNode.innerHTML = formatBionicReading(text);
+            } else {
+                renderCaptions();
+            }
 
             if (autoScroll) scrollToBottom(false);
 
@@ -3523,7 +3958,7 @@
         }
 
         function updateInterimSpeech(text) {
-            if (isFinalOnlyMode) return;
+            if (isFinalOnlyMode || currentMode === 'smooth') return;
             if (!transcriptContent) return;
             pendingInterimText = text;
             if (interimRafPending) return;
@@ -3537,7 +3972,7 @@
                 wakeLiveDisplay();
 
                 const interimNode = getInterimNode();
-                if (curText) {
+                if (curText && !isFinalOnlyMode && currentMode !== 'smooth') {
                     interimNode.textContent = normalizePunctuationSpacing(curText);
                     interimNode.style.display = 'block';
                 } else {
@@ -3550,6 +3985,11 @@
         }
 
         function clearAllCaptions() {
+            if (wordStreamTimer) {
+                clearTimeout(wordStreamTimer);
+                wordStreamTimer = null;
+            }
+            wordStreamQueue = [];
             finalSentences = [];
             interimText = "";
             if (transcriptContent) {
@@ -3559,6 +3999,7 @@
         }
 
         function renderCaptions() {
+            flushWordStreamQueue();
             if (!transcriptContent) return;
             transcriptContent.innerHTML = '';
             if (finalSentences.length === 0 && !interimText) {
@@ -3576,7 +4017,7 @@
             });
 
             const interimNode = getInterimNode();
-            if (!isFinalOnlyMode && interimText) {
+            if (!isFinalOnlyMode && currentMode !== 'smooth' && interimText) {
                 interimNode.textContent = normalizePunctuationSpacing(interimText);
                 interimNode.style.display = 'block';
             } else {
@@ -3735,6 +4176,7 @@
                     }
 
                     if (data.type === 'scripture_verse' || (data.type === 'scripture' && data.action === 'show')) {
+                        recordSessionScripture(data);
                         if (data.show_on_stage_display === false || !isScriptureOverlayEnabled) return;
                         showStageScripture(data);
                         return;
@@ -3874,6 +4316,11 @@
                         // 6. Dyslexia Mode
                         if (d.dyslexia_mode !== undefined && localStorage.getItem("voxstream_display_a11y") === null && !urlParams.has('dyslexia')) {
                             applyDisplayA11yMode(Boolean(d.dyslexia_mode));
+                        }
+                        // 6b. Auto-Popup Scripture Display Toggle
+                        const srvScripture = (d.show_scripture !== undefined) ? d.show_scripture : (cfg.bible && cfg.bible.show_on_stage_display);
+                        if (localStorage.getItem("voxstream_display_show_scripture") === null && !urlParams.has('bible') && !urlParams.has('scripture') && srvScripture !== undefined) {
+                            applyDisplayScriptureOverlayMode(Boolean(srvScripture));
                         }
                         // 7. Custom Branding Title
                         const effectiveTitle = urlParams.get('title') || (d && d.custom_title);
@@ -4481,8 +4928,10 @@
         const stageScriptureText = document.getElementById("stageScriptureText");
         const btnDismissStageScripture = document.getElementById("btnDismissStageScripture");
         let stageScriptureTimer = null;
+        let lastShownScriptureData = null;
 
         function showStageScripture(data) {
+            lastShownScriptureData = data;
             if (!isScriptureOverlayEnabled) return;
             if (!scripturePrompterCard) return;
             if (stageScriptureTimer) clearTimeout(stageScriptureTimer);
@@ -4491,8 +4940,8 @@
             if (data.inferred_context) {
                 citeStr += ` (Context: ${data.inferred_context})`;
             }
-            stageScriptureCitation.textContent = citeStr;
-            stageScriptureText.textContent = `"${data.text || ''}"`;
+            if (stageScriptureCitation) stageScriptureCitation.textContent = citeStr;
+            if (stageScriptureText) stageScriptureText.textContent = `"${data.text || ''}"`;
             scripturePrompterCard.style.display = "block";
             
             const dur = (parseFloat(data.duration_seconds) || 16.0) * 1000;
@@ -4510,6 +4959,307 @@
         if (btnDismissStageScripture) {
             btnDismissStageScripture.addEventListener("click", dismissStageScripture);
         }
+
+        // -------------------------------------------------------------
+        // 📖 Scripture Passage Reader Engine
+        // -------------------------------------------------------------
+        let sessionScriptures = [];
+        let currentReaderBook = "";
+        let currentReaderChapter = 1;
+        let currentReaderVerseStart = 1;
+        let currentReaderVerseEnd = null;
+
+        function recordSessionScripture(data) {
+            if (!data || !data.citation) return;
+            lastShownScriptureData = data;
+            const citation = data.citation.trim();
+            const ver = (data.version || 'BSB').toUpperCase();
+
+            const existingIdx = sessionScriptures.findIndex(s => s.citation.toLowerCase() === citation.toLowerCase() && s.version === ver);
+            const item = {
+                citation: citation,
+                book: data.book || '',
+                chapter: parseInt(data.chapter, 10) || 1,
+                verse_start: parseInt(data.verse_start, 10) || 1,
+                verse_end: data.verse_end ? parseInt(data.verse_end, 10) : null,
+                version: ver,
+                text: data.text || ''
+            };
+
+            if (existingIdx >= 0) {
+                sessionScriptures.splice(existingIdx, 1);
+            }
+            sessionScriptures.unshift(item);
+            if (sessionScriptures.length > 25) sessionScriptures.pop();
+            updateRecentScripturesUI();
+        }
+
+        async function fetchSermonBibleContext() {
+            try {
+                const res = await fetch('/api/bible/context');
+                if (res.ok) {
+                    const ctx = await res.json();
+                    const statusEl = document.getElementById('scriptureContextStatus');
+                    const targetCite = ctx ? (ctx.primary_citation || ctx.recent_citation) : null;
+                    if (targetCite) {
+                        if (statusEl) statusEl.textContent = `Active Sermon Context: ${targetCite}`;
+                        if (sessionScriptures.length === 0) {
+                            const m = targetCite.match(/^(.+?)\s+(\d+)$/);
+                            const book = m ? m[1] : targetCite;
+                            const ch = m ? parseInt(m[2], 10) : 1;
+                            sessionScriptures.push({
+                                citation: targetCite,
+                                book: book,
+                                chapter: ch,
+                                verse_start: 1,
+                                verse_end: null,
+                                version: 'BSB',
+                                text: ''
+                            });
+                            updateRecentScripturesUI();
+                        }
+                    } else if (statusEl) {
+                        statusEl.textContent = '';
+                    }
+                }
+            } catch (e) {
+                console.warn("Could not fetch sermon bible context:", e);
+            }
+        }
+
+        function updateRecentScripturesUI() {
+            const listEl = document.getElementById('recentScripturesList');
+            if (!listEl) return;
+            listEl.innerHTML = '';
+
+            if (sessionScriptures.length === 0) {
+                const empty = document.createElement('span');
+                empty.style.fontSize = '11.5px';
+                empty.style.color = '#94A3B8';
+                empty.textContent = 'No scripture citations detected yet this session.';
+                listEl.appendChild(empty);
+                return;
+            }
+
+            sessionScriptures.forEach(s => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'recent-scripture-pill';
+                btn.textContent = `${s.citation} (${s.version || 'BSB'})`;
+                btn.addEventListener('click', () => {
+                    loadScripturePassage(s.citation, s.version || 'bsb', s.verse_start, s.verse_end);
+                });
+                listEl.appendChild(btn);
+            });
+        }
+
+        function updateChapterNavButtons() {
+            const prevTop = document.getElementById('btnPrevChapterTop');
+            const nextTop = document.getElementById('btnNextChapterTop');
+            const prevBottom = document.getElementById('btnPrevChapterBottom');
+            const nextBottom = document.getElementById('btnNextChapterBottom');
+
+            const prevCh = currentReaderChapter - 1;
+            const nextCh = currentReaderChapter + 1;
+
+            const prevText = prevCh > 0 ? `← Ch ${prevCh}` : '←';
+            const nextText = `Ch ${nextCh} →`;
+
+            if (prevTop) {
+                prevTop.textContent = prevText;
+                prevTop.disabled = prevCh <= 0;
+                prevTop.style.opacity = prevCh <= 0 ? '0.4' : '1';
+                prevTop.style.cursor = prevCh <= 0 ? 'default' : 'pointer';
+            }
+            if (prevBottom) {
+                prevBottom.textContent = prevText;
+                prevBottom.disabled = prevCh <= 0;
+                prevBottom.style.opacity = prevCh <= 0 ? '0.4' : '1';
+                prevBottom.style.cursor = prevCh <= 0 ? 'default' : 'pointer';
+            }
+            if (nextTop) {
+                nextTop.textContent = nextText;
+            }
+            if (nextBottom) {
+                nextBottom.textContent = nextText;
+            }
+        }
+
+        function navigateChapter(delta) {
+            if (!currentReaderBook) return;
+            const targetCh = currentReaderChapter + delta;
+            if (targetCh < 1) return;
+            const ver = document.getElementById('scriptureVersionSelect') ? document.getElementById('scriptureVersionSelect').value : 'bsb';
+            loadScripturePassage(`${currentReaderBook} ${targetCh}:1-150`, ver, 1, 1);
+        }
+
+        async function loadScripturePassage(citation, version, targetVerseStart = null, targetVerseEnd = null) {
+            const readerBody = document.getElementById('scriptureReaderBody');
+            const titleEl = document.getElementById('currentReaderCitation');
+            const versionSelect = document.getElementById('scriptureVersionSelect');
+            const searchInput = document.getElementById('scriptureSearchInput');
+
+            const ver = (version || (versionSelect ? versionSelect.value : 'bsb')).toLowerCase();
+            if (versionSelect) versionSelect.value = ver;
+            if (searchInput) searchInput.value = citation;
+
+            if (readerBody) {
+                readerBody.innerHTML = '<div style="text-align: center; color: #94A3B8; padding: 28px 0;"><span style="display:inline-block; animation: spin 1s linear infinite; margin-right: 8px;">⏳</span> Loading scripture passage...</div>';
+            }
+
+            try {
+                let fetchUrl = `/api/bible/lookup?citation=${encodeURIComponent(citation)}&version=${encodeURIComponent(ver)}&full_chapter=1`;
+                let res = await fetch(fetchUrl);
+
+                // Fallback: If 404 (e.g. user typed "Matthew 13" without verse), append ":1-150"
+                if (!res.ok && !citation.includes(':')) {
+                    const fallbackCite = `${citation.trim()}:1-150`;
+                    fetchUrl = `/api/bible/lookup?citation=${encodeURIComponent(fallbackCite)}&version=${encodeURIComponent(ver)}&full_chapter=1`;
+                    res = await fetch(fetchUrl);
+                }
+
+                if (!res.ok) {
+                    if (readerBody) {
+                        readerBody.innerHTML = `<div style="text-align: center; color: #F87171; padding: 24px 0;">Scripture citation "<strong>${escapeHtml(citation)}</strong>" not found. Please try another reference (e.g. John 3:16 or Matthew 13).</div>`;
+                    }
+                    return;
+                }
+
+                const data = await res.json();
+                currentReaderBook = data.book || '';
+                currentReaderChapter = parseInt(data.chapter, 10) || 1;
+                currentReaderVerseStart = targetVerseStart || data.verse_start || 1;
+                currentReaderVerseEnd = targetVerseEnd || data.verse_end || currentReaderVerseStart;
+
+                const displayCite = `${currentReaderBook} ${currentReaderChapter}`;
+                if (titleEl) {
+                    titleEl.textContent = `${displayCite} • ${data.version || ver.toUpperCase()}`;
+                }
+
+                updateChapterNavButtons();
+
+                if (readerBody) {
+                    readerBody.innerHTML = '';
+                    
+                    if (Array.isArray(data.chapter_verses) && data.chapter_verses.length > 0) {
+                        data.chapter_verses.forEach(v => {
+                            const isTarget = (v.verse >= currentReaderVerseStart && (!currentReaderVerseEnd || v.verse <= currentReaderVerseEnd));
+                            const verseDiv = document.createElement('div');
+                            verseDiv.className = `reader-verse${isTarget ? ' highlighted-verse' : ''}`;
+                            verseDiv.id = `reader-verse-${v.verse}`;
+                            verseDiv.innerHTML = `<strong>${v.verse}</strong> ${escapeHtml(v.text)}`;
+                            readerBody.appendChild(verseDiv);
+                        });
+                    } else if (data.text) {
+                        const verseDiv = document.createElement('div');
+                        verseDiv.className = 'reader-verse highlighted-verse';
+                        verseDiv.id = `reader-verse-${currentReaderVerseStart}`;
+                        const label = data.verse_start ? `${data.verse_start}${data.verse_end ? '-' + data.verse_end : ''}` : '1';
+                        verseDiv.innerHTML = `<strong>${label}</strong> ${escapeHtml(data.text)}`;
+                        readerBody.appendChild(verseDiv);
+                    }
+
+                    setTimeout(() => {
+                        const targetNode = document.getElementById(`reader-verse-${currentReaderVerseStart}`);
+                        if (targetNode) {
+                            targetNode.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                    }, 60);
+                }
+            } catch (err) {
+                console.error("Error loading scripture passage:", err);
+                if (readerBody) {
+                    readerBody.innerHTML = `<div style="text-align: center; color: #F87171; padding: 24px 0;">Error loading scripture. Please check your connection.</div>`;
+                }
+            }
+        }
+
+        const scriptureReaderModal = document.getElementById('scriptureReaderModal');
+        const btnOpenScriptureReader = document.getElementById('btnOpenScriptureReader');
+        const btnCloseScriptureReader = document.getElementById('btnCloseScriptureReader');
+        const btnDoneScriptureReader = document.getElementById('btnDoneScriptureReader');
+        const btnPrompterOpenReader = document.getElementById('btnPrompterOpenReader');
+        const btnLookupScripture = document.getElementById('btnLookupScripture');
+        const scriptureSearchInput = document.getElementById('scriptureSearchInput');
+        const scriptureVersionSelect = document.getElementById('scriptureVersionSelect');
+        const btnPrevChapterTop = document.getElementById('btnPrevChapterTop');
+        const btnNextChapterTop = document.getElementById('btnNextChapterTop');
+        const btnPrevChapterBottom = document.getElementById('btnPrevChapterBottom');
+        const btnNextChapterBottom = document.getElementById('btnNextChapterBottom');
+
+        function openScriptureReader(initialCitation = null, initialVersion = null) {
+            if (!scriptureReaderModal) return;
+            scriptureReaderModal.style.display = 'flex';
+            fetchSermonBibleContext();
+            updateRecentScripturesUI();
+
+            if (initialCitation) {
+                loadScripturePassage(initialCitation, initialVersion || 'bsb');
+            } else if (!currentReaderBook) {
+                if (sessionScriptures.length > 0) {
+                    loadScripturePassage(sessionScriptures[0].citation, sessionScriptures[0].version || 'bsb', sessionScriptures[0].verse_start, sessionScriptures[0].verse_end);
+                } else {
+                    loadScripturePassage('John 3:16', 'bsb', 16, 16);
+                }
+            }
+        }
+
+        function closeScriptureReader() {
+            if (scriptureReaderModal) scriptureReaderModal.style.display = 'none';
+        }
+
+        function triggerScriptureLookup() {
+            if (!scriptureSearchInput) return;
+            const val = scriptureSearchInput.value.trim();
+            if (!val) return;
+            const ver = scriptureVersionSelect ? scriptureVersionSelect.value : 'bsb';
+            loadScripturePassage(val, ver);
+        }
+
+        if (btnOpenScriptureReader) {
+            btnOpenScriptureReader.addEventListener('click', () => openScriptureReader());
+        }
+        if (btnPrompterOpenReader) {
+            btnPrompterOpenReader.addEventListener('click', () => {
+                const cite = lastShownScriptureData ? lastShownScriptureData.citation : null;
+                const ver = lastShownScriptureData ? lastShownScriptureData.version : null;
+                openScriptureReader(cite, ver);
+            });
+        }
+        if (btnCloseScriptureReader) {
+            btnCloseScriptureReader.addEventListener('click', closeScriptureReader);
+        }
+        if (btnDoneScriptureReader) {
+            btnDoneScriptureReader.addEventListener('click', closeScriptureReader);
+        }
+        if (scriptureReaderModal) {
+            scriptureReaderModal.addEventListener('click', (e) => {
+                if (e.target === scriptureReaderModal) closeScriptureReader();
+            });
+        }
+        if (btnLookupScripture) {
+            btnLookupScripture.addEventListener('click', triggerScriptureLookup);
+        }
+        if (scriptureSearchInput) {
+            scriptureSearchInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    triggerScriptureLookup();
+                }
+            });
+        }
+        if (scriptureVersionSelect) {
+            scriptureVersionSelect.addEventListener('change', () => {
+                if (currentReaderBook && currentReaderChapter) {
+                    const ver = scriptureVersionSelect.value;
+                    loadScripturePassage(`${currentReaderBook} ${currentReaderChapter}`, ver, currentReaderVerseStart, currentReaderVerseEnd);
+                }
+            });
+        }
+        if (btnPrevChapterTop) btnPrevChapterTop.addEventListener('click', () => navigateChapter(-1));
+        if (btnPrevChapterBottom) btnPrevChapterBottom.addEventListener('click', () => navigateChapter(-1));
+        if (btnNextChapterTop) btnNextChapterTop.addEventListener('click', () => navigateChapter(1));
+        if (btnNextChapterBottom) btnNextChapterBottom.addEventListener('click', () => navigateChapter(1));
 
         // --- Share & QR Modal Handlers for Stage Display ---
         const btnShareDisplay = document.getElementById("btnShareDisplay");

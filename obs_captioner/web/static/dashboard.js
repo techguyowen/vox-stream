@@ -2656,6 +2656,10 @@ function updateChurchModeLabels(isChurchMode) {
         if (ppKeywords && document.activeElement !== ppKeywords) {
             ppKeywords.value = (pp.lyrics_keywords || []).join(", ");
         }
+        const ppExempt = document.getElementById("propresenter_exempt_keywords");
+        if (ppExempt && document.activeElement !== ppExempt) {
+            ppExempt.value = (pp.exempt_keywords || []).join(", ");
+        }
         if (typeof togglePresentationProviderGroups === "function") {
             togglePresentationProviderGroups();
         }
@@ -3906,6 +3910,7 @@ if (btnSavePresentation) {
                 proclaim_password: document.getElementById("proclaim_password").value,
                 auto_mute_on_lyrics: document.getElementById("propresenter_auto_mute").checked,
                 lyrics_keywords: document.getElementById("propresenter_keywords").value.split(",").map(s => s.trim()).filter(Boolean),
+                exempt_keywords: (document.getElementById("propresenter_exempt_keywords")?.value || "").split(",").map(s => s.trim()).filter(Boolean),
             }
         };
         await saveConfigPayload(payload, "Presentation settings saved!");
@@ -4605,7 +4610,8 @@ async function saveConfigPayload(payload, successMsg) {
                 }
             }
         } else {
-            showToast("⚠️ Error saving configuration.", "error");
+            const errData = await res.json().catch(() => ({}));
+            showToast("⚠️ Error saving configuration: " + (errData.message || errData.error || res.statusText || "Request failed"), "error", 5000);
         }
     } catch (e) {
         showToast(`❌ Error saving configuration: ${e.message || e}`, "error");

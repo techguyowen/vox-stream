@@ -77,6 +77,10 @@ class _FallbackProPresenterClient:
         self._slide_label = ""
         self._is_lyrics_slide_active = False
 
+    @property
+    def is_running(self) -> bool:
+        return False
+
     def get_status(self) -> dict:
         cfg = self.config
         return {
@@ -2913,18 +2917,74 @@ class WebOverlayServer:
         return web.json_response({"versions": versions})
 
     async def _handle_bible_lookup(self, request: web.Request) -> web.Response:
-        """Lookup a Bible verse or citation string offline."""
+        """Lookup a Bible verse or full chapter offline."""
         citation = request.query.get("citation", "").strip()
         version = request.query.get("version", getattr(self.config.bible, "default_version", "bsb")).strip()
-        
-        if not citation:
-            return web.json_response({"error": "Missing 'citation' parameter."}, status=400)
-            
-        res = self.bible_engine.parse_and_lookup_first(citation, version=version)
-        if not res:
-            return web.json_response({"error": f"Scripture citation '{citation}' not found."}, status=404)
-            
-        return web.json_response(res.to_dict())
+        full_chapter = str(request.query.get("full_chapter", "")).lower() in ("1", "true", "yes")
+
+        if not full_chapter:
+            if not citation:
+                return web.json_response({"error": "Missing 'citation' parameter."}, status=400)
+            res = self.bible_engine.parse_and_lookup_first(citation, version=version)
+            if not res:
+                return web.json_response({"error": f"Scripture citation '{citation}' not found."}, status=404)
+            return web.json_response(res.to_dict())
+
+        # Full chapter lookup
+        res = None
+        book = None
+        ch = None
+        v_start = None
+        v_end = None
+
+        if not citation or citation.lower() == "active":
+            if getattr(self, "_last_scripture", None):
+                res = self._last_scripture
+                book = res.book
+                ch = res.chapter
+                v_start = res.verse_start
+                v_end = res.verse_end
+            elif self.bible_engine.primary_book and self.bible_engine.primary_chapter:
+                book = self.bible_engine.primary_book
+                ch = self.bible_engine.primary_chapter
+            elif self.bible_engine.recent_book and self.bible_engine.recent_chapter:
+                book = self.bible_engine.recent_book
+                ch = self.bible_engine.recent_chapter
+            else:
+                return web.json_response({"error": "No active scripture or context found."}, status=404)
+        else:
+            res = self.bible_engine.parse_and_lookup_first(citation, version=version)
+            if res:
+                book = res.book
+                ch = res.chapter
+                v_start = res.verse_start
+                v_end = res.verse_end
+            else:
+                cits = self.bible_engine.extract_citations_from_text(citation)
+                if cits:
+                    book, ch, v_start, v_end = cits[0]
+                else:
+                    return web.json_response({"error": f"Scripture citation '{citation}' not found."}, status=404)
+
+        if not book or not ch:
+            return web.json_response({"error": f"Could not determine book and chapter for '{citation}'."}, status=404)
+
+        chap_data = self.bible_engine.lookup_chapter(book, ch, version=version)
+        if not chap_data:
+            return web.json_response({"error": f"Chapter '{book} {ch}' not found."}, status=404)
+
+        payload = res.to_dict() if res else {}
+        payload.update({
+            "chapter_verses": chap_data["verses"],
+            "highlight_start": v_start,
+            "highlight_end": v_end or v_start,
+            "book": chap_data["book"],
+            "chapter": chap_data["chapter"],
+            "citation": res.citation if res else chap_data["citation"],
+            "version": chap_data["version"],
+            "version_name": chap_data["version_name"],
+        })
+        return web.json_response(payload)
 
     async def _handle_bible_display(self, request: web.Request) -> web.Response:
         """Manually trigger display of a scripture passage across OBS overlays and stage monitors."""
@@ -3089,7 +3149,8 @@ class WebOverlayServer:
         """Return active sermon scripture context."""
         return web.json_response({
             "status": "success",
-            "context": self.bible_engine.get_context_status()
+            "context": self.bible_engine.get_context_status(),
+            "last_scripture": self._last_scripture.to_dict() if getattr(self, "_last_scripture", None) else None,
         })
 
     async def _handle_post_bible_context(self, request: web.Request) -> web.Response:

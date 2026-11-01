@@ -1541,8 +1541,8 @@ def test_v1_2_16_scripture_bridging_context_and_sermon_fixes():
     from obs_captioner.version import VERSION, VERSION_INFO
 
     # 1. Version bump check
-    assert VERSION == "1.2.18"
-    assert VERSION_INFO == (1, 2, 18)
+    assert VERSION == "1.2.19"
+    assert VERSION_INFO == (1, 2, 19)
 
     # 2. BibleEngine: bridging phrases ("starting with verse 31", "beginning at verse 5")
     bible = BibleEngine()
@@ -1660,8 +1660,8 @@ def test_v1_2_18_regression():
     from obs_captioner.version import VERSION, VERSION_INFO
 
     # 1. Version check
-    assert VERSION == "1.2.18"
-    assert VERSION_INFO == (1, 2, 18)
+    assert VERSION == "1.2.19"
+    assert VERSION_INFO == (1, 2, 19)
 
     # 2. TextFormatter everyday compound word rejoining
     fmt = TextFormatter(auto_capitalization=True, auto_punctuation=True, church_mode=True)
@@ -1692,6 +1692,131 @@ def test_v1_2_18_regression():
         "i tell you that in the same way there will be more rejoicing in heaven over one sinner who repents"
     ]
     assert rem.startswith("than over 99 righteous persons")
+
+
+def test_v1_2_19_proclaim_exempt_keywords_and_bible_chapter():
+    """Verify v1.2.19 fixes:
+    1. exempt_keywords in classify_slide_as_lyrics (unconditional exemption from auto-mute).
+    2. ProPresenterClient disabled guard and is_running property.
+    3. BibleEngine.lookup_chapter returning all chapter verses offline.
+    4. Web server full_chapter lookup and context last_scripture.
+    """
+    import asyncio
+    from obs_captioner.bible_engine import BibleEngine
+    from obs_captioner.config import AppConfig
+    from obs_captioner.propresenter import (
+        ProPresenterClient,
+        ProPresenterConfig,
+        classify_slide_as_lyrics,
+    )
+    from obs_captioner.version import VERSION, VERSION_INFO
+
+    # 1. Version check
+    assert VERSION == "1.2.19"
+    assert VERSION_INFO == (1, 2, 19)
+
+    # 2. classify_slide_as_lyrics with exempt_keywords
+    # Slide with worship label but exempt keyword 'communion' in label
+    assert classify_slide_as_lyrics(
+        "Take, eat, this is my body broken for you.",
+        "Worship - Communion",
+        exempt_keywords=["communion", "prayer", "welcome"],
+    ) is False
+
+    # Slide with poetic lines containing 'communion' in text
+    poetic_communion = "We gather together\nTo receive holy communion"
+    assert classify_slide_as_lyrics(
+        poetic_communion,
+        "",
+        exempt_keywords=["communion"],
+    ) is False
+
+    # Poetic lines containing 'prayer' in text
+    poetic_prayer = "Lord hear our prayer\nLord hear our prayer"
+    assert classify_slide_as_lyrics(
+        poetic_prayer,
+        "Pastoral",
+        exempt_keywords=["prayer"],
+    ) is False
+
+    # Normal worship lyrics without exempt keyword still classify as lyrics
+    worship_lyrics = "Amazing grace how sweet the sound\nThat saved a wretch like me"
+    assert classify_slide_as_lyrics(
+        worship_lyrics,
+        "Worship - Song",
+        exempt_keywords=["communion", "prayer", "welcome"],
+    ) is True
+
+    # 3. ProPresenterClient when disabled
+    lyrics_events = []
+    cfg_disabled = ProPresenterConfig(enabled=False)
+    client = ProPresenterClient(
+        cfg_disabled,
+        on_lyrics_state_changed=lambda is_lyr, src: lyrics_events.append((is_lyr, src)),
+    )
+    assert client.is_running is False
+    assert client.update_slide_state(worship_lyrics, "Song - Verse 1") is False
+    assert len(lyrics_events) == 0
+
+    # If it was active and becomes disabled:
+    client._is_lyrics_slide_active = True
+    assert client.update_slide_state(worship_lyrics, "Song - Verse 1") is False
+    assert client.is_lyrics_slide_active is False
+    assert lyrics_events == [(False, "sync_disabled")]
+
+    # 4. BibleEngine.lookup_chapter
+    bible = BibleEngine()
+    ch_data = bible.lookup_chapter("Matthew", 13, "bsb")
+    assert ch_data is not None
+    assert ch_data["citation"] == "Matthew 13"
+    assert ch_data["book"] == "Matthew"
+    assert ch_data["chapter"] == 13
+    assert ch_data["version"] == "BSB"
+    assert ch_data["version_name"] == "Berean Standard Bible"
+    assert len(ch_data["verses"]) == 58
+    assert ch_data["verses"][0]["verse"] == 1
+    assert ch_data["verses"][0]["text"] == "That same day Jesus went out of the house and sat by the sea."
+    assert ch_data["verses"][-1]["verse"] == 58
+
+    # 5. Full chapter API in WebOverlayServer
+    from aiohttp.test_utils import make_mocked_request
+    from obs_captioner.web.server import WebOverlayServer
+    import json
+
+    srv = WebOverlayServer.__new__(WebOverlayServer)
+    srv.config = AppConfig()
+    srv.bible_engine = bible
+    srv._last_scripture = bible.parse_and_lookup_first("Romans 8:28")
+
+    async def _test_api():
+        # Full chapter lookup for Matthew 13:10-15
+        req = make_mocked_request("GET", "/api/bible/lookup?citation=Matthew%2013:10-15&full_chapter=true")
+        resp = await srv._handle_bible_lookup(req)
+        assert resp.status == 200
+        d = json.loads(resp.text)
+        assert d["citation"] == "Matthew 13:10-15"
+        assert d["highlight_start"] == 10
+        assert d["highlight_end"] == 15
+        assert len(d["chapter_verses"]) == 58
+
+        # Full chapter lookup for active citation
+        req_act = make_mocked_request("GET", "/api/bible/lookup?citation=active&full_chapter=true")
+        resp_act = await srv._handle_bible_lookup(req_act)
+        assert resp_act.status == 200
+        d_act = json.loads(resp_act.text)
+        assert d_act["book"] == "Romans"
+        assert d_act["chapter"] == 8
+        assert d_act["highlight_start"] == 28
+
+        # Context endpoint includes last_scripture
+        req_ctx = make_mocked_request("GET", "/api/bible/context")
+        resp_ctx = await srv._handle_get_bible_context(req_ctx)
+        assert resp_ctx.status == 200
+        d_ctx = json.loads(resp_ctx.text)
+        assert d_ctx["last_scripture"]["citation"] == "Romans 8:28"
+
+    asyncio.run(_test_api())
+
 
 
 

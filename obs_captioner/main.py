@@ -587,6 +587,7 @@ async def main_async(args):
         nonlocal active_parakeet_model, active_parakeet_device, active_parakeet_threads
         nonlocal active_sensevoice_model, active_sensevoice_device, active_sensevoice_threads, active_sensevoice_events, active_sensevoice_language
         nonlocal active_interpreter_mode, active_translation_target
+        nonlocal auto_muted_by_automation, is_paused
 
         config = new_cfg
         if sink:
@@ -596,12 +597,7 @@ async def main_async(args):
         if obs_client:
             obs_client.config = new_cfg.obs
         if propresenter_client is not None:
-            try:
-                was_enabled = bool(getattr(propresenter_client.config, "enabled", False))
-                was_auto_mute = bool(getattr(propresenter_client.config, "auto_mute_on_lyrics", True))
-            except Exception:
-                was_enabled = False
-                was_auto_mute = True
+            was_running = propresenter_client.is_running
             propresenter_client.config = new_cfg.propresenter
             now_enabled = bool(getattr(new_cfg.propresenter, "enabled", False))
             now_auto_mute = bool(getattr(new_cfg.propresenter, "auto_mute_on_lyrics", True))
@@ -610,13 +606,19 @@ async def main_async(args):
                 auto_muted_by_automation = False
                 on_start_requested(_from_automation=True)
                 logger.info("Presentation auto-mute disabled in settings while muted — resumed captioning.")
-            if now_enabled and not was_enabled:
+            if not now_enabled and was_running:
+                logger.info("Presentation sync disabled via config update — stopping ProPresenter/Proclaim client...")
+                try:
+                    asyncio.run_coroutine_threadsafe(propresenter_client.stop(), loop)
+                except Exception as pe:
+                    logger.warning(f"Could not stop ProPresenter/Proclaim sync: {pe}")
+            elif now_enabled and not was_running:
                 logger.info("Presentation sync enabled via config update — starting ProPresenter/Proclaim client...")
                 try:
                     asyncio.run_coroutine_threadsafe(propresenter_client.start(), loop)
                 except Exception as pe:
                     logger.warning(f"Could not start ProPresenter/Proclaim sync: {pe}")
-            elif now_enabled and was_enabled:
+            elif now_enabled and was_running:
                 logger.info("Presentation sync settings updated while running — restarting ProPresenter/Proclaim client...")
                 try:
                     async def _restart_presentation():
@@ -625,12 +627,6 @@ async def main_async(args):
                     asyncio.run_coroutine_threadsafe(_restart_presentation(), loop)
                 except Exception as pe:
                     logger.warning(f"Could not restart ProPresenter/Proclaim sync: {pe}")
-            elif was_enabled and not now_enabled:
-                logger.info("Presentation sync disabled via config update — stopping ProPresenter/Proclaim client...")
-                try:
-                    asyncio.run_coroutine_threadsafe(propresenter_client.stop(), loop)
-                except Exception as pe:
-                    logger.warning(f"Could not stop ProPresenter/Proclaim sync: {pe}")
         if audio_capture:
             audio_capture.update_device(new_cfg.audio)
         if engine:
@@ -1064,7 +1060,19 @@ async def main_async(args):
 
     # 6b. ProPresenter / Faithlife Proclaim lyrics sync (auto-mute worship slides)
     def on_propresenter_lyrics_changed(is_lyrics: bool, source_label: str):
-        _apply_automation_mute(is_lyrics, f"presentation lyrics ({source_label})")
+        if not getattr(config.propresenter, "enabled", False):
+            if auto_muted_by_automation and is_paused:
+                _apply_automation_mute(False, "presentation sync disabled")
+            return
+
+        if is_lyrics:
+            if getattr(config.propresenter, "auto_mute_on_lyrics", True):
+                _apply_automation_mute(True, f"presentation lyrics ({source_label})")
+            elif auto_muted_by_automation and is_paused:
+                _apply_automation_mute(False, "auto_mute_on_lyrics disabled")
+        else:
+            _apply_automation_mute(False, f"presentation lyrics ({source_label})")
+
         if web_server:
             try:
                 asyncio.run_coroutine_threadsafe(

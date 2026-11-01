@@ -62,12 +62,14 @@ class ProPresenterConfig:
     auto_mute_on_lyrics: bool = True
     auto_display_scripture_slides: bool = True
     lyrics_keywords: List[str] = field(default_factory=lambda: ["worship", "song", "lyrics", "chorus", "verse", "bridge", "hymn", "praise"])
+    exempt_keywords: List[str] = field(default_factory=lambda: ["communion", "prayer", "welcome", "scripture", "sermon", "offering", "tithe", "announcement", "notes", "pastor", "benediction", "baptism"])
 
 
 def classify_slide_as_lyrics(
     slide_text: str,
     slide_label: str = "",
     keywords: Optional[List[str]] = None,
+    exempt_keywords: Optional[List[str]] = None,
 ) -> bool:
     """Return True when a presentation slide looks like song lyrics.
 
@@ -83,6 +85,12 @@ def classify_slide_as_lyrics(
     if _SCRIPTURE_CITATION_RE.search(text) or _SCRIPTURE_CITATION_RE.search(label):
         return False
     label_lower = label.lower()
+    text_lower = text.lower()
+    if exempt_keywords is not None:
+        for ek in exempt_keywords:
+            clean_ek = str(ek or "").strip().lower()
+            if clean_ek and (clean_ek in label_lower or clean_ek in text_lower):
+                return False
     if any(nl in label_lower for nl in DEFAULT_NON_LYRICS_KEYWORDS):
         if not any(k in label_lower for k in ("song", "worship", "lyrics", "hymn")):
             return False
@@ -92,7 +100,6 @@ def classify_slide_as_lyrics(
             return True
     if any(symbol in text for symbol in _MUSICAL_SYMBOLS):
         return True
-    text_lower = text.lower()
     if any(tag in text_lower for tag in _SECTION_TAGS):
         return True
     lines = [line.strip() for line in text.splitlines() if line.strip()]
@@ -142,6 +149,10 @@ class ProPresenterClient:
         self._proclaim_items: Dict[str, Dict[str, Any]] = {}
         self._proclaim_current_item_id: Optional[str] = None
         self._proclaim_current_slide_index: int = 0
+
+    @property
+    def is_running(self) -> bool:
+        return self._running
 
     @property
     def is_connected(self) -> bool:
@@ -738,6 +749,16 @@ class ProPresenterClient:
 
     def update_slide_state(self, slide_text: str, slide_label: str = "", source: str = "propresenter") -> bool:
         """Record the current slide and fire the lyrics callback on transitions."""
+        if not getattr(self.config, "enabled", False):
+            if self._is_lyrics_slide_active:
+                self._is_lyrics_slide_active = False
+                if self.on_lyrics_state_changed:
+                    try:
+                        self.on_lyrics_state_changed(False, "sync_disabled")
+                    except Exception:
+                        logger.debug("on_lyrics_state_changed callback failed.", exc_info=True)
+            return False
+
         clean_text = (slide_text or "").strip()
         clean_label = (slide_label or "").strip()
         has_changed = (clean_text != self._current_slide_text or clean_label != self._current_slide_label)
@@ -745,13 +766,16 @@ class ProPresenterClient:
         self.current_slide_text = clean_text
         self.current_slide_label = clean_label
         is_lyrics = classify_slide_as_lyrics(
-            self.current_slide_text, self.current_slide_label, self.config.lyrics_keywords
+            self.current_slide_text,
+            self.current_slide_label,
+            keywords=getattr(self.config, "lyrics_keywords", None),
+            exempt_keywords=getattr(self.config, "exempt_keywords", None),
         )
         if is_lyrics != self.is_lyrics_slide_active:
             self.is_lyrics_slide_active = is_lyrics
             if self.on_lyrics_state_changed:
                 if is_lyrics:
-                    if self.config.auto_mute_on_lyrics:
+                    if getattr(self.config, "auto_mute_on_lyrics", True):
                         try:
                             self.on_lyrics_state_changed(True, f"{source}:{clean_label or 'lyrics'}")
                         except Exception:
