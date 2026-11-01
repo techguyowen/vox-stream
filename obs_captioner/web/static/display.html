@@ -1131,12 +1131,12 @@
         }
 
         @keyframes wordRevealIn {
-            from { opacity: 0; transform: translateY(3px); }
+            from { opacity: 0; transform: translateY(4px); }
             to { opacity: 1; transform: translateY(0); }
         }
         .word-reveal {
-            display: inline;
-            animation: wordRevealIn 0.16s ease-out forwards;
+            display: inline-block;
+            animation: wordRevealIn 0.22s ease-out forwards;
         }
 
         /* Active Focus Highlight Mode */
@@ -3794,6 +3794,7 @@
             while (wordStreamQueue.length > 0) {
                 const item = wordStreamQueue.shift();
                 if (item && item.node && item.node.parentNode) {
+                    item.node.style.display = '';
                     item.node.innerHTML = formatBionicReading(item.fullText);
                 }
             }
@@ -3809,12 +3810,14 @@
                 totalRemaining += Math.max(0, wordStreamQueue[i].words.length - wordStreamQueue[i].renderedCount);
             }
 
-            // Dynamic catch-up: if remaining words > 45 and multiple sentences are queued,
+            // Dynamic catch-up: if remaining words > 65 and multiple sentences are queued,
             // immediately complete older sentences so the display never falls far behind live speech!
-            if (totalRemaining > 45 && wordStreamQueue.length > 1) {
+            if (totalRemaining > 65 && wordStreamQueue.length > 1) {
                 while (wordStreamQueue.length > 1) {
                     const old = wordStreamQueue.shift();
                     if (old && old.node && old.node.parentNode) {
+                        old.node.style.display = '';
+                        old.node.classList.add('previous');
                         old.node.innerHTML = formatBionicReading(old.fullText);
                     }
                 }
@@ -3828,6 +3831,16 @@
                     processWordStreamTick();
                 }
                 return;
+            }
+
+            if (currentItem.renderedCount === 0) {
+                currentItem.node.style.display = '';
+                const allFinals = transcriptContent ? transcriptContent.querySelectorAll('.caption-sentence:not(#liveInterimNode)') : [];
+                allFinals.forEach((node) => {
+                    if (node !== currentItem.node && node.style.display !== 'none') {
+                        node.classList.add('previous');
+                    }
+                });
             }
 
             if (currentItem.renderedCount < currentItem.words.length) {
@@ -3850,9 +3863,9 @@
 
             if (wordStreamQueue.length > 0) {
                 // Base interval per word:
-                // When isPacedReadingEnabled ("🐢 Slow Down Text") is ON: 68ms per word (~140 WPM)
-                // In smooth mode (without Slow Down Text): 48ms per word (~180 WPM)
-                let interval = isPacedReadingEnabled ? 68 : 48;
+                // When isPacedReadingEnabled ("🐢 Slow Down Text") is ON: 310ms per word (~195 WPM, ~3.2 words/sec)
+                // In smooth mode (without Slow Down Text): 210ms per word (~285 WPM, ~4.8 words/sec — fast one-by-one reading)
+                let interval = isPacedReadingEnabled ? 310 : 210;
 
                 let remaining = 0;
                 for (let i = 0; i < wordStreamQueue.length; i++) {
@@ -3862,9 +3875,9 @@
                 // Smooth queue pacing: keep steady base word pace for up to 18 queued words;
                 // only accelerate when remaining queued words > 18, and faster tier at > 32 words
                 if (remaining > 32) {
-                    interval = 18;
+                    interval = 95;
                 } else if (remaining > 18) {
-                    interval = 30;
+                    interval = 145;
                 }
 
                 wordStreamTimer = setTimeout(processWordStreamTick, interval);
@@ -3874,8 +3887,13 @@
         function queueSentenceForWordStreaming(el, text) {
             const rawWords = (text || '').trim().split(/\s+/).filter(Boolean);
             if (rawWords.length === 0) {
+                el.style.display = '';
                 el.innerHTML = formatBionicReading(text);
                 return;
+            }
+
+            if (wordStreamQueue.length > 0) {
+                el.style.display = 'none';
             }
 
             wordStreamQueue.push({
@@ -3906,10 +3924,12 @@
                 el.innerHTML = formatBionicReading(text);
             }
 
-            const existing = transcriptContent.querySelectorAll('.caption-sentence:not(#liveInterimNode)');
-            existing.forEach((node) => {
-                node.classList.add('previous');
-            });
+            if (!isStreaming || wordStreamQueue.length === 0) {
+                const existing = transcriptContent.querySelectorAll('.caption-sentence:not(#liveInterimNode)');
+                existing.forEach((node) => {
+                    node.classList.add('previous');
+                });
+            }
 
             const interimNode = getInterimNode();
             transcriptContent.insertBefore(el, interimNode);
@@ -3967,9 +3987,19 @@
             const lastNode = finals.length > 0 ? finals[finals.length - 1] : null;
 
             if (lastNode) {
-                // Cancel any active word streaming on this specific last node
-                wordStreamQueue = wordStreamQueue.filter(item => item.node !== lastNode);
-                lastNode.innerHTML = formatBionicReading(text);
+                const streamingItem = wordStreamQueue.find(item => item.node === lastNode);
+                if (streamingItem) {
+                    const updatedWords = (text || '').trim().split(/\s+/).filter(Boolean);
+                    streamingItem.fullText = text;
+                    streamingItem.words = updatedWords;
+                    if (streamingItem.renderedCount >= updatedWords.length) {
+                        lastNode.style.display = '';
+                        lastNode.innerHTML = formatBionicReading(text);
+                        wordStreamQueue = wordStreamQueue.filter(item => item !== streamingItem);
+                    }
+                } else {
+                    lastNode.innerHTML = formatBionicReading(text);
+                }
             } else {
                 renderCaptions();
             }
