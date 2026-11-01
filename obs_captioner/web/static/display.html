@@ -1130,13 +1130,18 @@
             transition: all 0.4s ease;
         }
 
-        @keyframes wordRevealIn {
-            from { opacity: 0; transform: translateY(4px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
         .word-reveal {
-            display: inline-block;
-            animation: wordRevealIn 0.22s ease-out forwards;
+            display: inline;
+            opacity: 0;
+            transition: opacity 0.16s ease-out;
+        }
+        .word-reveal.visible {
+            opacity: 1;
+        }
+        .caption-sentence.streaming-active,
+        body.mode-smooth .caption-sentence:not(.previous):not(.interim) {
+            color: var(--interim-color, #38BDF8);
+            transition: color 0.3s ease;
         }
 
         /* Active Focus Highlight Mode */
@@ -3795,9 +3800,26 @@
                 const item = wordStreamQueue.shift();
                 if (item && item.node && item.node.parentNode) {
                     item.node.style.display = '';
+                    item.node.classList.remove('streaming-active');
                     item.node.innerHTML = formatBionicReading(item.fullText);
                 }
             }
+        }
+
+        function buildPreallocatedWordSpans(node, words, visibleCount = 0) {
+            node.innerHTML = '';
+            const spans = [];
+            for (let i = 0; i < words.length; i++) {
+                const span = document.createElement('span');
+                span.className = i < visibleCount ? 'word-reveal visible' : 'word-reveal';
+                span.innerHTML = formatBionicReading(words[i]);
+                node.appendChild(span);
+                if (i < words.length - 1) {
+                    node.appendChild(document.createTextNode(' '));
+                }
+                spans.push(span);
+            }
+            return spans;
         }
 
         function processWordStreamTick() {
@@ -3835,24 +3857,23 @@
 
             if (currentItem.renderedCount === 0) {
                 currentItem.node.style.display = '';
+                currentItem.node.classList.add('streaming-active');
+                currentItem.spans = buildPreallocatedWordSpans(currentItem.node, currentItem.words, 0);
                 const allFinals = transcriptContent ? transcriptContent.querySelectorAll('.caption-sentence:not(#liveInterimNode)') : [];
                 allFinals.forEach((node) => {
                     if (node !== currentItem.node && node.style.display !== 'none') {
                         node.classList.add('previous');
+                        node.classList.remove('streaming-active');
                     }
                 });
+                if (autoScroll) scrollToBottom(false);
             }
 
             if (currentItem.renderedCount < currentItem.words.length) {
-                const nextWord = currentItem.words[currentItem.renderedCount];
-                const span = document.createElement('span');
-                span.className = 'word-reveal';
-                span.innerHTML = formatBionicReading(nextWord);
-                currentItem.node.appendChild(span);
-                currentItem.node.appendChild(document.createTextNode(' '));
+                if (currentItem.spans && currentItem.spans[currentItem.renderedCount]) {
+                    currentItem.spans[currentItem.renderedCount].classList.add('visible');
+                }
                 currentItem.renderedCount++;
-
-                if (autoScroll) scrollToBottom(false);
             }
 
             // Finished current sentence
@@ -3900,6 +3921,7 @@
                 node: el,
                 fullText: text,
                 words: rawWords,
+                spans: null,
                 renderedCount: 0
             });
 
@@ -3964,9 +3986,9 @@
 
             if (isStreaming) {
                 queueSentenceForWordStreaming(el, text);
+            } else if (autoScroll) {
+                scrollToBottom(false);
             }
-
-            if (autoScroll) scrollToBottom(false);
 
             triggerSilenceTimer(isPacedReadingEnabled ? 12000 : 4000);
         }
@@ -3996,6 +4018,8 @@
                         lastNode.style.display = '';
                         lastNode.innerHTML = formatBionicReading(text);
                         wordStreamQueue = wordStreamQueue.filter(item => item !== streamingItem);
+                    } else if (streamingItem.spans) {
+                        streamingItem.spans = buildPreallocatedWordSpans(lastNode, updatedWords, streamingItem.renderedCount);
                     }
                 } else {
                     lastNode.innerHTML = formatBionicReading(text);
