@@ -3816,6 +3816,7 @@
             pendingInterimText = null;
             lastInterimUtteranceId = 0;
             interimGen++;
+            resetSmoothInterimStream(true);
             const node = document.getElementById("liveInterimNode");
             if (node) {
                 node.textContent = '';
@@ -3852,12 +3853,29 @@
 
         let wordStreamQueue = [];
         let wordStreamTimer = null;
+        let smoothInterimNode = null;
+        let smoothInterimTargetWords = [];
+        let smoothInterimRenderedWords = [];
+        let smoothInterimSpans = [];
+
+        function resetSmoothInterimStream(removeNode = false) {
+            smoothInterimTargetWords = [];
+            smoothInterimRenderedWords = [];
+            smoothInterimSpans = [];
+            if (removeNode && smoothInterimNode && smoothInterimNode.parentNode) {
+                smoothInterimNode.remove();
+            }
+            if (removeNode) {
+                smoothInterimNode = null;
+            }
+        }
 
         function flushWordStreamQueue() {
             if (wordStreamTimer) {
                 clearTimeout(wordStreamTimer);
                 wordStreamTimer = null;
             }
+            resetSmoothInterimStream(false);
             while (wordStreamQueue.length > 0) {
                 const item = wordStreamQueue.shift();
                 if (item && item.node && item.node.parentNode) {
@@ -3901,81 +3919,109 @@
 
         function processWordStreamTick() {
             wordStreamTimer = null;
-            if (wordStreamQueue.length === 0) return;
 
-            // Count total remaining words across all queued sentences
-            let totalRemaining = 0;
-            for (let i = 0; i < wordStreamQueue.length; i++) {
-                totalRemaining += Math.max(0, wordStreamQueue[i].words.length - wordStreamQueue[i].renderedCount);
-            }
+            const hasQueuedFinal = wordStreamQueue.length > 0;
+            const hasSmoothInterim = !isFinalOnlyMode && (currentMode === 'smooth' || isPacedReadingEnabled) &&
+                smoothInterimNode && smoothInterimNode.parentNode &&
+                smoothInterimRenderedWords.length < smoothInterimTargetWords.length;
 
-            // Dynamic catch-up: if remaining words > 65 and multiple sentences are queued,
-            // immediately complete older sentences so the display never falls far behind live speech!
-            if (totalRemaining > 65 && wordStreamQueue.length > 1) {
-                while (wordStreamQueue.length > 1) {
-                    const old = wordStreamQueue.shift();
-                    if (old && old.node && old.node.parentNode) {
-                        old.node.style.display = '';
-                        old.node.classList.add('previous');
-                        old.node.classList.remove('streaming-active');
-                        old.node.innerHTML = formatBionicReading(old.fullText);
+            if (!hasQueuedFinal && !hasSmoothInterim) return;
+
+            if (hasQueuedFinal) {
+                // Count total remaining words across all queued sentences
+                let totalRemaining = 0;
+                for (let i = 0; i < wordStreamQueue.length; i++) {
+                    totalRemaining += Math.max(0, wordStreamQueue[i].words.length - wordStreamQueue[i].renderedCount);
+                }
+
+                // Dynamic catch-up: if remaining words > 65 and multiple sentences are queued,
+                // immediately complete older sentences so the display never falls far behind live speech!
+                if (totalRemaining > 65 && wordStreamQueue.length > 1) {
+                    while (wordStreamQueue.length > 1) {
+                        const old = wordStreamQueue.shift();
+                        if (old && old.node && old.node.parentNode) {
+                            old.node.style.display = '';
+                            old.node.classList.add('previous');
+                            old.node.classList.remove('streaming-active');
+                            old.node.innerHTML = formatBionicReading(old.fullText);
+                        }
+                    }
+                    totalRemaining = Math.max(0, wordStreamQueue[0].words.length - wordStreamQueue[0].renderedCount);
+                }
+
+                const currentItem = wordStreamQueue[0];
+                if (!currentItem || !currentItem.node || !currentItem.node.parentNode) {
+                    wordStreamQueue.shift();
+                    if (wordStreamQueue.length > 0 || hasSmoothInterim) {
+                        processWordStreamTick();
+                    }
+                    return;
+                }
+
+                if (currentItem.renderedCount === 0) {
+                    currentItem.node.style.display = '';
+                    currentItem.node.classList.add('streaming-active');
+                    currentItem.spans = buildPreallocatedWordSpans(currentItem.node, currentItem.words, 0);
+                    const allFinals = transcriptContent ? transcriptContent.querySelectorAll('.caption-sentence:not(#liveInterimNode)') : [];
+                    allFinals.forEach((node) => {
+                        if (node !== currentItem.node && node !== smoothInterimNode && node.style.display !== 'none') {
+                            node.classList.add('previous');
+                            node.classList.remove('streaming-active');
+                        }
+                    });
+                }
+
+                if (currentItem.renderedCount < currentItem.words.length) {
+                    const activeSpan = currentItem.spans && currentItem.spans[currentItem.renderedCount];
+                    if (activeSpan) {
+                        activeSpan.classList.add('visible');
+                    }
+                    currentItem.renderedCount++;
+                    const isLast = currentItem.renderedCount >= currentItem.words.length;
+                    if (activeSpan) {
+                        scrollActiveWordIntoView(activeSpan, isLast && !hasSmoothInterim);
                     }
                 }
-                totalRemaining = Math.max(0, wordStreamQueue[0].words.length - wordStreamQueue[0].renderedCount);
-            }
 
-            const currentItem = wordStreamQueue[0];
-            if (!currentItem || !currentItem.node || !currentItem.node.parentNode) {
-                wordStreamQueue.shift();
-                if (wordStreamQueue.length > 0) {
-                    processWordStreamTick();
-                }
-                return;
-            }
-
-            if (currentItem.renderedCount === 0) {
-                currentItem.node.style.display = '';
-                currentItem.node.classList.add('streaming-active');
-                currentItem.spans = buildPreallocatedWordSpans(currentItem.node, currentItem.words, 0);
-                const allFinals = transcriptContent ? transcriptContent.querySelectorAll('.caption-sentence:not(#liveInterimNode)') : [];
-                allFinals.forEach((node) => {
-                    if (node !== currentItem.node && node.style.display !== 'none') {
-                        node.classList.add('previous');
-                        node.classList.remove('streaming-active');
+                // Finished current sentence
+                if (currentItem.renderedCount >= currentItem.words.length) {
+                    currentItem.node.innerHTML = formatBionicReading(currentItem.fullText);
+                    if (smoothInterimNode && smoothInterimNode.parentNode) {
+                        currentItem.node.classList.add('previous');
+                        currentItem.node.classList.remove('streaming-active');
                     }
-                });
-            }
-
-            if (currentItem.renderedCount < currentItem.words.length) {
-                const activeSpan = currentItem.spans && currentItem.spans[currentItem.renderedCount];
-                if (activeSpan) {
-                    activeSpan.classList.add('visible');
+                    wordStreamQueue.shift();
+                    if (autoScroll && wordStreamQueue.length === 0 && !hasSmoothInterim && stageContainer) {
+                        stageContainer.scrollTop = stageContainer.scrollHeight;
+                    }
                 }
-                currentItem.renderedCount++;
-                const isLast = currentItem.renderedCount >= currentItem.words.length;
-                if (activeSpan) {
-                    scrollActiveWordIntoView(activeSpan, isLast);
-                }
-            }
-
-            // Finished current sentence
-            if (currentItem.renderedCount >= currentItem.words.length) {
-                currentItem.node.innerHTML = formatBionicReading(currentItem.fullText);
-                wordStreamQueue.shift();
-                if (autoScroll && wordStreamQueue.length === 0 && stageContainer) {
-                    stageContainer.scrollTop = stageContainer.scrollHeight;
+            } else if (hasSmoothInterim) {
+                const nextIdx = smoothInterimRenderedWords.length;
+                const nextWord = smoothInterimTargetWords[nextIdx];
+                if (nextWord !== undefined) {
+                    if (smoothInterimRenderedWords.length > 0) {
+                        smoothInterimNode.appendChild(document.createTextNode(' '));
+                    }
+                    const span = document.createElement('span');
+                    span.className = 'word-reveal visible';
+                    span.innerHTML = formatBionicReading(nextWord);
+                    smoothInterimNode.appendChild(span);
+                    smoothInterimRenderedWords.push(nextWord);
+                    smoothInterimSpans.push(span);
+                    scrollActiveWordIntoView(span, false);
                 }
             }
 
-            if (wordStreamQueue.length > 0) {
+            const remainingFinalWords = wordStreamQueue.reduce((acc, item) => acc + Math.max(0, item.words.length - item.renderedCount), 0);
+            const remainingInterimWords = (!isFinalOnlyMode && (currentMode === 'smooth' || isPacedReadingEnabled) && smoothInterimNode)
+                ? Math.max(0, smoothInterimTargetWords.length - smoothInterimRenderedWords.length)
+                : 0;
+            const remaining = remainingFinalWords + remainingInterimWords;
+
+            if (remaining > 0) {
                 // Base interval per word from per-device slider (default 285 WPM = 210ms/word)
                 const baseInterval = getBaseWordIntervalMs();
                 let interval = baseInterval;
-
-                let remaining = 0;
-                for (let i = 0; i < wordStreamQueue.length; i++) {
-                    remaining += Math.max(0, wordStreamQueue[i].words.length - wordStreamQueue[i].renderedCount);
-                }
 
                 // Smooth queue pacing: keep steady base word pace for up to 18 queued words;
                 // only accelerate proportionally when remaining queued words > 18, and faster tier at > 32 words
@@ -3989,15 +4035,36 @@
             }
         }
 
-        function queueSentenceForWordStreaming(el, text) {
+        function queueSentenceForWordStreaming(el, text, initialVisibleCount = 0) {
             const rawWords = (text || '').trim().split(/\s+/).filter(Boolean);
             if (rawWords.length === 0) {
                 el.style.display = '';
+                el.classList.remove('streaming-active');
                 el.innerHTML = formatBionicReading(text);
                 return;
             }
 
-            if (wordStreamQueue.length > 0) {
+            const startRendered = Math.max(0, Math.min(rawWords.length, initialVisibleCount));
+            if (startRendered >= rawWords.length) {
+                el.style.display = '';
+                el.classList.add('streaming-active');
+                el.innerHTML = formatBionicReading(text);
+                const allFinals = transcriptContent ? transcriptContent.querySelectorAll('.caption-sentence:not(#liveInterimNode)') : [];
+                allFinals.forEach((node) => {
+                    if (node !== el && node !== smoothInterimNode && node.style.display !== 'none') {
+                        node.classList.add('previous');
+                        node.classList.remove('streaming-active');
+                    }
+                });
+                return;
+            }
+
+            let preSpans = null;
+            if (startRendered > 0) {
+                el.style.display = '';
+                el.classList.add('streaming-active');
+                preSpans = buildPreallocatedWordSpans(el, rawWords, startRendered);
+            } else if (wordStreamQueue.length > 0) {
                 el.style.display = 'none';
             }
 
@@ -4005,8 +4072,8 @@
                 node: el,
                 fullText: text,
                 words: rawWords,
-                spans: null,
-                renderedCount: 0
+                spans: preSpans,
+                renderedCount: startRendered
             });
 
             if (!wordStreamTimer) {
@@ -4021,32 +4088,7 @@
             wakeLiveDisplay();
 
             const isStreaming = (currentMode === 'smooth' || isPacedReadingEnabled);
-
-            const el = document.createElement('div');
-            el.className = 'caption-sentence';
-            if (isStreaming) {
-                el.innerHTML = '';
-            } else {
-                el.innerHTML = formatBionicReading(text);
-            }
-
-            if (!isStreaming || wordStreamQueue.length === 0) {
-                const existing = transcriptContent.querySelectorAll('.caption-sentence:not(#liveInterimNode)');
-                existing.forEach((node) => {
-                    node.classList.add('previous');
-                });
-            }
-
             const interimNode = getInterimNode();
-            transcriptContent.insertBefore(el, interimNode);
-
-            const allFinals = transcriptContent.querySelectorAll('.caption-sentence:not(#liveInterimNode)');
-            if (allFinals.length > maxHistorySentences) {
-                allFinals[0].remove();
-            }
-
-            finalSentences.push(text);
-            while (finalSentences.length > maxHistorySentences) finalSentences.shift();
 
             let remainingInterim = pendingInterimText
                 ? stripFinalizedFromInterim(pendingInterimText, text)
@@ -4057,9 +4099,48 @@
             pendingInterimText = remainingInterim || null;
             interimText = remainingInterim || "";
 
-            // In final-only mode, keep liveInterimNode completely hidden!
+            let el = null;
+            let initialVisibleCount = 0;
+
+            if (isStreaming && !isFinalOnlyMode && smoothInterimNode && smoothInterimNode.parentNode) {
+                // Promote the live streaming node directly into the finalized sentence node
+                // so already-streamed words are NEVER re-loaded a second time!
+                el = smoothInterimNode;
+                initialVisibleCount = smoothInterimRenderedWords.length;
+                resetSmoothInterimStream(false);
+                smoothInterimNode = null;
+            } else {
+                el = document.createElement('div');
+                el.className = 'caption-sentence';
+                if (isStreaming) {
+                    el.innerHTML = '';
+                } else {
+                    el.innerHTML = formatBionicReading(text);
+                }
+                transcriptContent.insertBefore(el, interimNode);
+            }
+
+            if (!isStreaming || wordStreamQueue.length === 0) {
+                const existing = transcriptContent.querySelectorAll('.caption-sentence:not(#liveInterimNode)');
+                existing.forEach((node) => {
+                    if (node !== el && node !== smoothInterimNode) {
+                        node.classList.add('previous');
+                        node.classList.remove('streaming-active');
+                    }
+                });
+            }
+
+            const allFinals = transcriptContent.querySelectorAll('.caption-sentence:not(#liveInterimNode)');
+            if (allFinals.length > maxHistorySentences) {
+                allFinals[0].remove();
+            }
+
+            finalSentences.push(text);
+            while (finalSentences.length > maxHistorySentences) finalSentences.shift();
+
+            // When streaming mode is active, interim speech streams through smoothInterimNode instead of #liveInterimNode
             if (interimNode) {
-                if (pendingInterimText && !isFinalOnlyMode) {
+                if (pendingInterimText && !isFinalOnlyMode && !isStreaming) {
                     interimNode.textContent = normalizePunctuationSpacing(pendingInterimText);
                     interimNode.style.display = 'block';
                 } else {
@@ -4069,7 +4150,10 @@
             }
 
             if (isStreaming) {
-                queueSentenceForWordStreaming(el, text);
+                queueSentenceForWordStreaming(el, text, initialVisibleCount);
+                if (pendingInterimText && !isFinalOnlyMode) {
+                    updateSmoothInterimTarget(pendingInterimText);
+                }
             } else if (autoScroll) {
                 scrollToBottom(false);
             }
@@ -4117,6 +4201,66 @@
             triggerSilenceTimer(isPacedReadingEnabled ? 12000 : 4000);
         }
 
+        function updateSmoothInterimTarget(text) {
+            if (!transcriptContent) return;
+            const cleaned = normalizePunctuationSpacing(text || '');
+            const targetWords = cleaned.split(/\s+/).filter(Boolean);
+            if (targetWords.length === 0) {
+                resetSmoothInterimStream(true);
+                return;
+            }
+
+            if (!smoothInterimNode || !smoothInterimNode.parentNode) {
+                smoothInterimNode = document.createElement('div');
+                smoothInterimNode.className = 'caption-sentence streaming-active';
+                const interimNode = getInterimNode();
+                transcriptContent.insertBefore(smoothInterimNode, interimNode);
+                smoothInterimRenderedWords = [];
+                smoothInterimSpans = [];
+                if (wordStreamQueue.length === 0) {
+                    const existing = transcriptContent.querySelectorAll('.caption-sentence:not(#liveInterimNode)');
+                    existing.forEach((node) => {
+                        if (node !== smoothInterimNode) {
+                            node.classList.add('previous');
+                            node.classList.remove('streaming-active');
+                        }
+                    });
+                }
+            }
+
+            smoothInterimTargetWords = targetWords;
+
+            // Update any already-rendered words in-place if ASR refined spelling/punctuation,
+            // without re-animating or duplicating!
+            const commonLen = Math.min(smoothInterimRenderedWords.length, targetWords.length);
+            for (let i = 0; i < commonLen; i++) {
+                if (smoothInterimRenderedWords[i] !== targetWords[i]) {
+                    smoothInterimRenderedWords[i] = targetWords[i];
+                    if (smoothInterimSpans[i]) {
+                        smoothInterimSpans[i].innerHTML = formatBionicReading(targetWords[i]);
+                    }
+                }
+            }
+            if (smoothInterimRenderedWords.length > targetWords.length) {
+                // Interim shrank slightly on ASR revision: trim excess spans cleanly
+                smoothInterimNode.innerHTML = '';
+                smoothInterimRenderedWords = targetWords.slice();
+                smoothInterimSpans = [];
+                for (let i = 0; i < smoothInterimRenderedWords.length; i++) {
+                    if (i > 0) smoothInterimNode.appendChild(document.createTextNode(' '));
+                    const span = document.createElement('span');
+                    span.className = 'word-reveal visible';
+                    span.innerHTML = formatBionicReading(smoothInterimRenderedWords[i]);
+                    smoothInterimNode.appendChild(span);
+                    smoothInterimSpans.push(span);
+                }
+            }
+
+            if (!wordStreamTimer && smoothInterimRenderedWords.length < smoothInterimTargetWords.length) {
+                processWordStreamTick();
+            }
+        }
+
         function updateInterimSpeech(text) {
             if (isFinalOnlyMode) return;
             if (!transcriptContent) return;
@@ -4131,7 +4275,22 @@
                 removeEmptyIndicator();
                 wakeLiveDisplay();
 
+                const isStreaming = (currentMode === 'smooth' || isPacedReadingEnabled);
                 const interimNode = getInterimNode();
+
+                if (isStreaming) {
+                    if (interimNode) {
+                        interimNode.textContent = '';
+                        interimNode.style.display = 'none';
+                    }
+                    if (curText && !isFinalOnlyMode) {
+                        updateSmoothInterimTarget(curText);
+                    } else {
+                        resetSmoothInterimStream(true);
+                    }
+                    return;
+                }
+
                 if (curText && !isFinalOnlyMode) {
                     interimNode.textContent = normalizePunctuationSpacing(curText);
                     interimNode.style.display = 'block';
@@ -4149,6 +4308,7 @@
                 clearTimeout(wordStreamTimer);
                 wordStreamTimer = null;
             }
+            resetSmoothInterimStream(true);
             wordStreamQueue = [];
             finalSentences = [];
             interimText = "";
@@ -4160,6 +4320,7 @@
 
         function renderCaptions() {
             flushWordStreamQueue();
+            resetSmoothInterimStream(true);
             if (!transcriptContent) return;
             transcriptContent.innerHTML = '';
             if (finalSentences.length === 0 && !interimText) {
@@ -4176,10 +4337,17 @@
                 transcriptContent.appendChild(el);
             });
 
+            const isStreaming = (currentMode === 'smooth' || isPacedReadingEnabled);
             const interimNode = getInterimNode();
             if (!isFinalOnlyMode && interimText) {
-                interimNode.textContent = normalizePunctuationSpacing(interimText);
-                interimNode.style.display = 'block';
+                if (isStreaming) {
+                    interimNode.textContent = '';
+                    interimNode.style.display = 'none';
+                    updateSmoothInterimTarget(interimText);
+                } else {
+                    interimNode.textContent = normalizePunctuationSpacing(interimText);
+                    interimNode.style.display = 'block';
+                }
             } else {
                 interimNode.textContent = '';
                 interimNode.style.display = 'none';
