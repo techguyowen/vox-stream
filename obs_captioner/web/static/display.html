@@ -1138,21 +1138,36 @@
         .word-reveal.visible {
             opacity: 1;
         }
+        /* Tier 1: Interim / Newest Sentence Color (Text Color Only — No Box/Border)
+           Applies to:
+           - Active word-streaming sentences (.streaming-active)
+           - Newest sentence in Smooth Flow mode (body.mode-smooth)
+           - Newest finalized sentence when Final Sentences Only is enabled in any mode (body.final-only-mode) */
         .caption-sentence.streaming-active,
-        body.mode-smooth .caption-sentence:not(.previous):not(.interim) {
+        body.mode-smooth .caption-sentence:not(.previous):not(.interim),
+        body.final-only-mode .caption-sentence:not(.previous):not(.interim) {
             color: var(--interim-color, #38BDF8);
-            transition: color 0.3s ease;
+            transition: color 0.3s ease, opacity 0.3s ease;
         }
 
-        /* Active Focus Highlight Mode */
+        /* Tier 2: Active Focus Highlight Mode (Opt-In Setting #chkActiveFocusHighlight)
+           Goes further by adding left accent bar, subtle callout background, and dimming older sentences */
         body.focus-highlight-mode:not(.mode-live) .caption-sentence.previous {
             opacity: 0.72;
-            transition: opacity 0.35s ease;
+            background: transparent;
+            border-left: 4px solid transparent;
+            padding-left: 0;
+            transition: opacity 0.35s ease, background 0.35s ease;
         }
         body.focus-highlight-mode:not(.mode-live) .caption-sentence:not(.previous):not(.interim) {
             opacity: 1;
-            border-left: 3px solid var(--accent-color, var(--accent, #38BDF8));
-            padding-left: 12px;
+            color: var(--interim-color, #38BDF8);
+            border-left: 4px solid var(--interim-color, #38BDF8);
+            background: rgba(56, 189, 248, 0.08);
+            padding: 6px 12px;
+            border-radius: 4px 8px 8px 4px;
+            box-shadow: 0 2px 12px rgba(56, 189, 248, 0.12);
+            transition: all 0.3s ease;
         }
 
         /* Paragraph Grouping Mode */
@@ -1163,24 +1178,6 @@
             margin-bottom: 1.15em;
             padding-bottom: 0.35em;
             border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-        }
-
-        /* Distinct Recent Sentence Styling in Final Sentences Only Mode */
-        body.final-only-mode .caption-sentence.previous {
-            opacity: 0.72;
-            background: transparent;
-            border-left: 3px solid transparent;
-            padding-left: 0;
-            transition: opacity 0.35s ease, background 0.35s ease;
-        }
-        body.final-only-mode .caption-sentence:not(.previous):not(.interim) {
-            opacity: 1;
-            border-left: 4px solid var(--interim-color, #38BDF8);
-            background: rgba(56, 189, 248, 0.08);
-            padding: 6px 12px;
-            border-radius: 4px 8px 8px 4px;
-            box-shadow: 0 2px 12px rgba(56, 189, 248, 0.12);
-            transition: all 0.3s ease;
         }
 
         /* Scripture Passage Reader Modal Styles */
@@ -1509,7 +1506,7 @@
                         <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.35); padding: 10px 12px; border-radius: 8px;">
                             <div>
                                 <span id="lblActiveFocus" style="font-size: 13.5px; font-weight: 700; color: #38BDF8; display: block;">🎯 Active Focus Highlight</span>
-                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Highlights the current live sentence at 100% brightness with an accent bar while gently dimming older lines to 75%.</span>
+                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Adds a glowing accent border and callout box around the current sentence while gently dimming older lines to 72%.</span>
                             </div>
                             <input type="checkbox" id="chkActiveFocusHighlight" style="width: 20px; height: 20px; cursor: pointer; accent-color: #38BDF8;">
                         </label>
