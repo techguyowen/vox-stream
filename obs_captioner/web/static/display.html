@@ -986,6 +986,11 @@
             scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
         }
 
+        body:not(.mode-live) .stage-container {
+            -webkit-mask-image: linear-gradient(to bottom, transparent 0px, black 28px, black 100%);
+            mask-image: linear-gradient(to bottom, transparent 0px, black 28px, black 100%);
+        }
+
         .stage-container::-webkit-scrollbar {
             width: 8px;
         }
@@ -1127,20 +1132,6 @@
         .caption-sentence.just-finalized {
             color: var(--interim-color, #38BDF8);
             transition: color 0.6s ease, opacity 0.35s ease;
-        }
-
-        /* Keep a constant single-line reserve slot for #liveInterimNode in Scrollable History
-           so the page never snaps up and down when a sentence finalizes and the next one starts! */
-        body:not(.mode-live):not(.mode-smooth):not(.final-only-mode):not(.slow-flow-mode) #liveInterimNode {
-            display: block !important;
-            min-height: calc(var(--font-size) * var(--line-height));
-        }
-        body:not(.mode-live):not(.mode-smooth):not(.final-only-mode):not(.slow-flow-mode) #liveInterimNode:empty {
-            opacity: 0;
-            pointer-events: none;
-        }
-        body:not(.mode-live):not(.mode-smooth):not(.final-only-mode):not(.slow-flow-mode) #liveInterimNode:empty::after {
-            display: none;
         }
 
         .caption-sentence.interim::after {
@@ -3779,7 +3770,7 @@
 
             requestAnimationFrame(() => {
                 scrollRafPending = false;
-                const useSmooth = pendingScrollSmooth;
+                const useSmooth = pendingScrollSmooth || isSmoothScrollingToBottom;
                 pendingScrollSmooth = false;
                 if (!stageContainer) return;
 
@@ -4202,6 +4193,8 @@
             }
         }
 
+        let justFinalizedTimer = null;
+
         function appendFinalSentence(text, utteranceId) {
             if (!text || !transcriptContent) return;
             interimGen++;
@@ -4222,6 +4215,7 @@
 
             let el = null;
             let initialVisibleCount = 0;
+            let promotedInPlace = false;
 
             if (isStreaming && !isFinalOnlyMode && smoothInterimNode && smoothInterimNode.parentNode) {
                 // Promote the live streaming node directly into the finalized sentence node
@@ -4231,6 +4225,14 @@
                 initialVisibleCount = computeAlignedVisibleCount(smoothInterimRenderedWords, rawFinalWords);
                 resetSmoothInterimStream(false);
                 smoothInterimNode = null;
+            } else if (!isStreaming && interimNode && interimNode.parentNode === transcriptContent && interimNode.style.display !== 'none' && !pendingInterimText) {
+                el = interimNode;
+                el.removeAttribute('id');
+                el.className = 'caption-sentence';
+                el.style.display = '';
+                el.innerHTML = formatBionicReading(text);
+                promotedInPlace = true;
+                getInterimNode();
             } else {
                 el = document.createElement('div');
                 el.className = 'caption-sentence';
@@ -4238,15 +4240,23 @@
                     el.innerHTML = '';
                 } else {
                     el.innerHTML = formatBionicReading(text);
-                    if (!isFinalOnlyMode && currentMode !== 'live') {
-                        // Gentle color settle from interim blue -> final white over 450ms so the eye tracks smoothly
-                        el.classList.add('just-finalized');
-                        setTimeout(() => {
-                            if (el) el.classList.remove('just-finalized');
-                        }, 450);
-                    }
                 }
                 transcriptContent.insertBefore(el, interimNode);
+            }
+
+            if (!isStreaming && !isFinalOnlyMode && currentMode !== 'live') {
+                if (justFinalizedTimer) {
+                    clearTimeout(justFinalizedTimer);
+                    justFinalizedTimer = null;
+                }
+                const prevJustFinalized = transcriptContent.querySelectorAll('.caption-sentence.just-finalized');
+                prevJustFinalized.forEach(node => node.classList.remove('just-finalized'));
+                el.classList.add('just-finalized');
+                const targetEl = el;
+                justFinalizedTimer = setTimeout(() => {
+                    if (targetEl) targetEl.classList.remove('just-finalized');
+                    justFinalizedTimer = null;
+                }, 2200);
             }
 
             if (!isStreaming || wordStreamQueue.length === 0) {
@@ -4268,13 +4278,15 @@
             while (finalSentences.length > maxHistorySentences) finalSentences.shift();
 
             // When streaming mode is active, interim speech streams through smoothInterimNode instead of #liveInterimNode
-            if (interimNode) {
+            const activeInterimNode = getInterimNode();
+            if (activeInterimNode) {
                 if (pendingInterimText && !isFinalOnlyMode && !isStreaming) {
-                    interimNode.textContent = normalizePunctuationSpacing(pendingInterimText);
-                    interimNode.style.display = 'block';
+                    activeInterimNode.innerHTML = formatBionicReading(normalizePunctuationSpacing(pendingInterimText));
+                    activeInterimNode.style.display = 'block';
                 } else {
-                    interimNode.textContent = '';
-                    interimNode.style.display = 'none';
+                    activeInterimNode.innerHTML = '';
+                    activeInterimNode.style.display = 'none';
+                    lastInterimLineHeight = 0;
                 }
             }
 
@@ -4284,7 +4296,13 @@
                     updateSmoothInterimTarget(pendingInterimText);
                 }
             } else if (autoScroll) {
-                scrollToBottom(false);
+                if (promotedInPlace && !pendingInterimText) {
+                    if (stageContainer && (stageContainer.scrollHeight - stageContainer.scrollTop - stageContainer.clientHeight > 10)) {
+                        scrollToBottom(true);
+                    }
+                } else {
+                    scrollToBottom(false);
+                }
             }
 
             triggerSilenceTimer(isPacedReadingEnabled ? 12000 : 4000);
@@ -4411,7 +4429,7 @@
 
                 if (isStreaming) {
                     if (interimNode) {
-                        interimNode.textContent = '';
+                        interimNode.innerHTML = '';
                         interimNode.style.display = 'none';
                     }
                     if (curText && !isFinalOnlyMode) {
@@ -4423,10 +4441,16 @@
                 }
 
                 if (curText && !isFinalOnlyMode) {
-                    interimNode.textContent = normalizePunctuationSpacing(curText);
+                    if (justFinalizedTimer) {
+                        clearTimeout(justFinalizedTimer);
+                        justFinalizedTimer = null;
+                    }
+                    const prevJustFinalized = transcriptContent.querySelectorAll('.caption-sentence.just-finalized');
+                    prevJustFinalized.forEach(node => node.classList.remove('just-finalized'));
+                    interimNode.innerHTML = formatBionicReading(normalizePunctuationSpacing(curText));
                     interimNode.style.display = 'block';
                 } else {
-                    interimNode.textContent = '';
+                    interimNode.innerHTML = '';
                     interimNode.style.display = 'none';
                     lastInterimLineHeight = 0;
                 }
@@ -4481,15 +4505,15 @@
             const interimNode = getInterimNode();
             if (!isFinalOnlyMode && interimText) {
                 if (isStreaming) {
-                    interimNode.textContent = '';
+                    interimNode.innerHTML = '';
                     interimNode.style.display = 'none';
                     updateSmoothInterimTarget(interimText);
                 } else {
-                    interimNode.textContent = normalizePunctuationSpacing(interimText);
+                    interimNode.innerHTML = formatBionicReading(normalizePunctuationSpacing(interimText));
                     interimNode.style.display = 'block';
                 }
             } else {
-                interimNode.textContent = '';
+                interimNode.innerHTML = '';
                 interimNode.style.display = 'none';
             }
 
