@@ -2762,7 +2762,9 @@
                 document.body.classList.remove('mode-live');
                 document.body.classList.add('mode-smooth');
                 maxHistorySentences = 300;
-                clearInterimLine();
+                if (isFinalOnlyMode) {
+                    clearInterimLine();
+                }
                 if (transcriptContent) {
                     transcriptContent.classList.remove('faded');
                 }
@@ -4055,9 +4057,9 @@
             pendingInterimText = remainingInterim || null;
             interimText = remainingInterim || "";
 
-            // In smooth mode or final-only mode, keep liveInterimNode completely hidden!
+            // In final-only mode, keep liveInterimNode completely hidden!
             if (interimNode) {
-                if (pendingInterimText && !isFinalOnlyMode && currentMode !== 'smooth') {
+                if (pendingInterimText && !isFinalOnlyMode) {
                     interimNode.textContent = normalizePunctuationSpacing(pendingInterimText);
                     interimNode.style.display = 'block';
                 } else {
@@ -4116,7 +4118,7 @@
         }
 
         function updateInterimSpeech(text) {
-            if (isFinalOnlyMode || currentMode === 'smooth') return;
+            if (isFinalOnlyMode) return;
             if (!transcriptContent) return;
             pendingInterimText = text;
             if (interimRafPending) return;
@@ -4130,7 +4132,7 @@
                 wakeLiveDisplay();
 
                 const interimNode = getInterimNode();
-                if (curText && !isFinalOnlyMode && currentMode !== 'smooth') {
+                if (curText && !isFinalOnlyMode) {
                     interimNode.textContent = normalizePunctuationSpacing(curText);
                     interimNode.style.display = 'block';
                 } else {
@@ -4175,7 +4177,7 @@
             });
 
             const interimNode = getInterimNode();
-            if (!isFinalOnlyMode && currentMode !== 'smooth' && interimText) {
+            if (!isFinalOnlyMode && interimText) {
                 interimNode.textContent = normalizePunctuationSpacing(interimText);
                 interimNode.style.display = 'block';
             } else {
