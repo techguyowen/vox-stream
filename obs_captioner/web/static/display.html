@@ -1541,6 +1541,20 @@
                             <input type="checkbox" id="chkDisplayPacing" style="width: 20px; height: 20px; cursor: pointer; accent-color: #F59E0B;">
                         </label>
 
+                        <!-- Word Flow Speed Slider (Per Device) -->
+                        <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); padding: 10px 12px; border-radius: 8px;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                                <label for="wordSpeedSlider" style="font-size: 13.5px; font-weight: 700; color: #38BDF8; cursor: pointer;">🌊 Word Stream Speed (This Device)</label>
+                                <span id="wordSpeedValBadge" style="font-size: 11.5px; font-weight: 800; font-family: monospace; color: #E2E8F0; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(56, 189, 248, 0.4); padding: 2px 8px; border-radius: 6px;">285 WPM (210ms)</span>
+                            </div>
+                            <input type="range" id="wordSpeedSlider" min="120" max="500" step="10" value="285" style="width: 100%; cursor: pointer; accent-color: #38BDF8;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; font-size: 10.5px; color: #94A3B8;">
+                                <span>🐢 Slower (120 WPM)</span>
+                                <button type="button" id="btnResetWordSpeed" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); color: #CBD5E1; font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 4px; cursor: pointer;">Reset Default (285 WPM)</button>
+                                <span>🐇 Faster (500 WPM)</span>
+                            </div>
+                        </div>
+
                         <!-- Bionic Reading Mode -->
                         <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.35); padding: 10px 12px; border-radius: 8px;">
                             <div>
@@ -3302,6 +3316,52 @@
             chkDisplayPacing.addEventListener("change", (e) => applyDisplayPacingMode(e.target.checked));
         }
 
+        // 🌊 Per-Device Word Stream Speed Slider (Default: 285 WPM = 210ms/word)
+        const DEFAULT_WORD_SPEED_WPM = 285;
+        let customWordSpeedWpm = DEFAULT_WORD_SPEED_WPM;
+        const wordSpeedSlider = document.getElementById("wordSpeedSlider");
+        const wordSpeedValBadge = document.getElementById("wordSpeedValBadge");
+        const btnResetWordSpeed = document.getElementById("btnResetWordSpeed");
+
+        function getBaseWordIntervalMs() {
+            const wpm = Math.max(100, Math.min(600, Number(customWordSpeedWpm) || DEFAULT_WORD_SPEED_WPM));
+            const baseMs = Math.round(60000 / wpm);
+            // If "🐢 Slow Down Text" is also toggled on, add 45% more breathing time per word
+            return isPacedReadingEnabled ? Math.round(baseMs * 1.45) : baseMs;
+        }
+
+        function applyWordSpeedWpm(wpm, persist = true) {
+            const clamped = Math.max(120, Math.min(500, Math.round(Number(wpm) || DEFAULT_WORD_SPEED_WPM)));
+            customWordSpeedWpm = clamped;
+            const ms = Math.round(60000 / clamped);
+            if (wordSpeedSlider) wordSpeedSlider.value = String(clamped);
+            if (wordSpeedValBadge) wordSpeedValBadge.textContent = `${clamped} WPM (${ms}ms)`;
+            if (persist) {
+                try {
+                    localStorage.setItem("voxstream_display_word_speed_wpm", String(clamped));
+                } catch (e) {}
+            }
+        }
+
+        try {
+            const urlWpm = urlParams.get("word_wpm");
+            const savedWpm = localStorage.getItem("voxstream_display_word_speed_wpm");
+            if (urlWpm !== null && !isNaN(Number(urlWpm))) {
+                applyWordSpeedWpm(Number(urlWpm), false);
+            } else if (savedWpm !== null && !isNaN(Number(savedWpm))) {
+                applyWordSpeedWpm(Number(savedWpm), false);
+            } else {
+                applyWordSpeedWpm(DEFAULT_WORD_SPEED_WPM, false);
+            }
+        } catch (e) {}
+
+        if (wordSpeedSlider) {
+            wordSpeedSlider.addEventListener("input", (e) => applyWordSpeedWpm(e.target.value, true));
+        }
+        if (btnResetWordSpeed) {
+            btnResetWordSpeed.addEventListener("click", () => applyWordSpeedWpm(DEFAULT_WORD_SPEED_WPM, true));
+        }
+
         // ✨ Final-Only Mode Handler (Only show captions once fully prepared)
         function applyDisplayFinalOnlyMode(enabled) {
             isFinalOnlyMode = enabled;
@@ -3906,10 +3966,9 @@
             }
 
             if (wordStreamQueue.length > 0) {
-                // Base interval per word:
-                // When isPacedReadingEnabled ("🐢 Slow Down Text") is ON: 310ms per word (~195 WPM, ~3.2 words/sec)
-                // In smooth mode (without Slow Down Text): 210ms per word (~285 WPM, ~4.8 words/sec — fast one-by-one reading)
-                let interval = isPacedReadingEnabled ? 310 : 210;
+                // Base interval per word from per-device slider (default 285 WPM = 210ms/word)
+                const baseInterval = getBaseWordIntervalMs();
+                let interval = baseInterval;
 
                 let remaining = 0;
                 for (let i = 0; i < wordStreamQueue.length; i++) {
@@ -3917,11 +3976,11 @@
                 }
 
                 // Smooth queue pacing: keep steady base word pace for up to 18 queued words;
-                // only accelerate when remaining queued words > 18, and faster tier at > 32 words
+                // only accelerate proportionally when remaining queued words > 18, and faster tier at > 32 words
                 if (remaining > 32) {
-                    interval = 95;
+                    interval = Math.max(60, Math.round(baseInterval * 0.45));
                 } else if (remaining > 18) {
-                    interval = 145;
+                    interval = Math.max(85, Math.round(baseInterval * 0.68));
                 }
 
                 wordStreamTimer = setTimeout(processWordStreamTick, interval);
