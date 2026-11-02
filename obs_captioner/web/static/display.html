@@ -1472,6 +1472,143 @@
             text-decoration: underline;
             color: #7DD3FC;
         }
+
+        /* -------------------------------------------------------------
+           Settings Modal (#settingsModal): crisp, scannable section
+           cards with unified neutral toggle rows and a collapsible
+           Pacing & Advanced options group.
+           ------------------------------------------------------------- */
+        .settings-section-card {
+            background: rgba(255, 255, 255, 0.035);
+            border: 1px solid rgba(255, 255, 255, 0.09);
+            border-radius: 12px;
+            padding: 12px 14px;
+        }
+        .settings-section-header {
+            font-size: 11px;
+            font-weight: 800;
+            color: #94A3B8;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .settings-list {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .settings-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 8px 6px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.15s ease;
+        }
+        .settings-row:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .settings-row + .settings-row {
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 0;
+        }
+        .settings-row-text {
+            min-width: 0;
+            flex: 1;
+        }
+        .settings-row-title {
+            font-size: 13.5px;
+            font-weight: 600;
+            color: #F1F5F9;
+            display: block;
+            line-height: 1.3;
+        }
+        .settings-row-desc {
+            font-size: 11.5px;
+            color: #94A3B8;
+            display: block;
+            margin-top: 2px;
+            line-height: 1.35;
+        }
+        .settings-row input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #38BDF8;
+            flex-shrink: 0;
+        }
+        .settings-2col-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        @media (max-width: 440px) {
+            .settings-2col-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        .settings-quick-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        .settings-quick-grid .ctrl-btn {
+            width: 100%;
+            justify-content: center;
+            padding: 10px 8px;
+            font-size: 12.5px;
+            font-weight: 700;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .settings-details {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.09);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .settings-details summary {
+            list-style: none;
+            cursor: pointer;
+            padding: 11px 14px;
+            font-size: 12px;
+            font-weight: 800;
+            color: #CBD5E1;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            user-select: none;
+            transition: background-color 0.15s ease;
+        }
+        .settings-details summary::-webkit-details-marker {
+            display: none;
+        }
+        .settings-details summary:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .settings-details summary::after {
+            content: '▸';
+            font-size: 13px;
+            color: #94A3B8;
+            transition: transform 0.2s ease;
+        }
+        .settings-details[open] summary::after {
+            transform: rotate(90deg);
+        }
+        .settings-details-body {
+            padding: 4px 14px 12px 14px;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+        }
     </style>
 </head>
 <body class="theme-oled">
@@ -1562,7 +1699,7 @@
 
     <!-- Settings Modal (Full Reading Comfort, Typography & Theme Control) -->
     <div id="settingsModal" class="modal-backdrop" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);">
-        <div class="modal-content" style="background: #111827; border: 1px solid rgba(255,255,255,0.18); border-radius: 16px; padding: max(22px, env(safe-area-inset-top, 22px)) 24px calc(22px + env(safe-area-inset-bottom, 0px)) 24px; width: 92%; max-width: 460px; box-shadow: 0 24px 48px rgba(0,0,0,0.9); color: #F9FAFB; max-height: calc(90vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); overflow-y: auto;">
+        <div class="modal-content" style="background: #111827; border: 1px solid rgba(255,255,255,0.18); border-radius: 16px; padding: max(22px, env(safe-area-inset-top, 22px)) 24px calc(22px + env(safe-area-inset-bottom, 0px)) 24px; width: 92%; max-width: 480px; box-shadow: 0 24px 48px rgba(0,0,0,0.9); color: #F9FAFB; max-height: calc(90vh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); overflow-y: auto;">
             
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.12); padding-bottom: 14px; margin-bottom: 16px;">
                 <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
@@ -1571,171 +1708,63 @@
                 <button id="btnCloseSettings" style="background: none; border: none; color: #9CA3AF; font-size: 24px; font-weight: bold; cursor: pointer; padding: 0 6px; line-height: 1;">✕</button>
             </div>
             
-            <div style="display: flex; flex-direction: column; gap: 16px;">
+            <div style="display: flex; flex-direction: column; gap: 12px;">
                 
-                <!-- Prominent Scripture Auto-Popup Toggle -->
-                <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(168, 85, 247, 0.16); border: 1px solid rgba(168, 85, 247, 0.45); padding: 12px 14px; border-radius: 12px; box-shadow: 0 4px 12px rgba(168, 85, 247, 0.08);">
-                    <div style="padding-right: 12px;">
-                        <span id="lblScriptureOverlay" style="font-size: 14px; font-weight: 800; color: #E9D5FF; display: block;">📖 Auto-Popup Scripture Cards</span>
-                        <span style="font-size: 11px; color: #D8B4FE; display: block; margin-top: 3px; line-height: 1.35;">Automatically pull up scripture verse cards when verses are spoken. Turn off for uninterrupted captions.</span>
+                <!-- Section A: Text Size & Appearance -->
+                <div class="settings-section-card">
+                    <div id="lblFontSize" class="settings-section-header">🔤 Caption Text Size</div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                        <button type="button" id="btnModalFontDec" class="ctrl-btn" title="Decrease caption font size (−)" aria-label="Decrease caption font size" style="flex: 1; padding: 12px 16px; min-height: 52px; font-size: 16px; font-weight: 900; letter-spacing: 0.2px; background: #FBBF24; border: 3px solid #FFFFFF; color: #111827; border-radius: 10px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.5);">
+                            <span aria-hidden="true" style="font-size: 22px; font-weight: 900; line-height: 1;">−</span>&nbsp;Smaller
+                        </button>
+                        <span id="modalFontSizeVal" role="status" aria-live="polite" aria-label="Current caption font size" style="font-size: 20px; font-weight: 900; font-variant-numeric: tabular-nums; font-family: monospace; color: #FFFFFF; min-width: 84px; text-align: center; background: rgba(0,0,0,0.45); border: 2px solid #38BDF8; border-radius: 8px; padding: 10px 12px; letter-spacing: 0.5px;">
+                            24px
+                        </span>
+                        <button type="button" id="btnModalFontInc" class="ctrl-btn" title="Increase caption font size (+)" aria-label="Increase caption font size" style="flex: 1; padding: 12px 16px; min-height: 52px; font-size: 16px; font-weight: 900; letter-spacing: 0.2px; background: #FBBF24; border: 3px solid #FFFFFF; color: #111827; border-radius: 10px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.5);">
+                            <span aria-hidden="true" style="font-size: 22px; font-weight: 900; line-height: 1;">+</span>&nbsp;Larger
+                        </button>
                     </div>
-                    <input type="checkbox" id="chkShowScriptureOverlay" checked style="width: 22px; height: 22px; cursor: pointer; accent-color: #A855F7; flex-shrink: 0;">
-                </label>
 
-                <!-- SECTION 1: Visual Aid & Reading Comfort -->
-                <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px;">
-                    <div style="font-size: 11.5px; font-weight: 800; color: #93C5FD; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 10px;">
-                        👁️ Reading Comfort &amp; Visual Aids
-                    </div>
-
-                    <div style="display: flex; flex-direction: column; gap: 10px;">
-                        <!-- Active Focus Highlight Mode -->
-                        <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.35); padding: 10px 12px; border-radius: 8px;">
-                            <div>
-                                <span id="lblActiveFocus" style="font-size: 13.5px; font-weight: 700; color: #38BDF8; display: block;">🎯 Active Focus Highlight</span>
-                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Adds a glowing accent border and callout box around the current sentence while gently dimming older lines to 72%.</span>
-                            </div>
-                            <input type="checkbox" id="chkActiveFocusHighlight" style="width: 20px; height: 20px; cursor: pointer; accent-color: #38BDF8;">
-                        </label>
-
-                        <!-- Paragraph Grouping Mode -->
-                        <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(147, 197, 253, 0.1); border: 1px solid rgba(147, 197, 253, 0.35); padding: 10px 12px; border-radius: 8px;">
-                            <div>
-                                <span id="lblParagraphGrouping" style="font-size: 13.5px; font-weight: 700; color: #93C5FD; display: block;">📑 Paragraph Grouping</span>
-                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Starts a new paragraph whenever the speaker pauses.</span>
-                            </div>
-                            <input type="checkbox" id="chkParagraphGrouping" style="width: 20px; height: 20px; cursor: pointer; accent-color: #60A5FA;">
-                        </label>
-
-                        <!-- Comfortable Reading Column Mode -->
-                        <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.35); padding: 10px 12px; border-radius: 8px;">
-                            <div>
-                                <span id="lblReadingColumn" style="font-size: 13.5px; font-weight: 700; color: #38BDF8; display: block;">📐 Comfortable Reading Width (62ch)</span>
-                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Centers captions in a book-width column on wide screens to prevent eye fatigue across long lines.</span>
-                            </div>
-                            <input type="checkbox" id="chkReadingColumn" style="width: 20px; height: 20px; cursor: pointer; accent-color: #38BDF8;">
-                        </label>
-
-                        <!-- Visual Aid Mode -->
-                        <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.35); padding: 10px 12px; border-radius: 8px;">
-                            <div>
-                                <span id="lblVisualAid" style="font-size: 13.5px; font-weight: 700; color: #38BDF8; display: block;">👁️ Visual Aid Mode</span>
-                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Expanded letter spacing (0.06em), word spacing (0.15em), line height (1.65x)</span>
-                            </div>
-                            <input type="checkbox" id="chkDisplayA11y" style="width: 20px; height: 20px; cursor: pointer; accent-color: #38BDF8;">
-                        </label>
-
-                        <!-- Slow Down Text Mode -->
-                        <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.35); padding: 10px 12px; border-radius: 8px;">
-                            <div>
-                                <span id="lblSlowDown" style="font-size: 13.5px; font-weight: 700; color: #FBBF24; display: block;">🐢 Slow Down Text</span>
-                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Paces words steadily at 140 WPM and holds text on screen 3x longer</span>
-                            </div>
-                            <input type="checkbox" id="chkDisplayPacing" style="width: 20px; height: 20px; cursor: pointer; accent-color: #F59E0B;">
-                        </label>
-
-                        <!-- Word Flow Speed Slider (Per Device) -->
-                        <div id="wordSpeedControlGroup" style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.3); padding: 10px 12px; border-radius: 8px;">
-                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-                                <label for="wordSpeedSlider" style="font-size: 13.5px; font-weight: 700; color: #38BDF8; cursor: pointer;">🌊 Word Stream Speed (This Device)</label>
-                                <span id="wordSpeedValBadge" style="font-size: 11.5px; font-weight: 800; font-family: monospace; color: #E2E8F0; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(56, 189, 248, 0.4); padding: 2px 8px; border-radius: 6px;">285 WPM (210ms)</span>
-                            </div>
-                            <input type="range" id="wordSpeedSlider" min="120" max="500" step="10" value="285" style="width: 100%; cursor: pointer; accent-color: #38BDF8;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; font-size: 10.5px; color: #94A3B8;">
-                                <span>🐢 Slower (120 WPM)</span>
-                                <button type="button" id="btnResetWordSpeed" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); color: #CBD5E1; font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 4px; cursor: pointer;">Reset Default (285 WPM)</button>
-                                <span>🐇 Faster (500 WPM)</span>
-                            </div>
+                    <div class="settings-2col-grid" style="margin-top: 12px;">
+                        <div>
+                            <label id="lblTypeface" for="fontSelect" style="display: block; font-size: 12px; margin-bottom: 5px; color: #94A3B8; font-weight: 700;">🔤 Font</label>
+                            <select class="theme-select" id="fontSelect" style="width: 100%; padding: 9px 12px; font-size: 13.5px;">
+                                <option value="'Inter', system-ui, -apple-system, sans-serif" selected>Inter (Modern Sans)</option>
+                                <option value="'OpenDyslexic', sans-serif">📖 OpenDyslexic (Dyslexia Aid)</option>
+                                <option value="'Lexend', sans-serif">📖 Lexend (Readability)</option>
+                                <option value="'Roboto', sans-serif">Roboto</option>
+                                <option value="'Bebas Neue', sans-serif">Bebas Neue (Condensed Stage)</option>
+                                <option value="'Oswald', sans-serif">Oswald (Bold Impact)</option>
+                                <option value="'Montserrat', sans-serif">Montserrat (Geometric)</option>
+                                <option value="'Poppins', sans-serif">Poppins (Rounded)</option>
+                                <option value="'Lora', serif">Lora (Editorial Serif)</option>
+                                <option value="'JetBrains Mono', monospace">JetBrains Mono (Monospace)</option>
+                                <option value="'Open Sans', sans-serif">Open Sans</option>
+                            </select>
                         </div>
-
-                        <!-- Teleprompter Anchor Option (Smooth Flow Mode) -->
-                        <label id="teleprompterAnchorGroup" style="display: none; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.35); padding: 10px 12px; border-radius: 8px;">
-                            <div>
-                                <span id="lblTeleprompterAnchor" style="font-size: 13.5px; font-weight: 700; color: #38BDF8; display: block;">🎬 Teleprompter Anchor (Smooth Flow)</span>
-                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Keeps the active line about two-thirds down the screen with space below.</span>
-                            </div>
-                            <input type="checkbox" id="chkTeleprompterAnchor" style="width: 20px; height: 20px; cursor: pointer; accent-color: #38BDF8;">
-                        </label>
-
-                        <!-- Bionic Reading Mode -->
-                        <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.35); padding: 10px 12px; border-radius: 8px;">
-                            <div>
-                                <span id="lblBionic" style="font-size: 13.5px; font-weight: 700; color: #C084FC; display: block;">⚡ Bionic Reading (Guided Word Focus)</span>
-                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Bolds initial letters of each word for rapid eye fixation and ADHD focus</span>
-                            </div>
-                            <input type="checkbox" id="chkDisplayBionic" style="width: 20px; height: 20px; cursor: pointer; accent-color: #A855F7;">
-                        </label>
-
-                        <!-- Finalized Only Mode -->
-                        <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.35); padding: 10px 12px; border-radius: 8px;">
-                            <div>
-                                <span id="lblFinalOnly" style="font-size: 13.5px; font-weight: 700; color: #34D399; display: block;">✨ Final Sentences Only</span>
-                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Waits until speech is fully prepared &amp; punctuated. Completely hides live in-progress guessing.</span>
-                            </div>
-                            <input type="checkbox" id="chkDisplayFinalOnly" style="width: 20px; height: 20px; cursor: pointer; accent-color: #10B981;">
-                        </label>
-
-                        <!-- Disable Text Shadow / Border on Words -->
-                        <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(148, 163, 184, 0.1); border: 1px solid rgba(148, 163, 184, 0.35); padding: 10px 12px; border-radius: 8px;">
-                            <div>
-                                <span id="lblFlatText" style="font-size: 13.5px; font-weight: 700; color: #CBD5E1; display: block;">🔤 Flat Text (No Word Shadow / Outline)</span>
-                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Removes the drop shadow and halo effect around caption words for completely flat, crisp, borderless typography.</span>
-                            </div>
-                            <input type="checkbox" id="chkDisableTextShadow" style="width: 20px; height: 20px; cursor: pointer; accent-color: #94A3B8;">
-                        </label>
-
-                        <!-- Keep Screen Awake (Prevent Sleep) -->
-                        <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.35); padding: 10px 12px; border-radius: 8px;">
-                            <div>
-                                <span style="font-size: 13.5px; font-weight: 700; color: #60A5FA; display: block;">📱 Keep Screen Awake</span>
-                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Prevents phone, iPad, or stage monitor from sleeping during services (supports HTTPS Wake Lock &amp; HTTP LAN fallback).</span>
-                                <span id="wakeLockStatusBadge" style="display: inline-block; margin-top: 4px; font-size: 10.5px; font-weight: 700; color: #34D399; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); padding: 2px 6px; border-radius: 4px;">● Active</span>
-                            </div>
-                            <input type="checkbox" id="chkKeepScreenAwake" checked style="width: 20px; height: 20px; cursor: pointer; accent-color: #3B82F6;">
-                        </label>
+                        <div>
+                            <label id="lblTheme" for="themeSelect" style="display: block; font-size: 12px; margin-bottom: 5px; color: #94A3B8; font-weight: 700;">🎨 Color Theme</label>
+                            <select class="theme-select" id="themeSelect" style="width: 100%; padding: 9px 12px; font-size: 13.5px;">
+                                <optgroup label="── DARK THEMES ──">
+                                    <option value="theme-oled" selected>🌑 Pure Black (OLED)</option>
+                                    <option value="theme-dark">🌑 Dark Slate</option>
+                                </optgroup>
+                                <optgroup label="── LIGHT THEMES ──">
+                                    <option value="theme-black-on-white">📄 Pure White (Black Text)</option>
+                                    <option value="theme-light">☀️ Soft Light (Off-White)</option>
+                                </optgroup>
+                                <optgroup label="── HIGH CONTRAST & STAGE ──">
+                                    <option value="theme-high-vis">🟨 High Vis (Yellow on Black)</option>
+                                    <option value="theme-amber">🟧 Stage Amber (Warm Gold)</option>
+                                    <option value="theme-pro-green">🟩 Broadcast Green</option>
+                                    <option value="theme-hacker">💻 Matrix Green (Terminal)</option>
+                                </optgroup>
+                                <optgroup label="── CUSTOM ──">
+                                    <option value="theme-custom">🎨 Custom Theme (Pick Your Colors)</option>
+                                </optgroup>
+                            </select>
+                        </div>
                     </div>
-                </div>
-
-                <!-- SECTION 2: Typography -->
-                <div>
-                    <label id="lblTypeface" for="fontSelect" style="display: block; font-size: 12px; margin-bottom: 5px; color: #94A3B8; font-weight: 700;">🔤 Typography / Font Family</label>
-                    <select class="theme-select" id="fontSelect" style="width: 100%; padding: 9px 12px; font-size: 13.5px;">
-                        <option value="'Inter', system-ui, -apple-system, sans-serif" selected>Inter (Modern Sans)</option>
-                        <option value="'OpenDyslexic', sans-serif">📖 OpenDyslexic (Dyslexia Aid)</option>
-                        <option value="'Lexend', sans-serif">📖 Lexend (Readability)</option>
-                        <option value="'Roboto', sans-serif">Roboto</option>
-                        <option value="'Bebas Neue', sans-serif">Bebas Neue (Condensed Stage)</option>
-                        <option value="'Oswald', sans-serif">Oswald (Bold Impact)</option>
-                        <option value="'Montserrat', sans-serif">Montserrat (Geometric)</option>
-                        <option value="'Poppins', sans-serif">Poppins (Rounded)</option>
-                        <option value="'Lora', serif">Lora (Editorial Serif)</option>
-                        <option value="'JetBrains Mono', monospace">JetBrains Mono (Monospace)</option>
-                        <option value="'Open Sans', sans-serif">Open Sans</option>
-                    </select>
-                </div>
-
-                <!-- SECTION 3: Color Theme -->
-                <div>
-                    <label id="lblTheme" for="themeSelect" style="display: block; font-size: 12px; margin-bottom: 5px; color: #94A3B8; font-weight: 700;">🎨 Color Theme</label>
-                    <select class="theme-select" id="themeSelect" style="width: 100%; padding: 9px 12px; font-size: 13.5px;">
-                        <optgroup label="── DARK THEMES ──">
-                            <option value="theme-oled" selected>🌑 Pure Black (OLED)</option>
-                            <option value="theme-dark">🌑 Dark Slate</option>
-                        </optgroup>
-                        <optgroup label="── LIGHT THEMES ──">
-                            <option value="theme-black-on-white">📄 Pure White (Black Text)</option>
-                            <option value="theme-light">☀️ Soft Light (Off-White)</option>
-                        </optgroup>
-                        <optgroup label="── HIGH CONTRAST & STAGE ──">
-                            <option value="theme-high-vis">🟨 High Vis (Yellow on Black)</option>
-                            <option value="theme-amber">🟧 Stage Amber (Warm Gold)</option>
-                            <option value="theme-pro-green">🟩 Broadcast Green</option>
-                            <option value="theme-hacker">💻 Matrix Green (Terminal)</option>
-                        </optgroup>
-                        <optgroup label="── CUSTOM ──">
-                            <option value="theme-custom">🎨 Custom Theme (Pick Your Colors)</option>
-                        </optgroup>
-                    </select>
                     <!-- Custom Theme Colors: visible when 'Custom Theme' is selected -->
                     <div id="customThemePanel" style="display: none; margin-top: 10px; background: rgba(56, 189, 248, 0.06); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 10px; padding: 12px;">
                         <div style="font-size: 11.5px; font-weight: 800; color: #7DD3FC; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px;">
@@ -1797,25 +1826,8 @@
                             ↺ Reset Custom Colors
                         </button>
                     </div>
-                </div>
 
-                <!-- SECTION 4: Caption Font Size (Essential for Mobile & Customization) -->
-                <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px;">
-                    <div id="lblFontSize" style="font-size: 11.5px; font-weight: 800; color: #93C5FD; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 10px;">
-                        🔤 Caption Text Size
-                    </div>
-                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
-                        <button type="button" id="btnModalFontDec" class="ctrl-btn" title="Decrease caption font size (−)" aria-label="Decrease caption font size" style="flex: 1; padding: 12px 16px; min-height: 52px; font-size: 16px; font-weight: 900; letter-spacing: 0.2px; background: #FBBF24; border: 3px solid #FFFFFF; color: #111827; border-radius: 10px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.5);">
-                            <span aria-hidden="true" style="font-size: 22px; font-weight: 900; line-height: 1;">−</span>&nbsp;Smaller
-                        </button>
-                        <span id="modalFontSizeVal" role="status" aria-live="polite" aria-label="Current caption font size" style="font-size: 20px; font-weight: 900; font-variant-numeric: tabular-nums; font-family: monospace; color: #FFFFFF; min-width: 84px; text-align: center; background: rgba(0,0,0,0.45); border: 2px solid #38BDF8; border-radius: 8px; padding: 10px 12px; letter-spacing: 0.5px;">
-                            24px
-                        </span>
-                        <button type="button" id="btnModalFontInc" class="ctrl-btn" title="Increase caption font size (+)" aria-label="Increase caption font size" style="flex: 1; padding: 12px 16px; min-height: 52px; font-size: 16px; font-weight: 900; letter-spacing: 0.2px; background: #FBBF24; border: 3px solid #FFFFFF; color: #111827; border-radius: 10px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.5);">
-                            <span aria-hidden="true" style="font-size: 22px; font-weight: 900; line-height: 1;">+</span>&nbsp;Larger
-                        </button>
-                    </div>
-                    <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.08);">
+                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.07);">
                         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
                             <label for="lineHeightSlider" style="font-size: 12.5px; font-weight: 700; color: #93C5FD; cursor: pointer;">📏 Line Spacing (Line Height)</label>
                             <span id="lineHeightValBadge" style="font-size: 11.5px; font-weight: 800; font-family: monospace; color: #E2E8F0; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(56, 189, 248, 0.4); padding: 2px 8px; border-radius: 6px;">1.45×</span>
@@ -1829,27 +1841,130 @@
                     </div>
                 </div>
 
-                <!-- Clear History Button -->
-                <button type="button" id="btnModalClearHistory" class="ctrl-btn" style="padding: 10px; font-weight: 700; width: 100%; justify-content: center; background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); color: #FCA5A5; font-size: 13px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                    🗑️ Clear Caption History
-                </button>
+                <!-- Section B: Reading & Layout -->
+                <div class="settings-section-card">
+                    <div class="settings-section-header">📖 Reading &amp; Layout</div>
+                    <div class="settings-list">
+                        <label class="settings-row">
+                            <span class="settings-row-text">
+                                <span id="lblScriptureOverlay" class="settings-row-title">📖 Auto-Popup Scripture Cards</span>
+                                <span class="settings-row-desc">Show verse cards automatically when scripture is spoken.</span>
+                            </span>
+                            <input type="checkbox" id="chkShowScriptureOverlay" checked>
+                        </label>
+                        <label class="settings-row">
+                            <span class="settings-row-text">
+                                <span id="lblParagraphGrouping" class="settings-row-title">📑 Paragraph Grouping</span>
+                                <span class="settings-row-desc">Start a new paragraph whenever the speaker pauses.</span>
+                            </span>
+                            <input type="checkbox" id="chkParagraphGrouping">
+                        </label>
+                        <label class="settings-row">
+                            <span class="settings-row-text">
+                                <span id="lblActiveFocus" class="settings-row-title">🎯 Active Focus Highlight</span>
+                                <span class="settings-row-desc">Highlight the active sentence with a callout border and dim older lines.</span>
+                            </span>
+                            <input type="checkbox" id="chkActiveFocusHighlight">
+                        </label>
+                        <label class="settings-row">
+                            <span class="settings-row-text">
+                                <span id="lblReadingColumn" class="settings-row-title">📐 Book-Width Column (62ch)</span>
+                                <span class="settings-row-desc">Center captions in a comfortable reading column on wide screens.</span>
+                            </span>
+                            <input type="checkbox" id="chkReadingColumn">
+                        </label>
+                        <label class="settings-row">
+                            <span class="settings-row-text">
+                                <span id="lblBionic" class="settings-row-title">⚡ Bionic Reading</span>
+                                <span class="settings-row-desc">Bold the leading letters of each word for faster eye fixation.</span>
+                            </span>
+                            <input type="checkbox" id="chkDisplayBionic">
+                        </label>
+                    </div>
+                </div>
 
-                <!-- Tutorial Guide button inside Settings -->
-                <button type="button" id="btnOpenTutorialFromSettings" class="ctrl-btn" style="padding: 10px; font-weight: 700; width: 100%; justify-content: center; background: rgba(168, 85, 247, 0.18); border: 1px solid rgba(168, 85, 247, 0.45); color: #C084FC; font-size: 13.5px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                    💡 Read-Along Tutorial &amp; Guide
-                </button>
+                <!-- Section C: Pacing, Accessibility & Display Options -->
+                <details class="settings-details" id="advancedSettingsDetails">
+                    <summary><span>🎚️ Pacing, Accessibility &amp; Display</span></summary>
+                    <div class="settings-details-body">
+                        <div class="settings-list">
+                            <!-- Word Stream Speed Slider (Smooth Flow / Paced Reading) -->
+                            <div id="wordSpeedControlGroup" style="padding: 8px 6px;">
+                                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                                    <label for="wordSpeedSlider" style="font-size: 13px; font-weight: 600; color: #F1F5F9; cursor: pointer;">🌊 Word Stream Speed</label>
+                                    <span id="wordSpeedValBadge" style="font-size: 11.5px; font-weight: 800; font-family: monospace; color: #E2E8F0; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(56, 189, 248, 0.4); padding: 2px 8px; border-radius: 6px;">285 WPM (210ms)</span>
+                                </div>
+                                <input type="range" id="wordSpeedSlider" min="120" max="500" step="10" value="285" style="width: 100%; cursor: pointer; accent-color: #38BDF8;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; font-size: 10.5px; color: #94A3B8;">
+                                    <span>🐢 Slower (120 WPM)</span>
+                                    <button type="button" id="btnResetWordSpeed" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); color: #CBD5E1; font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 4px; cursor: pointer;">Reset Default (285 WPM)</button>
+                                    <span>🐇 Faster (500 WPM)</span>
+                                </div>
+                            </div>
+                            <!-- Teleprompter Anchor Option (Smooth Flow Mode) -->
+                            <label id="teleprompterAnchorGroup" class="settings-row" style="display: none;">
+                                <span class="settings-row-text">
+                                    <span id="lblTeleprompterAnchor" class="settings-row-title">🎬 Teleprompter Anchor (Smooth Flow)</span>
+                                    <span class="settings-row-desc">Keep the active line two-thirds down the screen.</span>
+                                </span>
+                                <input type="checkbox" id="chkTeleprompterAnchor">
+                            </label>
+                            <label class="settings-row">
+                                <span class="settings-row-text">
+                                    <span id="lblSlowDown" class="settings-row-title">🐢 Slow Down Text</span>
+                                    <span class="settings-row-desc">Pace words steadily and hold captions on screen 3× longer.</span>
+                                </span>
+                                <input type="checkbox" id="chkDisplayPacing">
+                            </label>
+                            <label class="settings-row">
+                                <span class="settings-row-text">
+                                    <span id="lblFinalOnly" class="settings-row-title">✨ Final Sentences Only</span>
+                                    <span class="settings-row-desc">Hide live in-progress words until sentences are finalized.</span>
+                                </span>
+                                <input type="checkbox" id="chkDisplayFinalOnly">
+                            </label>
+                            <label class="settings-row">
+                                <span class="settings-row-text">
+                                    <span id="lblVisualAid" class="settings-row-title">👁️ Visual Aid Spacing</span>
+                                    <span class="settings-row-desc">Expand letter spacing, word spacing, and minimum line height (1.65×).</span>
+                                </span>
+                                <input type="checkbox" id="chkDisplayA11y">
+                            </label>
+                            <label class="settings-row">
+                                <span class="settings-row-text">
+                                    <span id="lblFlatText" class="settings-row-title">🔤 Flat Text (No Shadow)</span>
+                                    <span class="settings-row-desc">Remove drop shadows around caption words.</span>
+                                </span>
+                                <input type="checkbox" id="chkDisableTextShadow">
+                            </label>
+                            <label class="settings-row">
+                                <span class="settings-row-text">
+                                    <span class="settings-row-title">📱 Keep Screen Awake <span id="wakeLockStatusBadge" style="display: inline-block; margin-left: 6px; font-size: 10px; font-weight: 700; color: #34D399; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); padding: 1px 6px; border-radius: 4px; vertical-align: 1px;">● Active</span></span>
+                                    <span class="settings-row-desc">Prevent device screen from sleeping during live sessions.</span>
+                                </span>
+                                <input type="checkbox" id="chkKeepScreenAwake" checked>
+                            </label>
+                        </div>
+                    </div>
+                </details>
 
-                <!-- Share QR button inside Settings -->
-                <button type="button" id="btnSettingsShareQr" class="ctrl-btn" style="padding: 10px; font-weight: 700; width: 100%; justify-content: center; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #7DD3FC; font-size: 13.5px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                    📱 Share Live Screen / QR Code
-                </button>
+                <!-- Section D: Quick Actions -->
+                <div class="settings-quick-grid">
+                    <button type="button" id="btnOpenTutorialFromSettings" class="ctrl-btn" style="background: rgba(168, 85, 247, 0.18); border: 1px solid rgba(168, 85, 247, 0.45); color: #C084FC;">
+                        💡 Tutorial &amp; Guide
+                    </button>
+                    <button type="button" id="btnSettingsShareQr" class="ctrl-btn" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #7DD3FC;">
+                        📱 Share / QR Code
+                    </button>
+                    <button type="button" id="btnInstallPwa" class="ctrl-btn" style="background: rgba(59, 130, 246, 0.18); border: 1px solid rgba(59, 130, 246, 0.45); color: #60A5FA;">
+                        📲 Install App
+                    </button>
+                    <button type="button" id="btnModalClearHistory" class="ctrl-btn" style="color: #FCA5A5; border-color: rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.1);">
+                        🗑️ Clear History
+                    </button>
+                </div>
 
-                <!-- Install PWA Button inside Settings -->
-                <button type="button" id="btnInstallPwa" class="ctrl-btn" style="padding: 10px; font-weight: 700; width: 100%; justify-content: center; background: rgba(59, 130, 246, 0.18); border: 1px solid rgba(59, 130, 246, 0.45); color: #60A5FA; font-size: 13px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                    📲 Install App / Home Screen
-                </button>
-
-                <div style="margin-top: 6px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.12); display: flex; justify-content: flex-end;">
+                <div style="padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.12); display: flex; justify-content: flex-end;">
                     <button id="btnDoneSettings" class="ctrl-btn" style="padding: 10px 20px; font-weight: 700; width: 100%; justify-content: center; background: #2563EB; color: #FFFFFF; border: none; font-size: 14.5px; border-radius: 8px; cursor: pointer;">
                         ✓ Done
                     </button>
@@ -3442,6 +3557,12 @@
             if (anchorGrp) {
                 anchorGrp.style.display = (currentMode === 'smooth') ? 'flex' : 'none';
             }
+            // Smooth Flow / paced readers need the WPM slider and Teleprompter
+            // Anchor immediately, so keep the collapsible Pacing section open.
+            const advDetails = document.getElementById('advancedSettingsDetails');
+            if (advDetails && (currentMode === 'smooth' || isPacedReadingEnabled)) {
+                advDetails.open = true;
+            }
         }
 
         function applyDisplayReadingColumnMode(enabled) {
@@ -3693,6 +3814,7 @@
         // Settings Modal Open/Close Logic
         if (btnOpenSettings && settingsModal) {
             btnOpenSettings.addEventListener('click', () => {
+                if (typeof updateWordSpeedControlVisibility === 'function') updateWordSpeedControlVisibility();
                 settingsModal.style.display = 'flex';
             });
         }
@@ -3883,6 +4005,7 @@
             if (e.key === '-' || e.key === '_') setFontSize(currentFontSize - 4, true);
             if (e.key === 's' || e.key === 'S') {
                 if (settingsModal) {
+                    if (settingsModal.style.display !== 'flex' && typeof updateWordSpeedControlVisibility === 'function') updateWordSpeedControlVisibility();
                     settingsModal.style.display = settingsModal.style.display === 'flex' ? 'none' : 'flex';
                 }
             }
