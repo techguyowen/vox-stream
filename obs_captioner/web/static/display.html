@@ -1215,10 +1215,56 @@
         body.paragraph-grouping-mode:not(.mode-live) .caption-sentence:not(.interim) {
             margin-bottom: 0.25em;
         }
-        body.paragraph-grouping-mode:not(.mode-live) .caption-sentence:not(.interim):nth-of-type(3n) {
-            margin-bottom: 1.15em;
-            padding-bottom: 0.35em;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        body.paragraph-grouping-mode:not(.mode-live) .caption-sentence.paragraph-start {
+            margin-top: 1.1em;
+            padding-top: 0.35em;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        /* Graduated History Fade: older finalized sentences fade by recency */
+        body:not(.mode-live):not(.focus-highlight-mode) .caption-sentence.previous.age-1 {
+            opacity: 0.90;
+        }
+        body:not(.mode-live):not(.focus-highlight-mode) .caption-sentence.previous.age-2 {
+            opacity: 0.75;
+        }
+        body:not(.mode-live):not(.focus-highlight-mode) .caption-sentence.previous.age-old {
+            opacity: 0.60;
+        }
+        body.history-browsing .caption-sentence,
+        body.history-browsing .caption-sentence.previous,
+        body.history-browsing .caption-sentence.age-1,
+        body.history-browsing .caption-sentence.age-2,
+        body.history-browsing .caption-sentence.age-old,
+        body.focus-highlight-mode.history-browsing .caption-sentence.previous {
+            opacity: 1 !important;
+        }
+
+        /* Dimmed filler words inside interim (in-progress) speech only */
+        .caption-sentence .filler-word {
+            opacity: 0.45;
+            transition: opacity 0.2s ease;
+        }
+
+        /* Speaker pause marker */
+        .pause-marker {
+            text-align: center;
+            color: var(--text-muted, #94A3B8);
+            opacity: 0.35;
+            font-size: calc(var(--font-size) * 0.55);
+            letter-spacing: 0.35em;
+            margin: 4px 0 12px 0;
+            user-select: none;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        body.mode-live .pause-marker {
+            display: none !important;
+        }
+
+        /* Teleprompter Anchor (Smooth Flow): keep breathing room below the active line */
+        body.mode-smooth.teleprompter-anchor .transcript-content {
+            padding-bottom: max(34vh, calc(120px + env(safe-area-inset-bottom, 32px)));
         }
 
         /* Scripture Passage Reader Modal Styles */
@@ -1556,7 +1602,7 @@
                         <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(147, 197, 253, 0.1); border: 1px solid rgba(147, 197, 253, 0.35); padding: 10px 12px; border-radius: 8px;">
                             <div>
                                 <span id="lblParagraphGrouping" style="font-size: 13.5px; font-weight: 700; color: #93C5FD; display: block;">📑 Paragraph Grouping</span>
-                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Groups every 3 sentences into clean paragraph blocks with comfortable visual spacing.</span>
+                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Starts a new paragraph whenever the speaker pauses.</span>
                             </div>
                             <input type="checkbox" id="chkParagraphGrouping" style="width: 20px; height: 20px; cursor: pointer; accent-color: #60A5FA;">
                         </label>
@@ -1601,6 +1647,15 @@
                                 <span>🐇 Faster (500 WPM)</span>
                             </div>
                         </div>
+
+                        <!-- Teleprompter Anchor Option (Smooth Flow Mode) -->
+                        <label id="teleprompterAnchorGroup" style="display: none; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.35); padding: 10px 12px; border-radius: 8px;">
+                            <div>
+                                <span id="lblTeleprompterAnchor" style="font-size: 13.5px; font-weight: 700; color: #38BDF8; display: block;">🎬 Teleprompter Anchor (Smooth Flow)</span>
+                                <span style="font-size: 11px; color: #94A3B8; display: block; margin-top: 2px;">Keeps the active line about two-thirds down the screen with space below.</span>
+                            </div>
+                            <input type="checkbox" id="chkTeleprompterAnchor" style="width: 20px; height: 20px; cursor: pointer; accent-color: #38BDF8;">
+                        </label>
 
                         <!-- Bionic Reading Mode -->
                         <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; background: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.35); padding: 10px 12px; border-radius: 8px;">
@@ -1759,6 +1814,18 @@
                         <button type="button" id="btnModalFontInc" class="ctrl-btn" title="Increase caption font size (+)" aria-label="Increase caption font size" style="flex: 1; padding: 12px 16px; min-height: 52px; font-size: 16px; font-weight: 900; letter-spacing: 0.2px; background: #FBBF24; border: 3px solid #FFFFFF; color: #111827; border-radius: 10px; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.5);">
                             <span aria-hidden="true" style="font-size: 22px; font-weight: 900; line-height: 1;">+</span>&nbsp;Larger
                         </button>
+                    </div>
+                    <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.08);">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                            <label for="lineHeightSlider" style="font-size: 12.5px; font-weight: 700; color: #93C5FD; cursor: pointer;">📏 Line Spacing (Line Height)</label>
+                            <span id="lineHeightValBadge" style="font-size: 11.5px; font-weight: 800; font-family: monospace; color: #E2E8F0; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(56, 189, 248, 0.4); padding: 2px 8px; border-radius: 6px;">1.45×</span>
+                        </div>
+                        <input type="range" id="lineHeightSlider" min="1.3" max="1.9" step="0.05" value="1.45" style="width: 100%; cursor: pointer; accent-color: #38BDF8;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; font-size: 10.5px; color: #94A3B8;">
+                            <span>Compact (1.3×)</span>
+                            <button type="button" id="btnResetLineHeight" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); color: #CBD5E1; font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 4px; cursor: pointer;">Reset (1.45×)</button>
+                            <span>Spacious (1.9×)</span>
+                        </div>
                     </div>
                 </div>
 
@@ -2076,6 +2143,18 @@
         let isBionicReadingEnabled = false;
         let isFinalOnlyMode = false;
         let isScriptureOverlayEnabled = true;
+
+        // 📖 Readability Enhancements state
+        let lastFinalAppendedAt = 0;
+        let paragraphStartIndices = new Set();
+        let paragraphStartFlags = [];
+        let missedSentencesWhileScrolledUp = 0;
+        let pauseMarkerTimer = null;
+        let interimGateUtteranceId = 0;
+        let interimGateUnlocked = false;
+        let interimGateFirstWords = "";
+        let interimGateTimer = null;
+        let isTeleprompterAnchorEnabled = false;
 
         // UI Localization dictionaries: viewer language (langSelect / ?lang=XX)
         // drives caption translation AND full chrome translation via applyUiLanguage().
@@ -2566,6 +2645,7 @@
         const chkDisplayFinalOnly = document.getElementById('chkDisplayFinalOnly');
         const chkDisableTextShadow = document.getElementById('chkDisableTextShadow');
         const chkShowScriptureOverlay = document.getElementById('chkShowScriptureOverlay');
+        const chkTeleprompterAnchor = document.getElementById('chkTeleprompterAnchor');
 
         const btnOpenSettings = document.getElementById('btnOpenSettings');
         const btnCloseSettings = document.getElementById('btnCloseSettings');
@@ -2795,6 +2875,7 @@
                 document.body.classList.remove('mode-smooth');
                 maxHistorySentences = 2;
                 while (finalSentences.length > 2) finalSentences.shift();
+                syncParagraphStartIndices();
 
                 // Instantly prune DOM to max 2 lines
                 if (transcriptContent) {
@@ -3195,17 +3276,64 @@
             });
         }
 
+        // 📏 Per-Device Line-Height Slider (Default: 1.45x)
+        const DEFAULT_LINE_HEIGHT = 1.45;
+        let customLineHeight = DEFAULT_LINE_HEIGHT;
+
+        function applyCustomLineHeight(val, persist = true) {
+            let num = Number(val);
+            if (!Number.isFinite(num)) num = DEFAULT_LINE_HEIGHT;
+            const clamped = Math.max(1.3, Math.min(1.9, Math.round(num * 20) / 20));
+            customLineHeight = clamped;
+            const lhSlider = document.getElementById('lineHeightSlider');
+            const lhBadge = document.getElementById('lineHeightValBadge');
+            if (lhSlider) lhSlider.value = String(clamped);
+            if (lhBadge) lhBadge.textContent = `${clamped.toFixed(2).replace(/0$/, '')}×`;
+            const effective = (chkDisplayA11y && chkDisplayA11y.checked)
+                ? String(Math.max(customLineHeight, 1.65))
+                : String(customLineHeight);
+            document.documentElement.style.setProperty('--line-height', effective);
+            if (persist) {
+                try {
+                    localStorage.setItem('voxstream_display_line_height', String(clamped));
+                } catch(e) {}
+            }
+        }
+
+        try {
+            const savedLh = localStorage.getItem('voxstream_display_line_height');
+            if (savedLh !== null && !isNaN(Number(savedLh))) {
+                applyCustomLineHeight(Number(savedLh), false);
+            } else {
+                applyCustomLineHeight(DEFAULT_LINE_HEIGHT, false);
+            }
+        } catch(e) {}
+
+        const lineHeightSlider = document.getElementById('lineHeightSlider');
+        if (lineHeightSlider) {
+            lineHeightSlider.addEventListener('input', (e) => applyCustomLineHeight(e.target.value, true));
+        }
+        const btnResetLineHeight = document.getElementById('btnResetLineHeight');
+        if (btnResetLineHeight) {
+            btnResetLineHeight.addEventListener('click', () => {
+                try {
+                    localStorage.removeItem('voxstream_display_line_height');
+                } catch(e) {}
+                applyCustomLineHeight(DEFAULT_LINE_HEIGHT, false);
+            });
+        }
+
         // 1-Click Accessibility / Visual Aid Mode Handler
         function applyDisplayA11yMode(enabled) {
             if (enabled) {
                 document.documentElement.style.setProperty("--letter-spacing", "0.06em");
                 document.documentElement.style.setProperty("--word-spacing", "0.15em");
-                document.documentElement.style.setProperty("--line-height", "1.65");
+                document.documentElement.style.setProperty("--line-height", String(Math.max(customLineHeight || 1.45, 1.65)));
                 document.documentElement.style.setProperty("--font-style", "normal");
             } else {
                 document.documentElement.style.setProperty("--letter-spacing", "normal");
                 document.documentElement.style.setProperty("--word-spacing", "normal");
-                document.documentElement.style.setProperty("--line-height", "1.45");
+                document.documentElement.style.setProperty("--line-height", String(customLineHeight || 1.45));
                 document.documentElement.style.setProperty("--font-style", "normal");
             }
             if (chkDisplayA11y) chkDisplayA11y.checked = enabled;
@@ -3306,9 +3434,14 @@
 
         function updateWordSpeedControlVisibility() {
             const grp = document.getElementById('wordSpeedControlGroup');
-            if (!grp) return;
-            const shouldShow = (currentMode === 'smooth' || isPacedReadingEnabled);
-            grp.style.display = shouldShow ? 'block' : 'none';
+            if (grp) {
+                const shouldShow = (currentMode === 'smooth' || isPacedReadingEnabled);
+                grp.style.display = shouldShow ? 'block' : 'none';
+            }
+            const anchorGrp = document.getElementById('teleprompterAnchorGroup');
+            if (anchorGrp) {
+                anchorGrp.style.display = (currentMode === 'smooth') ? 'flex' : 'none';
+            }
         }
 
         function applyDisplayReadingColumnMode(enabled) {
@@ -3382,6 +3515,24 @@
 
         if (chkReadingColumn) {
             chkReadingColumn.addEventListener("change", (e) => applyDisplayReadingColumnMode(e.target.checked));
+        }
+
+        // 🎬 Teleprompter Anchor (Smooth Flow): hold the active line ~2/3 down the screen
+        function applyTeleprompterAnchorMode(enabled) {
+            isTeleprompterAnchorEnabled = !!enabled;
+            document.body.classList.toggle('teleprompter-anchor', isTeleprompterAnchorEnabled);
+            if (chkTeleprompterAnchor) chkTeleprompterAnchor.checked = isTeleprompterAnchorEnabled;
+            try {
+                localStorage.setItem('voxstream_display_teleprompter_anchor', isTeleprompterAnchorEnabled ? 'true' : 'false');
+            } catch(e) {}
+        }
+
+        try {
+            applyTeleprompterAnchorMode(localStorage.getItem('voxstream_display_teleprompter_anchor') === 'true');
+        } catch(e) {}
+
+        if (chkTeleprompterAnchor) {
+            chkTeleprompterAnchor.addEventListener('change', (e) => applyTeleprompterAnchorMode(e.target.checked));
         }
 
         // 🐢 Slow Down Text / Paced Mode Handler
@@ -3660,11 +3811,20 @@
             }
 
             // 2. Jump to Live Button: Show at bottom-right ONLY when scrolled up away from live captions
+            if (autoScroll) {
+                missedSentencesWhileScrolledUp = 0;
+            }
+            document.body.classList.toggle('history-browsing', !autoScroll);
             if (btnScrollBottom) {
                 if (!autoScroll) {
                     btnScrollBottom.classList.add('visible');
                 } else {
                     btnScrollBottom.classList.remove('visible');
+                }
+                if (!autoScroll && missedSentencesWhileScrolledUp > 0) {
+                    btnScrollBottom.textContent = `⬇️ ${missedSentencesWhileScrolledUp} new · Resume Auto-Scroll`;
+                } else {
+                    btnScrollBottom.textContent = '⬇️ Resume Auto-Scroll';
                 }
             }
         }
@@ -3686,6 +3846,7 @@
         if (btnScrollBottom) {
             btnScrollBottom.addEventListener('click', () => {
                 autoScroll = true;
+                missedSentencesWhileScrolledUp = 0;
                 scrollToBottom(true);
                 updateFloatingButtons();
             });
@@ -3904,6 +4065,7 @@
         }
 
         function clearInterimLine() {
+            resetInterimGate();
             interimText = "";
             pendingInterimText = null;
             lastInterimUtteranceId = 0;
@@ -4002,7 +4164,9 @@
             }
             const containerRect = stageContainer.getBoundingClientRect();
             const spanRect = wordSpan.getBoundingClientRect();
-            const bottomPadding = Math.min(160, Math.max(68, Math.round(containerRect.height * 0.18)));
+            const bottomPadding = (isTeleprompterAnchorEnabled && currentMode === 'smooth')
+                ? Math.min(340, Math.max(110, Math.round(containerRect.height * 0.34)))
+                : Math.min(160, Math.max(68, Math.round(containerRect.height * 0.18)));
             const visibleBottom = containerRect.bottom - bottomPadding;
             if (spanRect.bottom > visibleBottom) {
                 stageContainer.scrollTop += (spanRect.bottom - visibleBottom);
@@ -4073,6 +4237,7 @@
                             node.classList.remove('streaming-active');
                         }
                     });
+                    updateSentenceAges();
                 }
 
                 if (currentItem.renderedCount < currentItem.words.length) {
@@ -4096,6 +4261,7 @@
                         currentItem.node.classList.remove('streaming-active');
                     }
                     wordStreamQueue.shift();
+                    updateSentenceAges();
                     if (autoScroll && wordStreamQueue.length === 0 && !hasSmoothInterim && stageContainer) {
                         stageContainer.scrollTop = stageContainer.scrollHeight;
                     }
@@ -4110,7 +4276,7 @@
                     }
                     const span = document.createElement('span');
                     span.className = 'word-reveal visible';
-                    span.innerHTML = formatBionicReading(nextWord);
+                    span.innerHTML = formatSmoothInterimWordAt(smoothInterimTargetWords, nextIdx);
                     smoothInterimNode.appendChild(span);
                     smoothInterimRenderedWords.push(nextWord);
                     smoothInterimSpans.push(span);
@@ -4216,6 +4382,125 @@
             }
         }
 
+        // -------------------------------------------------------------
+        // 📖 Readability Enhancements: paragraph sync, history fade ages,
+        // interim filler dimming, pause marker, stable-start interim gate
+        // -------------------------------------------------------------
+        function syncParagraphStartIndices() {
+            while (paragraphStartFlags.length > finalSentences.length) paragraphStartFlags.shift();
+            while (paragraphStartFlags.length < finalSentences.length) paragraphStartFlags.push(false);
+            paragraphStartIndices = new Set();
+            for (let i = 0; i < paragraphStartFlags.length; i++) {
+                if (paragraphStartFlags[i]) paragraphStartIndices.add(i);
+            }
+        }
+
+        function updateSentenceAges() {
+            if (!transcriptContent) return;
+            const nodes = transcriptContent.querySelectorAll('.caption-sentence:not(#liveInterimNode)');
+            const finals = Array.from(nodes).filter((n) => n !== smoothInterimNode);
+            for (let i = 0; i < finals.length; i++) {
+                const node = finals[i];
+                node.classList.remove('age-1', 'age-2', 'age-old');
+                const fromEnd = finals.length - 1 - i;
+                if (fromEnd === 1) node.classList.add('age-1');
+                else if (fromEnd === 2) node.classList.add('age-2');
+                else if (fromEnd >= 3) node.classList.add('age-old');
+            }
+        }
+
+        // Single-word interim fillers (matched case-insensitively, punctuation-tolerant).
+        const INTERIM_FILLER_SINGLE = ['um', 'uh', 'umm', 'uhh', 'er', 'ah', 'hmm'];
+        function isInterimFillerToken(token) {
+            if (!token) return false;
+            const lower = String(token).toLowerCase();
+            if (lower === 'like,') return true;
+            const bare = lower.replace(/^[^a-z0-9']+|[^a-z0-9']+$/g, '');
+            return INTERIM_FILLER_SINGLE.indexOf(bare) !== -1;
+        }
+
+        // True when words[idx] participates in a multi-word filler ("you know", "i mean").
+        function isInterimFillerPairAt(words, idx) {
+            const bare = (w) => String(w || '').toLowerCase().replace(/^[^a-z0-9']+|[^a-z0-9']+$/g, '');
+            const cur = bare(words[idx]);
+            const prev = idx > 0 ? bare(words[idx - 1]) : '';
+            const next = idx < words.length - 1 ? bare(words[idx + 1]) : '';
+            return ((prev === 'you' && cur === 'know') || (cur === 'you' && next === 'know') ||
+                    (prev === 'i' && cur === 'mean') || (cur === 'i' && next === 'mean'));
+        }
+
+        function formatSmoothInterimWordAt(words, idx) {
+            const html = formatBionicReading(words[idx]);
+            if (isInterimFillerToken(words[idx]) || isInterimFillerPairAt(words, idx)) {
+                return '<span class="filler-word">' + html + '</span>';
+            }
+            return html;
+        }
+
+        // Full-string interim rendering with filler dimming (Bionic-safe: formats word by word).
+        function formatInterimWithFillers(text) {
+            const cleaned = normalizePunctuationSpacing(text || '');
+            if (!cleaned) return '';
+            const tokens = cleaned.split(/\s+/).filter(Boolean);
+            const bare = (w) => String(w || '').toLowerCase().replace(/^[^a-z0-9']+|[^a-z0-9']+$/g, '');
+            const parts = [];
+            for (let i = 0; i < tokens.length; i++) {
+                const bareCur = bare(tokens[i]);
+                const bareNxt = i + 1 < tokens.length ? bare(tokens[i + 1]) : '';
+                if ((bareCur === 'you' && bareNxt === 'know') || (bareCur === 'i' && bareNxt === 'mean')) {
+                    parts.push('<span class="filler-word">' + formatBionicReading(tokens[i]) + ' ' + formatBionicReading(tokens[i + 1]) + '</span>');
+                    i++;
+                    continue;
+                }
+                const html = formatBionicReading(tokens[i]);
+                parts.push(isInterimFillerToken(tokens[i]) ? '<span class="filler-word">' + html + '</span>' : html);
+            }
+            return parts.join(' ');
+        }
+
+        function formatInterimText(text) {
+            return formatInterimWithFillers(text);
+        }
+
+        function removePauseMarker() {
+            if (!transcriptContent) return;
+            const marker = transcriptContent.querySelector('#pauseMarker');
+            if (marker) marker.remove();
+        }
+
+        function schedulePauseMarker() {
+            if (pauseMarkerTimer) {
+                clearTimeout(pauseMarkerTimer);
+                pauseMarkerTimer = null;
+            }
+            removePauseMarker();
+            pauseMarkerTimer = setTimeout(() => {
+                pauseMarkerTimer = null;
+                if (currentMode === 'live') return;
+                if (finalSentences.length === 0) return;
+                if (!transcriptContent) return;
+                if (!transcriptContent.querySelector('.caption-sentence:not(#liveInterimNode)')) return;
+                if (wordStreamQueue.length !== 0) return;
+                if (transcriptContent.querySelector('#pauseMarker')) return;
+                const marker = document.createElement('div');
+                marker.id = 'pauseMarker';
+                marker.className = 'pause-marker';
+                marker.setAttribute('aria-hidden', 'true');
+                marker.textContent = '· · ·';
+                transcriptContent.appendChild(marker);
+                if (autoScroll) scrollToBottom(true);
+            }, 4000);
+        }
+
+        function resetInterimGate() {
+            interimGateUnlocked = false;
+            interimGateFirstWords = "";
+            if (interimGateTimer) {
+                clearTimeout(interimGateTimer);
+                interimGateTimer = null;
+            }
+        }
+
         let justFinalizedTimer = null;
 
         function appendFinalSentence(text, utteranceId) {
@@ -4223,6 +4508,10 @@
             interimGen++;
             removeEmptyIndicator();
             wakeLiveDisplay();
+
+            const nowAppended = Date.now();
+            const isParagraphStart = lastFinalAppendedAt > 0 && (nowAppended - lastFinalAppendedAt) > 1500 && finalSentences.length > 0;
+            lastFinalAppendedAt = nowAppended;
 
             const isStreaming = (currentMode === 'smooth' || isPacedReadingEnabled);
             const interimNode = getInterimNode();
@@ -4267,6 +4556,11 @@
                 transcriptContent.insertBefore(el, interimNode);
             }
 
+            if (isParagraphStart) {
+                el.classList.add('paragraph-start');
+                el.dataset.paragraphStart = '1';
+            }
+
             if (!isStreaming && !isFinalOnlyMode && currentMode !== 'live') {
                 if (justFinalizedTimer) {
                     clearTimeout(justFinalizedTimer);
@@ -4299,12 +4593,20 @@
 
             finalSentences.push(text);
             while (finalSentences.length > maxHistorySentences) finalSentences.shift();
+            paragraphStartFlags.push(isParagraphStart);
+            while (paragraphStartFlags.length > maxHistorySentences) paragraphStartFlags.shift();
+            syncParagraphStartIndices();
+
+            if (!autoScroll) {
+                missedSentencesWhileScrolledUp++;
+                updateFloatingButtons();
+            }
 
             // When streaming mode is active, interim speech streams through smoothInterimNode instead of #liveInterimNode
             const activeInterimNode = getInterimNode();
             if (activeInterimNode) {
                 if (pendingInterimText && !isFinalOnlyMode && !isStreaming) {
-                    activeInterimNode.innerHTML = formatBionicReading(normalizePunctuationSpacing(pendingInterimText));
+                    activeInterimNode.innerHTML = formatInterimWithFillers(pendingInterimText);
                     activeInterimNode.style.display = 'block';
                 } else {
                     activeInterimNode.innerHTML = '';
@@ -4329,6 +4631,7 @@
             }
 
             triggerSilenceTimer(isPacedReadingEnabled ? 12000 : 4000);
+            updateSentenceAges();
         }
 
         function replaceLastFinalSentence(text) {
@@ -4407,7 +4710,7 @@
                 if (smoothInterimRenderedWords[i] !== targetWords[i]) {
                     smoothInterimRenderedWords[i] = targetWords[i];
                     if (smoothInterimSpans[i]) {
-                        smoothInterimSpans[i].innerHTML = formatBionicReading(targetWords[i]);
+                        smoothInterimSpans[i].innerHTML = formatSmoothInterimWordAt(targetWords, i);
                     }
                 }
             }
@@ -4420,7 +4723,7 @@
                     if (i > 0) smoothInterimNode.appendChild(document.createTextNode(' '));
                     const span = document.createElement('span');
                     span.className = 'word-reveal visible';
-                    span.innerHTML = formatBionicReading(smoothInterimRenderedWords[i]);
+                    span.innerHTML = formatSmoothInterimWordAt(targetWords, i);
                     smoothInterimNode.appendChild(span);
                     smoothInterimSpans.push(span);
                 }
@@ -4470,7 +4773,7 @@
                     }
                     const prevJustFinalized = transcriptContent.querySelectorAll('.caption-sentence.just-finalized');
                     prevJustFinalized.forEach(node => node.classList.remove('just-finalized'));
-                    interimNode.innerHTML = formatBionicReading(normalizePunctuationSpacing(curText));
+                    interimNode.innerHTML = formatInterimWithFillers(curText);
                     interimNode.style.display = 'block';
                 } else {
                     interimNode.innerHTML = '';
@@ -4499,6 +4802,16 @@
             wordStreamQueue = [];
             finalSentences = [];
             interimText = "";
+            lastFinalAppendedAt = 0;
+            paragraphStartIndices = new Set();
+            paragraphStartFlags = [];
+            missedSentencesWhileScrolledUp = 0;
+            if (pauseMarkerTimer) {
+                clearTimeout(pauseMarkerTimer);
+                pauseMarkerTimer = null;
+            }
+            removePauseMarker();
+            resetInterimGate();
             if (transcriptContent) {
                 transcriptContent.innerHTML = '<div class="empty-indicator">' + escapeHtml(getUiStrings(currentLang).waiting_speech) + '</div>';
             }
@@ -4516,10 +4829,15 @@
                 return;
             }
 
+            syncParagraphStartIndices();
             finalSentences.forEach((sentence, idx) => {
                 const el = document.createElement('div');
                 el.className = 'caption-sentence';
                 if (idx < finalSentences.length - 1) el.classList.add('previous');
+                if (paragraphStartFlags[idx]) {
+                    el.classList.add('paragraph-start');
+                    el.dataset.paragraphStart = '1';
+                }
                 el.innerHTML = formatBionicReading(sentence);
                 transcriptContent.appendChild(el);
             });
@@ -4532,7 +4850,7 @@
                     interimNode.style.display = 'none';
                     updateSmoothInterimTarget(interimText);
                 } else {
-                    interimNode.innerHTML = formatBionicReading(normalizePunctuationSpacing(interimText));
+                    interimNode.innerHTML = formatInterimWithFillers(interimText);
                     interimNode.style.display = 'block';
                 }
             } else {
@@ -4541,6 +4859,7 @@
             }
 
             if (autoScroll && wordStreamQueue.length === 0) scrollToBottom(false);
+            updateSentenceAges();
         }
 
         // Fetch session transcript history from server so Scrollable History is immediately populated
@@ -4565,6 +4884,8 @@
                             } else {
                                 finalSentences = lines;
                             }
+                            paragraphStartFlags = new Array(finalSentences.length).fill(false);
+                            paragraphStartIndices = new Set();
                             renderCaptions();
                             scrollToBottom(false);
                         }
@@ -4628,6 +4949,8 @@
                                 } else {
                                     finalSentences = snapshotTexts;
                                 }
+                                paragraphStartFlags = new Array(finalSentences.length).fill(false);
+                                paragraphStartIndices = new Set();
                                 renderCaptions();
                                 scrollToBottom(false);
                             }
@@ -4747,7 +5070,10 @@
                             text = await job;
                         }
 
+                        schedulePauseMarker();
+
                         if (data.is_final) {
+                            resetInterimGate();
                             if (typeof data.utterance_id === 'number' && data.utterance_id > 0) {
                                 lastFinalUtteranceId = Math.max(lastFinalUtteranceId, data.utterance_id);
                             }
@@ -4773,8 +5099,34 @@
                             if (typeof data.utterance_id === 'number' && data.utterance_id > 0) {
                                 lastInterimUtteranceId = data.utterance_id;
                             }
-                            interimText = text;
-                            updateInterimSpeech(text);
+                            if (typeof data.utterance_id === 'number' && data.utterance_id > 0 && data.utterance_id !== interimGateUtteranceId) {
+                                interimGateUtteranceId = data.utterance_id;
+                                resetInterimGate();
+                            }
+                            const gateWords = text.trim().split(/\s+/).filter(Boolean);
+                            if (interimGateUnlocked || gateWords.length >= 3) {
+                                interimGateUnlocked = true;
+                                if (interimGateTimer) {
+                                    clearTimeout(interimGateTimer);
+                                    interimGateTimer = null;
+                                }
+                                interimText = text;
+                                updateInterimSpeech(text);
+                            } else {
+                                interimText = text;
+                                const prefixKey = gateWords.join(' ').toLowerCase();
+                                if (prefixKey !== interimGateFirstWords) {
+                                    interimGateFirstWords = prefixKey;
+                                    if (interimGateTimer) clearTimeout(interimGateTimer);
+                                    interimGateTimer = setTimeout(() => {
+                                        interimGateTimer = null;
+                                        if (!interimGateUnlocked && interimText) {
+                                            interimGateUnlocked = true;
+                                            updateInterimSpeech(interimText);
+                                        }
+                                    }, 300);
+                                }
+                            }
                         }
                     }
                 } catch (err) {
@@ -4821,8 +5173,8 @@
                             setFontSize(parseInt(d.font_size, 10));
                         }
                         // 4. Line Height
-                        if (d.line_height && localStorage.getItem('voxstream_display_a11y') === null) {
-                            document.documentElement.style.setProperty('--line-height', `${d.line_height}`);
+                        if (d.line_height && localStorage.getItem('voxstream_display_a11y') === null && localStorage.getItem('voxstream_display_line_height') === null) {
+                            applyCustomLineHeight(parseFloat(d.line_height), false);
                         }
                         // 5. Interim Speech (Final Only)
                         if (d.show_interim !== undefined && localStorage.getItem("voxstream_display_final_only") === null && !urlParams.has('final_only')) {
