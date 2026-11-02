@@ -1134,6 +1134,23 @@
             transition: color 0.6s ease, opacity 0.35s ease;
         }
 
+        /* Bionic Reading must not erase the blue "newest sentence" marker:
+           keep interim/streaming/just-finalized text (and its bold fixations) in the interim color. */
+        body.bionic-active .caption-sentence.interim,
+        body.bionic-active .caption-sentence.streaming-active,
+        body.bionic-active .caption-sentence.just-finalized,
+        body.bionic-active.mode-smooth .caption-sentence:not(.previous),
+        body.bionic-active.final-only-mode .caption-sentence:not(.previous) {
+            color: var(--interim-color, #38BDF8) !important;
+        }
+        body.bionic-active .caption-sentence.interim .bionic-fixation,
+        body.bionic-active .caption-sentence.streaming-active .bionic-fixation,
+        body.bionic-active .caption-sentence.just-finalized .bionic-fixation,
+        body.bionic-active.mode-smooth .caption-sentence:not(.previous) .bionic-fixation,
+        body.bionic-active.final-only-mode .caption-sentence:not(.previous) .bionic-fixation {
+            color: inherit !important;
+        }
+
         .caption-sentence.interim::after {
             content: "▍";
             display: inline-block;
@@ -1170,12 +1187,18 @@
 
         /* Tier 2: Active Focus Highlight Mode (Opt-In Setting #chkActiveFocusHighlight)
            Goes further by adding left accent bar, subtle callout background, and dimming older sentences */
+        /* Every sentence reserves the same border + padding box so text never
+           reflows sideways or vertically when the highlight moves to the next sentence. */
+        body.focus-highlight-mode:not(.mode-live) .caption-sentence {
+            border-left: 4px solid transparent;
+            padding: 6px 12px;
+            border-radius: 4px 8px 8px 4px;
+        }
         body.focus-highlight-mode:not(.mode-live) .caption-sentence.previous {
             opacity: 0.72;
             background: transparent;
-            border-left: 4px solid transparent;
-            padding-left: 0;
-            transition: opacity 0.35s ease, background 0.35s ease;
+            box-shadow: none;
+            transition: opacity 0.35s ease, background 0.35s ease, border-color 0.35s ease;
         }
         body.focus-highlight-mode:not(.mode-live) .caption-sentence:not(.previous):not(.interim) {
             opacity: 1;
