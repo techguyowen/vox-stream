@@ -1703,7 +1703,7 @@
             
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.12); padding-bottom: 14px; margin-bottom: 16px;">
                 <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
-                    <span id="settingsModalTitle">⚙️ Display &amp; Reading Settings</span>
+                    <span id="settingsModalTitle">Display &amp; Reading Settings</span>
                 </h3>
                 <button id="btnCloseSettings" style="background: none; border: none; color: #9CA3AF; font-size: 24px; font-weight: bold; cursor: pointer; padding: 0 6px; line-height: 1;">✕</button>
             </div>
@@ -1843,39 +1843,39 @@
 
                 <!-- Section B: Reading & Layout -->
                 <div class="settings-section-card">
-                    <div class="settings-section-header">📖 Reading &amp; Layout</div>
+                    <div class="settings-section-header">Reading &amp; Layout</div>
                     <div class="settings-list">
                         <label class="settings-row">
                             <span class="settings-row-text">
-                                <span id="lblScriptureOverlay" class="settings-row-title">📖 Auto-Popup Scripture Cards</span>
-                                <span class="settings-row-desc">Show verse cards automatically when scripture is spoken.</span>
+                                <span id="lblScriptureOverlay" class="settings-row-title">Scripture Verse Popups</span>
+                                <span class="settings-row-desc">Display verse cards when citations are spoken.</span>
                             </span>
                             <input type="checkbox" id="chkShowScriptureOverlay" checked>
                         </label>
                         <label class="settings-row">
                             <span class="settings-row-text">
-                                <span id="lblParagraphGrouping" class="settings-row-title">📑 Paragraph Grouping</span>
+                                <span id="lblParagraphGrouping" class="settings-row-title">Paragraph Grouping by Pause</span>
                                 <span class="settings-row-desc">Start a new paragraph whenever the speaker pauses.</span>
                             </span>
                             <input type="checkbox" id="chkParagraphGrouping">
                         </label>
                         <label class="settings-row">
                             <span class="settings-row-text">
-                                <span id="lblActiveFocus" class="settings-row-title">🎯 Active Focus Highlight</span>
-                                <span class="settings-row-desc">Highlight the active sentence with a callout border and dim older lines.</span>
+                                <span id="lblActiveFocus" class="settings-row-title">Active Sentence Highlight</span>
+                                <span class="settings-row-desc">Highlight current sentence and dim older lines.</span>
                             </span>
                             <input type="checkbox" id="chkActiveFocusHighlight">
                         </label>
                         <label class="settings-row">
                             <span class="settings-row-text">
-                                <span id="lblReadingColumn" class="settings-row-title">📐 Book-Width Column (62ch)</span>
+                                <span id="lblReadingColumn" class="settings-row-title">Reading Column Width (62ch)</span>
                                 <span class="settings-row-desc">Center captions in a comfortable reading column on wide screens.</span>
                             </span>
                             <input type="checkbox" id="chkReadingColumn">
                         </label>
                         <label class="settings-row">
                             <span class="settings-row-text">
-                                <span id="lblBionic" class="settings-row-title">⚡ Bionic Reading</span>
+                                <span id="lblBionic" class="settings-row-title">Bionic Reading</span>
                                 <span class="settings-row-desc">Bold the leading letters of each word for faster eye fixation.</span>
                             </span>
                             <input type="checkbox" id="chkDisplayBionic">
@@ -1885,62 +1885,62 @@
 
                 <!-- Section C: Pacing, Accessibility & Display Options -->
                 <details class="settings-details" id="advancedSettingsDetails">
-                    <summary><span>🎚️ Pacing, Accessibility &amp; Display</span></summary>
+                    <summary><span>Pacing, Accessibility &amp; Display</span></summary>
                     <div class="settings-details-body">
                         <div class="settings-list">
                             <!-- Word Stream Speed Slider (Smooth Flow / Paced Reading) -->
                             <div id="wordSpeedControlGroup" style="padding: 8px 6px;">
                                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
-                                    <label for="wordSpeedSlider" style="font-size: 13px; font-weight: 600; color: #F1F5F9; cursor: pointer;">🌊 Word Stream Speed</label>
+                                    <label for="wordSpeedSlider" style="font-size: 13px; font-weight: 600; color: #F1F5F9; cursor: pointer;">Word Stream Speed</label>
                                     <span id="wordSpeedValBadge" style="font-size: 11.5px; font-weight: 800; font-family: monospace; color: #E2E8F0; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(56, 189, 248, 0.4); padding: 2px 8px; border-radius: 6px;">285 WPM (210ms)</span>
                                 </div>
                                 <input type="range" id="wordSpeedSlider" min="120" max="500" step="10" value="285" style="width: 100%; cursor: pointer; accent-color: #38BDF8;">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; font-size: 10.5px; color: #94A3B8;">
-                                    <span>🐢 Slower (120 WPM)</span>
+                                    <span>Slower (120 WPM)</span>
                                     <button type="button" id="btnResetWordSpeed" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); color: #CBD5E1; font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 4px; cursor: pointer;">Reset Default (285 WPM)</button>
-                                    <span>🐇 Faster (500 WPM)</span>
+                                    <span>Faster (500 WPM)</span>
                                 </div>
                             </div>
                             <!-- Teleprompter Anchor Option (Smooth Flow Mode) -->
                             <label id="teleprompterAnchorGroup" class="settings-row" style="display: none;">
                                 <span class="settings-row-text">
-                                    <span id="lblTeleprompterAnchor" class="settings-row-title">🎬 Teleprompter Anchor (Smooth Flow)</span>
+                                    <span id="lblTeleprompterAnchor" class="settings-row-title">Teleprompter Anchor (Smooth Flow)</span>
                                     <span class="settings-row-desc">Keep the active line two-thirds down the screen.</span>
                                 </span>
                                 <input type="checkbox" id="chkTeleprompterAnchor">
                             </label>
                             <label class="settings-row">
                                 <span class="settings-row-text">
-                                    <span id="lblSlowDown" class="settings-row-title">🐢 Slow Down Text</span>
+                                    <span id="lblSlowDown" class="settings-row-title">Paced Reading (140 WPM)</span>
                                     <span class="settings-row-desc">Pace words steadily and hold captions on screen 3× longer.</span>
                                 </span>
                                 <input type="checkbox" id="chkDisplayPacing">
                             </label>
                             <label class="settings-row">
                                 <span class="settings-row-text">
-                                    <span id="lblFinalOnly" class="settings-row-title">✨ Final Sentences Only</span>
-                                    <span class="settings-row-desc">Hide live in-progress words until sentences are finalized.</span>
+                                    <span id="lblFinalOnly" class="settings-row-title">Final Sentences Only</span>
+                                    <span class="settings-row-desc">Hide interim speech until sentences finalize.</span>
                                 </span>
                                 <input type="checkbox" id="chkDisplayFinalOnly">
                             </label>
                             <label class="settings-row">
                                 <span class="settings-row-text">
-                                    <span id="lblVisualAid" class="settings-row-title">👁️ Visual Aid Spacing</span>
+                                    <span id="lblVisualAid" class="settings-row-title">Visual Aid Spacing</span>
                                     <span class="settings-row-desc">Expand letter spacing, word spacing, and minimum line height (1.65×).</span>
                                 </span>
                                 <input type="checkbox" id="chkDisplayA11y">
                             </label>
                             <label class="settings-row">
                                 <span class="settings-row-text">
-                                    <span id="lblFlatText" class="settings-row-title">🔤 Flat Text (No Shadow)</span>
+                                    <span id="lblFlatText" class="settings-row-title">Flat Text (No Shadow)</span>
                                     <span class="settings-row-desc">Remove drop shadows around caption words.</span>
                                 </span>
                                 <input type="checkbox" id="chkDisableTextShadow">
                             </label>
                             <label class="settings-row">
                                 <span class="settings-row-text">
-                                    <span class="settings-row-title">📱 Keep Screen Awake <span id="wakeLockStatusBadge" style="display: inline-block; margin-left: 6px; font-size: 10px; font-weight: 700; color: #34D399; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); padding: 1px 6px; border-radius: 4px; vertical-align: 1px;">● Active</span></span>
-                                    <span class="settings-row-desc">Prevent device screen from sleeping during live sessions.</span>
+                                    <span class="settings-row-title">Keep Screen Awake <span id="wakeLockStatusBadge" style="display: inline-block; margin-left: 6px; font-size: 10px; font-weight: 700; color: #34D399; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); padding: 1px 6px; border-radius: 4px; vertical-align: 1px;">● Active</span></span>
+                                    <span class="settings-row-desc">Prevent device from sleeping during live sessions.</span>
                                 </span>
                                 <input type="checkbox" id="chkKeepScreenAwake" checked>
                             </label>
@@ -1951,22 +1951,22 @@
                 <!-- Section D: Quick Actions -->
                 <div class="settings-quick-grid">
                     <button type="button" id="btnOpenTutorialFromSettings" class="ctrl-btn" style="background: rgba(168, 85, 247, 0.18); border: 1px solid rgba(168, 85, 247, 0.45); color: #C084FC;">
-                        💡 Tutorial &amp; Guide
+                        Tutorial &amp; Guide
                     </button>
                     <button type="button" id="btnSettingsShareQr" class="ctrl-btn" style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #7DD3FC;">
-                        📱 Share / QR Code
+                        Share Screen
                     </button>
                     <button type="button" id="btnInstallPwa" class="ctrl-btn" style="background: rgba(59, 130, 246, 0.18); border: 1px solid rgba(59, 130, 246, 0.45); color: #60A5FA;">
-                        📲 Install App
+                        Install App
                     </button>
                     <button type="button" id="btnModalClearHistory" class="ctrl-btn" style="color: #FCA5A5; border-color: rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.1);">
-                        🗑️ Clear History
+                        Clear History
                     </button>
                 </div>
 
                 <div style="padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.12); display: flex; justify-content: flex-end;">
                     <button id="btnDoneSettings" class="ctrl-btn" style="padding: 10px 20px; font-weight: 700; width: 100%; justify-content: center; background: #2563EB; color: #FFFFFF; border: none; font-size: 14.5px; border-radius: 8px; cursor: pointer;">
-                        ✓ Done
+                        Done
                     </button>
                 </div>
             </div>
@@ -2002,7 +2002,7 @@
             
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.12); padding-bottom: 14px; margin-bottom: 16px;">
                 <h3 style="margin: 0; font-size: 18px; font-weight: 700; color: #FFFFFF; display: flex; align-items: center; gap: 8px;">
-                    <span style="color: #C084FC;">💡</span> <span>Read-Along Tutorial &amp; Guide</span>
+                    <span>Read-Along Tutorial &amp; Guide</span>
                 </h3>
                 <button id="btnCloseTutorial" aria-label="Close Tutorial" style="background: none; border: none; color: #9CA3AF; font-size: 24px; font-weight: bold; cursor: pointer; padding: 0 6px; line-height: 1;">✕</button>
             </div>
@@ -2012,7 +2012,7 @@
                 <!-- Card 1: Welcome -->
                 <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px;">
                     <div style="font-size: 13.5px; font-weight: 700; color: #38BDF8; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
-                        🎙️ Welcome to Live Read-Along
+                        Welcome to Live Read-Along
                     </div>
                     <div style="font-size: 12.5px; color: #CBD5E1; line-height: 1.5;">
                         Real-time spoken captions and prompter for worship services, lectures, conferences, and personal accessibility. Follow along with live speech in real time on any phone, tablet, or monitor.
@@ -2022,11 +2022,11 @@
                 <!-- Card 2: Display Modes -->
                 <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px;">
                     <div style="font-size: 13.5px; font-weight: 700; color: #FBBF24; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-                        📜 Display Modes
+                        Display Modes
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; color: #CBD5E1; line-height: 1.5;">
                         <div>
-                            <strong style="color: #F8FAFC;">• Scrollable History:</strong> Continuous reading log with seamless interim-to-final promotion and graduated recency fade. Scrolling upward pauses auto-scroll, brings all lines to 100% brightness, and counts new sentences on the floating <strong style="color: #60A5FA;">"⬇️ Resume Auto-Scroll"</strong> button.
+                            <strong style="color: #F8FAFC;">• Scrollable History:</strong> Continuous reading log with seamless interim-to-final promotion and graduated recency fade. Scrolling upward pauses auto-scroll, brings all lines to 100% brightness, and counts new sentences on the floating <strong style="color: #60A5FA;">"Resume Auto-Scroll"</strong> button.
                         </div>
                         <div>
                             <strong style="color: #F8FAFC;">• Smooth Flow:</strong> Streams words one-by-one at your chosen reading speed (configurable per device from 120–500 WPM) with natural punctuation pauses, zero vertical layout bounce, and an optional <strong style="color: #38BDF8;">Teleprompter Anchor</strong> that keeps the active line two-thirds down the screen.
@@ -2040,20 +2040,20 @@
                 <!-- Card 3: Reading & Layout Aids -->
                 <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px;">
                     <div style="font-size: 13.5px; font-weight: 700; color: #34D399; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-                        📖 Reading, Layout &amp; Appearance
+                        Reading, Layout &amp; Appearance
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; color: #CBD5E1; line-height: 1.5;">
                         <div>
                             <strong style="color: #F8FAFC;">• Text Size, Line Spacing &amp; Themes:</strong> Adjust text size (or pinch-to-zoom on touch screens), line spacing (<strong style="color: #93C5FD;">1.3×–1.9×</strong>), 11 fonts (including OpenDyslexic &amp; Lexend), and 9+ high-contrast or custom color themes.
                         </div>
                         <div>
-                            <strong style="color: #F8FAFC;">• Paragraph Grouping &amp; Focus Highlight:</strong> Automatically starts a new paragraph when the speaker pauses, or adds a callout border around the active sentence.
+                            <strong style="color: #F8FAFC;">• Paragraph Grouping by Pause &amp; Active Sentence Highlight:</strong> Start a new paragraph when the speaker pauses, or highlight the active sentence.
                         </div>
                         <div>
-                            <strong style="color: #F8FAFC;">• Book-Width Column (62ch) &amp; Bionic Reading:</strong> Centers captions in a comfortable reading column on wide screens and bolds word beginnings for rapid eye fixation.
+                            <strong style="color: #F8FAFC;">• Reading Column Width (62ch) &amp; Bionic Reading:</strong> Center captions in a reading column on wide screens and bold word beginnings for faster fixation.
                         </div>
                         <div>
-                            <strong style="color: #F8FAFC;">• Pacing &amp; Visual Aids:</strong> Expandable section in Settings for per-device <strong style="color: #38BDF8;">Word Stream Speed</strong>, <strong style="color: #FBBF24;">Slow Down Text</strong>, <strong style="color: #34D399;">Final Sentences Only</strong>, <strong style="color: #38BDF8;">Visual Aid Spacing</strong>, and <strong style="color: #CBD5E1;">Flat Text</strong>.
+                            <strong style="color: #F8FAFC;">• Pacing &amp; Visual Aids:</strong> Settings section for <strong style="color: #38BDF8;">Word Stream Speed</strong>, <strong style="color: #FBBF24;">Paced Reading</strong>, <strong style="color: #34D399;">Final Sentences Only</strong>, <strong style="color: #38BDF8;">Visual Aid Spacing</strong>, and <strong style="color: #CBD5E1;">Flat Text</strong>.
                         </div>
                     </div>
                 </div>
@@ -2061,14 +2061,14 @@
                 <!-- Card 4: Scripture Cards & Passage Reader -->
                 <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px;">
                     <div style="font-size: 13.5px; font-weight: 700; color: #E9D5FF; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-                        📖 Scripture Cards &amp; Full-Chapter Reader
+                        Scripture Cards &amp; Full-Chapter Reader
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; color: #CBD5E1; line-height: 1.5;">
                         <div>
-                            <strong style="color: #F8FAFC;">• Auto-Popup Verse Cards:</strong> Spoken Bible references automatically pull up the verse on screen (can be toggled off in Settings for uninterrupted captions).
+                            <strong style="color: #F8FAFC;">• Scripture Verse Popups:</strong> Display verse cards when citations are spoken. Disable in Settings for uninterrupted captions.
                         </div>
                         <div>
-                            <strong style="color: #F8FAFC;">• Scripture Passage Reader:</strong> Tap <strong style="color: #C084FC;">📖 Scripture</strong> in the header (or <strong style="color: #E9D5FF;">📖 Full Chapter</strong> on any verse card) to browse the entire chapter, switch translations (BSB, WEB, KJV), or revisit any scripture mentioned during the message.
+                            <strong style="color: #F8FAFC;">• Scripture Passage Reader:</strong> Tap <strong style="color: #C084FC;">Scripture</strong> in the header (or <strong style="color: #E9D5FF;">Full Chapter</strong> on any verse card) to browse the chapter, switch translations (BSB, WEB, KJV), or revisit scriptures from the message.
                         </div>
                     </div>
                 </div>
@@ -2076,14 +2076,14 @@
                 <!-- Card 5: Live Translation & Spoken Audio -->
                 <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px;">
                     <div style="font-size: 13.5px; font-weight: 700; color: #C084FC; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-                        🌐 Live Translation &amp; Spoken Audio
+                        Live Translation &amp; Spoken Audio
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; color: #CBD5E1; line-height: 1.5;">
                         <div>
                             <strong style="color: #F8FAFC;">• 20+ Languages:</strong> Select from 20+ languages in the header bar.
                         </div>
                         <div>
-                            <strong style="color: #F8FAFC;">• Spoken Audio:</strong> Tap 🎧 <strong style="color: #34D399;">Listen Live</strong> when interpreter mode is enabled to hear real-time AI spoken translation in your headphones.
+                            <strong style="color: #F8FAFC;">• Spoken Audio:</strong> Tap <strong style="color: #34D399;">Listen Live</strong> when interpreter mode is enabled to hear spoken translation.
                         </div>
                     </div>
                 </div>
@@ -2091,7 +2091,7 @@
                 <!-- Card 6: Install as App -->
                 <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px;">
                     <div style="font-size: 13.5px; font-weight: 700; color: #60A5FA; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
-                        📲 Install as App
+                        Install as App
                     </div>
                     <div style="font-size: 12.5px; color: #CBD5E1; line-height: 1.5;">
                         Run VoxStream as a native full-screen app without browser address bars, with screen wake lock automatically enabled.
@@ -2101,7 +2101,7 @@
                 <!-- Card 7: Keyboard Shortcuts -->
                 <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px;">
                     <div style="font-size: 13.5px; font-weight: 700; color: #F43F5E; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-                        ⌨️ Keyboard Shortcuts
+                        Keyboard Shortcuts
                     </div>
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; font-size: 12px; color: #CBD5E1;">
                         <div><kbd style="background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); border-radius: 4px; padding: 2px 6px; font-family: monospace; color: #FFFFFF; font-weight: 700;">?</kbd> or <kbd style="background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25); border-radius: 4px; padding: 2px 6px; font-family: monospace; color: #FFFFFF; font-weight: 700;">T</kbd>: Open Tutorial</div>
@@ -2118,7 +2118,7 @@
 
                 <div style="margin-top: 6px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.12);">
                     <button id="btnDoneTutorial" class="ctrl-btn" style="padding: 10px 20px; font-weight: 700; width: 100%; justify-content: center; background: #9333EA; color: #FFFFFF; border: none; font-size: 14px; border-radius: 8px; cursor: pointer;">
-                        ✓ Got It / Close
+                        Got It / Close
                     </button>
                 </div>
             </div>
@@ -2249,6 +2249,37 @@
     <button class="jump-live-btn" id="btnScrollBottom" title="Resume Auto-Scroll / Jump to Latest Live Speech">⬇️ Resume Auto-Scroll</button>
 
     <script>
+        const Prefs = {
+            get(key, fallback) {
+                try {
+                    const v = localStorage.getItem(key);
+                    return v === null ? fallback : v;
+                } catch {
+                    return fallback;
+                }
+            },
+            set(key, val) {
+                try {
+                    localStorage.setItem(key, String(val));
+                } catch {}
+            },
+            getBool(key, fallback) {
+                const v = this.get(key, null);
+                return v === null ? fallback : v === 'true';
+            },
+            remove(key) {
+                try { localStorage.removeItem(key); } catch {}
+            }
+        };
+        const TIMING = {
+            PROSODY_PAUSE_MS: 1500,
+            IDLE_PAUSE_MARKER_MS: 4000,
+            JUST_FINALIZED_HOLD_MS: 2200,
+            INTERIM_GATE_STABILIZE_MS: 300,
+            RECONNECT_INITIAL_MS: 2000,
+            RECONNECT_MAX_MS: 10000,
+            TOAST_DURATION_MS: 1200
+        };
         // Screen & State
         const isMobile = window.innerWidth <= 768;
         const isTablet = (window.innerWidth >= 600 && window.innerWidth <= 1100) || (navigator.maxTouchPoints > 1 && window.innerWidth <= 1366);
@@ -2258,8 +2289,8 @@
 
         // URL & Preference State
         const urlParams = new URLSearchParams(window.location.search);
-        let currentLang = urlParams.get('lang') || localStorage.getItem('voxstream_display_lang') || 'en';
-        let currentMode = urlParams.get('mode') || localStorage.getItem('voxstream_display_mode') || 'scrollable';
+        let currentLang = urlParams.get('lang') || Prefs.get('voxstream_display_lang', 'en');
+        let currentMode = urlParams.get('mode') || Prefs.get('voxstream_display_mode', 'scrollable');
 
         // In 'scrollable' mode we retain up to 300 sentences for scrolling back; in 'live' mode only 2 active lines
         let maxHistorySentences = (currentMode === 'live') ? 2 : 300;
@@ -2861,18 +2892,18 @@
                 btnFontIncEl.title = t.font_size + ' (+)';
                 btnFontIncEl.setAttribute('aria-label', t.font_size + ' (+)');
             }
-            setText('settingsModalTitle', '⚙️ ' + t.reading_settings);
-            setText('lblVisualAid', '👁️ ' + t.visual_aid);
-            setText('lblSlowDown', '🐢 ' + t.slow_down);
-            setText('lblBionic', '⚡ ' + t.bionic);
-            setText('lblFinalOnly', '✨ ' + t.final_only);
-            setText('lblFlatText', '🔤 ' + t.flat_text);
-            setText('lblTheme', '🎨 ' + t.theme);
-            setText('lblTypeface', '🔤 ' + t.typeface);
-            setText('lblFontSize', '🔤 ' + t.font_size);
-            setText('btnDoneSettings', '✓ ' + t.done);
+            setText('settingsModalTitle', t.reading_settings);
+            setText('lblVisualAid', lang === 'en' ? 'Visual Aid Spacing' : t.visual_aid);
+            setText('lblSlowDown', lang === 'en' ? 'Paced Reading (140 WPM)' : t.slow_down);
+            setText('lblBionic', t.bionic);
+            setText('lblFinalOnly', t.final_only);
+            setText('lblFlatText', lang === 'en' ? 'Flat Text (No Shadow)' : t.flat_text);
+            setText('lblTheme', t.theme);
+            setText('lblTypeface', t.typeface);
+            setText('lblFontSize', t.font_size);
+            setText('btnDoneSettings', t.done);
             setText('btnDoneShare', t.done);
-            setText('btnModalClearHistory', '🗑️ ' + t.clear);
+            setText('btnModalClearHistory', t.clear);
             const modalVal = document.getElementById('modalFontSizeVal');
             if (modalVal) modalVal.setAttribute('aria-label', t.font_size);
             if (transcriptContent) {
@@ -3005,7 +3036,7 @@
         // Mode Selector: Scrollable History vs Smooth Flow vs Live Prompter
         function applyDisplayMode(mode) {
             currentMode = mode;
-            localStorage.setItem('voxstream_display_mode', currentMode);
+            Prefs.set('voxstream_display_mode', currentMode);
             if (displayModeSelect) displayModeSelect.value = currentMode;
 
             if (currentMode === 'live') {
@@ -3072,7 +3103,7 @@
             langSelect.addEventListener('change', async (e) => {
                 const newLang = e.target.value;
                 currentLang = newLang;
-                localStorage.setItem('voxstream_display_lang', currentLang);
+                Prefs.set('voxstream_display_lang', currentLang);
                 updateAudioButtonVisibility();
                 applyUiLanguage(currentLang);
 
@@ -3128,7 +3159,7 @@
             if (fontSizeToastTimer) clearTimeout(fontSizeToastTimer);
             fontSizeToastTimer = setTimeout(() => {
                 toast.classList.remove('show');
-            }, 1200);
+            }, TIMING.TOAST_DURATION_MS);
         }
 
         function setFontSize(size, showToastFlag = false) {
@@ -3137,7 +3168,7 @@
             const maxSize = isSmallPhone ? 56 : 96;
             currentFontSize = Math.max(minSize, Math.min(maxSize, size));
             document.documentElement.style.setProperty('--font-size', `${currentFontSize}px`);
-            localStorage.setItem('voxstream_display_fontsize', currentFontSize);
+            Prefs.set('voxstream_display_fontsize', currentFontSize);
             const modalVal = document.getElementById('modalFontSizeVal');
             if (modalVal) modalVal.textContent = `${currentFontSize}px`;
             if (showToastFlag) showFontSizeToast(currentFontSize);
@@ -3145,11 +3176,11 @@
 
         function setFontFamily(font) {
             document.documentElement.style.setProperty('--font-family', font);
-            localStorage.setItem('voxstream_display_font', font);
+            Prefs.set('voxstream_display_font', font);
             if (fontSelect) fontSelect.value = font;
         }
 
-        const savedSize = localStorage.getItem('voxstream_display_fontsize');
+        const savedSize = Prefs.get('voxstream_display_fontsize', null);
         if (savedSize) {
             let parsed = parseInt(savedSize);
             // If on mobile and a giant desktop size (e.g. 48px) was previously saved, normalize to mobile default
@@ -3160,7 +3191,7 @@
             setFontSize(defaultFontSize);
         }
 
-        const savedFont = localStorage.getItem('voxstream_display_font');
+        const savedFont = Prefs.get('voxstream_display_font', null);
         if (savedFont) setFontFamily(savedFont);
 
         if (fontSelect) {
@@ -3206,7 +3237,7 @@
         function loadCustomTheme() {
             const theme = { ...DEFAULT_CUSTOM_THEME };
             try {
-                const raw = localStorage.getItem(CUSTOM_THEME_KEY);
+                const raw = Prefs.get(CUSTOM_THEME_KEY, null);
                 if (raw) {
                     const parsed = JSON.parse(raw);
                     for (const key of Object.keys(DEFAULT_CUSTOM_THEME)) {
@@ -3299,9 +3330,7 @@
         }
 
         function persistCustomTheme() {
-            try {
-                localStorage.setItem(CUSTOM_THEME_KEY, JSON.stringify(customTheme));
-            } catch (err) {}
+            Prefs.set(CUSTOM_THEME_KEY, JSON.stringify(customTheme));
         }
 
         function syncCustomInputs() {
@@ -3403,14 +3432,14 @@
         wireCustomColorControls();
         syncCustomInputs();
 
-        const savedTheme = localStorage.getItem('voxstream_display_theme');
+        const savedTheme = Prefs.get('voxstream_display_theme', null);
         if (savedTheme) setTheme(savedTheme);
         else if (themeSelect && themeSelect.value === 'theme-custom') setTheme('theme-custom');
 
         if (themeSelect) {
             themeSelect.addEventListener('change', (e) => {
                 setTheme(e.target.value);
-                localStorage.setItem('voxstream_display_theme', e.target.value);
+                Prefs.set('voxstream_display_theme', e.target.value);
             });
         }
 
@@ -3432,20 +3461,18 @@
                 : String(customLineHeight);
             document.documentElement.style.setProperty('--line-height', effective);
             if (persist) {
-                try {
-                    localStorage.setItem('voxstream_display_line_height', String(clamped));
-                } catch(e) {}
+                Prefs.set('voxstream_display_line_height', String(clamped));
             }
         }
 
-        try {
-            const savedLh = localStorage.getItem('voxstream_display_line_height');
+        {
+            const savedLh = Prefs.get('voxstream_display_line_height', null);
             if (savedLh !== null && !isNaN(Number(savedLh))) {
                 applyCustomLineHeight(Number(savedLh), false);
             } else {
                 applyCustomLineHeight(DEFAULT_LINE_HEIGHT, false);
             }
-        } catch(e) {}
+        }
 
         const lineHeightSlider = document.getElementById('lineHeightSlider');
         if (lineHeightSlider) {
@@ -3454,9 +3481,7 @@
         const btnResetLineHeight = document.getElementById('btnResetLineHeight');
         if (btnResetLineHeight) {
             btnResetLineHeight.addEventListener('click', () => {
-                try {
-                    localStorage.removeItem('voxstream_display_line_height');
-                } catch(e) {}
+                Prefs.remove('voxstream_display_line_height');
                 applyCustomLineHeight(DEFAULT_LINE_HEIGHT, false);
             });
         }
@@ -3475,15 +3500,10 @@
                 document.documentElement.style.setProperty("--font-style", "normal");
             }
             if (chkDisplayA11y) chkDisplayA11y.checked = enabled;
-            try {
-                localStorage.setItem("voxstream_display_a11y", enabled ? "true" : "false");
-            } catch(e) {}
+            Prefs.set("voxstream_display_a11y", enabled ? "true" : "false");
         }
 
-        try {
-            const savedA11y = localStorage.getItem("voxstream_display_a11y") === "true";
-            if (savedA11y) applyDisplayA11yMode(true);
-        } catch(e) {}
+        if (Prefs.getBool("voxstream_display_a11y", false)) applyDisplayA11yMode(true);
 
         if (chkDisplayA11y) {
             chkDisplayA11y.addEventListener("change", (e) => applyDisplayA11yMode(e.target.checked));
@@ -3540,9 +3560,7 @@
             isBionicReadingEnabled = enabled;
             document.body.classList.toggle("bionic-active", enabled);
             if (chkDisplayBionic) chkDisplayBionic.checked = enabled;
-            try {
-                localStorage.setItem("voxstream_display_bionic", enabled ? "true" : "false");
-            } catch(e) {}
+            Prefs.set("voxstream_display_bionic", enabled ? "true" : "false");
             renderCaptions();
             if (typeof updateCustomPreview === "function") updateCustomPreview();
         }
@@ -3552,10 +3570,7 @@
         }
         window.applyBionicReading = applyBionicReading;
 
-        try {
-            const savedBionic = localStorage.getItem("voxstream_display_bionic") === "true";
-            if (savedBionic) applyDisplayBionicMode(true);
-        } catch(e) {}
+        if (Prefs.getBool("voxstream_display_bionic", false)) applyDisplayBionicMode(true);
 
         if (chkDisplayBionic) {
             chkDisplayBionic.addEventListener("change", (e) => applyDisplayBionicMode(e.target.checked));
@@ -3592,62 +3607,56 @@
             isReadingColumnEnabled = !!enabled;
             document.body.classList.toggle("reading-column-mode", !!enabled);
             if (chkReadingColumn) chkReadingColumn.checked = isReadingColumnEnabled;
-            try {
-                localStorage.setItem("voxstream_display_reading_column", isReadingColumnEnabled ? "true" : "false");
-            } catch(e) {}
+            Prefs.set("voxstream_display_reading_column", isReadingColumnEnabled ? "true" : "false");
         }
 
         function applyDisplayFocusHighlightMode(enabled) {
             isFocusHighlightEnabled = !!enabled;
             document.body.classList.toggle('focus-highlight-mode', isFocusHighlightEnabled);
             if (chkActiveFocusHighlight) chkActiveFocusHighlight.checked = isFocusHighlightEnabled;
-            try {
-                localStorage.setItem("voxstream_display_focus_highlight", isFocusHighlightEnabled ? "true" : "false");
-            } catch(e) {}
+            Prefs.set("voxstream_display_focus_highlight", isFocusHighlightEnabled ? "true" : "false");
         }
 
         function applyDisplayParagraphGroupingMode(enabled) {
             isParagraphGroupingEnabled = !!enabled;
             document.body.classList.toggle('paragraph-grouping-mode', isParagraphGroupingEnabled);
             if (chkParagraphGrouping) chkParagraphGrouping.checked = isParagraphGroupingEnabled;
-            try {
-                localStorage.setItem("voxstream_display_paragraph_grouping", isParagraphGroupingEnabled ? "true" : "false");
-            } catch(e) {}
+            Prefs.set("voxstream_display_paragraph_grouping", isParagraphGroupingEnabled ? "true" : "false");
         }
 
-        try {
-            const savedFocus = localStorage.getItem("voxstream_display_focus_highlight");
+        {
+            const savedFocus = Prefs.get("voxstream_display_focus_highlight", null);
             if (savedFocus !== null) {
                 applyDisplayFocusHighlightMode(savedFocus === "true");
             } else {
                 applyDisplayFocusHighlightMode(false);
             }
-        } catch(e) {}
+        }
 
-        try {
-            const savedGrouping = localStorage.getItem("voxstream_display_paragraph_grouping");
+        {
+            const savedGrouping = Prefs.get("voxstream_display_paragraph_grouping", null);
             if (savedGrouping !== null) {
                 applyDisplayParagraphGroupingMode(savedGrouping === "true");
             } else {
                 applyDisplayParagraphGroupingMode(false);
             }
-        } catch(e) {}
+        }
 
-        try {
+        {
             const urlReadingColumn = urlParams.get('reading_column');
             if (urlReadingColumn === '1' || urlReadingColumn === 'true' || urlReadingColumn === 'yes') {
                 applyDisplayReadingColumnMode(true);
             } else if (urlReadingColumn === '0' || urlReadingColumn === 'false' || urlReadingColumn === 'no') {
                 applyDisplayReadingColumnMode(false);
             } else {
-                const savedReadingColumn = localStorage.getItem("voxstream_display_reading_column");
+                const savedReadingColumn = Prefs.get("voxstream_display_reading_column", null);
                 if (savedReadingColumn !== null) {
                     applyDisplayReadingColumnMode(savedReadingColumn === "true");
                 } else {
                     applyDisplayReadingColumnMode(false);
                 }
             }
-        } catch(e) {}
+        }
 
         if (chkActiveFocusHighlight) {
             chkActiveFocusHighlight.addEventListener("change", (e) => applyDisplayFocusHighlightMode(e.target.checked));
@@ -3666,14 +3675,10 @@
             isTeleprompterAnchorEnabled = !!enabled;
             document.body.classList.toggle('teleprompter-anchor', isTeleprompterAnchorEnabled);
             if (chkTeleprompterAnchor) chkTeleprompterAnchor.checked = isTeleprompterAnchorEnabled;
-            try {
-                localStorage.setItem('voxstream_display_teleprompter_anchor', isTeleprompterAnchorEnabled ? 'true' : 'false');
-            } catch(e) {}
+            Prefs.set('voxstream_display_teleprompter_anchor', isTeleprompterAnchorEnabled ? 'true' : 'false');
         }
 
-        try {
-            applyTeleprompterAnchorMode(localStorage.getItem('voxstream_display_teleprompter_anchor') === 'true');
-        } catch(e) {}
+        applyTeleprompterAnchorMode(Prefs.getBool('voxstream_display_teleprompter_anchor', false));
 
         if (chkTeleprompterAnchor) {
             chkTeleprompterAnchor.addEventListener('change', (e) => applyTeleprompterAnchorMode(e.target.checked));
@@ -3688,16 +3693,11 @@
                 document.body.classList.remove("slow-flow-mode");
             }
             if (chkDisplayPacing) chkDisplayPacing.checked = enabled;
-            try {
-                localStorage.setItem("voxstream_display_pacing", enabled ? "true" : "false");
-            } catch(e) {}
+            Prefs.set("voxstream_display_pacing", enabled ? "true" : "false");
             updateWordSpeedControlVisibility();
         }
 
-        try {
-            const savedPacing = localStorage.getItem("voxstream_display_pacing") === "true";
-            if (savedPacing) applyDisplayPacingMode(true);
-        } catch(e) {}
+        if (Prefs.getBool("voxstream_display_pacing", false)) applyDisplayPacingMode(true);
 
         updateWordSpeedControlVisibility();
 
@@ -3726,15 +3726,13 @@
             if (wordSpeedSlider) wordSpeedSlider.value = String(clamped);
             if (wordSpeedValBadge) wordSpeedValBadge.textContent = `${clamped} WPM (${ms}ms)`;
             if (persist) {
-                try {
-                    localStorage.setItem("voxstream_display_word_speed_wpm", String(clamped));
-                } catch (e) {}
+                Prefs.set("voxstream_display_word_speed_wpm", String(clamped));
             }
         }
 
-        try {
+        {
             const urlWpm = urlParams.get("word_wpm");
-            const savedWpm = localStorage.getItem("voxstream_display_word_speed_wpm");
+            const savedWpm = Prefs.get("voxstream_display_word_speed_wpm", null);
             if (urlWpm !== null && !isNaN(Number(urlWpm))) {
                 applyWordSpeedWpm(Number(urlWpm), false);
             } else if (savedWpm !== null && !isNaN(Number(savedWpm))) {
@@ -3742,7 +3740,7 @@
             } else {
                 applyWordSpeedWpm(DEFAULT_WORD_SPEED_WPM, false);
             }
-        } catch (e) {}
+        }
 
         if (wordSpeedSlider) {
             wordSpeedSlider.addEventListener("input", (e) => applyWordSpeedWpm(e.target.value, true));
@@ -3756,26 +3754,24 @@
             isFinalOnlyMode = enabled;
             document.body.classList.toggle("final-only-mode", enabled);
             if (chkDisplayFinalOnly) chkDisplayFinalOnly.checked = enabled;
-            try {
-                localStorage.setItem("voxstream_display_final_only", enabled ? "true" : "false");
-            } catch(e) {}
+            Prefs.set("voxstream_display_final_only", enabled ? "true" : "false");
             if (enabled) {
                 clearInterimLine();
             }
             renderCaptions();
         }
 
-        try {
+        {
             const urlFinalOnly = urlParams.get('final_only');
             if (urlFinalOnly === '1' || urlFinalOnly === 'true' || urlFinalOnly === 'yes') {
                 applyDisplayFinalOnlyMode(true);
             } else {
-                const savedFinalOnly = localStorage.getItem("voxstream_display_final_only");
+                const savedFinalOnly = Prefs.get("voxstream_display_final_only", null);
                 if (savedFinalOnly !== null) {
                     applyDisplayFinalOnlyMode(savedFinalOnly === "true");
                 }
             }
-        } catch(e) {}
+        }
 
         if (chkDisplayFinalOnly) {
             chkDisplayFinalOnly.addEventListener("change", (e) => applyDisplayFinalOnlyMode(e.target.checked));
@@ -3785,20 +3781,18 @@
         function applyDisplayNoTextShadowMode(enabled) {
             document.body.classList.toggle("no-text-shadow", enabled);
             if (chkDisableTextShadow) chkDisableTextShadow.checked = enabled;
-            try {
-                localStorage.setItem("voxstream_display_no_text_shadow", enabled ? "true" : "false");
-            } catch(e) {}
+            Prefs.set("voxstream_display_no_text_shadow", enabled ? "true" : "false");
             // Keep the Custom Theme live vars + preview chip in sync.
             if (document.body.classList.contains('theme-custom')) applyCustomThemeVars();
             else updateCustomPreview();
         }
 
-        try {
-            const savedNoTextShadow = localStorage.getItem("voxstream_display_no_text_shadow");
+        {
+            const savedNoTextShadow = Prefs.get("voxstream_display_no_text_shadow", null);
             if (savedNoTextShadow !== null) {
                 applyDisplayNoTextShadowMode(savedNoTextShadow === "true");
             }
-        } catch(e) {}
+        }
 
         if (chkDisableTextShadow) {
             chkDisableTextShadow.addEventListener("change", (e) => applyDisplayNoTextShadowMode(e.target.checked));
@@ -3808,27 +3802,25 @@
         function applyDisplayScriptureOverlayMode(enabled) {
             isScriptureOverlayEnabled = !!enabled;
             if (chkShowScriptureOverlay) chkShowScriptureOverlay.checked = isScriptureOverlayEnabled;
-            try {
-                localStorage.setItem("voxstream_display_show_scripture", isScriptureOverlayEnabled ? "true" : "false");
-            } catch(e) {}
+            Prefs.set("voxstream_display_show_scripture", isScriptureOverlayEnabled ? "true" : "false");
             if (!isScriptureOverlayEnabled) {
                 dismissStageScripture();
             }
         }
 
-        try {
+        {
             const urlBible = urlParams.get('bible') || urlParams.get('scripture');
             if (urlBible !== null) {
                 applyDisplayScriptureOverlayMode(!(urlBible === '0' || urlBible === 'false' || urlBible === 'off' || urlBible === 'no'));
             } else {
-                const savedScripture = localStorage.getItem("voxstream_display_show_scripture");
+                const savedScripture = Prefs.get("voxstream_display_show_scripture", null);
                 if (savedScripture !== null) {
                     applyDisplayScriptureOverlayMode(savedScripture === "true");
                 } else {
                     applyDisplayScriptureOverlayMode(true);
                 }
             }
-        } catch(e) {}
+        }
 
         if (chkShowScriptureOverlay) {
             chkShowScriptureOverlay.addEventListener("change", (e) => applyDisplayScriptureOverlayMode(e.target.checked));
@@ -4051,7 +4043,7 @@
         });
 
         // Silence Timer handling for Live Prompter mode
-        function triggerSilenceTimer(timeoutMs = 4000) {
+        function triggerSilenceTimer(timeoutMs = TIMING.IDLE_PAUSE_MARKER_MS) {
             if (silenceHideTimer) clearTimeout(silenceHideTimer);
             if (currentMode === 'live') {
                 silenceHideTimer = setTimeout(() => {
@@ -4635,7 +4627,7 @@
                 marker.textContent = '· · ·';
                 transcriptContent.appendChild(marker);
                 if (autoScroll) scrollToBottom(true);
-            }, 4000);
+            }, TIMING.IDLE_PAUSE_MARKER_MS);
         }
 
         function resetInterimGate() {
@@ -4656,7 +4648,7 @@
             wakeLiveDisplay();
 
             const nowAppended = Date.now();
-            const isParagraphStart = lastFinalAppendedAt > 0 && (nowAppended - lastFinalAppendedAt) > 1500 && finalSentences.length > 0;
+            const isParagraphStart = lastFinalAppendedAt > 0 && (nowAppended - lastFinalAppendedAt) > TIMING.PROSODY_PAUSE_MS && finalSentences.length > 0;
             lastFinalAppendedAt = nowAppended;
 
             const isStreaming = (currentMode === 'smooth' || isPacedReadingEnabled);
@@ -4719,7 +4711,7 @@
                 justFinalizedTimer = setTimeout(() => {
                     if (targetEl) targetEl.classList.remove('just-finalized');
                     justFinalizedTimer = null;
-                }, 2200);
+                }, TIMING.JUST_FINALIZED_HOLD_MS);
             }
 
             if (!isStreaming || wordStreamQueue.length === 0) {
@@ -4776,7 +4768,7 @@
                 }
             }
 
-            triggerSilenceTimer(isPacedReadingEnabled ? 12000 : 4000);
+            triggerSilenceTimer(isPacedReadingEnabled ? 12000 : TIMING.IDLE_PAUSE_MARKER_MS);
             updateSentenceAges();
         }
 
@@ -4817,7 +4809,7 @@
 
             if (autoScroll && wordStreamQueue.length === 0) scrollToBottom(false);
 
-            triggerSilenceTimer(isPacedReadingEnabled ? 12000 : 4000);
+            triggerSilenceTimer(isPacedReadingEnabled ? 12000 : TIMING.IDLE_PAUSE_MARKER_MS);
         }
 
         function updateSmoothInterimTarget(text) {
@@ -5045,8 +5037,8 @@
         // -------------------------------------------------------------
         // 🌐 WebSocket Connection Pipeline
         // -------------------------------------------------------------
-        let reconnectDelayMs = 2000;
-        const maxReconnectDelayMs = 10000;
+        let reconnectDelayMs = TIMING.RECONNECT_INITIAL_MS;
+        const maxReconnectDelayMs = TIMING.RECONNECT_MAX_MS;
         let hasConnectedOnce = false;
 
         function connectWebSocket() {
@@ -5056,7 +5048,7 @@
             ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
-                reconnectDelayMs = 2000; // Reset backoff delay on successful connection
+                reconnectDelayMs = TIMING.RECONNECT_INITIAL_MS; // Reset backoff delay on successful connection
                 if (statusText) statusText.innerHTML = '<span class="status-live-label">LIVE</span>';
                 if (statusPill) {
                     statusPill.classList.remove('offline');
@@ -5270,7 +5262,7 @@
                                             interimGateUnlocked = true;
                                             updateInterimSpeech(interimText);
                                         }
-                                    }, 300);
+                                    }, TIMING.INTERIM_GATE_STABILIZE_MS);
                                 }
                             }
                         }
@@ -5306,33 +5298,33 @@
                     if (cfg && cfg.display) {
                         const d = cfg.display;
                         // 1. Theme
-                        if (d.theme && localStorage.getItem('voxstream_display_theme') === null && !urlParams.has('theme')) {
+                        if (d.theme && Prefs.get('voxstream_display_theme', null) === null && !urlParams.has('theme')) {
                             const themeClass = d.theme.startsWith('theme-') ? d.theme : `theme-${d.theme}`;
                             setTheme(themeClass);
                         }
                         // 2. Font Family
-                        if (d.font_family && localStorage.getItem('voxstream_display_font') === null && !urlParams.has('font')) {
+                        if (d.font_family && Prefs.get('voxstream_display_font', null) === null && !urlParams.has('font')) {
                             setFontFamily(d.font_family);
                         }
                         // 3. Font Size
-                        if (d.font_size && localStorage.getItem('voxstream_display_fontsize') === null && !urlParams.has('size')) {
+                        if (d.font_size && Prefs.get('voxstream_display_fontsize', null) === null && !urlParams.has('size')) {
                             setFontSize(parseInt(d.font_size, 10));
                         }
                         // 4. Line Height
-                        if (d.line_height && localStorage.getItem('voxstream_display_a11y') === null && localStorage.getItem('voxstream_display_line_height') === null) {
+                        if (d.line_height && Prefs.get('voxstream_display_a11y', null) === null && Prefs.get('voxstream_display_line_height', null) === null) {
                             applyCustomLineHeight(parseFloat(d.line_height), false);
                         }
                         // 5. Interim Speech (Final Only)
-                        if (d.show_interim !== undefined && localStorage.getItem("voxstream_display_final_only") === null && !urlParams.has('final_only')) {
+                        if (d.show_interim !== undefined && Prefs.get("voxstream_display_final_only", null) === null && !urlParams.has('final_only')) {
                             applyDisplayFinalOnlyMode(!d.show_interim);
                         }
                         // 6. Dyslexia Mode
-                        if (d.dyslexia_mode !== undefined && localStorage.getItem("voxstream_display_a11y") === null && !urlParams.has('dyslexia')) {
+                        if (d.dyslexia_mode !== undefined && Prefs.get("voxstream_display_a11y", null) === null && !urlParams.has('dyslexia')) {
                             applyDisplayA11yMode(Boolean(d.dyslexia_mode));
                         }
                         // 6b. Auto-Popup Scripture Display Toggle
                         const srvScripture = (d.show_scripture !== undefined) ? d.show_scripture : (cfg.bible && cfg.bible.show_on_stage_display);
-                        if (localStorage.getItem("voxstream_display_show_scripture") === null && !urlParams.has('bible') && !urlParams.has('scripture') && srvScripture !== undefined) {
+                        if (Prefs.get("voxstream_display_show_scripture", null) === null && !urlParams.has('bible') && !urlParams.has('scripture') && srvScripture !== undefined) {
                             applyDisplayScriptureOverlayMode(Boolean(srvScripture));
                         }
                         // 7. Custom Branding Title
@@ -5369,7 +5361,7 @@
                         }
                     }
                     if (cfg && cfg.overlay && cfg.overlay.final_only !== undefined) {
-                        if (localStorage.getItem("voxstream_display_final_only") === null && !urlParams.has('final_only') && (!cfg.display || cfg.display.show_interim === undefined)) {
+                        if (Prefs.get("voxstream_display_final_only", null) === null && !urlParams.has('final_only') && (!cfg.display || cfg.display.show_interim === undefined)) {
                             applyDisplayFinalOnlyMode(Boolean(cfg.overlay.final_only));
                         }
                     }
@@ -5445,8 +5437,7 @@
         // --- Dual-Strategy Screen Wake Lock Manager (Native API + NoSleep Media Fallback for HTTP LAN) ---
         class ScreenWakeLockManager {
             constructor() {
-                const savedPref = localStorage.getItem('voxstream_display_keep_awake');
-                this.enabled = savedPref === null ? true : savedPref === 'true';
+                this.enabled = Prefs.getBool('voxstream_display_keep_awake', true);
                 this.nativeWakeLock = null;
                 this.isRequestingNative = false;
                 this.videoElement = null;
@@ -5520,7 +5511,7 @@
 
             setEnabled(val) {
                 this.enabled = !!val;
-                localStorage.setItem('voxstream_display_keep_awake', this.enabled ? 'true' : 'false');
+                Prefs.set('voxstream_display_keep_awake', this.enabled ? 'true' : 'false');
                 if (this.enabled) {
                     this.requestWakeLock();
                 } else {
@@ -5878,7 +5869,7 @@
 
         function checkPwaInstallBanner() {
             if (!pwaInstallBanner) return;
-            if (isStandaloneMode() || localStorage.getItem('voxstream_pwa_banner_dismissed') === '1' || !isMobileDevice()) {
+            if (isStandaloneMode() || Prefs.get('voxstream_pwa_banner_dismissed', null) === '1' || !isMobileDevice()) {
                 hidePwaBanner();
                 return;
             }
@@ -5912,7 +5903,7 @@
         if (btnBannerPwaInstall) btnBannerPwaInstall.addEventListener('click', openPwaModal);
         if (btnDismissPwaBanner) {
             btnDismissPwaBanner.addEventListener('click', () => {
-                localStorage.setItem('voxstream_pwa_banner_dismissed', '1');
+                Prefs.set('voxstream_pwa_banner_dismissed', '1');
                 hidePwaBanner();
             });
         }
