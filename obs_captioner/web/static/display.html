@@ -2324,6 +2324,30 @@
         let interimGateFirstWords = "";
         let interimGateTimer = null;
         let isTeleprompterAnchorEnabled = false;
+        let isFocusHighlightEnabled = false;
+        let isParagraphGroupingEnabled = false;
+        let isReadingColumnEnabled = false;
+        let isSmoothScrollingToBottom = false;
+        let smoothScrollTimer = null;
+        let scrollRafPending = false;
+        let pendingScrollSmooth = false;
+        let lastUserScrollUpGestureAt = 0;
+        let touchStartY = 0;
+        let wordStreamQueue = [];
+        let wordStreamTimer = null;
+        let smoothInterimNode = null;
+        let smoothInterimTargetWords = [];
+        let smoothInterimRenderedWords = [];
+        let smoothInterimSpans = [];
+        let justFinalizedTimer = null;
+        let lastInterimLineHeight = 0;
+        let stageScriptureTimer = null;
+        let lastShownScriptureData = null;
+        let sessionScriptures = [];
+        let currentReaderBook = "";
+        let currentReaderChapter = 1;
+        let currentReaderVerseStart = 1;
+        let currentReaderVerseEnd = null;
 
         // UI Localization dictionaries: viewer language (langSelect / ?lang=XX)
         // drives caption translation AND full chrome translation via applyUiLanguage().
@@ -2821,6 +2845,11 @@
         const btnDoneSettings = document.getElementById('btnDoneSettings');
         const settingsModal = document.getElementById('settingsModal');
         const audioListenBtn = document.getElementById('audioListenBtn');
+        const scripturePrompterCard = document.getElementById("scripturePrompterCard");
+        const stageScriptureCitation = document.getElementById("stageScriptureCitation");
+        const stageScriptureText = document.getElementById("stageScriptureText");
+        const btnDismissStageScripture = document.getElementById("btnDismissStageScripture");
+        const INTERIM_FILLER_SINGLE = ['um', 'uh', 'umm', 'uhh', 'er', 'ah', 'hmm'];
 
         // Web Audio Interpretation State
         let audioCtx = null;
@@ -3577,9 +3606,6 @@
         }
 
         // 🎯 Active Focus Highlight Mode Handler
-        let isFocusHighlightEnabled = false;
-        let isParagraphGroupingEnabled = false;
-        let isReadingColumnEnabled = false;
         const chkActiveFocusHighlight = document.getElementById('chkActiveFocusHighlight');
         const chkParagraphGrouping = document.getElementById('chkParagraphGrouping');
         const chkReadingColumn = document.getElementById('chkReadingColumn');
@@ -4077,11 +4103,6 @@
             return node;
         }
 
-        let isSmoothScrollingToBottom = false;
-        let smoothScrollTimer = null;
-        let scrollRafPending = false;
-        let pendingScrollSmooth = false;
-
         function scrollToBottom(smooth = false) {
             if (!stageContainer) return;
             if (smooth) {
@@ -4125,9 +4146,6 @@
             div.textContent = text || '';
             return div.innerHTML;
         }
-
-        let lastUserScrollUpGestureAt = 0;
-        let touchStartY = 0;
 
         if (stageContainer) {
             stageContainer.addEventListener('touchstart', (e) => {
@@ -4242,13 +4260,6 @@
             }
             return "";
         }
-
-        let wordStreamQueue = [];
-        let wordStreamTimer = null;
-        let smoothInterimNode = null;
-        let smoothInterimTargetWords = [];
-        let smoothInterimRenderedWords = [];
-        let smoothInterimSpans = [];
 
         function resetSmoothInterimStream(removeNode = false) {
             smoothInterimTargetWords = [];
@@ -4548,7 +4559,6 @@
         }
 
         // Single-word interim fillers (matched case-insensitively, punctuation-tolerant).
-        const INTERIM_FILLER_SINGLE = ['um', 'uh', 'umm', 'uhh', 'er', 'ah', 'hmm'];
         function isInterimFillerToken(token) {
             if (!token) return false;
             const lower = String(token).toLowerCase();
@@ -4638,8 +4648,6 @@
                 interimGateTimer = null;
             }
         }
-
-        let justFinalizedTimer = null;
 
         function appendFinalSentence(text, utteranceId) {
             if (!text || !transcriptContent) return;
@@ -4871,8 +4879,6 @@
                 processWordStreamTick();
             }
         }
-
-        let lastInterimLineHeight = 0;
 
         function updateInterimSpeech(text) {
             if (isFinalOnlyMode) return;
@@ -5927,13 +5933,6 @@
         checkPwaInstallBanner();
 
         // Scripture Prompter Card Logic
-        const scripturePrompterCard = document.getElementById("scripturePrompterCard");
-        const stageScriptureCitation = document.getElementById("stageScriptureCitation");
-        const stageScriptureText = document.getElementById("stageScriptureText");
-        const btnDismissStageScripture = document.getElementById("btnDismissStageScripture");
-        let stageScriptureTimer = null;
-        let lastShownScriptureData = null;
-
         function showStageScripture(data) {
             lastShownScriptureData = data;
             if (!isScriptureOverlayEnabled) return;
@@ -5967,12 +5966,6 @@
         // -------------------------------------------------------------
         // 📖 Scripture Passage Reader Engine
         // -------------------------------------------------------------
-        let sessionScriptures = [];
-        let currentReaderBook = "";
-        let currentReaderChapter = 1;
-        let currentReaderVerseStart = 1;
-        let currentReaderVerseEnd = null;
-
         function recordSessionScripture(data) {
             if (!data || !data.citation) return;
             lastShownScriptureData = data;

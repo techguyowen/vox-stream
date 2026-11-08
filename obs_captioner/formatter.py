@@ -18,6 +18,10 @@ def _join_two_part_compound(m: re.Match) -> str:
     return f"{m.group(1)}{m.group(2).lower()}"
 
 
+def _a_to_an_before_vowel(m: re.Match) -> str:
+    return f"{'An' if m.group(1) == 'A' else 'an'} {m.group(2)}"
+
+
 _DISFLUENCY_REPLACEMENTS: Tuple[Tuple[re.Pattern, Any], ...] = (
     (re.compile(r"\bI't\b"), "I don't"),
     (re.compile(r"\byou'real\s+ready\b", re.IGNORECASE), "you're already"),
@@ -93,6 +97,30 @@ _DISFLUENCY_REPLACEMENTS: Tuple[Tuple[re.Pattern, Any], ...] = (
     (re.compile(r"\b9ies\b", re.IGNORECASE), "90s"),
     (re.compile(r"\bWe ship of\b"), "We-ship of"),
     (re.compile(r"\bwe ship of\b"), "we-ship of"),
+    (
+        re.compile(
+            r"\b(basic|exception|occasion|person|origin|especi|specific|gener|liter|actu|usu|eventu|natur|fin|tot|re|ide|practic|technic|emotion|physic|spiritu|intention|tradition|uncondition|radic)\s+(ally)\b",
+            re.IGNORECASE,
+        ),
+        _join_two_part_compound,
+    ),
+    (re.compile(r"\b(show)\s+(cases?|casing|cased)\b", re.IGNORECASE), _join_two_part_compound),
+    (re.compile(r"\b(fund)\s+(rais(?:e|es|ed|ing|ers?))\b", re.IGNORECASE), _join_two_part_compound),
+    (
+        re.compile(
+            r"\b(leaves|things|years|days|weeks|months|people|we|they|you|I|would|could|should|might|must|may)\s+of\s+been\b",
+            re.IGNORECASE,
+        ),
+        r"\1 have been",
+    ),
+    (
+        re.compile(
+            r"\b(a)\s+(inhibitor|optional|incredible|example|invitation|opportunity|amazing|awesome|important|interesting|open|eternal|obstacle|offering)\b",
+            re.IGNORECASE,
+        ),
+        _a_to_an_before_vowel,
+    ),
+    (re.compile(r"\b(my name is [A-Z][a-z]+)\s+(I'm|I am)\b", re.IGNORECASE), r"\1, \2"),
 )
 
 # Precompiled deduplication patterns
@@ -100,13 +128,19 @@ _SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[.!?])\s+")
 _PUNCT_STRIP_PATTERN = re.compile(r"[^\w\s]")
 _STUTTER_PATTERN = re.compile(r"\b(\w+(?:[^\w\n]+(?:\w+)){1,5})\s*[,;]?\s+\1\b", re.IGNORECASE)
 _SINGLE_WORD_STUTTER_PATTERN = re.compile(
-    r"\b(to|a|an|the|I|and|but|or|so|in|on|of|for|with|is|are|was|were|we|you|he|she|it|they|this|that|these|those|which|who|why|how|what|where|when|if|not)\b(?:\s+\1\b)+",
+    r"\b(to|a|an|the|I|and|but|or|so|in|on|of|for|with|is|are|was|were|we|you|he|she|it|they|this|that|these|those|which|who|why|how|what|where|when|if|not|just|really|very|like|can|will|do|have|had|has|get|got|be|been|my|our|your|his|her|their|its)\b(?:\s+\1\b)+",
     re.IGNORECASE,
 )
 _QUOTE_ECHO_PATTERN = re.compile(
     r'\b(\w{3,})([.?!]+["\'”’)\]]+)\s+\1[.?!]?\s*(?=[A-Z]|$)',
     re.IGNORECASE,
 )
+
+# Standalone finalized filler (vocalized pause) removal patterns (applied only when is_final=True)
+_FILLER_LEADING_PATTERN = re.compile(r"(?<=^)\s*\b(?:um+|uh+)\b\s*,?\s*", re.IGNORECASE)
+_FILLER_AFTER_PUNCT_PATTERN = re.compile(r"(?<=[.?!])\s+\b(?:um+|uh+)\b\s*,?\s*", re.IGNORECASE)
+_FILLER_MID_COMMA_PATTERN = re.compile(r"\s*,\s*\b(?:um+|uh+)\b\s*,\s*", re.IGNORECASE)
+_FILLER_MID_BARE_PATTERN = re.compile(r"\s+\b(?:um+|uh+)\b,?(?=\s+\w)", re.IGNORECASE)
 
 # Precompiled camelCase missing spaces pattern (also handles standalone capital 'I' glued to a TitleCase word like 'ITo' -> 'I To')
 _CAMELCASE_PATTERN = re.compile(r"([a-z])([A-Z])|(\bI)([A-Z][a-z])")
@@ -243,6 +277,13 @@ _CONCAT_WHITELIST: Set[str] = {
     "impetus", "stimulus", "syllabus", "surplus", "fetus",
     # Compound / BPE-repaired words that must not be split:
     "gummy", "gummies", "basically", "sunglasses",
+    "exceptionally", "occasionally", "personally", "originally", "especially",
+    "specifically", "generally", "literally", "actually", "usually", "eventually",
+    "naturally", "finally", "really", "ideally", "practically", "technically",
+    "emotionally", "physically", "spiritually", "intentionally", "traditionally",
+    "unconditionally", "radically",
+    "showcase", "showcases", "showcasing", "showcased",
+    "fundraise", "fundraises", "fundraised", "fundraising", "fundraiser", "fundraisers",
     "toilet", "toilets", "underestimate", "underestimates", "underestimated", "underestimating",
     "overestimate", "overestimates", "overestimated", "overestimating", "hopefully",
     "hallmark", "hallmarks", "hallway", "hallways", "backpack", "backpacks", "creekside",
@@ -261,6 +302,8 @@ _CONCAT_WHITELIST: Set[str] = {
     "extraordinary", "supernatural", "unanswered", "overlook", "overlooked", "underneath",
     "downtown", "bookstore", "bookstores",
 }
+
+_A_GLUED_TARGETS = frozenset({"name", "one", "two", "three", "few", "lot", "bit", "little", "great", "good", "new", "big", "small", "church", "student", "person", "child", "kid", "friend", "family", "member", "pastor", "leader", "teacher", "group", "class", "course", "place", "time", "year", "month", "week", "day", "moment", "minute", "second", "story", "question", "conversation", "relationship", "gift", "blessing", "prayer", "song", "sermon", "message"})
 
 _CONCAT_WORD_PATTERN = re.compile(r"\b([A-Za-z]+)\b")
 _KNOWN_WORDS: Set[str] = set()
@@ -426,6 +469,10 @@ def _split_concat_token(m: re.Match) -> str:
     if low in known:
         return w
 
+    # Glued indefinite article "a" split (e.g. "aname" -> "a name", "aone" -> "a one")
+    if low not in _CONCAT_WHITELIST and low not in known and low.startswith("a") and low[1:] in _A_GLUED_TARGETS:
+        return _format_split(w, 1)
+
     # 1. Prefix-based split
     for p in _CONCAT_PREFIXES:
         if low.startswith(p):
@@ -472,6 +519,7 @@ _PUNCT_FOLLOWING_LETTER_PATTERN = re.compile(r"([,;?!])([a-zA-Z])")
 _COLON_FOLLOWING_LETTER_PATTERN = re.compile(r"(:)([a-zA-Z])")
 _PERIOD_CAP_PATTERN = re.compile(r"([a-zA-Z0-9]+)(\.)([A-Z])")
 _PERIOD_LOWER_PATTERN = re.compile(r"\b([a-zA-Z]+)\.([a-z]+)\b")
+_PERIOD_ORDINAL_PATTERN = re.compile(r"([a-zA-Z]{2,})(\.)(\d+(?:st|nd|rd|th)\b)", re.IGNORECASE)
 _KNOWN_TLD_PATTERN = re.compile(rf"^{_KNOWN_TLDS_STR}\b", re.IGNORECASE)
 _PUNCT_DOUBLE_QUOTE_PAREN_PATTERN = re.compile(r"((?<=\S)[.?!,;:]?[\"”\)\]\}])([a-zA-Z])")
 _PUNCT_SINGLE_QUOTE_PATTERN = re.compile(r"([.?!,;:][\'’])([a-zA-Z])")
@@ -910,6 +958,21 @@ class TextFormatter:
         if self._master_pattern:
             text = self._master_pattern.sub(lambda m: self._lookup.get(m.group(0).lower(), m.group(0)), text)
 
+        # 2b. Progressive verb "offering" casing guard (e.g. "we're Offering" -> "we're offering")
+        text = re.sub(r"\b(I'm|we're|you're|they're|he's|she's|it's|who's|that's|am|is|are|was|were|be|been)\s+(?:(not|also|still|currently|now|just|always)\s+)?Offering\b", lambda m: f"{m.group(1)} {m.group(2) + ' ' if m.group(2) else ''}offering", text, flags=re.IGNORECASE)
+
+        # 2c. Standalone finalized filler removal (only on finals, before capitalization/punctuation)
+        if is_final and len(re.findall(r"\b\w+\b", text)) > 1:
+            for _ in range(3):
+                new_text = _FILLER_LEADING_PATTERN.sub("", text)
+                new_text = _FILLER_AFTER_PUNCT_PATTERN.sub(" ", new_text)
+                new_text = _FILLER_MID_COMMA_PATTERN.sub(", ", new_text)
+                new_text = _FILLER_MID_BARE_PATTERN.sub("", new_text)
+                if new_text == text:
+                    break
+                text = new_text
+            text = text.strip()
+
         # 3. Capitalize start of sentence and standalone 'I'
         if self.auto_capitalization:
             text = self._capitalize_sentences(text)
@@ -996,6 +1059,9 @@ class TextFormatter:
 
         # Case 4b: Period followed by a lowercase letter, excluding known web domains and initialisms
         text = _PERIOD_LOWER_PATTERN.sub(_replace_period_lower, text)
+
+        # Case 4c: Period glued before an ordinal (e.g. "this fall.1st" -> "this fall. 1st")
+        text = _PERIOD_ORDINAL_PATTERN.sub(r"\1\2 \3", text)
 
         # 5. Double quotes and closing parens/brackets followed by letter
         # e.g. 'repents.”the angels' -> 'repents.” the angels', 'end."Next' -> 'end." Next'
@@ -1085,7 +1151,8 @@ class TextFormatter:
         last_word_clean = words[-1].lower().rstrip(".,?!;:…\"'”’)]}")
         prev_word_clean = words[-2].lower().rstrip(".,?!;:…\"'”’)]}") if len(words) >= 2 else ""
         is_complete_idiom = (
-            (last_word_clean == "that" and prev_word_clean in ("of", "with", "about", "like", "than", "just", "all", "for", "to", "in", "on", "at", "from", "by"))
+            (last_word_clean == "that" and prev_word_clean in ("of", "with", "about", "like", "than", "just", "all", "for", "to", "in", "on", "at", "from", "by", "into", "unto", "upon", "through", "after", "before", "beyond", "do", "did", "done", "doing"))
+            or (last_word_clean == "so" and prev_word_clean in ("do", "did", "done", "doing", "does", "think", "thought", "hope", "say", "said", "believe", "suppose", "guess", "if", "or", "even", "not", "just", "ever"))
             or (last_word_clean in ("in", "out", "on", "off", "up", "down", "over", "through", "by", "around", "along", "ahead", "back", "away") and len(words) >= 4 and words[-1].endswith("."))
         )
         if last_word_clean in self.DANGLING_CONNECTORS and terminal_punct == "." and not is_complete_idiom:

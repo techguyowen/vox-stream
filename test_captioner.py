@@ -10007,6 +10007,164 @@ class TestSlowSpeechAndConfigurableMaxWords(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(out, (new, False))
 
 
+class TestNov8LiveServiceCaptionUpgrades(unittest.IsolatedAsyncioTestCase):
+    """Regression tests for live service caption quality and boundary stitching upgrades."""
+
+    def test_of_been_and_ally_join(self):
+        from obs_captioner.formatter import format_caption
+        self.assertEqual(
+            format_caption("The leaves of been exception ally gorgeous this year."),
+            "The leaves have been exceptionally gorgeous this year.",
+        )
+
+    def test_just_stutter_collapse(self):
+        from obs_captioner.formatter import format_caption
+        self.assertEqual(
+            format_caption("Maybe it's just just getting to let them see you."),
+            "Maybe it's just getting to let them see you.",
+        )
+
+    def test_leading_filler_removed_on_final(self):
+        from obs_captioner.formatter import format_caption
+        self.assertEqual(
+            format_caption("Um, we want this to happen organically."),
+            "We want this to happen organically.",
+        )
+
+    def test_mid_sentence_filler_removed_on_final(self):
+        from obs_captioner.formatter import format_caption
+        self.assertEqual(
+            format_caption("Please know that there is a prayer team in the perimeter um during this time of worship."),
+            "Please know that there is a prayer team in the perimeter during this time of worship.",
+        )
+
+    def test_offering_guard_ordinal_spacing_and_a_split(self):
+        from obs_captioner.formatter import format_caption
+        self.assertEqual(
+            format_caption("Throughout the year, we're Offering two of those classes this fall.First, we have The Gospels, which is aone-part class."),
+            "Throughout the year, we're offering two of those classes this fall. 1st, we have The Gospels, which is a one-part class.",
+        )
+
+    def test_glued_indefinite_article_split(self):
+        from obs_captioner.formatter import format_caption
+        self.assertEqual(
+            format_caption("And then we also have Discovering the Trinity, which could also be aname for a Cajun cooking class?"),
+            "And then we also have Discovering the Trinity, which could also be a name for a Cajun cooking class?",
+        )
+
+    def test_a_to_an_before_vowel(self):
+        from obs_captioner.formatter import format_caption
+        self.assertEqual(
+            format_caption("We don't want that to be a inhibitor."),
+            "We don't want that to be an inhibitor.",
+        )
+
+    def test_self_introduction_comma(self):
+        from obs_captioner.formatter import format_caption
+        self.assertEqual(
+            format_caption("My name is Erika I'm the Pastor of Women's Discipleship."),
+            "My name is Erika, I'm the Pastor of Women's Discipleship.",
+        )
+
+    def test_do_so_terminal_period(self):
+        from obs_captioner.formatter import format_caption
+        self.assertEqual(
+            format_caption("Practically speaking, if you want to give in person, you may do so"),
+            "Practically speaking, if you want to give in person, you may do so.",
+        )
+
+    def test_step_into_that_terminal_period(self):
+        from obs_captioner.formatter import format_caption
+        self.assertEqual(
+            format_caption("I am eager for whoever else would want to step into that"),
+            "I am eager for whoever else would want to step into that.",
+        )
+
+    async def test_boundary_stitch_article_tail(self):
+        from obs_captioner.obs.caption_sink import CaptionSink
+        sink = CaptionSink(AppConfig())
+        try:
+            await sink.handle_transcript(TranscriptEvent(text="Here is a.", is_final=True))
+            await sink.handle_transcript(TranscriptEvent(text="Trustworthy saying that deserves full acceptance.", is_final=True))
+            self.assertEqual(len(sink.history.entries), 1)
+            self.assertEqual(
+                sink.history.entries[0].text,
+                "Here is a trustworthy saying that deserves full acceptance.",
+            )
+        finally:
+            if sink._auto_clear_task:
+                sink._auto_clear_task.cancel()
+
+    async def test_boundary_stitch_annual_tail(self):
+        from obs_captioner.obs.caption_sink import CaptionSink
+        sink = CaptionSink(AppConfig())
+        try:
+            await sink.handle_transcript(TranscriptEvent(text="And humor as the Waypoint Youth Group fund raises for our annual.", is_final=True))
+            await sink.handle_transcript(TranscriptEvent(text="Summer mission trip.", is_final=True))
+            self.assertEqual(len(sink.history.entries), 1)
+            self.assertEqual(
+                sink.history.entries[0].text,
+                "And humor as the Waypoint Youth Group fundraises for our annual summer mission trip.",
+            )
+        finally:
+            if sink._auto_clear_task:
+                sink._auto_clear_task.cancel()
+
+    async def test_leading_orphan_prepositional_stitch(self):
+        from obs_captioner.obs.caption_sink import CaptionSink
+        sink = CaptionSink(AppConfig())
+        try:
+            await sink.handle_transcript(TranscriptEvent(text="And this is also your chance to get to know us and talk to some of the staff.", is_final=True))
+            await sink.handle_transcript(TranscriptEvent(text="At Waypoint. There is child care provided if you have kids.", is_final=True))
+            self.assertEqual(len(sink.history.entries), 2)
+            self.assertEqual(
+                sink.history.entries[0].text,
+                "And this is also your chance to get to know us and talk to some of the staff at Waypoint.",
+            )
+            self.assertEqual(
+                sink.history.entries[1].text,
+                "There is child care provided if you have kids.",
+            )
+        finally:
+            if sink._auto_clear_task:
+                sink._auto_clear_task.cancel()
+
+    async def test_leading_orphan_topic_stitch(self):
+        from obs_captioner.obs.caption_sink import CaptionSink
+        sink = CaptionSink(AppConfig())
+        try:
+            await sink.handle_transcript(TranscriptEvent(text="Just meet a student and begin a conversation that could lead to a fruitful discipleship.", is_final=True))
+            await sink.handle_transcript(TranscriptEvent(text="Relationship. Um, we want this to happen organically.", is_final=True))
+            self.assertEqual(len(sink.history.entries), 2)
+            self.assertEqual(
+                sink.history.entries[0].text,
+                "Just meet a student and begin a conversation that could lead to a fruitful discipleship relationship.",
+            )
+            self.assertEqual(
+                sink.history.entries[1].text,
+                "We want this to happen organically.",
+            )
+        finally:
+            if sink._auto_clear_task:
+                sink._auto_clear_task.cancel()
+
+    async def test_sub_clause_echo_suppression(self):
+        from obs_captioner.obs.caption_sink import CaptionSink
+        sink = CaptionSink(AppConfig())
+        try:
+            await sink.handle_transcript(TranscriptEvent(text="Yet their voice goes out into all the earth, their words to the ends of the world.", is_final=True))
+            await sink.handle_transcript(TranscriptEvent(text="Goes out into all the earth.", is_final=True))
+            await sink.handle_transcript(TranscriptEvent(text="The words to the ends of the world.", is_final=True))
+            self.assertEqual(len(sink.history.entries), 1)
+            self.assertEqual(
+                sink.history.entries[0].text,
+                "Yet their voice goes out into all the earth, their words to the ends of the world.",
+            )
+        finally:
+            if sink._auto_clear_task:
+                sink._auto_clear_task.cancel()
+
+
 if __name__ == "__main__":
     unittest.main()
 

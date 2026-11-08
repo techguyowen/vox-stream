@@ -28,6 +28,8 @@ _DANGLING_TAIL_WORDS = frozenset({
     "this", "that", "these", "those",
 })
 
+_EXTENDED_DANGLING_TAIL_WORDS = _DANGLING_TAIL_WORDS | {"annual", "fruitful", "uniquely", "is", "are", "was", "were"}
+
 
 class CaptionSink:
     """Dispatches transcribed captions to OBS, Web Overlay, Translation, and Twitch Chat."""
@@ -371,16 +373,37 @@ class CaptionSink:
             trail_chars = ' .?!"\'”’'
             tail_words = re.findall(r"[\w'’-]+", last_text.rstrip(trail_chars))
             tail = tail_words[-1].casefold() if tail_words else ""
-            if tail in _DANGLING_TAIL_WORDS:
+            if tail in _EXTENDED_DANGLING_TAIL_WORDS:
+                # Special case: "uniquely" + "About, ..." stitches "about," onto the previous entry
+                if tail == "uniquely" and clean_new.startswith("About,"):
+                    stripped_prev = last_text.rstrip(trail_chars)
+                    last_entry.text = f"{stripped_prev} about,"
+                    if hasattr(last_entry, "end_time"):
+                        last_entry.end_time = now
+                    remainder = clean_new[len("About,"):].strip()
+                    if remainder:
+                        return remainder[0].upper() + remainder[1:], False
+                    return "", True
                 frag_match = re.match(r"^\s*([^.?!]*[.?!][\"'”’]*)", clean_new)
                 frag = frag_match.group(1).strip() if frag_match else ""
                 frag_words = re.findall(r"[\w'’-]+", frag)
                 max_sentence_words = getattr(self.config.audio, "max_sentence_words", 24) or 24
                 merged_count = len(last_text.split()) + len(frag.split())
+                if tail in ("a", "an", "the", "our", "my", "your", "his", "her", "their", "its", "annual", "fruitful"):
+                    frag_len_ok = 1 <= len(frag_words) <= 6
+                elif tail in _DANGLING_TAIL_WORDS:
+                    frag_len_ok = 1 <= len(frag_words) <= 2
+                else:
+                    # Auxiliary-verb tails ("is", "are", "was", "were") and "uniquely"
+                    # never stitch generically: bare predicates like "Expecting."
+                    # are new sentences, not continuations.
+                    frag_len_ok = False
                 if (
-                    1 <= len(frag_words) <= 2
+                    frag_len_ok
                     and merged_count <= max_sentence_words
+                    and frag_words
                     and frag_words[0].casefold() != tail
+                    and frag_words[0].casefold() not in ("i", "we", "you", "they", "he", "she", "it", "there", "here", "but", "so", "and", "now", "well")
                 ):
                     body = re.match(r"^(.*?)([.?!]*[\"'”’]*)$", frag, re.S)
                     frag_body, frag_end = body.group(1), body.group(2)
@@ -400,6 +423,39 @@ class CaptionSink:
                     if remainder:
                         return remainder[0].upper() + remainder[1:], False
                     return "", True
+
+            # 4b. Leading orphan fragment stitch on multi-sentence chunks
+            # ('At Waypoint. There is ...' / 'Relationship. We want ...')
+            orphan_match = re.match(r"^\s*([^.?!]*\.[\"'”’]*)", clean_new)
+            if orphan_match:
+                orphan_frag = orphan_match.group(1).strip()
+                orphan_remainder = clean_new[orphan_match.end():].strip()
+                orphan_words = re.findall(r"[\w'’-]+", orphan_frag)
+                if orphan_frag and orphan_remainder and 1 <= len(orphan_words) <= 3:
+                    orphan_first = orphan_words[0].casefold()
+                    is_prep_frag = orphan_first in {"at", "in", "on", "for", "to", "with", "from", "by", "of", "about", "around", "through", "into", "over", "under", "between", "among", "during", "after", "before"}
+                    is_topic_frag = len(orphan_words) == 1 and orphan_first in {"relationship", "relationships", "ministry", "ministries", "community", "church", "service", "services", "worship", "group", "groups", "trip", "trips", "class", "classes", "family", "families", "life", "lives", "leader", "leaders", "people", "world", "today", "together"}
+                    orphan_max_words = getattr(self.config.audio, "max_sentence_words", 24) or 24
+                    if (
+                        (is_prep_frag or is_topic_frag)
+                        and len(last_text.split()) + len(orphan_words) <= orphan_max_words
+                        and not last_text.rstrip(' "\'”’').endswith(('?', '!'))
+                    ):
+                        orphan_body = re.match(r"^(.*?)([.?!]*[\"'”’]*)$", orphan_frag, re.S)
+                        orphan_frag_body, orphan_frag_end = orphan_body.group(1), orphan_body.group(2)
+                        orphan_first_parts = orphan_frag_body.split(" ", 1)
+                        orphan_key = re.sub(r"[^\w'-]", "", orphan_first_parts[0]).casefold()
+                        orphan_lex = ChurchLexiconFormatter
+                        if orphan_key in orphan_lex.CHURCH_TERMS or orphan_key in orphan_lex.BOOKS_OF_BIBLE or orphan_key in TextFormatter.PROPER_NOUNS:
+                            orphan_head = orphan_first_parts[0]
+                        else:
+                            orphan_head = orphan_first_parts[0][:1].lower() + orphan_first_parts[0][1:]
+                        orphan_frag_body = orphan_head + (" " + orphan_first_parts[1] if len(orphan_first_parts) > 1 else "")
+                        orphan_stripped_prev = last_entry.text.rstrip(trail_chars)
+                        last_entry.text = f"{orphan_stripped_prev} {orphan_frag_body}{orphan_frag_end}"
+                        if hasattr(last_entry, "end_time"):
+                            last_entry.end_time = now
+                        return orphan_remainder[0].upper() + orphan_remainder[1:], False
 
         return clean_text, False
 
@@ -584,6 +640,44 @@ class CaptionSink:
                     if (prev_text.count('"') % 2 == 1 or prev_text.count("'") % 2 == 1) and re.search(r'["\'”’]', clean_text):
                         quote_char = '"' if prev_text.count('"') % 2 == 1 else "'"
                         prev_entry.text = prev_text.rstrip(".,?!;:… ") + "." + quote_char
+
+                    self._utterance_active = False
+                    self._sentence_start_time = time.time()
+                    if self.web_server:
+                        await self.web_server.broadcast_caption(
+                            self._stamp_payload(
+                                {"text": "", "is_final": False, "is_censored": False, "timestamp": event.timestamp},
+                                utterance_id,
+                            )
+                        )
+                    return
+            # Sub-clause echo suppression: a short final (3-8 words) that repeats a
+            # contiguous slice of the previous final is an engine re-emission, not new speech.
+            if 3 <= len(words) <= 8 and (time.time() - prev_final_time) <= 3.5:
+                sub_norm_w = lambda w: re.sub(r"[^\w]+", "", w).casefold()
+                sub_clean_norm_words = [sub_norm_w(w) for w in words if sub_norm_w(w)]
+                sub_prev_entry = self.history.entries[-1]
+                sub_prev_words = sub_prev_entry.text.split()
+                sub_prev_norm_words = [sub_norm_w(w) for w in sub_prev_words if sub_norm_w(w)]
+                sub_is_echo = False
+                if sub_clean_norm_words and len(sub_prev_norm_words) >= len(sub_clean_norm_words) + 3:
+                    sub_n = len(sub_clean_norm_words)
+                    for sub_i in range(len(sub_prev_norm_words) - sub_n + 1):
+                        if sub_prev_norm_words[sub_i:sub_i + sub_n] == sub_clean_norm_words:
+                            sub_is_echo = True
+                            break
+                    if not sub_is_echo and len(sub_clean_norm_words) >= 5 and sub_clean_norm_words[0] in ("the", "a", "an", "their", "our", "his", "her", "your", "my", "its"):
+                        sub_tail = sub_clean_norm_words[1:]
+                        if len(sub_tail) >= 4 and sub_prev_norm_words[-len(sub_tail):] == sub_tail:
+                            sub_is_echo = True
+
+                if sub_is_echo:
+                    logger.info(f"✓ [FINAL]   [ECHO SUPPRESSED] {clean_text}")
+                    # If previous entry had an unclosed quote and this fragment closes it, seal it
+                    sub_prev_text = sub_prev_entry.text
+                    if (sub_prev_text.count('"') % 2 == 1 or sub_prev_text.count("'") % 2 == 1) and re.search(r'["\'”’]', clean_text):
+                        sub_quote_char = '"' if sub_prev_text.count('"') % 2 == 1 else "'"
+                        sub_prev_entry.text = sub_prev_text.rstrip(".,?!;:… ") + "." + sub_quote_char
 
                     self._utterance_active = False
                     self._sentence_start_time = time.time()
