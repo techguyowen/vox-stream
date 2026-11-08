@@ -1152,9 +1152,9 @@
         }
 
         .caption-sentence.interim::after {
-            content: "▍";
-            display: inline-block;
-            margin-left: 6px;
+            content: "\2060\00a0▍";
+            display: inline;
+            white-space: nowrap;
             animation: blink 0.9s infinite;
             color: var(--interim-color);
             text-shadow: none !important;
@@ -4562,7 +4562,6 @@
         function isInterimFillerToken(token) {
             if (!token) return false;
             const lower = String(token).toLowerCase();
-            if (lower === 'like,') return true;
             const bare = lower.replace(/^[^a-z0-9']+|[^a-z0-9']+$/g, '');
             return INTERIM_FILLER_SINGLE.indexOf(bare) !== -1;
         }
